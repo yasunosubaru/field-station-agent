@@ -1,0 +1,34 @@
+{
+  "actual_sha256": "775435d08a5da1cc1539326fbef750c3f635f1098951d98d484356a124bbd14a",
+  "conclusion": "归因：该历元载波相位出现单历元扰动，与配置注入的 jump_cycles 一致；码伪距未同步跳变，排除接收机钟跳；判为相位异常，不计作周跳阶跃。",
+  "conclusion_sha256": "8c194a2915070ce82e3a5489efb85fae4017ccd02920dfcb1a5818182822b726",
+  "config_hash": "770c10e60b39bd21cbf9e1e101918b38a52f602c3ced5bfbee9932d608673f38",
+  "expected_sha256": "775435d08a5da1cc1539326fbef750c3f635f1098951d98d484356a124bbd14a",
+  "kind": "fieldstation.replay.log",
+  "match": true,
+  "n_obs": 3600,
+  "n_truth": 1800,
+  "seed": 20261013,
+  "trace": [
+    {
+      "agent": "attribution",
+      "i": 0,
+      "input_digest": "78bc00e18d263c81",
+      "kind": "run_start"
+    },
+    {
+      "agent": "attribution",
+      "i": 0,
+      "input_digest": "78bc00e18d263c81",
+      "kind": "provider_call"
+    },
+    {
+      "agent": "attribution",
+      "i": 1,
+      "input_digest": "78bc00e18d263c81",
+      "kind": "run_end"
+    }
+  ],
+  "trace_sha256": "5976b16949fc00b3d3f7049cdb149a956f35e6b73a9fe25491aa5b7f4cc8f76f",
+  "user_input": "台站 SYNTH：3600 条观测 / 1800 个历元，注入异常 1 处；GPS 1 L1 历元 400 二阶差分 -1.9734 cycle。请给出归因结论。"
+}

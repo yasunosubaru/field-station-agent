@@ -14,6 +14,26 @@
 > 参照物。该常量由 `tests/test_pipeline.py::TestReproducibility::test_fixture_seed_is_pinned`
 > 锁住，改它等于作废已发布的基线。
 
+## 待补登记（Task 5 延后项，未落地故没有表格行）
+
+*以下三项是 Task 5 决定延后的搬运测试缺口，至今未补 —— 登记在此，以免
+「表里没有这一行」被误读成「没有这项缺口」。补回时按下方表格同样口径登记，
+补完从本节划掉。*
+
+- **T07 / T08 的第三段断言**「低仰角 / 低 CN0 历元不产出有限 `sTEC`」——
+  即「打了标记 ⟹ 一定不会流到消费方」。本项目尚无产出 `sTEC` 的消费方，
+  测不了；对应测试名已相应只声称「打了标记」（`test_bit0_and_flagged` /
+  `test_bit1_and_flagged`），不冒充测过第三段。
+- **JR 的聚合检出率实验**（`test_true_step_rate_is_high`，真实阶跃检出率
+  >= 0.95）——产品级要求，延后时缺可重复的随机注入发生器；
+  `synthetic` 由 Task 5 落地后条件已具备，**仍未补**。
+- **`TestJumpDetectionRate`**（源 `code/tests/test_qc.py`）——未迁移。
+  其 `rate >= 0.95` 门限是对源合成器的噪声模型标定的，迁移前需按本项目
+  `synthetic.generate` 重新标定，不能照抄数字。
+
+三项的完整上下文（连同第四项 T11 近邻误检复查）见 `tests/test_qc.py`
+顶部「延后清单」。
+
 | 源仓库 | 源路径 | commit | 复制日期 | 改动 | 新位置 |
 |---|---|---|---|---|---|
 | GNSS接收机TEC反演 | `gnsstec/constants.py` | 5d1937b | 2026-10-13 | 无（逐字节复制，SHA256 与源文件一致；该模块只 import `math`） | `src/fieldstation/constants.py` |
@@ -32,3 +52,4 @@
 | GNSS接收机TEC反演 | `gnsstec/synthetic.py` | 5d1937b | 2026-10-13 | **搬运部分只改 1 行**：`from .schema import Observation, epoch_utc_str, gps_to_utc, GPS_WEEK_S` → `from .model import ...`（Task 2 已把 `schema.py` 搬成 `model.py`）。`from . import constants as C` **未改**（同包根，相对 import 仍成立）。正演方程、注入逻辑（周跳/缺测/粗差）、`_stec_true_tecu`/`_ambig`、三个 CSV 函数全部一字未动。⚠️ `generate()` 调 `gps_to_utc(wk, tow)` **不传第三参**，吃的是 `model.gps_to_utc` 的默认 `DEFAULT_LEAP_S=18.0`；`model.py` 与源 `schema.py` 的默认值一致，故搬运前后逐字节相同（`generate(default_cfg())` 首条 `epoch_utc` 两边都是 `2024-02-03T23:59:42.000Z`）。**另新增** `FIXTURE_SEED` / `DEFAULT_SLIP` / `default_cfg()` 三个新对象（源文件没有，属本项目新增，非搬运）：任务书 Step 3 建议的字典体里 `elev_cutoff_deg`、`inject_slip_at`、`inject_gap_at`、`inject_psr_outlier_at`、`inject_adr_outlier_at`、`noise_psr_m`、`noise_adr_cycles` 这 7 个键**在源 `generate()` 里根本不存在**，照抄会得到一份永远不生效的 cfg。故 `default_cfg()` 改为以 `DEFAULT_SYNTH_CFG` 为底稿、只覆盖 `seed` 与 `slips` 两项，其余沿用源默认值。种子 `20261013` 的理由见本文件顶部旁注。单历元扰动语义（`slips` 只在 `index == i` 的那一个历元上加 `jump_cycles`，非持续跳变）详见 `docs/known-issues.md` KI-07，本表只做指引。行尾未转换（源本即 LF、以换行结尾，源 CR=0 / 末字节 0x0A，本仓 CR=0 / 末字节 0x0A）。**本轮修复新增（非搬运）**：`default_cfg()` 内 `dict(DEFAULT_SYNTH_CFG)` → `copy.deepcopy(DEFAULT_SYNTH_CFG)`（另加 `import copy` 一行），堵浅拷贝污染模块全局进而静默改 `config_hash` 的通道，由 `test_default_cfg_is_deep_copied` 钉住 | `src/fieldstation/synthetic.py` |
 | GNSS接收机TEC反演 | `gnsstec/product.py` | 5d1937b | 2026-10-13 | **⚠️ 本任务唯一的行为变更，源项目没有**：`write_timeseries` / `write_json` 的 `synthetic` 形参在源项目里**不改路径**，只往文件头写两行标记；隔离目录是上游 `cli.run_pipeline` 自己算好路径再传进来的（L188-189）。实测（只读导入源项目、产物写临时目录）：`write_timeseries([], p, synthetic=False)` 与 `synthetic=True` 返回**同一个**路径，且真后者会把前者**原地覆盖**（同一文件 sha256 从 `fa6d660a…` 变成 `112cbec3…`）。本仓库不搬 cli，照抄会丢掉隔离，故新增 `_isolated()`：`synthetic=True` 时改写为 `<父目录>/synthetic/SYNTHETIC_<原文件名>`，目录名与前缀都取自源 cli 的口径，并做成幂等（实测发现只挡前缀不挡目录会叠成 `synthetic/synthetic/…`）。其余搬运部分只改 2 行 import（`from .schema import TecRecord` → `from ..model import`、`from .synthetic import SYNTHETIC_MARKER, SYNTHETIC_TAG` → `from ..synthetic import`）+ 2 处 `path = Path(path)` → `path = _isolated(Path(path), synthetic)`；`sha256_file`/`canonical_json`/`config_hash`/`code_commit`/`env_fingerprint`/`_fmt`/`write_manifest`/`utcnow_iso`/`describe_output` 与「缺测写 NaN 不写 0」全部一字未动。⚠️ `describe_output(path, rows)` 没有 `synthetic` 形参，**调用方必须用 `write_*` 的返回值**去喂它，否则哈希的是不存在的路径。行尾未转换（源本即 LF、以换行结尾，源 CR=0 / 末字节 0x0A，本仓 CR=0 / 末字节 0x0A） | `src/fieldstation/store/product.py` |
 | GNSS接收机TEC反演 | `code/tests/test_pipeline.py` | 5d1937b | 2026-10-13 | **重写**。源文件两个用例都走 `cli.run_pipeline`（本仓库不搬该链路，入口留到 Task 7/8），故改为直接对 `synthetic` + `product` 断言，**不 import t7_support**（源文件对它的依赖正是从 cli 来的）。保留任务书 Step 1 给出的三条断言（`test_same_config_same_sha256` / `test_different_config_different_hash` / `test_synthetic_flag_changes_output_path`）原意与原写法。**新增 10 条**：种子钉死 `20261013`、同 seed 逐字节可复现（并反向验证换 seed 后首条 `psr_m` 真的变，否则恒定返回的假实现也能过）、fixture 自带已知异常且异常可追溯到 `slips` 配置、隔离幂等、`synthetic=False` 路径逐字符不变、标记只对合成产物写、`write_json` 隔离 + `_synthetic_note`、manifest 隔离且自洽、三个 CSV 接口往返。⚠️ 源 `test_synthetic_isolation` 还断言了 `os.sep + "synthetic" + os.sep`，本仓库由 `product._isolated` 保证，语义等价 | `tests/test_pipeline.py` |
+| GNSS接收机TEC反演 | `code/tests/test_units.py` | 5d1937b | 2026-10-13 | **改写**。复制 `TestDimensions`/`TestT13Validation`/`TestT14WeekRollover`/`TestTimeConversion` 四个 TestCase 共 13 个测试；不复制 `TestT12MappingBoundary`（依赖不搬的 `gnsstec/mapping.py`）；import 改指 `fieldstation` | `tests/test_constants.py` |
