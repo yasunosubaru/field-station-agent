@@ -4,7 +4,7 @@
 
 仓库：`field-station-agent`（private）
 根目录：**以 `git rev-parse --show-toplevel` 为准**——换个机器 clone 后规则依然成立。
-（本机 checkout 位于 `F:\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\`）
+（本机 checkout 位于 ``（以 git rev-parse --show-toplevel 为准）``）
 
 ---
 
