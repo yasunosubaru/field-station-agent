@@ -30,6 +30,12 @@ import unittest
 from fieldstation.rules import qc
 from tests import t7_support
 
+#: `run_qc(pairs_by_key, cfg)` 的 cfg 是 **dict**（源实现里是 `cfg.get(...)`），
+#: 传 `QCConfig` 实例会在 `run_qc` 内部抛 AttributeError。
+#: 空 dict 落到 `default_qc_config` 的硬编码默认值，与 `default_qc_config(None)`
+#: 产出的 `QCConfig` 完全一致。
+_CFG: dict = {}
+
 
 class TestQcRunsBeforeConsumer(unittest.TestCase):
     """不接 QC 会怎样 —— 逐条把症状钉死。"""
@@ -67,13 +73,6 @@ class TestQcRunsBeforeConsumer(unittest.TestCase):
         pairs = t7_support.make_pairs(n=50)
         report = qc.run_qc(pairs, _CFG)
         json.dumps(report)
-
-
-#: `run_qc(pairs_by_key, cfg)` 的 cfg 是 **dict**（源实现里是 `cfg.get(...)`），
-#: 传 `QCConfig` 实例会在 `run_qc` 内部抛 AttributeError。
-#: 空 dict 落到 `default_qc_config` 的硬编码默认值，与 `default_qc_config(None)`
-#: 产出的 `QCConfig` 完全一致。
-_CFG: dict = {}
 
 
 if __name__ == "__main__":
