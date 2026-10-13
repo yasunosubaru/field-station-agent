@@ -258,8 +258,10 @@ class TestT11SamplingGap(unittest.TestCase):
           GF 路 `sigma_gf_window.n_zero = 115`（全部退化到 1.0 TECU 物理地板），
           残差恒 0，低于 `slip_min_jump_tecU`。
         * MW 的 psr 项在 term1/term2 里相消，同样只看 L1/L2 的 adr-psr **失配**；
-          失配为 0 时 MW 只剩浮点舍入（本夹具实测 ~1.7e-8 TECU，
-          `sigma_mw` = 1.66e-8、判据被 `slip_min_jump_tecU = 0.5` 兜底）。
+          失配为 0 时 MW 只剩浮点舍入（本夹具实测 ~1.7e-8 **米** —— 单位依据
+          `qc.mw_series` 的 docstring「Melbourne-Wubbena 组合（米）」，此前误标
+          TECU，2026-10-13 按该 docstring 更正；`sigma_mw` = 1.66e-8、
+          判据被 `slip_min_jump_tecU = 0.5` 兜底）。
 
         所以**任何大小的间断都不会被判成周跳**（已扫 16 s ~ 1e6 s，10/10 零 slip、
         10/10 `BIT_GAP=True`）。曾经这里写的是「M-W 会把间断判成宽巷跳变」——

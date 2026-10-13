@@ -25,7 +25,7 @@
 - **机制**：`sid = ln[0:3].strip().upper()` 在规范写法下非空，于是进入该分支；
   `rest = ln[3:].split()` 把第 61 列起的标签词 `PRN` / `/` / `#` / `OF` / `OBS`
   也切了出来，`int(float('PRN'))` 直接抛错。
-- **为什么现有真实样本不崩**：`BADG` 文件的头段确实含 `PRN / # # OF OBS` 记录，
+- **为什么现有真实样本不崩**：`BADG` 文件的头段确实含 `PRN / # OF OBS` 记录，
   但它是 `JPS2RIN` 生成的，**PRN 写在第 5 列**，于是 `ln[0:3]` 是空白、
   `if sid:` 为假、整行被跳过。**这是侥幸，不是安全。**
 - **证据**：构造性验证（评审者，2026-10-13）——
@@ -100,13 +100,15 @@
   不以工作区文件为准。** 需要与源项目逐字节比对时，
   先 `git cat-file -p HEAD:<path>`，不要直接 diff 工作区文件。
 
-### KI-05　三个搬运件没有测试覆盖【覆盖缺口，非缺陷】
+### KI-05　三个搬运件与两个移植工具没有测试覆盖【覆盖缺口，非缺陷】
 
 | 未覆盖对象 | 行数 | 说明 |
 |---|---|---|
 | `ingest/hatanaka.py` | 240 | 全部公开函数（`decompress_hatanaka` / `read_hatanaka_rinex` / `self_check` / `split_sections` / `parse_header`）零测试。**源项目自己没有真实 Hatanaka 样本**，其 docstring 就写着"解码器未验证"。`reader.sniff` 对 CRINEX 一律报 `supported=False`，解压路径目前是死的。 |
 | `ingest/registry.py` | 173 | `field_width_for` 是 brief 明确列出的 Produces 接口，目前**只被间接调用过一次**（`ObservationFile._open` 对 TESTSTN 查表落空返回 `None`），优先级逻辑（环境变量 > 站名 > 生产程序）无测试。 |
 | `reader.sniff` 的 `RINEX3-NAV` 分支 | — | 变异测试确认：把 `if "OBSERVATION DATA" in lines[0]` 改成 `if True:` 不会被任何测试捕获。 |
+| `tools/sync_code_counts.py` | 137 | **无测试**（Task 6 brief 未要求）。靠实跑验证：`python tools/sync_code_counts.py` 后生成块与 `tools/audit_claims.py` 回源结果逐字一致（Task 6 复评实测）。行数为本仓库文件实际行数（实测 2026-10-13）。 |
+| `tools/make_cli_figures.py` | 186 | **无测试**（Task 6 brief 未要求）。靠 `--help` 实跑 exit 0 验证；PNG 渲染另见 KI-09（第三方依赖）。行数为本仓库文件实际行数（实测 2026-10-13）。 |
 
 **待办**：接真实数据前，至少给 `registry.field_width_for` 补一组参数化测试
 （站名大小写、环境变量覆盖、生产程序兜底、未登记站返回 `None`），
@@ -145,6 +147,51 @@
 - **影响面**：M0 不受影响（评测集只需要"自带可判分的已知异常"，单历元扰动够用）。
 - **为什么不修**：改注入语义等于改搬运件；Task 5 实现时已按源实现如实记录，
   未"修正"源语义。`PROVENANCE.md` 对应行只留指向本条的指引，细节以此处为准。
+
+### KI-08　spec §2 目录树的两个叶子在 M0 未落地【设计决定：登记延后，非缺陷】
+
+- **位置**：`src/fieldstation/cli.py`（spec §2 第 143 行「统一入口」）与
+  `harness/REPRODUCE.md`（spec §2 第 147 行）—— 两者本仓库 M0 均**不存在**
+  （实测 `git ls-files src/fieldstation/cli.py harness/REPRODUCE.md` 零命中，
+  2026-10-13）。
+- **性质**：**这是设计决定，不是缺陷**，但它在 M0 期间**静默掉落、从未登记**
+  （终审 Important-4 指出）：计划 Task 5 的注释写着"`cli.py` … 本仓库的入口
+  留到 Task 7/8 再建"，而 Task 7/8 的 brief 都没有包含它；`REPRODUCE.md`
+  从未被任何任务承接。补登记即本条。
+- **延后落点**：
+  - `cli.py` → **M3**（与真实模型通道、角色配置同批 —— 没有真 provider 与
+    真数据，"统一入口"无物可统一，先建就是投机骨架）。
+  - `harness/REPRODUCE.md` → **随 DoD-4「复现性文档化」**一并补
+    （DoD-4 的实测输出 `logs/replay_20261013.json` 已入库，文档化步骤挂账）。
+- **M0 的验收口径**：M0-1「目录与 spec §2 一致」字面不成立。spec §2 与实际
+  树的全部差异（2026-10-13 逐叶子核对 `git ls-files src/fieldstation harness/`）：
+  1. `cli.py`、`harness/REPRODUCE.md` —— **缺，本条登记**（原属静默掉落）；
+  2. `agents/runtime/`（目录）落成 `agents/runtime.py` 单文件 —— M0 只做最小
+     运行循环，一个文件够用；
+  3. `agents/tools/`、`agents/memory/` 两目录不存在 —— 随 spec §4 三项能力
+     （工具注册、消息路由/共享黑板、角色配置）整体推迟 M3，此为**已有裁定**
+     （终审 §4「已知 open item #2，defer 正确」），非本条新登记；
+  4. `constants.py` / `schema.py`（→`model.py`）不在 `ingest/` 下而在包根 ——
+     为避免包级循环，计划开头「对 spec §2 目录树的一处偏离」已声明。
+  除上述各项外，spec §2 其余叶子（README/CLAUDE/PROVENANCE、ingest/rules/store、
+  harness 两件、tools 三件、tests、data/logs/figures/config/docs）均在位
+  （`git ls-files` 逐项核对，2026-10-13）。
+
+### KI-09　`tools/make_cli_figures.py` 依赖第三方库 matplotlib【设计决定：点名豁免】
+
+- **位置**：`tools/make_cli_figures.py:72-74`（函数级 `import matplotlib`）。
+- **冲突点**：计划 Global Constraints 与 `CLAUDE.md` §4 都写「纯标准库，
+  无第三方依赖」，而 spec §1.2 又点名要移植该工具 —— **PNG 渲染本质上做不了
+  纯标准库**（标准库无位图字体栅格化/绘图后端），约束与任务书在这一点上打架。
+  终审 Important-5 指出：全链路原本**没有任何裁决**，本条即补上的裁决登记。
+- **裁决（设计决定）**：**`tools/make_cli_figures.py` 是可选工具，豁免
+  「纯标准库」约束；仓库核心（`src/` `tests/` `harness/`）必须保持纯标准库。**
+  计划 Global Constraints 已同步加同名点名豁免。
+- **影响面（实测）**：matplotlib 是**函数级** import，只在 `render()` 被调用时
+  才加载 —— `tests/`、`harness/` 均不 import 该模块（全仓 grep 确认），
+  所以无 matplotlib 的机器上测试与五项门禁照常全绿，只是跑不了出图。
+  本机 matplotlib 3.11.1 在位（终审实测 `--help` exit 0）。
+- **无覆盖**：该工具无测试（Task 6 brief 未要求），见 KI-05 表。
 
 ---
 

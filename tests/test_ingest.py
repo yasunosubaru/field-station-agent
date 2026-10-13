@@ -28,10 +28,14 @@
 
 原因限于本夹具的形状：`RINEX3_OBS` 的 `SYS / # / OBS TYPES` 块后面紧跟
 `END OF HEADER`（前 60 列全空白），而该分支对前 60 列全空白的行是 `i += 1`
-跳过，于是 `header_end` 落到文件末尾。真实文件实测（控制者，2026-10-13）：
-TWTF RINEX3.04 观测文件 header_end=44, n_epochs=2880,
-observations(["GPS"]) = 115432 条。即真实观测段可正常解析；
-本任务不因本缺口做任何代码改动。
+跳过，于是 `header_end` 落到文件末尾。真实文件实测（控制者，2026-10-13），
+出处：对一份 TWTF RINEX3.04 观测文件构造统一入口
+`of = reader.ObservationFile(<该文件路径>)` —— 其底层解析器
+`rinex3.Rinex3Obs`（即 `of._raw`）的 `header_end = 44`、`n_epochs = 2880`，
+而 **`of.observations(["GPS"])` 逐条吐出 115432 条**：
+`len(list(of.observations(["GPS"]))) == 115432`。即这个 115432 是该
+`ObservationFile` 实例对 `["GPS"]` 一个系统查询的返回条数，不是夹具、
+也不是其他对象的量。真实观测段可正常解析，本任务不因本缺口做任何代码改动。
 
 ## 观测码回退链
 
@@ -180,10 +184,13 @@ class TestPlanLiteralFixtures(unittest.TestCase):
         self.assertEqual(
             rinex3.Rinex3Obs(text=RINEX3_OBS_PLAN_LITERAL).header.version, "")
 
-        # 计划书 RINEX2 缺 `# / TYPES OF OBSERV` 记录，能打开但读到 0 条
+        # 计划书 RINEX2 缺 `# / TYPES OF OBSERV` 记录，能打开但读不到东西
         of2 = _open_observation_file(RINEX2_OBS_PLAN_LITERAL, "plan2.rnx")
         self.assertEqual(of2.info["format"], "RINEX2")
-        self.assertEqual(list(of2.observations()), [])
+        # 纯公开 API 的强断言（ledger 裁定，2026-10-13 执行）：三个星座各自的
+        # 观测类型表必须都是空的 —— 比原先 `list(of2.observations()) == []`
+        # 那条弱断言钉得更死，无需碰白盒、无需动搬运件
+        self.assertEqual(of2.obs_types(), {"GPS": [], "GAL": [], "BDS": []})
 
 
 if __name__ == "__main__":

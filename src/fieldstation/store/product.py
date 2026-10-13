@@ -88,10 +88,15 @@ def config_hash(cfg: dict) -> str:
 
 def code_commit(cwd: str | Path | None = None) -> str:
     try:
+        # `git rev-parse HEAD` 输出恒为 64 位十六进制（纯 ASCII），加 encoding
+        # 不改任何返回值，只把解码口径从"系统 locale（本机 Windows 为 GBK）"
+        # 钉成 UTF-8，与 tests/、tools/ 各站点一致；否则一旦异常，会被下面的
+        # except 吞成 "unknown"，成为静默降级。2026-10-13 两环境实测返回同一
+        # hash，行为无变化（详见 PROVENANCE.md 该行"改动"列）。
         out = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=str(cwd) if cwd else None,
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
         if out.returncode == 0:
             return out.stdout.strip()
