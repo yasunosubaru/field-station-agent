@@ -23,12 +23,15 @@
 
 ## 已知未覆盖：RINEX 3 的观测段
 
-`Rinex3Obs._parse_header` 的 `SYS / # / OBS TYPES` 分支会把「前 60 列全空白」
-的行直接 `i += 1` 跳过，而 `END OF HEADER` 行恰好前 60 列全空白，于是
-`header_end` 落到文件末尾之后，`n_epochs == 0`、`iter_observations()` 产出为空
-（对 `tests/fixtures_rinex.py::RINEX3_OBS` 实测，见 task-4-report.md）。
-因此这里**只测 RINEX 3 的头段与嗅探**，不假装测了观测段。
-该行为源自源项目未经改动，是否算缺陷需比对真实 TWTF 文件后另行判定。
+本仓库的 RINEX 3 测试夹具覆盖头段解析，但**没有覆盖观测段**——
+`rinex3.py:248` 的函数级 import 改写因此未被任何测试走到。
+
+原因限于本夹具的形状：`RINEX3_OBS` 的 `SYS / # / OBS TYPES` 块后面紧跟
+`END OF HEADER`（前 60 列全空白），而该分支对前 60 列全空白的行是 `i += 1`
+跳过，于是 `header_end` 落到文件末尾。真实文件实测（控制者，2026-10-13）：
+TWTF RINEX3.04 观测文件 header_end=44, n_epochs=2880,
+observations(["GPS"]) = 115432 条。即真实观测段可正常解析；
+本任务不因本缺口做任何代码改动。
 
 ## 观测码回退链
 
@@ -116,6 +119,9 @@ class TestSniff(unittest.TestCase):
 
 class TestUnsupported(unittest.TestCase):
     def test_bad_format_raises(self):
+        # brief 的 Interfaces 明写 `UnsupportedFormat(RuntimeError)`：
+        # assertRaises 对基类变化不敏感，基类得单独钉
+        self.assertTrue(issubclass(reader.UnsupportedFormat, RuntimeError))
         with self.assertRaises(reader.UnsupportedFormat):
             _open_observation_file(BAD_OBS, "bad.txt")
 
@@ -123,7 +129,9 @@ class TestUnsupported(unittest.TestCase):
         of = _open_observation_file(RINEX2_OBS, "b.rnx")
         self.assertEqual(of.info["format"], "RINEX2")
         self.assertEqual(of.station, "TESTSTN")
-        self.assertEqual(of.interval_s, 30.0)
+        # 夹具的 INTERVAL 特意取 15.00（不等于 reader.py:304 的兜底常量 30.0），
+        # 这样本断言才能证明 INTERVAL 记录真的被读了
+        self.assertEqual(of.interval_s, 15.0)
         self.assertEqual(of.approx_xyz, (-3456000.0, 4653800.0, 4049400.0))
 
         obs = list(of.observations())
@@ -155,8 +163,12 @@ class TestUnsupported(unittest.TestCase):
 class TestPlanLiteralFixtures(unittest.TestCase):
     """负控制：计划书 Step 1 给的两段内联串**不是**合法 RINEX，读不出东西。
 
-    留着这条是为了钉住"`tests/fixtures_rinex.py` 里的主夹具是校准过的，
-    不是把计划书原文照抄"。若有人把主夹具换回计划书原文，这里会失败。
+    本条测试只引用 `*_PLAN_LITERAL`，**不碰主夹具**。它的作用是留下
+    「计划书原文确实不可用」的可执行记录，防止有人日后误以为那两段串
+    可以直接当夹具用。
+
+    注意分工：主夹具若被换回计划书原文，兜住它的是 `test_sniffs_rinex3`
+    与 `test_version_is_304`，**不是**本类。
     """
 
     def test_plan_literals_are_not_usable_fixtures(self):

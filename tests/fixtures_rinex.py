@@ -31,9 +31,13 @@
 因此本模块提供**两套**：`RINEX3_OBS` / `RINEX2_OBS` 是按搬运后解析器的列
 偏移实测校准出来的合法夹具（内容与计划书的设定一致：站名 `TESTSTN`、
 G 系统 8 个观测码、2023-01-01 00:00 四个 GPS 星），
-`*_PLAN_LITERAL` 则**逐字保留**计划书的原始串作为负控制，
-由 `test_ingest.py::TestPlanLiteralFixtures` 钉住"它们确实读不出东西"，
-防止有人把它们悄悄换回主夹具。
+`RINEX3_OBS_PLAN_LITERAL` / `RINEX2_OBS_PLAN_LITERAL` 则**逐字保留**计划书的
+原始串作为负控制（615 B / 705 B，与 brief 逐字节比对相等），由
+`test_ingest.py::TestPlanLiteralFixtures` 留下"它们确实不可用"的可执行记录。
+
+注意分工：主夹具若被换回计划书原文，兜住它的是 `test_sniffs_rinex3` 与
+`test_version_is_304`，**不是** `TestPlanLiteralFixtures` —— 后者只引用
+`*_PLAN_LITERAL`，完全不碰主夹具。
 
 ## 校准依据（全部实测，不是推测）
 
@@ -53,6 +57,11 @@ G 系统 8 个观测码、2023-01-01 00:00 四个 GPS 星），
 - 观测码选 `C1 L1 S1 P2 L2` 是因为 `reader.CODE_FALLBACK["L2"]` 的第一条是
   `C2`，本夹具没有 C2，需要靠回退链落到 `P2` 才能走通 `_from_rinex2`。
   这也顺带钉住"缺 C2 就退到 P2"这条回退链是真的在跑。
+- `INTERVAL` 写 **15.00** 而不是 30.00：`reader.ObservationFile.interval_s`
+  在头段没读到 `INTERVAL` 时会返回写死的兜底常量 `30.0`
+  （`reader.py:304` 的 `return v or 30.0`）。夹具若也写 30.00，
+  把解析器改成"不读 INTERVAL、直接写死 30.0"照样能过测试，
+  那条断言就证明不了"INTERVAL 记录真的被读了"。
 """
 
 RINEX3_OBS = """     3.04           OBSERVATION DATA    M                   RINEX VERSION / TYPE
@@ -84,7 +93,7 @@ TRIG                ANH                                     ANT # / TYPE
   -3456000.000   4653800.000   4049400.000                  APPROX POSITION XYZ
          0.000         0.000         0.000                  ANTENNA: DELTA H/E/N
     5 C1    L1    S1    P2    L2                            # / TYPES OF OBSERV
-    30.00                                                   INTERVAL
+    15.00                                                   INTERVAL
     4                                                       # OF SATELLITES
   23     1     1     0     0    0.0000000       GPS         TIME OF FIRST OBS
                                                             END OF HEADER
@@ -118,7 +127,7 @@ TRIG            1.00 ANT       ANTENNA TYPE
       -3456000.0000  4653800.0000  4049400.0000              APPROX POSITION XYZ
         0.0000        0.0000        0.0000                  ANTENNA: DELTA H/E/N
      30.00                                                      INTERVAL
-  23  1  1  0  0  0.0000000  0 10G01G02G03G04G05G06G07G08
-   23040555 23679845  23679846  23679847  23679848  23679849
-      23040555   41   45   45.000      41   45   45.000
+ 23  1  1  0  0  0.0000000  0 10G01G02G03G04G05G06G07G08
+  23040555 23679845  23679846  23679847  23679848  23679849
+     23040555   41   45   45.000      41   45   45.000
 """
