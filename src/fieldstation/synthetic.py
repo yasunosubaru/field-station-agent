@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import copy
 import csv
 import math
 import random
@@ -101,8 +102,17 @@ def default_cfg(**overrides) -> dict:
       （6304a6d235ede6a26eab291f909d21f7bd766776354242065c5cb74499fcc1a5）完全相同
       —— 这些键根本不参与正演。照抄等于凭空多出一个配置入口，外加一串不生效的键，
       后人改它们会以为改了 fixture，其实什么都没变。
+
+    **深拷贝不是洁癖**：浅拷贝下 `cfg["sats"] is DEFAULT_SYNTH_CFG["sats"]`，
+    任何人 `cfg["sats"]["GPS"].append(99)` 都会污染模块全局，之后每次
+    `default_cfg()` 都带着这条脏数据，`config_hash` 静默变成另一个值 ——
+    已发布基线就此对不上，且不报任何错。实测（2026-10-13）：
+      污染前 config_hash = 770c10e60b39bd21cbf9e1e101918b38a52f602c3ced5bfbee9932d608673f38
+      污染后 config_hash = 763282b5…
+    `generate()` 今天只读不写嵌套结构，所以今天不触发；但这条通道直通
+    「基线哈希被静默改掉」，与本函数存在的理由正面相关，必须堵死。
     """
-    cfg = dict(DEFAULT_SYNTH_CFG)
+    cfg = copy.deepcopy(DEFAULT_SYNTH_CFG)
     cfg["seed"] = FIXTURE_SEED
     cfg["slips"] = [dict(DEFAULT_SLIP)]
     cfg.update(overrides)

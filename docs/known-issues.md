@@ -127,6 +127,25 @@
 - **待办**：一旦本项目接自己的数据，`RINEX2_FIELD_WIDTH` **需要重新实测**，
   不能直接沿用。
 
+### KI-07　`synthetic.generate` 的 `slips` 注入是单历元扰动，不是持续周跳【已确认】
+
+- **位置**：`src/fieldstation/synthetic.py:81-87`（`DEFAULT_SLIP` 的语义声明）+
+  `:194-200`（`generate()` 里的注入循环）
+- **归属**：搬运件既有行为，**非本项目引入**（源 `gnsstec/synthetic.py` 同款循环，
+  本仓库逐字搬运）。
+- **触发条件**：拿 M0 fixture 去标定周跳检测器的检出率（M2 及以后；源项目
+  `test_qc.py::TestJumpDetectionRate` 正是这么用的，那条测试本仓库未迁）。
+- **症状**：注入的异常只加在 `index` 指定的那**一个**历元上，后续历元不跟随；
+  把它当"持续周跳"来算检出率，会得到无意义的数。
+- **机制**：`for s in slips.get(key, []): if int(s["index"]) == i:` —— 只在
+  `i == index` 的那一行给 `q1`/`q2` 加 `jump_cycles`，没有对后续历元的累加。
+- **证据**：`tests/test_pipeline.py::TestFixtureContent` 构造性验证 —— 二阶差分
+  `q[i+1] - 2*q[i] + q[i-1]` 在注入点读到 `-2.0 cycle`（= `-2 * jump_cycles`）；
+  去掉 `slips` 配置扰动即消失（`test_perturbation_is_traceable_to_config`）。
+- **影响面**：M0 不受影响（评测集只需要"自带可判分的已知异常"，单历元扰动够用）。
+- **为什么不修**：改注入语义等于改搬运件；Task 5 实现时已按源实现如实记录，
+  未"修正"源语义。`PROVENANCE.md` 对应行只留指向本条的指引，细节以此处为准。
+
 ---
 
 ## 维护约定

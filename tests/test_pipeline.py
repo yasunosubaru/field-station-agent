@@ -32,6 +32,16 @@ def _tec_record(t: synthetic.Truth) -> model.TecRecord:
     )
 
 
+def _syn_path(base: Path, name: str) -> Path:
+    """合成 CSV 的落盘 helper：路径固定落在名字以 synthetic 开头的隔离目录下。
+
+    `write_observations_csv` / `write_truth_csv` 没有 `synthetic` 形参
+    （搬运件签名，不许加），隔离只能靠调用方给对路径。本模块凡调这两个函数
+    一律经由此 helper 落盘，约定由 `test_synthetic_csv_paths_stay_isolated` 钉住。
+    """
+    return base / "synthetic" / name
+
+
 class TestReproducibility(unittest.TestCase):
     def test_same_config_same_sha256(self):
         cfg = synthetic.default_cfg()
@@ -40,9 +50,43 @@ class TestReproducibility(unittest.TestCase):
         self.assertEqual(h1, h2)
         self.assertEqual(len(h1), 64)          # SHA256 十六进制
 
+    def test_config_hash_is_key_order_independent(self):
+        """`sort_keys=True` 是「基线哈希跨构造顺序稳定」的全部依据，必须有人看守。
+
+        上一条断言把**同一个 dict 对象**哈希两次，只要 config_hash 是纯函数就必然相等
+        —— 它防不住任何实现缺陷（删掉 sort_keys=True 它照样绿）。
+        而 Task 7/8 一旦从 JSON 读回 cfg、或用不同字面量顺序重建 cfg，
+        没有 sort_keys 就会静默算出不同的 config_hash，已发布基线全部对不上且不报错。
+        所以这里用**键序不同但内容相同**的两个 dict 来钉它。
+        """
+        cfg = synthetic.default_cfg()
+        reordered = dict(reversed(list(cfg.items())))
+        self.assertNotEqual(list(cfg), list(reordered), "本用例的前提：两者键序确实不同")
+        self.assertEqual(product.config_hash(cfg), product.config_hash(reordered))
+        # 经一趟真实的 JSON 往返再哈希：Task 7/8 的典型重建路径
+        self.assertEqual(product.config_hash(cfg),
+                         product.config_hash(json.loads(json.dumps(cfg))))
+
     def test_different_config_different_hash(self):
+        # 用**真实生效**的键（stec_base_tecu 被 _stec_true_tecu 直接读取），
+        # 不用任务书原文的 elev_cutoff_deg —— 那个键在 generate() 里根本不存在，
+        # 拿它做断言只能证明「config_hash 对 dict 内容敏感」，与配置有效性无关。
         self.assertNotEqual(product.config_hash(synthetic.default_cfg()),
-                            product.config_hash(synthetic.default_cfg(elev_cutoff_deg=20.0)))
+                            product.config_hash(synthetic.default_cfg(stec_base_tecu=20.0)))
+
+    def test_task_book_keys_are_inert(self):
+        """把「任务书 Step 3 给的那 7 个键是死键」钉成负例。
+
+        这是 default_cfg() 不照抄任务书字典体的依据：若哪天有人「顺手补上」
+        elev_cutoff_deg 的实现，这些键会突然开始改变输出，已发布基线静默作废。
+        """
+        obs_ref, truth_ref, _ = synthetic.generate(synthetic.default_cfg())
+        obs_alt, truth_alt, _ = synthetic.generate(synthetic.default_cfg(
+            elev_cutoff_deg=20.0, inject_slip_at=1, inject_gap_at=2,
+            inject_psr_outlier_at=3, inject_adr_outlier_at=4,
+            noise_psr_m=99.0, noise_adr_cycles=99.0))
+        self.assertEqual([o.to_row() for o in obs_ref], [o.to_row() for o in obs_alt])
+        self.assertEqual(truth_ref, truth_alt)
 
     def test_fixture_seed_is_pinned(self):
         """M0 评测 fixture 必须由种子决定，否则回放基线不成立。
@@ -51,6 +95,23 @@ class TestReproducibility(unittest.TestCase):
         任何人改它都会让已发布的基线对不上，故用测试锁住。
         """
         self.assertEqual(synthetic.default_cfg()["seed"], 20261013)
+
+    def test_default_cfg_is_deep_copied(self):
+        """F-7：`default_cfg()` 的嵌套结构必须是不同对象，不能与模块全局共享。
+
+        浅拷贝下 `cfg["sats"] is DEFAULT_SYNTH_CFG["sats"]`，任何人
+        `append` 都会污染模块全局、静默改掉已发布基线的 `config_hash`。
+        """
+        c1 = synthetic.default_cfg()
+        c2 = synthetic.default_cfg()
+        self.assertIsNot(c1["sats"], synthetic.DEFAULT_SYNTH_CFG["sats"])
+        self.assertIsNot(c1["sats"], c2["sats"])
+        self.assertIsNot(c1["systems"], synthetic.DEFAULT_SYNTH_CFG["systems"])
+        self.assertIsNot(c1["slips"], c2["slips"])
+        # 写操作不外溢：改返回的 cfg，模块全局与下一次调用不受影响
+        c1["sats"]["GPS"].append(99)
+        self.assertNotIn(99, synthetic.DEFAULT_SYNTH_CFG["sats"]["GPS"])
+        self.assertNotIn(99, synthetic.default_cfg()["sats"]["GPS"])
 
     def test_generate_is_deterministic_under_same_seed(self):
         """同 seed 两次生成必须逐字节相同 —— 这是「回归基线能回放」的前提。
@@ -116,7 +177,7 @@ class TestCsvRoundTrip(unittest.TestCase):
         self.base = Path(tempfile.mkdtemp())
 
     def test_observations_round_trip(self):
-        p = synthetic.write_observations_csv(self.obs, self.base / "obs.csv")
+        p = synthetic.write_observations_csv(self.obs, _syn_path(self.base, "obs.csv"))
         head = p.read_text(encoding="utf-8").splitlines()[:2]
         self.assertEqual([f"# {synthetic.SYNTHETIC_MARKER}",
                           f"# {synthetic.SYNTHETIC_TAG}"], head)
@@ -126,7 +187,7 @@ class TestCsvRoundTrip(unittest.TestCase):
         self.assertEqual(self.obs[-1].to_row(), back[-1].to_row())
 
     def test_truth_csv_has_marker_and_columns(self):
-        p = synthetic.write_truth_csv(self.truth, self.base / "truth.csv")
+        p = synthetic.write_truth_csv(self.truth, _syn_path(self.base, "truth.csv"))
         lines = p.read_text(encoding="utf-8").splitlines()
         self.assertEqual([f"# {synthetic.SYNTHETIC_MARKER}",
                           f"# {synthetic.SYNTHETIC_TAG}"], lines[:2])
@@ -136,8 +197,33 @@ class TestCsvRoundTrip(unittest.TestCase):
 
     def test_empty_observation_list_still_writes_header(self):
         """空列表时不能崩，且仍要带合成标记（0 行也是合成产物）。"""
-        p = synthetic.write_observations_csv([], self.base / "empty.csv")
+        p = synthetic.write_observations_csv([], _syn_path(self.base, "empty.csv"))
         self.assertEqual([], synthetic.read_observations_csv(p))
+
+    def test_synthetic_csv_paths_stay_isolated(self):
+        """F-1 约定：本文件凡调 `write_observations_csv` / `write_truth_csv`，
+        落盘路径一律经 `_syn_path` 进名字以 synthetic 开头的隔离目录。
+
+        这两个函数没有 `synthetic` 形参（搬运件签名，不许加），隔离只能靠
+        调用方给对路径。若后人直接传 `self.base / "x.csv"`，本用例变红。
+        """
+        import ast
+        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+        offenders = []
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("write_observations_csv", "write_truth_csv")
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "synthetic"):
+                arg = node.args[1] if len(node.args) >= 2 else None
+                ok = (isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name)
+                      and arg.func.id == "_syn_path")
+                if not ok:
+                    offenders.append(node.lineno)
+        self.assertEqual([], offenders,
+                         f"这些行的合成 CSV 落盘没走 _syn_path 隔离：{offenders}")
+        self.assertTrue(_syn_path(Path("x"), "a.csv").parent.name.startswith("synthetic"))
 
 
 class TestSyntheticIsolation(unittest.TestCase):
@@ -150,6 +236,11 @@ class TestSyntheticIsolation(unittest.TestCase):
         syn = product.write_timeseries([rec], base / "out.csv", synthetic=True)
         self.assertNotEqual(real.name, syn.name)
         self.assertTrue(syn.parent.name.startswith("synthetic"))
+        # 前缀的具体形状也要钉住：`startswith(SYNTHETIC_TAG)` 对
+        # "SYNTHETIC_out.csv" 与 "SYNTHETICout.csv" 都成立，分不出对错。
+        # 这个下划线是源项目 cli.run_pipeline 的口径，写错了与源项目就对不上。
+        self.assertEqual(syn.name, "SYNTHETIC_out.csv")
+        self.assertEqual("synthetic", syn.parent.name)
 
     def test_isolation_is_idempotent(self):
         """已经是 SYNTHETIC_ 前缀的路径不被二次加前缀，隔离不会叠加成
@@ -167,6 +258,11 @@ class TestSyntheticIsolation(unittest.TestCase):
         got = product.write_timeseries([rec], base / "tec_ts" / "runA_tec.csv",
                                        synthetic=False)
         self.assertEqual(base / "tec_ts" / "runA_tec.csv", got)
+
+    def test_missing_values_written_as_nan_not_zero(self):
+        """F-5：搬运件不变量「缺测写 NaN 不写 0」，`_fmt` 是它的唯一执行点。"""
+        self.assertEqual(product._fmt(None), "NaN")
+        self.assertEqual(product._fmt(float("nan")), "NaN")
 
     def test_marker_only_written_for_synthetic(self):
         """源项目既有行为保留：标记写进文件头，且只对合成产物写。"""
@@ -186,6 +282,7 @@ class TestSyntheticIsolation(unittest.TestCase):
         self.assertEqual(base / "qc.json", real)
         self.assertEqual("synthetic", syn.parent.name)
         self.assertTrue(syn.name.startswith(synthetic.SYNTHETIC_TAG))
+        self.assertEqual("SYNTHETIC_qc.json", syn.name)
         self.assertNotIn("_synthetic_note", json.loads(real.read_text(encoding="utf-8")))
         self.assertEqual(
             synthetic.SYNTHETIC_MARKER,
