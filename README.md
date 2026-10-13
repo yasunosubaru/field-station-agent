@@ -27,12 +27,24 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
 | 项 | 状态 |
 |---|---|
 | 目录骨架 | 已建（`src/fieldstation/{rules,ingest,store,agents}` + `data/ logs/ figures/ config/`） |
-| 代码量表 | **待 `tools/sync_code_counts.py` 机维护**（该脚本尚未移植；届时本节表格由脚本改写，不手写） |
+| 代码量表 | 见下方「代码量（机维护）」节 |
 | 搬运件 | 0 件，见 `PROVENANCE.md` |
 | 测试 | `tests/test_layout.py` |
 
 阶段顺序按 spec §3：**先骨架 → 再整合旧代码 → 再立框架 → 最后接真实数据**。
 M0 全程不碰真实台站数据、不调真实 LLM。
+
+<!-- CODE_COUNTS:BEGIN -->
+## 代码量（机维护，请勿手改）
+
+- 入库 Python 文件数：**26** 个
+- 入库 Python 行数：**5,362** 行
+- 入库测试文件数：**11** 个
+
+> 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
+> 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，
+> 共用同一口径。
+<!-- CODE_COUNTS:END -->
 
 ## 设计文档
 
