@@ -1,0 +1,23 @@
+# Python 构建产物（可再生，不入库）
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 本地环境
+.venv/
+venv/
+.env
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 注意：data/ logs/ figures/ 全部入库。
+#
+# 依据是 GNSS 接收机 TEC 反演项目的实测教训 ——
+# 当初只入库主基线三件套（3.5 MB），全新克隆下 test_qc_wiring 的 3 项静默跳过
+# （那是「不接 QC 就会有 105 个负 TEC」这一核心论点的唯一证据），selftest 停在 3/5。
+# "能重新下载"不等于"能重新验证"。凡是要断言它，必须让别人克隆下来就能验。
