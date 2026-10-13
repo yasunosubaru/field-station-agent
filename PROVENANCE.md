@@ -1,0 +1,55 @@
+*本文件登记从其他项目复制来的代码。表格为空表示本仓库尚无搬运件。*
+
+> **搬运保真以 index blob 为准，不以工作区文件为准。** 本机的 `core.autocrlf` 是
+> Git for Windows 的系统级默认（`file:C:/Program Files/Git/etc/gitconfig true`），
+> 任何 Windows 上的 clone 都会把 LF 检出成 CRLF —— 加 `.gitattributes` 之前，
+> 全新 clone 的 `hatanaka.py` 是 8646 B/240 CRLF，与源项目的 8405 B 不再逐字节相同。
+> 与源项目比对时请用 `git cat-file -p HEAD:<path>`。详见 `docs/known-issues.md` KI-04。
+> 搬运件自身的已知缺陷与覆盖缺口，一律登记在 `docs/known-issues.md`（本文件只做指引，
+> 因为本表是「一行一文件」，塞不下缺陷的触发条件与复现）。
+>
+> **M0 评测 fixture 的种子由 `synthetic.FIXTURE_SEED = 20261013` 钉死：评测 fixture
+> 必须由种子决定，否则回放基线不成立** —— 基线一旦发布，别人拿着同一份 cfg 就必须能
+> 逐字节重建出同一份合成观测；种子一变，历史基线的数字就无从对照，回归测试也就失去了
+> 参照物。该常量由 `tests/test_pipeline.py::TestReproducibility::test_fixture_seed_is_pinned`
+> 锁住，改它等于作废已发布的基线。
+
+## 待补登记（Task 5 延后项，未落地故没有表格行）
+
+*以下三项是 Task 5 决定延后的搬运测试缺口，至今未补 —— 登记在此，以免
+「表里没有这一行」被误读成「没有这项缺口」。补回时按下方表格同样口径登记，
+补完从本节划掉。*
+
+- **T07 / T08 的第三段断言**「低仰角 / 低 CN0 历元不产出有限 `sTEC`」——
+  即「打了标记 ⟹ 一定不会流到消费方」。本项目尚无产出 `sTEC` 的消费方，
+  测不了；对应测试名已相应只声称「打了标记」（`test_bit0_and_flagged` /
+  `test_bit1_and_flagged`），不冒充测过第三段。
+- **JR 的聚合检出率实验**（`test_true_step_rate_is_high`，真实阶跃检出率
+  >= 0.95）——产品级要求，延后时缺可重复的随机注入发生器；
+  `synthetic` 由 Task 5 落地后条件已具备，**仍未补**。
+- **`TestJumpDetectionRate`**（源 `code/tests/test_qc.py`）——未迁移。
+  其 `rate >= 0.95` 门限是对源合成器的噪声模型标定的，迁移前需按本项目
+  `synthetic.generate` 重新标定，不能照抄数字。
+
+三项的完整上下文（连同第四项 T11 近邻误检复查）见 `tests/test_qc.py`
+顶部「延后清单」。
+
+| 源仓库 | 源路径 | commit | 复制日期 | 改动 | 新位置 |
+|---|---|---|---|---|---|
+| GNSS接收机TEC反演 | `gnsstec/constants.py` | 5d1937b | 2026-10-13 | 无（逐字节复制，SHA256 与源文件一致；该模块只 import `math`） | `src/fieldstation/constants.py` |
+| GNSS接收机TEC反演 | `gnsstec/schema.py` | 5d1937b | 2026-10-13 | 文件名 `schema.py` → `model.py`；`from .constants import MISSING` **未改**（两文件同为包根，相对 import 仍成立）。逐字节复制，SHA256 与源文件一致 | `src/fieldstation/model.py` |
+| GNSS接收机TEC反演 | `gnsstec/qc.py` | 5d1937b | 2026-10-13 | 原项目中的独立算法模块；本项目中是智能体可调用工具 `tools/qc` 的实现。仅改两行 import：`from . import constants as C` → `from .. import constants as C`、`from .schema import EpochPair` → `from ..model import EpochPair`（算法逻辑、全部阈值与注释一字未动）。另按仓库约定把源文件的 CRLF 统一为 LF；除行尾外与源文件逐行一致（763 行） | `src/fieldstation/rules/qc.py` |
+| GNSS接收机TEC反演 | `code/tests/test_slips_sigma.py` | 5d1937b | 2026-10-13 | 周跳检测 sigma 退化的回归测试，**断言一字未改**。仅改 4 行 import（3 处 `import gnsstec.qc as QC` → `from fieldstation.rules import qc as QC`、`import gnsstec.schema as S` → `from fieldstation import model as S`、`import gnsstec.constants as C` → `from fieldstation import constants as C`）。源文件本身即 LF，无需行尾转换 | `tests/test_slips_sigma.py` |
+| GNSS接收机TEC反演 | `code/tests/test_guard.py` | 5d1937b | 2026-10-13 | 守卫判据（弧段比 / 物理 RMSE 上限）的回归测试，**断言一字未改**。仅改 2 行：import `qc` 改指向 `fieldstation.rules`；docstring 里的源路径 `gnsstec/qc.py::...` 改为 `fieldstation/rules/qc.py::...`（本仓库不留任何 `gnsstec` 字样，含注释与 docstring）。⚠️ **本行是唯一不以行尾换行结尾的文件**（末字节 `0x29`，与源文件一致，源亦无行尾换行）——这是为了保住"逐字搬运、其余一律不动"而**故意**不补的，与「新文件以 LF 结尾」的字面约束冲突。**批量修文件尾之前先排除本文件**，否则会静默破坏逐字搬运件（源 6195 字节 vs 本仓 6222，差 27 = docstring 路径 +16 + import 行 +11，此外一字未动） | `tests/test_guard.py` |
+| GNSS接收机TEC反演 | `code/tests/test_qc.py` | 5d1937b | 2026-10-13 | **重写**。源文件的夹具与断言依赖 `inversion`（spec §1.4 不搬）与 `product`/`synthetic`（Task 5 才落地），本项目此刻拿不到；按源项目对 `test_qc_wiring.py` 的同一处置原则，夹具换成 `t7_support.make_pairs` + 就地改 `Observation`，断言落在 `run_qc` 写回的 `quality_flag`/`arc_id` 与 `detect_slips` 的诊断上。保留 T-02/03/07/08/09/10/11 全部 TestCase；**不迁移 `TestJumpDetectionRate`**（其 0.95 门限是对 `synthetic.generate` 那台合成器的噪声模型标定的） | `tests/test_qc.py` |
+| GNSS接收机TEC反演 | `code/tests/test_qc_wiring.py` | 5d1937b | 2026-10-13 | **重写**。不变量不变（QC 必须先于消费方运行），消费方由「反演」换成本项目的「弧段编号赋予」。合成器 `_mk_obs` 提取为 `t7_support.make_pairs`。不迁移依赖 `inversion` 与上个项目 `run` 入口的 `TestRealDataNoUnphysicalTec`、`TestRunPyWiring` | `tests/test_qc_wiring.py` |
+| GNSS接收机TEC反演 | `code/tests/t7_support.py` | 5d1937b | 2026-10-13 | **缩减 + 新增**。移除 `inversion`/`mapping`/`product`/`synthetic` 相关助手（本项目不搬 / Task 5 才落地）与 sys.path 注入两行；新增 `make_pairs(...)`（等价于源项目 `test_qc_wiring.py::_mk_obs`，按本项目签名新增 `gap_after`/`gap_extra`） | `tests/t7_support.py` |
+| GNSS接收机TEC反演 | `code/gnsstec/io/rinex2obs.py` | 5d1937b | 2026-10-13 | 文件名 `rinex2obs.py` → `rinex2.py`。**无内部 import**，一行都不用改；实际只改 **1 行 docstring**：该文件开头指向同包 RINEX 3 读取器的旧路径 `io/rinex3obs.py` → `ingest/rinex3.py`（同包那个文件在本仓已改名，照抄会指向不存在的路径）。列布局、物理闸门、块边界修正、五版宽度判据的注释全部一字未动（780 行）。源文件末尾无换行，按仓库「新文件以 LF 结尾」的约定补了 1 个 LF；除行尾外与源文件逐行一致。**⚠️ 已知缺陷（搬运件既有，非本项目引入，见 `docs/known-issues.md` KI-01）：L263-267 解析 RINEX 2 可选记录 `PRN / # OF OBS` 时把标签词一起喂给 `int(float(x))`。RINEX 2.11 规范要求该记录 PRN 占第 1-3 列，此时 `sid` 非空、`ln[3:].split()` 把标签词 `PRN` 也切进来 → 抛未捕获 `ValueError: could not convert string to float: 'PRN'`。构造性验证：规范写法必崩；JPS2RIN 写法（PRN 在第 5 列，现有 BADG 样本属此）不崩属侥幸，不是安全。M0 不接真实数据故不受影响，M2 接数据前必须处理。本任务不改搬运件。** | `src/fieldstation/ingest/rinex2.py` |
+| GNSS接收机TEC反演 | `code/gnsstec/io/rinex3obs.py` | 5d1937b | 2026-10-13 | 文件名 `rinex3obs.py` → `rinex3.py`。共改 **2 行**，都是把 `schema` 指到本仓的 `model`（Task 2 已把 `gnsstec/schema.py` 搬成 `fieldstation/model.py`）：L14 docstring 的 `schema.Observation` → `fieldstation.model.Observation`；L248 `iter_observations()` 内的函数级 import `from ..schema import Observation, epoch_utc_str` → `from ..model import ...`。逐记录列布局判定、5 个候选布局、量级闸门、BAD_MAGNETIC 质量位全部一字未动（430 行）。源文件已有行尾换行，行尾未转换 | `src/fieldstation/ingest/rinex3.py` |
+| GNSS接收机TEC反演 | `code/gnsstec/io/hatanaka.py` | 5d1937b | 2026-10-13 | **未改一字**，纯复制。`grep` 确认无任何内部 import（只有 `gzip/io/math/re/dataclasses/typing` 标准库）、无 `gnsstec` 字样。源 SHA256 `2cfb7709efa27f66eab2c26730919adf…`（8405 B），本仓 SHA256 `d878d91c7d5215f6a17a60469c870f49…`（8406 B），差 1 字节 = 源文件末尾无换行、按仓库约定补的 LF | `src/fieldstation/ingest/hatanaka.py` |
+| GNSS接收机TEC反演 | `code/gnsstec/io/obs_registry.py` | 5d1937b | 2026-10-13 | 文件名 `obs_registry.py` → `registry.py`。无内部 import；实际只改 **2 行注释里的旧模块名**：`obsfile.ObservationFile` → `reader.ObservationFile`、`rinex2obs.phase_rate_report` → `rinex2.phase_rate_report`。三张登记表（`RINEX2_FIELD_WIDTH` 15 站 / `PROGRAM_FIELD_WIDTH` 6 程序 / `STATION_NOTES` 9 站）与 `field_width_for` 的「环境变量 > 站名 > 生产程序」优先级逻辑一字未动（173 行）。源文件本身以 LF 结尾，行尾未转换（9188 B → 9184 B 的 −4 全部来自两条注释缩短）。⚠️ 表内站名与 `GNSS_TEC_FIELD_WIDTH` 环境变量名沿用源项目的口径，对应源项目的数据集，本项目尚未接入（见 `docs/known-issues.md` KI-06）；`field_width_for` 是 brief 列出的 Produces 接口但目前**没有直接测试**（见 KI-05） | `src/fieldstation/ingest/registry.py` |
+| GNSS接收机TEC反演 | `code/gnsstec/io/obsfile.py` | 5d1937b | 2026-10-13 | 文件名 `obsfile.py` → `reader.py`。共改 **13 行**，全部是 import 改写及其调用点，加上指向旧模块名的注释/提示串：(a) 模块级 `from .. import schema as S` → `from .. import model as S`；(b) `from . import rinex2obs, rinex3obs` → `from . import rinex2, rinex3`，**并同步 3 个调用点** `rinex3obs.Rinex3Obs`(L243)、`rinex2obs.Rinex2Obs`(L253)、`rinex2obs.__dict__`(L374) —— 只改 import 行不改调用点会直接 NameError；(c) `ObservationFile._open` 内的函数级 `from . import obs_registry` → `from . import registry`，并同步 `obs_registry.field_width_for`(L256)；(d) 4 处 docstring/注释/用户可见提示串里的旧模块名（L3、L31、L240、L318、L498、L514）：`gnsstec.schema`/`gnsstec.io.rinexnav`/`schema.Observation` 改成本仓路径与措辞 —— **本仓库不留任何 `gnsstec` 字样（含注释与 docstring）**，而 `rinexnav`（导航电文）本任务不搬，故 L240/L498 改成「未搬入本仓库 / 上游项目」的实情措辞而不是指向一个不存在的模块。**嗅探判据（`_VER_RE`、CRINEX/CSV 分支）、能力报告、双频相位对配对、`CODE_FALLBACK`/`SNR_FALLBACK` 回退链、相位符号约定（乘 -1）全部一字未改**（518 行）。源文件末尾无换行，按仓库约定补了 1 个 LF | `src/fieldstation/ingest/reader.py` |
+| GNSS接收机TEC反演 | `gnsstec/synthetic.py` | 5d1937b | 2026-10-13 | **搬运部分只改 1 行**：`from .schema import Observation, epoch_utc_str, gps_to_utc, GPS_WEEK_S` → `from .model import ...`（Task 2 已把 `schema.py` 搬成 `model.py`）。`from . import constants as C` **未改**（同包根，相对 import 仍成立）。正演方程、注入逻辑（周跳/缺测/粗差）、`_stec_true_tecu`/`_ambig`、三个 CSV 函数全部一字未动。⚠️ `generate()` 调 `gps_to_utc(wk, tow)` **不传第三参**，吃的是 `model.gps_to_utc` 的默认 `DEFAULT_LEAP_S=18.0`；`model.py` 与源 `schema.py` 的默认值一致，故搬运前后逐字节相同（`generate(default_cfg())` 首条 `epoch_utc` 两边都是 `2024-02-03T23:59:42.000Z`）。**另新增** `FIXTURE_SEED` / `DEFAULT_SLIP` / `default_cfg()` 三个新对象（源文件没有，属本项目新增，非搬运）：任务书 Step 3 建议的字典体里 `elev_cutoff_deg`、`inject_slip_at`、`inject_gap_at`、`inject_psr_outlier_at`、`inject_adr_outlier_at`、`noise_psr_m`、`noise_adr_cycles` 这 7 个键**在源 `generate()` 里根本不存在**，照抄会得到一份永远不生效的 cfg。故 `default_cfg()` 改为以 `DEFAULT_SYNTH_CFG` 为底稿、只覆盖 `seed` 与 `slips` 两项，其余沿用源默认值。种子 `20261013` 的理由见本文件顶部旁注。单历元扰动语义（`slips` 只在 `index == i` 的那一个历元上加 `jump_cycles`，非持续跳变）详见 `docs/known-issues.md` KI-07，本表只做指引。行尾未转换（源本即 LF、以换行结尾，源 CR=0 / 末字节 0x0A，本仓 CR=0 / 末字节 0x0A）。**本轮修复新增（非搬运）**：`default_cfg()` 内 `dict(DEFAULT_SYNTH_CFG)` → `copy.deepcopy(DEFAULT_SYNTH_CFG)`（另加 `import copy` 一行），堵浅拷贝污染模块全局进而静默改 `config_hash` 的通道，由 `test_default_cfg_is_deep_copied` 钉住 | `src/fieldstation/synthetic.py` |
+| GNSS接收机TEC反演 | `gnsstec/product.py` | 5d1937b | 2026-10-13 | **⚠️ 本任务唯一的行为变更，源项目没有**：`write_timeseries` / `write_json` 的 `synthetic` 形参在源项目里**不改路径**，只往文件头写两行标记；隔离目录是上游 `cli.run_pipeline` 自己算好路径再传进来的（L188-189）。实测（只读导入源项目、产物写临时目录）：`write_timeseries([], p, synthetic=False)` 与 `synthetic=True` 返回**同一个**路径，且真后者会把前者**原地覆盖**（同一文件 sha256 从 `fa6d660a…` 变成 `112cbec3…`）。本仓库不搬 cli，照抄会丢掉隔离，故新增 `_isolated()`：`synthetic=True` 时改写为 `<父目录>/synthetic/SYNTHETIC_<原文件名>`，目录名与前缀都取自源 cli 的口径，并做成幂等（实测发现只挡前缀不挡目录会叠成 `synthetic/synthetic/…`）。其余搬运部分只改 2 行 import（`from .schema import TecRecord` → `from ..model import`、`from .synthetic import SYNTHETIC_MARKER, SYNTHETIC_TAG` → `from ..synthetic import`）+ 2 处 `path = Path(path)` → `path = _isolated(Path(path), synthetic)`；`sha256_file`/`canonical_json`/`config_hash`/`code_commit`/`env_fingerprint`/`_fmt`/`write_manifest`/`utcnow_iso`/`describe_output` 与「缺测写 NaN 不写 0」全部一字未动。⚠️ `describe_output(path, rows)` 没有 `synthetic` 形参，**调用方必须用 `write_*` 的返回值**去喂它，否则哈希的是不存在的路径。行尾未转换（源本即 LF、以换行结尾，源 CR=0 / 末字节 0x0A，本仓 CR=0 / 末字节 0x0A）。**2026-10-13 修复波次新增改动（搬运件的真行为变化，仅一个参数）**：`code_commit()` 的 `subprocess.run(..., text=True)` 补 `encoding="utf-8"` —— 该子进程输出恒为 64 位十六进制（纯 ASCII），两环境（默认 / `PYTHONIOENCODING=utf-8`）实测均返回同一 hash，返回值无变化；变的是解码口径由系统 locale（本机 GBK）钉死为 UTF-8，堵住"解码异常 → 被 `except Exception` 吞成 `\"unknown\"`"的静默降级通道 | `src/fieldstation/store/product.py` |
+| GNSS接收机TEC反演 | `code/tests/test_pipeline.py` | 5d1937b | 2026-10-13 | **重写**。源文件两个用例都走 `cli.run_pipeline`（本仓库不搬该链路，入口留到 Task 7/8），故改为直接对 `synthetic` + `product` 断言，**不 import t7_support**（源文件对它的依赖正是从 cli 来的）。保留任务书 Step 1 给出的三条断言（`test_same_config_same_sha256` / `test_different_config_different_hash` / `test_synthetic_flag_changes_output_path`）原意与原写法。**新增 10 条**：种子钉死 `20261013`、同 seed 逐字节可复现（并反向验证换 seed 后首条 `psr_m` 真的变，否则恒定返回的假实现也能过）、fixture 自带已知异常且异常可追溯到 `slips` 配置、隔离幂等、`synthetic=False` 路径逐字符不变、标记只对合成产物写、`write_json` 隔离 + `_synthetic_note`、manifest 隔离且自洽、三个 CSV 接口往返。⚠️ 源 `test_synthetic_isolation` 还断言了 `os.sep + "synthetic" + os.sep`，本仓库由 `product._isolated` 保证，语义等价 | `tests/test_pipeline.py` |
+| GNSS接收机TEC反演 | `code/tests/test_units.py` | 5d1937b | 2026-10-13 | **改写**。复制 `TestDimensions`/`TestT13Validation`/`TestT14WeekRollover`/`TestTimeConversion` 四个 TestCase 共 13 个测试；不复制 `TestT12MappingBoundary`（依赖不搬的 `gnsstec/mapping.py`）；import 改指 `fieldstation` | `tests/test_constants.py` |
