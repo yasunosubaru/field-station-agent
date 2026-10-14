@@ -1,0 +1,41 @@
+[
+  {
+    "code": "ABCS",
+    "receiver": "TRIG",
+    "antenna": "TRM59800.99",
+    "power": "mains",
+    "link": "fiber",
+    "manned": false,
+    "lat_deg": 30.5,
+    "lon_deg": 114.1,
+    "alt_m": 40.0,
+    "sensors": ["gnss", "meteo"],
+    "notes": "虚构示例站：市电 + 光纤 + 多传感器 + 北半球"
+  },
+  {
+    "code": "XYZS",
+    "receiver": "JAVAD",
+    "antenna": "TRM55971.00",
+    "power": "solar",
+    "link": "4g",
+    "manned": false,
+    "lat_deg": -33.7,
+    "lon_deg": 150.1,
+    "alt_m": 210.0,
+    "sensors": ["gnss", "seismo"],
+    "notes": "虚构示例站：太阳能 + 4G + 南半球"
+  },
+  {
+    "code": "NEGM",
+    "receiver": "SEPT",
+    "antenna": "TRM57971.00",
+    "power": "hybrid",
+    "link": "satellite",
+    "manned": false,
+    "lat_deg": 31.2,
+    "lon_deg": -121.0,
+    "alt_m": -380.0,
+    "sensors": ["gnss"],
+    "notes": "虚构示例站：混合供电 + 卫星链路 + 单个传感器 + 负海拔（覆盖边界）"
+  }
+]
