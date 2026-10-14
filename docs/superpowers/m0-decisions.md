@@ -119,6 +119,26 @@ M0 用 subagent 驱动开发执行：每个任务一名实现者、一名评审�
 ## 已知遗留（M1 及以后）
 
 - `rinex2.py:267` 的潜伏崩溃（KI-01），M2 接真实数据前必须处理
-- `cli.py`、`harness/REPRODUCE.md` 未建（KI-08）
-- `sync_code_counts.py` / `make_cli_figures.py` 无测试；后者依赖 matplotlib（KI-05/07）
+- ~~`cli.py`、`harness/REPRODUCE.md` 未建（KI-08）~~ → **2026-10-14（issue #5）
+  已补建**：`harness/REPRODUCE.md`（DoD-4 重跑清单，五条命令均附实跑输出）、
+  `src/fieldstation/cli.py`（五条纪律命令的统一分发入口；智能体编排入口
+  仍属 M3）。取舍全文见 `docs/known-issues.md` KI-08 的落地说明
+- ~~`sync_code_counts.py` / `make_cli_figures.py` 无测试；后者依赖 matplotlib
+  （KI-05/07）~~ → **2026-10-14（issue #5）已补测试**
+  （`tests/test_sync_code_counts.py` 4 测 + `tests/test_make_cli_figures.py`
+  3 测，见 KI-05）；matplotlib 豁免本身**一直有效**，登记在 KI-09。
+  （编号勘误：此处原写 "KI-05/07" 有误 —— KI-07 是 `synthetic.generate`
+  的 slips 单历元扰动，matplotlib 豁免是 **KI-09**）
 - spec §1.1「6 个测试文件可原样搬」实测是错的（2 原样 / 3 改写 / 1 重写），待回填
+  → 已回填（spec §1.1 附注，issue #3 / commit `0cb05a0`）
+
+**两条 deferred minor 的收口（2026-10-14，issue #5 顺带项）**：
+
+- `test_ingest.py:33` 的 `observations` 方法名有歧义（台账 Task 4 deferred）——
+  对照 M0 终审修复波次 `7fdb94a` 对 `test_ingest.py` 第 31-38 段的重写：
+  原文 `observations(["GPS"]) = 115432 条` 无接收者，现文点名
+  `of.observations(["GPS"])`、给出 `len(list(...)) == 115432` 的调用形式与
+  「该实例对一个系统查询的返回条数」语义 —— 歧义三点俱消，**该条目已被既有
+  修复覆盖，无需再改**（此对应关系为 diff 比对的推断，未找到终审原文逐字确认）。
+- `docs/known-issues.md` 待办表未记录两工具无测试状态（台账 Task 6 deferred）——
+  KI-05 表本就含两工具行，2026-10-14 又补「已补」段与测试指引，**该条已闭**。
