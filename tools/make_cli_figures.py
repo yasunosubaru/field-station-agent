@@ -25,6 +25,14 @@
     python tools/make_cli_figures.py --command "python tools/audit_claims.py"
     python tools/make_cli_figures.py --command "..." --out figures
     python tools/make_cli_figures.py --help
+
+## 退出码
+
+- ``0``：命令采集并渲染完成；
+- ``2``：**matplotlib 缺席**（可选依赖，登记见 `docs/known-issues.md` KI-09）
+  或用法错误。缺席时在**建目录、跑命令之前**打印 `[阻断]` 并退出 ——
+  不崩在 `ImportError`、不留半成品、不产假图
+  （`tests/test_make_cli_figures.py` 钉住，含无 matplotlib 子进程实测）。
 """
 
 import argparse
@@ -144,6 +152,21 @@ def render(lines, path, title, subtitle, out_dir, max_lines=None, passes=None,
     print(f"  wrote {path.name}")
 
 
+def _has_matplotlib():
+    """渲染前置判断：matplotlib 能否 import。
+
+    缺席（未安装，或装坏了 ImportError）时由 `main()` 打印 `[阻断]` 后
+    exit 2 —— 而不是让 `render()` 里那次 `import matplotlib` 把一条
+    本可预期的环境问题摊成未捕获堆栈（KI-09：matplotlib 是点名豁免的
+    可选依赖，缺它只该影响出图）。
+    """
+    try:
+        import matplotlib  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="把真实终端输出渲染成终端风格 PNG，落到 figures/。")
@@ -153,6 +176,16 @@ def main(argv=None):
     ap.add_argument("--out", default=str(DEFAULT_OUT),
                     help="输出目录（默认 figures/）")
     args = ap.parse_args(argv)
+
+    # 必须在建目录、跑命令**之前**：否则缺席环境会先产出 _raw 半成品再崩，
+    # 留下一堆没人认领的中间文件。
+    if not _has_matplotlib():
+        print("[阻断] 未安装 matplotlib（可选依赖，登记见 "
+              "docs/known-issues.md KI-09）：")
+        print("       本工具的 PNG 渲染必须用它；缺席即中止，"
+              "不采集、不建目录、不产假图。")
+        print("       安装后重跑：python -m pip install matplotlib")
+        return 2
 
     commands = args.command or ["python tools/audit_claims.py"]
     out_dir = Path(args.out)
