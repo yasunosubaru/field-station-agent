@@ -80,9 +80,9 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
 
 | 前缀 | 归属 |
 |---|---|
-| `sch/**` | 孙承汉（负责人） |
-| `chx/**` | 陈奥旋 |
-| `wzg/**` | 汪志广 |
+| `sch/**` | 项目负责人（负责人） |
+| `chx/**` | 成员A |
+| `wzg/**` | 成员B |
 
 ### 两条规则集（均 `enforcement=active`，均 `bypass=RepositoryRole:5` 即仅 admin 豁免）
 
@@ -94,7 +94,7 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
 **实测（2026-10-14）：远端 6 个分支全部 `protected=true`，零遗漏。**
 
 **净效果**：非 admin 者**推不进 main，也推不进任何既有分支与别人的前缀**；
-只有 `wzg/**` **故意不在保护范围** —— 那是汪志广自己管的分支，他可以自由推。
+只有 `wzg/**` **故意不在保护范围** —— 那是成员B自己管的分支，他可以自由推。
 
 **封不死的地方**（免费计划的天花板，不要以为已经封死）：他仍能推到一个
 **新起的、不匹配上述任何模式**的分支。个人仓库无自定义角色，到此为止。
@@ -103,9 +103,9 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
 
 | 人 | 权限 | 代码如何进入 main |
 |---|---|---|
-| 孙承汉 | `admin` | 直推 `sch/**` 或经 PR |
-| 汪志广 `WZG493` | `write`（邀请 id `337677335`，待其接受） | 推 `wzg/**` → 开 PR → **孙承汉审批后合入** |
-| 陈奥旋 | 待加（缺 GitHub 用户名） | 同上，`chx/**` |
+| 项目负责人 | `admin` | 直推 `sch/**` 或经 PR |
+| 成员B `WZG493` | `write`（邀请 id `337677335`，待其接受） | 推 `wzg/**` → 开 PR → **项目负责人审批后合入** |
+| 成员A | 待加（缺 GitHub 用户名） | 同上，`chx/**` |
 
 > 已知残留：`protect-others-branches` 覆盖 `wzg/**` 之外的既有分支，
 > 但**他新建的非前缀分支不在内** —— 见上"封不死"。
