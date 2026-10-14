@@ -13,6 +13,10 @@ REQUIRED = [
     "data/.gitkeep", "logs/.gitkeep", "figures/.gitkeep", "config/.gitkeep",
     "tests/__init__.py",
     "README.md", "CLAUDE.md", "PROVENANCE.md",
+    # spec §2 的两个叶子，M0 静默掉落、由 issue #5 补建（docs/known-issues.md KI-08）。
+    # 钉住存在：「静默掉落」的反面就是有人再次删掉它而没有任何测试变红。
+    "src/fieldstation/cli.py",
+    "harness/REPRODUCE.md",
 ]
 
 
