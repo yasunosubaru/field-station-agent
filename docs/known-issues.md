@@ -13,14 +13,15 @@
 
 ## 条目
 
-### KI-01　RINEX 2 头段 `PRN / # OF OBS` 记录在**不合规行**上让解析抛未捕获异常【已确认 · 2026-10-14 更正】
+### KI-01　RINEX 2 头段 `PRN / # OF OBS` 记录在**不合规行**上让解析抛未捕获异常【已解决 · 2026-10-14，见文末修复记录】
 
 > **⚠️ 本条 2026-10-14 经 issue #4 第 1 轮实测更正**：原文断言「PRN 占据第 1-3 列
 > 是 RINEX 2.11 规范规定的位置」「规范写法必崩」「现有样本不崩是侥幸」——**三个
 > 论断全部为假**，规范原文与实测均已证伪（证据见下）。原文保留的问题（不合规行
 > 未捕获崩溃）本身是真的，错的是触发条件的定性与影响面推断。
 
-- **位置**：`src/fieldstation/ingest/rinex2.py:263-267`
+- **位置**：`src/fieldstation/ingest/rinex2.py:263-267`（原始行号，修复后该分支
+  为 263-276，见文末修复记录）
 - **归属**：搬运件既有行为，**非本项目引入**。源自 GNSS接收机TEC反演项目，
   本仓库逐字搬运（该文件与源文件的唯一差异是 L5 的 docstring 路径指向）。
 - **触发条件（2026-10-14 更正）**：头段存在 `PRN / # OF OBS` 记录，**且该行第 1-3
@@ -68,6 +69,21 @@
   **一个潜伏的解析崩溃，代价小于一份说不清的结题材料。**
   （该代价分析至今成立；但其前提"规范写法会崩"已被证伪——重新裁决见
   `docs/superpowers/m0-decisions.md` 裁决 14 的 2026-10-14 更正标注。）
+- **已于 2026-10-14 修复，见 commit `185d5f0`（issue #4，分支
+  `fix/rinex2-prn-header`）**：M0 已合并归档、搬运可证性已落袋
+  （PROVENANCE + git history + 逐 blob 记录），此后改该文件是**被追踪、被记录的
+  有意修改**，不再破坏已有可证性 —— 代价分析的适用前提消失，故修复。
+  - **改动**：`rinex2.py:266-276` 的 `if sid:` 分支整体包 `try/except ValueError`，
+    不合规行**整条记录跳过、不猜解析结果**；仅此一处，未动阈值与其他行。
+  - **回归 a（夹具）**：`tests/test_rinex2_prn_header.py` 2 测 —— 修复前 RED
+    （`ValueError: could not convert string to float: 'PRN'`，原文存 issue #4
+    报告），修复后 GREEN。
+  - **回归 b（真实样本逐字节一致，要害项）**：`badg0010.24o.gz` →
+    `ObservationFile(...).observations(["GPS"])`，修复前后导出 4964 条、
+    1,635,545 字节、SHA256 均为
+    `bb3ea8c592bfc4e9219b8dcbc8cbe0348b2b248099faa4cb5a7934c2de32dc88`，
+    首条 `station='BADG' … epoch_utc='2024-01-01T02:48:30.000Z'` —— **逐字节一致**。
+  - **回归 c**：固定命令 118 OK skip 0；selftest 5/5 exit 0；audit 3/3 exit 0。
 
 ### KI-02　`ObservationFile.interval_s` 在头段无 `INTERVAL` 记录时返回 NaN【已确认】
 
