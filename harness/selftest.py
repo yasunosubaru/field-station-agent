@@ -55,7 +55,10 @@ SCAN_DIRS = ("src", "tests", "harness", "tools")
 #: 本项目原创、按登记规则无需入表的 src 子树（智能体运行时，Task 7 从零写）。
 #: 各包 `__init__.py` 同样原创。新增**整块原创**的 src 子树时把前缀加到这里 ——
 #: 这是一次有意识的口径扩展，不是自动放行。
-ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/",)
+#: `src/fieldstation/cli.py`（spec §2 统一入口叶子，issue #5 补建，2026-10-14）
+#: 同理：本项目从零写的工具分发入口，无源项目对应文件，PROVENANCE.md 的
+#: 「从其他项目复制来的代码」表按其自述口径不收原创行，故在此豁免。
+ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py")
 
 
 # ---------------------------------------------------------------- 第 1 项

@@ -100,15 +100,30 @@
   不以工作区文件为准。** 需要与源项目逐字节比对时，
   先 `git cat-file -p HEAD:<path>`，不要直接 diff 工作区文件。
 
-### KI-05　三个搬运件与两个移植工具没有测试覆盖【覆盖缺口，非缺陷】
+### KI-05　三个搬运件没有测试覆盖；两个移植工具已补测【覆盖缺口，非缺陷，2026-10-14 更新】
 
 | 未覆盖对象 | 行数 | 说明 |
 |---|---|---|
 | `ingest/hatanaka.py` | 240 | 全部公开函数（`decompress_hatanaka` / `read_hatanaka_rinex` / `self_check` / `split_sections` / `parse_header`）零测试。**源项目自己没有真实 Hatanaka 样本**，其 docstring 就写着"解码器未验证"。`reader.sniff` 对 CRINEX 一律报 `supported=False`，解压路径目前是死的。 |
 | `ingest/registry.py` | 173 | `field_width_for` 是 brief 明确列出的 Produces 接口，目前**只被间接调用过一次**（`ObservationFile._open` 对 TESTSTN 查表落空返回 `None`），优先级逻辑（环境变量 > 站名 > 生产程序）无测试。 |
 | `reader.sniff` 的 `RINEX3-NAV` 分支 | — | 变异测试确认：把 `if "OBSERVATION DATA" in lines[0]` 改成 `if True:` 不会被任何测试捕获。 |
-| `tools/sync_code_counts.py` | 137 | **无测试**（Task 6 brief 未要求）。靠实跑验证：`python tools/sync_code_counts.py` 后生成块与 `tools/audit_claims.py` 回源结果逐字一致（Task 6 复评实测）。行数为本仓库文件实际行数（实测 2026-10-13）。 |
-| `tools/make_cli_figures.py` | 186 | **无测试**（Task 6 brief 未要求）。靠 `--help` 实跑 exit 0 验证；PNG 渲染另见 KI-09（第三方依赖）。行数为本仓库文件实际行数（实测 2026-10-13）。 |
+
+**已补（2026-10-14，issue #5）**：两个移植工具不再是零覆盖 ——
+
+- `tools/sync_code_counts.py` → `tests/test_sync_code_counts.py`（4 测）：
+  **正例 + 负例**，整条链在**仓库外副本**（tempfile 里的独立小 git 仓库）上跑，
+  不污染本仓库：负例先把 README 块写成错数（999），断言
+  `audit_claims.py` 识别为 `FAIL` 且退出码 1；正例断言
+  `sync_code_counts.py` 把错数改写为 `git ls-files` 实测值（含「现状」
+  占位行的兑现）；闭环断言改写后 `audit_claims.py` 全过。
+  另有真仓库上的 `--help` exit 0。**用例不往真 README 写**（同步脚本把
+  README 位置写死，负例在真仓库上跑等于把错数写进真文件）。
+- `tools/make_cli_figures.py` → `tests/test_make_cli_figures.py`（3 测）：
+  `--help` 不碰渲染 exit 0；**matplotlib 缺席时优雅中止**（exit 2 +
+  `[阻断]` 文案 + 零 Traceback + 不建输出目录，缺席用 PYTHONPATH 垫片在
+  子进程里模拟，装了/没装 matplotlib 的机器都可复现）；渲染实测按环境
+  分支断言（在位 → 真渲染 PNG 到临时目录）——**不用 `skip`**，本仓库
+  skip==0 是门禁。降级实现见 KI-09。
 
 **待办**：接真实数据前，至少给 `registry.field_width_for` 补一组参数化测试
 （站名大小写、环境变量覆盖、生产程序兜底、未登记站返回 `None`），
@@ -148,24 +163,27 @@
 - **为什么不修**：改注入语义等于改搬运件；Task 5 实现时已按源实现如实记录，
   未"修正"源语义。`PROVENANCE.md` 对应行只留指向本条的指引，细节以此处为准。
 
-### KI-08　spec §2 目录树的两个叶子在 M0 未落地【设计决定：登记延后，非缺陷】
+### KI-08　spec §2 目录树的两个叶子在 M0 未落地【已于 2026-10-14 补建，见文末】
 
-- **位置**：`src/fieldstation/cli.py`（spec §2 第 143 行「统一入口」）与
-  `harness/REPRODUCE.md`（spec §2 第 147 行）—— 两者本仓库 M0 均**不存在**
-  （实测 `git ls-files src/fieldstation/cli.py harness/REPRODUCE.md` 零命中，
+- **位置**：`src/fieldstation/cli.py`（spec §2「统一入口」；原文记第 143 行，
+  2026-10-14 复核：spec §1.1 回填后行号漂移，现为 **168 行**）与
+  `harness/REPRODUCE.md`（原文记第 147 行，现为 **172 行**）——
+  两者本仓库 M0 均**不存在**（实测
+  `git ls-files src/fieldstation/cli.py harness/REPRODUCE.md` 零命中，
   2026-10-13）。
 - **性质**：**这是设计决定，不是缺陷**，但它在 M0 期间**静默掉落、从未登记**
   （终审 Important-4 指出）：计划 Task 5 的注释写着"`cli.py` … 本仓库的入口
   留到 Task 7/8 再建"，而 Task 7/8 的 brief 都没有包含它；`REPRODUCE.md`
   从未被任何任务承接。补登记即本条。
-- **延后落点**：
+- **原延后落点**（2026-10-13 裁定，现均已执行完毕，保留原文供追溯）：
   - `cli.py` → **M3**（与真实模型通道、角色配置同批 —— 没有真 provider 与
     真数据，"统一入口"无物可统一，先建就是投机骨架）。
   - `harness/REPRODUCE.md` → **随 DoD-4「复现性文档化」**一并补
     （DoD-4 的实测输出 `logs/replay_20261013.json` 已入库，文档化步骤挂账）。
 - **M0 的验收口径**：M0-1「目录与 spec §2 一致」字面不成立。spec §2 与实际
   树的全部差异（2026-10-13 逐叶子核对 `git ls-files src/fieldstation harness/`）：
-  1. `cli.py`、`harness/REPRODUCE.md` —— **缺，本条登记**（原属静默掉落）；
+  1. `cli.py`、`harness/REPRODUCE.md` —— **缺，本条登记**（原属静默掉落）
+     → **2026-10-14（issue #5）已补建**，见本条末尾的落地说明；
   2. `agents/runtime/`（目录）落成 `agents/runtime.py` 单文件 —— M0 只做最小
      运行循环，一个文件够用；
   3. `agents/tools/`、`agents/memory/` 两目录不存在 —— 随 spec §4 三项能力
@@ -176,6 +194,34 @@
   除上述各项外，spec §2 其余叶子（README/CLAUDE/PROVENANCE、ingest/rules/store、
   harness 两件、tools 三件、tests、data/logs/figures/config/docs）均在位
   （`git ls-files` 逐项核对，2026-10-13）。
+
+#### 2026-10-14 落地说明（issue #5）
+
+- **`harness/REPRODUCE.md` —— 已建**：DoD-4 的重跑步骤清单，五条命令
+  （固定测试 / selftest 门禁 / replay 回放 / audit 回源 / sync 同步）
+  **每条都附 2026-10-14 的实跑输出片段**，无实测证据的数字不写入。
+- **`src/fieldstation/cli.py` —— 已建（M0 范围：工具分发）**，
+  这是对原「延后 M3」裁定的**有范围的部分覆盖**，取舍如下：
+  - **建的是什么**：五条纪律命令的统一转发入口
+    （`selftest` / `replay` / `audit` / `sync` / `figures`），子进程转发、
+    参数与退出码原样透传，零重实现；`tests/test_cli.py` 4 测钉住
+    `--help`、未知子命令 exit 2、缺子命令 exit 2、真实转发。
+  - **为什么 M0 可以建**：原裁定的理由是"无物可统一" —— 该理由对
+    **智能体编排入口**（真 provider、角色配置、多轮任务）依然成立，
+    但对**工具分发**这半边不成立：五个转发目标（harness 两件 + tools 三件）
+    在 M0 已全部存在且实测通过，正是 `REPRODUCE.md` 要重跑的那五条命令，
+    从一个门进比记五条路径更不容易漏（DoD-4 的可达性收益）。
+    同时 issue #5 的主诉就是"spec §2 目录树字面不成立"—— 登记不改事实，
+    建了才改。
+  - **不建的是什么**：智能体编排入口**仍属 M3**，cli.py 里没有任何
+    预铺的空子命令或 TODO —— 判据是 `COMMANDS` 表（cli.py）：**子命令
+    必须有站着的转发目标**，M3 加子命令时随其背后实现一起加。
+  - **代价（明知且接受）**：`harness/selftest.py` 的
+    `ORIGINAL_SRC_PREFIXES` 豁免清单为它加了一项（cli.py 是本项目原创，
+    PROVENANCE.md 按其自述口径不收原创行）—— 这是门禁的一次有意识口径
+    扩展，注释已写明理由。
+- 布局守卫：`tests/test_layout.py` 的 `REQUIRED` 已加入这两个叶子，
+  再次静默掉落会有测试变红。
 
 ### KI-09　`tools/make_cli_figures.py` 依赖第三方库 matplotlib【设计决定：点名豁免】
 
@@ -191,7 +237,15 @@
   才加载 —— `tests/`、`harness/` 均不 import 该模块（全仓 grep 确认），
   所以无 matplotlib 的机器上测试与五项门禁照常全绿，只是跑不了出图。
   本机 matplotlib 3.11.1 在位（终审实测 `--help` exit 0）。
-- **无覆盖**：该工具无测试（Task 6 brief 未要求），见 KI-05 表。
+- **覆盖与降级（2026-10-14 补，issue #5）**：该工具已有测试
+  （`tests/test_make_cli_figures.py` 3 测，见 KI-05）。同时 `main()` 增加
+  渲染前置判断 `_has_matplotlib()`：**在建目录、跑命令之前**探测，
+  缺席时打印 `[阻断] … 未安装 matplotlib` 并 **exit 2** —— 不崩
+  `ImportError`、不留 `_raw` 半成品、不产假图。补测前实测过反面行为：
+  无 matplotlib 子进程退出码 1 且未捕获 `ImportError` Traceback
+  （先跑完采集命令再崩，留下无人认领的中间文件）。缺席环境由测试用
+  `PYTHONPATH` 垫片（import 即 `ImportError`，与未安装等价）在子进程
+  实测复现，装了/没装 matplotlib 的机器都能跑该用例。
 
 ---
 
