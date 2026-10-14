@@ -54,9 +54,9 @@ M0 全程不碰真实台站数据、不调真实 LLM。
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**44** 个
-- 入库 Python 行数：**6,691** 行
-- 入库测试文件数：**21** 个
+- 入库 Python 文件数：**46** 个
+- 入库 Python 行数：**7,125** 行
+- 入库测试文件数：**22** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，

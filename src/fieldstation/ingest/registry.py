@@ -148,6 +148,12 @@ def field_width_for(station: str, program: str | None = None) -> int | None:
         if "=" not in item:
             continue
         k, v = item.split("=", 1)
+        if not v.strip():
+            # 空值项（运维手写配置时常出现的半截写法，如 DAEJ=）。
+            # 跳过而非猜一个默认宽度：猜值会把配置错误静默吞掉。
+            # 非数值（如 15px）仍然抛 ValueError —— 那是看得见的笔误，与空值不同。
+            # issue #14 / KI-10 的回归测试见 tests/test_registry_field_width.py
+            continue
         if k.strip().upper() == station.strip().upper():
             return int(v.strip())
     # 键统一大写；**查找也必须大写** —— 曾经表里写小写、查的时候 .upper()，
