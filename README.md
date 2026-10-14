@@ -4,6 +4,10 @@
 「利用AI智能体构建野外台站管理系统」
 
 - 设计文档：[`docs/spec/2026-10-13-野外台站智能体基础设计.md`](docs/spec/2026-10-13-野外台站智能体基础设计.md)
+- **技术选型（ADR-001）**：[`docs/decisions/2026-10-14-智能体运行时选型.md`](docs/decisions/2026-10-14-智能体运行时选型.md)
+   —— 运行时用 **LangGraph**（备选 Pydantic AI）；平台层 Dify/FastGPT **只做看板**；
+   trace 格式照 Langfuse；工具接口按 MCP；自研只留规则层与评测集
+- 同类项目调研：issue #20（含平台层/框架层分水岭、下载量信号、许可证风险）
 - 工作区规矩：[`CLAUDE.md`](CLAUDE.md)
 - 搬运件登记：[`PROVENANCE.md`](PROVENANCE.md)
 
@@ -42,9 +46,11 @@ python harness/replay.py --fixture harness/fixtures/replay_20261013.json
 | 目录骨架 | 已建（`src/fieldstation/{rules,ingest,store,agents}` + `data/ logs/ figures/ config/`） |
 | 代码量表 | 见下方「代码量（机维护）」节 |
 | 搬运件 | 17 件（10 src + 7 tests），逐件登记在 `PROVENANCE.md` |
-| 测试 | 20 个测试文件、118 个测试，skip 0；`harness/selftest.py` 五项门禁实测 5/5 exit 0 |
+| 测试 | 22 个测试文件、167 个测试，skip 0；`harness/selftest.py` 五项门禁实测 5/5 exit 0 |
 | 评测底座 | `harness/replay.py` + 合成 fixture（种子 `synthetic.FIXTURE_SEED=20261013`），同输入两跑 SHA256 相同 |
-| 智能体运行时 | 最小核：provider 抽象（仅 `fake`）、trace 留痕、单轮循环；**不接真实模型、不联网** |
+| 智能体运行时 | 最小核：provider 抽象（仅 `fake`）、trace 留痕、单轮循环；**不接真实模型、不联网**。
+M3 起的运行时选型结论见 **ADR-001**：框架用 **LangGraph**（备选 Pydantic AI），
+Dify/FastGPT 仅做看板，`rules/` 规则层与评测集为自研保留范围 |
 | 数据 | 只有合成 fixture，**无真实台站数据**（`data/` 仅 `.gitkeep`） |
 | CLI 入口 | **已建** `src/fieldstation/cli.py`：五条纪律命令的统一分发（`selftest`/`replay`/`audit`/`sync`/`figures`，只转发不重实现）；智能体编排入口仍留 M3（`docs/known-issues.md` KI-08） |
 
@@ -54,9 +60,9 @@ M0 全程不碰真实台站数据、不调真实 LLM。
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**46** 个
-- 入库 Python 行数：**7,125** 行
-- 入库测试文件数：**22** 个
+- 入库 Python 文件数：**47** 个
+- 入库 Python 行数：**7,191** 行
+- 入库测试文件数：**23** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，
