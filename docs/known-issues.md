@@ -290,6 +290,23 @@
 
 ---
 
+### KI-10 `field_width_for` 遇空值环境变量抛未捕获 `ValueError`【已解决】
+
+- **位置**：`src/fieldstation/ingest/registry.py` env 解析循环（修复前 `return int(v.strip())` 处）
+- **触发条件**：运维手写 `GNSS_TEC_FIELD_WIDTH` 时出现**半截写法** `KEY=`（键在、值为空）
+- **症状**：`ValueError: invalid literal for int() with base 10: ''`，数据接入链直接崩
+- **归属**：搬运件既有行为，**非本项目引入**（源 `GNSS接收机TEC反演/code/gnsstec/io/obs_registry.py`）
+- **与 KI-01 同类**（不合规输入 → 未捕获 ValueError），但本项在 M0 合并**之后**处理：
+  此时搬运可证性已由 `PROVENANCE.md` + git history 落袋，修复是**被追踪的有意修改**
+- **修法**（2026-10-14，PR #17）：跳过空值条，**不猜默认宽度**——猜值会静默吞掉配置错误；
+  非数值（如 `15px`）**仍然抛出**，那是看得见的笔误，与空值半截写法应区别对待
+- **回归证据**：
+  - `tests/test_registry_field_width.py` 5 条：空值跳过、空值不遮蔽后续合法项、
+    脏分隔符/垃圾项、全无效回落到登记表、空 env
+  - 修复前该 5 条**有 3 条报错**（RED 已留档）
+  - 真实样本 `badg0010.24o.gz` 修复**前后逐字节一致**（4964 条，首条字段相同）
+- **影响面**：M0 不接真实数据故当时不紧急；M2 接入真实台站配置前必须处理（现已修）
+
 ## 维护约定
 
 1. 新发现的缺陷**先登记在这里，再决定修不修**；"不修"的理由必须写出来。
