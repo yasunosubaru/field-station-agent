@@ -264,7 +264,16 @@ class Rinex2Obs:
                 sid = ln[0:3].strip().upper()
                 rest = ln[3:].split()
                 if sid:
-                    h.prn_obs[sid] = [int(float(x)) if x else 0 for x in rest]
+                    try:
+                        h.prn_obs[sid] = [int(float(x)) if x else 0 for x in rest]
+                    except ValueError:
+                        # 不合规行（第 1-3 列非空，违反规范 3X）才会走到这里：
+                        # rest 必含第 61 列的标签词，float('PRN') 抛 ValueError。
+                        # 整条记录跳过、不猜解析结果。实测证据（issue #4）：
+                        # 修复前 tests/test_rinex2_prn_header RED ——
+                        # ValueError: could not convert string to float: 'PRN'；
+                        # 修复后该测 GREEN，规范行（sid 为空）行为不变。
+                        pass
             elif _is(ln, "TIME OF FIRST OBS"):
                 h.time_first = self._time_tuple(ln)
                 h.time_system = ln[48:51].strip() or "GPS"
