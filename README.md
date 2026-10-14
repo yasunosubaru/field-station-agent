@@ -3,6 +3,12 @@
 武汉大学地球与空间科学技术学院 · 2026 年大学生创新创业训练计划项目
 「利用AI智能体构建野外台站管理系统」
 
+[![CI](https://github.com/yasunosubaru/field-station-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/yasunosubaru/field-station-agent/actions/workflows/ci.yml)
+
+这个徽章就是固定命令的门禁:测试全绿 + `skip == 0` + 五项 `selftest` 门禁 + 文档数字回源。
+它是 PR 和 `main` 推送时由 `.github/workflows/ci.yml` 跑的,判据与本地一字不差。
+本地跑三条命令的结果应当与这里一致 —— 不一致说明环境不同,先查环境。
+
 - 设计文档：[`docs/spec/2026-10-13-野外台站智能体基础设计.md`](docs/spec/2026-10-13-野外台站智能体基础设计.md)
 - **技术选型（ADR-001）**：[`docs/decisions/2026-10-14-智能体运行时选型.md`](docs/decisions/2026-10-14-智能体运行时选型.md)
    —— 运行时用 **LangGraph**（备选 Pydantic AI）；平台层 Dify/FastGPT **只做看板**；
