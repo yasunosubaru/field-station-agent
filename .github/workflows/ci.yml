@@ -1,0 +1,60 @@
+name: CI
+
+# 关于本仓库为什么只保留这一条 workflow（2026-10-14 决定）：
+#
+# GitHub 在新建仓库时按分类推荐了一批 workflow，本仓库**逐类排除**如下：
+#
+#   部署类（Azure / AWS ECS / GKE / 阿里云 ACK / TKE / Terraform）
+#       —— 交付物是 Python 库 + 台站管理平台，没有云部署目标。无部署即无部署流水线。
+#   发布类（Publish Python Package / Anaconda）
+#       —— 本项目不发布 PyPI 包，也不引入 conda 依赖（仓库当前为纯标准库）。
+#   安全类（CodeQL / Dependency Review / Bandit）
+#       —— 仓库无第三方依赖、无密钥、无 flags 解析，且搬运件已在 PROVENANCE 登记；
+#          在 M3 引入 LangGraph 等依赖之前，这一类先不做，避免门禁空转。
+#   持续集成功底（SLSA）
+#       —— 学术项目无 release artifact 需要 provenance 链。
+#   自动化类（Greetings / Labeler / Stale / Manual）
+#       —— 三人团队，标签与关闭由看板人工处理；Stale 反而可能误关待办 issue。
+#
+# 保留这一条的原因：本仓库的核心不变量是"测试全绿 + skip 必须为 0 + 五项门禁 + 数字可回源"，
+# 把这三条命令放到 CI 上，是为了让任何 PR 都有同样的门禁，而不是靠提交者自觉。
+#
+# 注意：lint（Pylint）暂不加。仓内含搬运件与历史代码，先加 lint 会因存量告警淹没信号，
+# 待 M3 重构完成并约定告警白名单后再单独评估。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: tests + 门禁 + 数字回源
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 固定测试命令。skip 必须为 0 —— unittest 不把 skip 当失败，静默跳过会让门禁假绿。
+      - name: 测试
+        run: python -m unittest discover -s tests -t .
+        env:
+          PYTHONPATH: src
+
+      # 五项门禁：tests/skip=0、全仓无 gnsstec 残留、PROVENANCE 双向一致、
+      # 同 seed 同 config_hash、audit_claims 退出码 0。
+      - name: 门禁
+        run: python harness/selftest.py
+        env:
+          PYTHONPATH: src
+
+      # README 里每个对外数字与仓库实际状态对照，不一致即失败。
+      - name: 文档数字回源核对
+        run: python tools/audit_claims.py
