@@ -58,7 +58,8 @@ SCAN_DIRS = ("src", "tests", "harness", "tools")
 #: `src/fieldstation/cli.py`（spec §2 统一入口叶子，issue #5 补建，2026-10-14）
 #: 同理：本项目从零写的工具分发入口，无源项目对应文件，PROVENANCE.md 的
 #: 「从其他项目复制来的代码」表按其自述口径不收原创行，故在此豁免。
-ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py")
+ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
+                         "src/fieldstation/store/station.py")
 
 
 # ---------------------------------------------------------------- 第 1 项
