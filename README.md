@@ -167,7 +167,7 @@ n8n 的许可证不是 OSI 开源，两个都排除。
 
 ### 智能体怎么编排
 
-五条纪律命令有统一入口，只转发、不重实现，避免两套逻辑各自漂移：
+纪律命令有统一入口，只转发、不重实现，避免两套逻辑各自漂移：
 
 ```powershell
 $env:PYTHONPATH="src"; python -m fieldstation.cli --help
@@ -178,6 +178,7 @@ $env:PYTHONPATH="src"; python -m fieldstation.cli --help
 | `selftest` | 五项一致性硬门禁，任一 FAIL 即非零退出 |
 | `replay` | 确定性回放评测，可离线、不联网 |
 | `audit` | 文档数字逐条回源核对 |
+| `datadict` | 数据字典完整性门禁（M1 交付物，草稿态不算失败） |
 | `sync` | 重新生成本文件的代码量区块 |
 | `figures` | 生成论文可用的图表 |
 
@@ -258,9 +259,9 @@ python tools/audit_claims.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**47** 个
-- 入库 Python 行数：**7,191** 行
-- 入库测试文件数：**23** 个
+- 入库 Python 文件数：**48** 个
+- 入库 Python 行数：**7,370** 行
+- 入库测试文件数：**24** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，
