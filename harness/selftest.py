@@ -53,14 +53,18 @@ NEEDLE = "gns" + "stec"
 SCAN_DIRS = ("src", "tests", "harness", "tools")
 
 #: 本项目原创、按登记规则无需入表的 src 子树（智能体运行时，Task 7 从零写）。
-#: 各包 `__init__.py` 同样原创。新增**整块原创**的 src 子树时把前缀加到这里 ——
+#: 各包 `__init__.py` 同样原创。新增整块原创的 src 子树时把前缀加到这里 ——
 #: 这是一次有意识的口径扩展，不是自动放行。
-#: `src/fieldstation/cli.py`（spec §2 统一入口叶子，issue #5 补建，2026-10-14）
+#: `src/fieldstation/cli.py` (spec 2 统一入口叶子，issue #5 补建，2026-10-14)
 #: 同理：本项目从零写的工具分发入口，无源项目对应文件，PROVENANCE.md 的
-#: 「从其他项目复制来的代码」表按其自述口径不收原创行，故在此豁免。
+#: "从其他项目复制来的代码"表按其自述口径不收原创行，故在此豁免。
+#: `src/fieldstation/store/model.py` (M2-1 台站通用观测模型 StationReading,
+#: 2026-10-15) 同理：model.py 是 GNSS 搬运件且只读，这类观测模型是本项目
+#: 新造的、无源项目对应文件。注意 store/ 整棵子树**不在**豁免内（与搬运件同目录），
+#: 所以按文件逐条加，不能只加 store/ 前缀了事。
 ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
-                         "src/fieldstation/store/station.py")
-
+                          "src/fieldstation/store/station.py",
+                          "src/fieldstation/store/model.py")
 
 # ---------------------------------------------------------------- 第 1 项
 def check_tests() -> tuple[bool, list[str]]:
