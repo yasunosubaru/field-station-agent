@@ -79,6 +79,10 @@ def _build_copy_repo(base: Path) -> Path:
     return repo
 
 
+def _readme_of(repo: Path) -> str:
+    return (repo / "README.md").read_text(encoding="utf-8")
+
+
 class TestSyncCodeCounts(unittest.TestCase):
     def test_help_exits_zero(self):
         """`--help` 不写任何文件即可用（argparse 路径）。"""
@@ -112,6 +116,45 @@ class TestSyncCodeCounts(unittest.TestCase):
             self.assertIn("入库测试文件数：**1** 个", text)
             # 「现状」表占位行被兑现为指向机维护块
             self.assertIn("| 代码量表 | 见下方「代码量（机维护）」节 |", text)
+
+    def test_sync_refuses_when_new_py_is_untracked(self):
+        """负例：src/ 或 tests/ 下有未 git add 的新 .py 时必须拒绝生成。
+
+        这是 2026-10-15 真实红过 main 的坑：新增 3 个 src + 2 个 tests 之后、
+        `git add` 之前跑了同步脚本，`git ls-files` 数不到新文件，README 被写成
+        旧数字 48/24；commit 上去 CI 才报实测 53/26。本地全绿、commit 即红。
+
+        拒绝而不是警告：此时写出来的每个数字都是谎话，而谎话比不写更糟 ——
+        它会通过本地门禁，只在 CI 上炸。
+        """
+        with tempfile.TemporaryDirectory() as td:
+            repo = _build_copy_repo(Path(td))
+            (repo / "src" / "mod_b.py").write_text("z = 3\n", encoding="utf-8",
+                                                   newline="\n")
+            rc, out = _run(repo, "sync_code_counts.py")
+            self.assertEqual(rc, 2, out)
+            self.assertIn("git add", out)
+            self.assertIn("src/mod_b.py", out)
+            # 关键：README 一个字节都不许被改
+            before = _readme_of(repo)
+            self.assertIn(f"**{WRONG}**", before,
+                          "用例前提不成立：README 里的错数被动过了")
+
+    def test_sync_still_works_after_adding(self):
+        """转正例：把新文件 add 进去之后，同步脚本应当恢复正常。"""
+        with tempfile.TemporaryDirectory() as td:
+            repo = _build_copy_repo(Path(td))
+            (repo / "src" / "mod_b.py").write_text("z = 3\n" * 5,
+                                                   encoding="utf-8", newline="\n")
+            r = subprocess.run(["git", "add", "src/mod_b.py"], cwd=str(repo),
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rc, out = _run(repo, "sync_code_counts.py")
+            self.assertEqual(rc, 0, out)
+            text = _readme_of(repo)
+            self.assertIn("入库 Python 文件数：**3** 个", text)
+            self.assertIn(f"入库 Python 行数：**{SRC_LINES + TEST_LINES + 5}** 行", text)
 
     def test_audit_passes_after_sync(self):
         """闭环：改写之后回源核对必须全过 —— 同步与核对共用同一口径。"""
