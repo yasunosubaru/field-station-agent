@@ -54,6 +54,9 @@ COMMANDS = {
     "audit": "tools/audit_claims.py",
     "sync": "tools/sync_code_counts.py",
     "figures": "tools/make_cli_figures.py",
+    # M1 落地：数据字典完整性门禁。按本文件开头引的 KI-08 边界 ——
+    # 「要加的子命令等它背后的实现落地再加」—— 实现已落地，故加。
+    "datadict": "tools/check_datadict.py",
 }
 
 
