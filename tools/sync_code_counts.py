@@ -90,10 +90,39 @@ def _block(n_files, n_lines, n_tests):
     ])
 
 
+def _untracked_py():
+    """返回 src/ 与 tests/ 下**尚未入库**的 .py 相对路径列表。
+
+    存在这个函数的原因是一次真实的红 main：新增的 5 个 .py（3 个 src + 2 个 tests）
+    还没 `git add` 就跑本脚本，`_tracked_py()` 只数 index，于是 README 被写成旧数字；
+    commit 之后 CI 一跑就 FAIL。同一个坑在 M1 与 agent 两轮各踩一次。
+
+    所以：**有未入库的新文件就拒绝生成**。此时写出来的数字是谎话，而谎话比
+    不写更糟 —— 它会通过本地门禁，只在 CI 上炸。
+    """
+    r = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
+    return [l for l in r.stdout.splitlines()
+            if l.endswith(".py") and (l.startswith("src/") or l.startswith("tests/"))]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="把 README.md 的代码量机维护块与仓库实际状态同步（git 权威口径）。")
     ap.parse_args(argv)
+
+    untracked = _untracked_py()
+    if untracked:
+        print("[阻断] src/ 或 tests/ 下有尚未 git add 的 .py 文件：")
+        for p in untracked:
+            print(f"    {p}")
+        print()
+        print("本脚本只数 git ls-files（index）。先 `git add` 再跑，"
+              "否则会把不含新文件的旧数字写进 README —— 那种数字在本机能过门禁，"
+              "只在 commit 之后的 CI 上炸。")
+        return 2
 
     files = _tracked_py()
     if not files:
