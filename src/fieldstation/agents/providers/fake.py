@@ -12,12 +12,21 @@ from .base import ChatMessage, ChatResponse, Provider
 
 
 class FakeProvider(Provider):
-    """每次 ``chat`` 按构造顺序返回一条预置响应，用尽后抛 ``RuntimeError``。"""
+    """每次 ``chat`` 按构造顺序返回一条预置响应，用尽后抛 ``RuntimeError``。
+
+    预置项可以是字符串（等价于 ``ChatResponse(content=s)``），也可以是现成的
+    ``ChatResponse`` —— 后者用来在测试里给**工具调用回合**配脚本：多轮循环需要
+    一条"先要调工具、再给结论"的响应才能跑起来。用尽后抛 ``RuntimeError``
+    （由 tests/test_runtime.py::TestFakeProvider::test_exhausted_provider_raises 钉死）。
+    """
 
     name = "fake"
 
-    def __init__(self, responses: list[str]):
-        self._responses = list(responses)
+    def __init__(self, responses):
+        self._responses = [
+            r if isinstance(r, ChatResponse) else ChatResponse(content=r)
+            for r in responses
+        ]
         self._i = 0
 
     def chat(self, messages: list[ChatMessage], tools: list[dict]) -> ChatResponse:
@@ -25,6 +34,6 @@ class FakeProvider(Provider):
             raise RuntimeError(
                 f"FakeProvider 已用尽：预置 {len(self._responses)} 条响应，"
                 f"已返回 {self._i} 条")
-        content = self._responses[self._i]
+        r = self._responses[self._i]
         self._i += 1
-        return ChatResponse(content=content)
+        return r
