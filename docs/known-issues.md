@@ -127,7 +127,7 @@
 - **门禁**：236 tests OK（skipped 0）、`harness/selftest.py` 5/5、
   `tools/audit_claims.py` 退出码 0；`PROVENANCE.md` 的 reader 行已加改动列。
 
-### KI-03　读取观测文件时泄漏文件句柄【已确认】
+### KI-03　读取观测文件时泄漏文件句柄【已解决 · 2026-10-16，见下】
 
 - **位置**：`rinex2._gzip_bytes`、`rinex3.Rinex3Obs.__init__`、`reader._read_text`
   —— 三处都是 `open(path, "rb").read()`，不关句柄。
@@ -135,10 +135,44 @@
   `ResourceWarning: unclosed file <_io.BufferedReader …>`；
   长时间批量读取会积累未关闭的句柄。
 - **证据**：Task 4 实现阶段在 `tests/test_ingest.py` 上直接观察到（见该文件顶部注释）。
-- **当前处置**：`tests/test_ingest.py::_open_observation_file` 用
+- **当时的处置**：`tests/test_ingest.py::_open_observation_file` 用
   `warnings.catch_warnings()` 在**调用点**精确屏蔽（unittest 的 runner 会把模块级
   filter 覆盖回 `default`，所以必须包在调用点上）。**屏蔽不是修复。**
-- **为什么不修**：搬运件既有行为，改了就不是搬运了。
+- **为什么不修（该任务时点的原决定，保留）**：搬运件既有行为，改了就不是搬运了。
+  **该前提现已消失**：M0 已于 2026-10-14 归档，搬运可证性由 `PROVENANCE.md` +
+  git history 落袋，此后改搬运件是**被追踪、被记录的有意修改** —— KI-01、KI-10、
+  KI-02 已按同一口径处理。
+
+#### 已于 2026-10-16 修复，见 commit `e23cd43`（issue #35，分支 `fix/ki03-close-handles`）
+
+- **改动**：三处各删 1 行 / 增 2 行，统一改成 `with open(path, "rb") as fh:` ——
+  与同包 `hatanaka.py` 原本就是的写法一致。**只变「怎么读」，不变「读什么」**，
+  三处的返回值逐字节未变（见下）。
+- **回归（先红后绿）**：`tests/test_ingest_handles.py` 4 条，修复前**全红**，且每条
+  精确抓到一处：RINEX 2 路径（`rinex2._gzip_bytes`）、RINEX 3 路径
+  （`rinex3.Rinex3Obs.__init__`）、CSV 路径（`reader._read_text`）、`.gz` 输入再走
+  一遍。判据是 `ResourceWarning` + `"unclosed file"` **一条都不许有**，不是
+  「少于几条」。CSV 那条是必需的：`_read_text` 只在 `ObservationFile._open` 的
+  CSV 分支被走到，仓库原先没有任何夹具走它，故内联一份最小宽表。
+- **顺手拆掉屏蔽**：`tests/test_ingest.py` 与 `tests/test_reader_interval_s.py` 里
+ 用来压这条告警的 `warnings.catch_warnings()` 已删除。拆掉后整套测试的输出里再无
+  `unclosed file` 噪声 —— 这反过来证明没有第四处泄漏。
+- **真实样本逐字节一致（要害项）**：同一探针在修复前后各跑一遍，输出逐行相同：
+
+  | 探针 | 结果（前后一致） |
+  |---|---|
+  | `rinex2._gzip_bytes(badg0010.24o.gz)` | 15,299,992 字节，sha256 `27aa406d7e3556e85b1dfacaabd256e056b01b75fb122b5ce4efbaee69d38dfc` |
+  | `Rinex3Obs(TWTF…30S_MO.rnx.gz).text` | 19,468,459 字符，sha256 `186a9918bc265b63360b81c79164515ee54a338ead62db5f61f37a6a894a3e6b` |
+  | `reader._read_text`（两份样本） | 与上两行的 sha256 分别相同 |
+  | 端到端 RINEX2 | 4964 条、1,635,545 字节，sha256 `bb3ea8c592bfc4e9219b8dcbc8cbe0348b2b248099faa4cb5a7934c2de32dc88` |
+  | 端到端 RINEX3 | 115432 条、38,614,095 字节，sha256 `1c17eea8d7ae350f8d43a48f18eaf5e77a9b57a249e38c9bde9aa175587473c0` |
+  | 端到端 CSV | 4 条，sha256 `61d5363d22c9bb5613040d5865ae7730ee48094f10c949fa0d3122a1fe441f15` |
+
+  RINEX2 那条 `bb3ea8c5…dc88` 与 KI-01 / KI-10 / KI-02 记录的尺子逐字符相同；
+  RINEX3 的 115432 条与 `tests/test_ingest.py` 文档里记的数吻合。
+- **门禁**：240 tests OK（skipped 0）、`harness/selftest.py` 5/5、
+  `tools/audit_claims.py` 退出码 0；`PROVENANCE.md` 的 rinex2 / rinex3 / reader
+  三行已各加改动列。
 
 ### KI-04　"逐字节搬运"的可证性依赖 index blob，而不是工作区文件【已处理】
 
