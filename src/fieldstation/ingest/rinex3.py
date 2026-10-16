@@ -130,7 +130,8 @@ class Rinex3Obs:
 
     def __init__(self, path: str | None = None, text: str | None = None):
         if text is None:
-            raw = gunzip_if_needed(open(path, "rb").read())
+            with open(path, "rb") as fh:
+                raw = gunzip_if_needed(fh.read())
             text = raw.decode("latin-1")
         self.path = path
         self.text = text
