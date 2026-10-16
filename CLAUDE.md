@@ -89,14 +89,15 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
 | 规则集 | 覆盖 | 规则 |
 |---|---|---|
 | `protect-main` | `~DEFAULT_BRANCH` | 禁删除、禁非快进、**必须 PR 且要 1 个审批** |
-| `protect-others-branches` | `m0-foundation`、`sch/**`、`chx/**`、`docs/*`、`chore/*`、`fix/*` | 同上 |
+| `protect-others-branches` | `m0-foundation`、`sch/**`、`docs/**`、`chore/**`、`fix/**`、`ci/**` | 同上 |
 
-**实测（2026-10-14）：远端 6 个分支全部 `protected=true`，零遗漏。**
+**实测（2026-10-16）：`chx/station-skeleton` 与 `wzg/test-stat-fns` 的
+`protected` 均为 `false`，`main` 为 `true`。** 两位成员的前缀**刻意都不在**名单里。
 
-**净效果**：非 admin 者**推不进 main，也推不进任何既有分支与别人的前缀**；
-只有 `wzg/**` **故意不在保护范围** —— 那是成员B自己管的分支，他可以自由推。
+**净效果**：非 admin 者**推不进 `main`，推不进受保护的历史分支，也推不进别人的前缀**；
+`chx/**` 与 `wzg/**` 都在保护之外 —— 各人自己管自己那一块，**两人完全对称**。
 
-**封不死的地方**（免费计划的天花板，不要以为已经封死）：他仍能推到一个
+**封不死的地方**（免费计划的天花板，不要以为已经封死）：他们仍能推到一个
 **新起的、不匹配上述任何模式**的分支。个人仓库无自定义角色，到此为止。
 
 ### 分工
@@ -104,8 +105,8 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
 | 人 | 权限 | 代码如何进入 main |
 |---|---|---|
 | 项目负责人 | `admin` | 直推 `sch/**` 或经 PR |
-| 成员B `WZG493` | `write`（邀请 id `337677335`，待其接受） | 推 `wzg/**` → 开 PR → **项目负责人审批后合入** |
-| 成员A | 待加（缺 GitHub 用户名） | 同上，`chx/**` |
+| 成员B `WZG493` | `write`（邀请**已接受**，实测 2026-10-16） | 推 `wzg/**` → 开 PR → **项目负责人审批后合入** |
+| 成员A | `write`（**已加入**；用户名含个人信息，按脱敏口径不入库） | 同上，`chx/**` |
 
-> 已知残留：`protect-others-branches` 覆盖 `wzg/**` 之外的既有分支，
-> 但**他新建的非前缀分支不在内** —— 见上"封不死"。
+> 已知残留：`protect-others-branches` 覆盖 `sch/**` 之外的历史与工作分支，
+> 但**两人新建的非前缀分支不在内** —— 见上"封不死"。
