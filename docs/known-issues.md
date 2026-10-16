@@ -201,13 +201,13 @@
   不以工作区文件为准。** 需要与源项目逐字节比对时，
   先 `git cat-file -p HEAD:<path>`，不要直接 diff 工作区文件。
 
-### KI-05　三个搬运件没有测试覆盖；两个移植工具已补测【覆盖缺口，非缺陷，2026-10-14 更新】
+### KI-05　三个搬运件没有测试覆盖；两个移植工具已补测【覆盖缺口，非缺陷；2026-10-16 已补第二批，见下】
 
 | 未覆盖对象 | 行数 | 说明 |
 |---|---|---|
 | `ingest/hatanaka.py` | 240 | 全部公开函数（`decompress_hatanaka` / `read_hatanaka_rinex` / `self_check` / `split_sections` / `parse_header`）零测试。**源项目自己没有真实 Hatanaka 样本**，其 docstring 就写着"解码器未验证"。`reader.sniff` 对 CRINEX 一律报 `supported=False`，解压路径目前是死的。 |
-| `ingest/registry.py` | 173 | `field_width_for` 是 brief 明确列出的 Produces 接口，目前**只被间接调用过一次**（`ObservationFile._open` 对 TESTSTN 查表落空返回 `None`），优先级逻辑（环境变量 > 站名 > 生产程序）无测试。 |
-| `reader.sniff` 的 `RINEX3-NAV` 分支 | — | 变异测试确认：把 `if "OBSERVATION DATA" in lines[0]` 改成 `if True:` 不会被任何测试捕获。 |
+| `ingest/registry.py` | 173 | `field_width_for` 是 brief 明确列出的 Produces 接口。**2026-10-16 已补参数化测试**（见下）：优先级三级（环境变量 > 站名 > 生产程序）、大小写、去空白、兜底全部有覆盖。 |
+| `reader.sniff` 的 `RINEX3-NAV` 分支 | — | 原记「把 `if "OBSERVATION DATA" in lines[0]` 改成 `if True:` 不会被任何测试捕获」。**2026-10-16 已补测**：该变异现在会让 3 条用例变红（见下）。 |
 
 **已补（2026-10-14，issue #5）**：两个移植工具不再是零覆盖 ——
 
@@ -226,14 +226,48 @@
   分支断言（在位 → 真渲染 PNG 到临时目录）——**不用 `skip`**，本仓库
   skip==0 是门禁。降级实现见 KI-09。
 
-**待办**：接真实数据前，至少给 `registry.field_width_for` 补一组参数化测试
-（站名大小写、环境变量覆盖、生产程序兜底、未登记站返回 `None`），
-并给 `sniff` 的 NAV / RINEX4 / CRINEX 三个"识别得出但不支持"分支补测试 ——
-这三条是 `UnsupportedFormat` 的 `how_to_fix` 文案的唯一来源，
-智能体将来要靠它们给用户指路。
+**已补第二批（2026-10-16，issue #48）**：上表后两行、以及下面「附带」的
+`approx_xyz` 守卫，都补上了测试。**没有改 `src/`** —— 三处实测都不需要改代码。
 
-**附带**：`reader.approx_xyz` 的 NaN 守卫（`if not v or any(x != x for x in v)`）
-无覆盖；把 `if False:` 不会被捕获。
+- `tests/test_registry_field_width.py` 由 5 测扩到 19 测：新增 `_EnvClean`
+  （先把 `GNSS_TEC_FIELD_WIDTH` 从环境里摘掉再测，否则这台机器上恰好设了该变量
+  就会得到与代码无关的失败）；站名大小写与首尾空白；**遍历登记表里每一个站**
+  都必须查得到（钉住历史上真踩过的「表里写小写、查时 `.upper()`，永远查不到」）；
+  生产程序兜底 7 种真实写法；程序串只取第一个词（版本号不影响判前缀）；
+  未登记站 / 空站 / 空白程序返回 `None`；以及三级优先级逐条对照。
+- `tests/test_sniff_branches.py`（新，13 测）：`sniff` 的 NAV / RINEX4 /
+  CRINEX（`hatanaka-d` 与 `gfzrnx-3&` 两个 variant）/ UNKNOWN 五条；
+  `UnsupportedFormat` 抛出的文案必须带 basename 与可执行的转换工具名；
+  `approx_xyz` 的 NaN 守卫（缺记录给 `None`、带记录原样返回）。
+- **变异自检五条，逐条改坏确认变红**：查表去掉 `.upper()`、生产程序兜底整段失效、
+  `sniff` 的 `OBSERVATION DATA` 判据恒真、`approx_xyz` 守卫恒假、CRINEX 分支失效。
+  实测踩坑：**相邻变异会复用 `__pycache__`**，于是某一条报出的是**上一条**的失败
+  清单 —— 自检脚本必须带 `PYTHONDONTWRITEBYTECODE=1` 并逐次清缓存，否则会把
+  「没被捕获」错报成「被捕获」。
+
+**本条描述里有两处要更正**（写测试时实测出来的）：
+
+1. 把 NAV 与 RINEX4 / CRINEX 并称"识别得出但不支持"不准确。`reader.sniff` 对
+   RINEX 3 导航电文给的是 `format="RINEX3-NAV"`、**`supported=True`**、还附一句
+   `note`；而 `reader.ObservationFile` 打开它时**抛 `UnsupportedFormat`**。
+   这是**有意的分层**（`sniff` 答「这是什么文件」，`ObservationFile` 答「能不能当
+   观测用」，理由写在 `reader._open` 的注释里），不是缺陷。两侧都有测试钉住，
+   将来任何一侧改了口径都会变红，改的人必须显式决定。
+2. 因此"这三条是 `how_to_fix` 的唯一来源"也只对两条：RINEX4 与 CRINEX 走 `_FIX`
+   表；NAV 走的是 `_open` 内联的那条文案（`_how_to_fix=True`）。
+
+**顺带记下两处目前不可达的代码**（本次不改，留待确需时处理）：
+
+- `reader._FIX["RINEX3-NAV"]`：NAV 抛异常时 `_open` 传的是内联 `how_to_fix` 且
+  `_how_to_fix=True`，而 `UnsupportedFormat.__init__` 优先取内联那条 —— 表里这一项
+  **永不生效**（冗余，非缺陷）。
+- `ObservationFile.capability_report()` 的 `if not info.get("supported")` 分支：
+  `__init__` 在 `_open` 阶段就对不支持的格式抛异常，外部拿不到那种实例，
+  全仓只有测试在调 `capability_report`。**目前不可达。**
+
+`ingest/hatanaka.py` 仍然零覆盖，本批未动：源项目自己没有真实 Hatanaka 样本，
+其 docstring 已声明"解码器未验证"，`sniff` 对 CRINEX 一律 `supported=False`，
+解压路径目前是死的。要覆盖它，先得有样本。
 
 ### KI-06　`registry` 的站名表与 `GNSS_TEC_FIELD_WIDTH` 属源项目口径【口径提醒】
 
