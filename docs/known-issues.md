@@ -85,9 +85,10 @@
     首条 `station='BADG' … epoch_utc='2024-01-01T02:48:30.000Z'` —— **逐字节一致**。
   - **回归 c**：固定命令 118 OK skip 0；selftest 5/5 exit 0；audit 3/3 exit 0。
 
-### KI-02　`ObservationFile.interval_s` 在头段无 `INTERVAL` 记录时返回 NaN【已确认】
+### KI-02　`ObservationFile.interval_s` 在头段无 `INTERVAL` 记录时返回 NaN【已解决 · 2026-10-16，见下】
 
-- **位置**：`src/fieldstation/ingest/reader.py:296-304`
+- **位置**：`src/fieldstation/ingest/reader.py:296-304`（原始行号；修复后该属性为
+  292-307，见文末修复记录）
 - **归属**：搬运件既有行为。
 - **症状**：返回 `nan` 而不是设计意图里的兜底值 `30.0`。
 - **机制**：L301-303 那段"由历元时间戳反推"的代码是
@@ -99,7 +100,32 @@
   `capability_report()["interval_s"]`。
 - **影响面**：M0 不受影响（本仓库测试夹具的 RINEX 2 头段写了 `INTERVAL`）。
   接真实数据时若对 `interval_s` 做数值运算，需先处理 NaN。
-- **为什么不修**：同上，搬运件既有行为，不在本任务改。
+- **为什么不修（该任务时点的原决定，保留）**：同上，搬运件既有行为，不在该任务改。
+  **该前提现已消失**：M0 已于 2026-10-14 合并归档，搬运可证性由 `PROVENANCE.md`
+  + git history 落袋，此后改搬运件是**被追踪、被记录的有意修改** —— KI-01 与
+  KI-10 已按同一口径处理。
+
+#### 已于 2026-10-16 修复，见 commit `748f8f8`（issue #35，分支 `fix/interval-s-fallback`）
+
+- **改动**：`reader.py` 的 `interval_s` 属性体一处，删 6 行 / 增 9 行（净 +3）。
+  判定改为 `if v == v and v > 0:`（`v == v` 是本文件 `approx_xyz` 用的同一个
+  NaN 写法），末尾改为 `return 30.0`；同时删掉那段恒假死代码
+  `ts = … if False else None`，**不补「由历元时间戳反推」的实现** ——
+  本条登记的设计意图就是兜底 30.0。嗅探判据、能力报告其余字段、
+  `observations()`、双频配对与两条回退链一字未动。
+- **回归（先红后绿）**：`tests/test_reader_interval_s.py` 3 条。修复前两条 RED
+  （`interval_s` 与 `capability_report()["interval_s"]` 实测都是 `nan`）；
+  第三条用 `RINEX2_OBS` 的 `INTERVAL 15.00` 作对照，防止「干脆不看 `INTERVAL`、
+  直接写死 30.0」也能蒙过测试。修复后 3/3 GREEN。
+- **真实样本逐字节一致（要害项）**：`badg0010.24o.gz` 经
+  `ObservationFile(path).observations(["GPS"])` 的产出，修复前后各 4964 条、
+  1,635,545 字节、SHA256 同为
+  `bb3ea8c592bfc4e9219b8dcbc8cbe0348b2b248099faa4cb5a7934c2de32dc88`
+  —— 与 KI-01 / KI-10 记录值逐字符相同，说明前后两次用的是同一把尺子；
+  首条字段一致。该样本修复前的 `interval_s` 就是 30.0（不是 nan），说明它自带
+  `INTERVAL` 记录、不走兜底分支，故该值同样前后不变。
+- **门禁**：236 tests OK（skipped 0）、`harness/selftest.py` 5/5、
+  `tools/audit_claims.py` 退出码 0；`PROVENANCE.md` 的 reader 行已加改动列。
 
 ### KI-03　读取观测文件时泄漏文件句柄【已确认】
 
