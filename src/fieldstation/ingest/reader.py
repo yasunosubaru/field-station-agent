@@ -295,13 +295,16 @@ class ObservationFile:
             v = float(v)
         except (TypeError, ValueError):
             v = 0.0
-        if v and v > 0:
+        # `v != v` 就是 NaN 判定，与本文件 `approx_xyz` 用的是同一个写法：
+        # 头段没有 `INTERVAL` 记录时，RINEX 2 / 3 的解析器给的是 MISSING，即 NaN。
+        if v == v and v > 0:
             return v
-        # 头段没写就由历元时间戳反推
-        ts = sorted({(e.gps_week, e.gps_tow_s)
-                     for e in self._raw.iter_observations(want_systems=("GPS",))
-                     for e in [e]} ) if False else None
-        return v or 30.0
+        # 头段没写（或写的是 MISSING）时走兜底常量。
+        # 原先这里写 `return v or 30.0`，但 NaN 在 Python 里是 truthy，
+        # `nan or 30.0` 取回的是 nan —— 兜底自搬运起就没生效过（见 KI-02）。
+        # 搬运前那句「头段没写就由历元时间戳反推」是恒假死代码
+        # （`... if False else None`），本仓库不启用它，也不在这里补实现。
+        return 30.0
 
     def obs_types(self) -> dict:
         if self.info["format"] == "RINEX3":
