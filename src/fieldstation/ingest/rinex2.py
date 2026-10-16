@@ -87,7 +87,8 @@ def _tokens(line: str) -> tuple[list[str], list[str]]:
 
 
 def _gzip_bytes(path: str) -> bytes:
-    raw = open(path, "rb").read()
+    with open(path, "rb") as fh:
+        raw = fh.read()
     if raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
     return raw

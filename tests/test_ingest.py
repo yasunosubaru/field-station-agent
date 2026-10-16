@@ -49,7 +49,6 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
-import warnings
 
 from fieldstation.ingest import reader, rinex3
 from tests.fixtures_rinex import (
@@ -60,13 +59,12 @@ from tests.fixtures_rinex import (
     RINEX3_OBS_PLAN_LITERAL,
 )
 
-# 搬运自源项目的读取器用 `open(path, "rb").read()` 读文件、不关闭句柄
-# （`rinex2._gzip_bytes` / `rinex3.Rinex3Obs.__init__` / `reader._read_text`），
-# 每次打开观测文件都会抛一条 ResourceWarning，把 unittest 的输出刷花。
-# 这是**搬运来的既有行为**，本任务不改搬运件（改了就不是搬运了），
-# 只在 `_open_observation_file` 里精确屏蔽（unittest 的 runner 会把模块级
-# 的 filter 覆盖回 `default`，所以必须包在调用点上），并在 task-4-report.md
-# 里记为待修项。
+# 原先这里有一段说明：搬运自源项目的读取器用 `open(path, "rb").read()` 读文件、
+# 不关闭句柄（`rinex2._gzip_bytes` / `rinex3.Rinex3Obs.__init__` / `reader._read_text`），
+# 每次打开观测文件都抛一条 ResourceWarning，于是 `_open_observation_file` 在调用点
+# 精确屏蔽了它 —— 那是**屏蔽，不是修复**（当时记为待修项）。
+# **2026-10-16 已修复（KI-03）**：三处都改成 `with open(...) as fh:`，
+# 这里不再屏蔽。回归见 `tests/test_ingest_handles.py`（修复前 4 条全红）。
 
 _TMPDIR = tempfile.mkdtemp(prefix="fieldstation-ingest-")
 
@@ -80,11 +78,8 @@ def _write_tmp(text: str, name: str = "fixture.rnx") -> str:
 
 
 def _open_observation_file(text: str, name: str):
-    """构造 `ObservationFile`，屏蔽搬运件遗留的「未关闭文件句柄」告警。"""
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", category=ResourceWarning, message="unclosed file")
-        return reader.ObservationFile(_write_tmp(text, name))
+    """构造 `ObservationFile`。KI-03 修复后不再需要屏蔽句柄告警。"""
+    return reader.ObservationFile(_write_tmp(text, name))
 
 
 def tearDownModule() -> None:

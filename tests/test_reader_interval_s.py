@@ -34,7 +34,6 @@ import math
 import os
 import tempfile
 import unittest
-import warnings
 
 from fieldstation.ingest import reader
 from tests.fixtures_rinex import RINEX2_OBS, RINEX3_OBS
@@ -46,14 +45,11 @@ FALLBACK_S = 30.0
 
 
 def _open(text: str, name: str):
-    """构造 `ObservationFile`，屏蔽搬运件遗留的未关闭句柄告警（见 KI-03）。"""
+    """构造 `ObservationFile`。KI-03 修复后不再需要屏蔽句柄告警。"""
     path = os.path.join(_TMPDIR, name)
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", category=ResourceWarning, message="unclosed file")
-        return reader.ObservationFile(path)
+    return reader.ObservationFile(path)
 
 
 def tearDownModule() -> None:

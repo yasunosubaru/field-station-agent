@@ -114,7 +114,8 @@ def _first_present(value_map: dict, keys) -> tuple:
 
 def _read_text(path: str) -> tuple[str, str]:
     """返回 (文本, 压缩方式)。支持 .gz 与裸文件。"""
-    raw = open(path, "rb").read()
+    with open(path, "rb") as fh:
+        raw = fh.read()
     if raw[:2] == GZ_MAGIC:
         raw = gzip.decompress(raw)
         return raw.decode("latin-1"), "gzip"
