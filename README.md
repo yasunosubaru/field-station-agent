@@ -7,7 +7,7 @@
 [![CI](https://github.com/yasunosubaru/field-station-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/yasunosubaru/field-station-agent/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![deps](https://img.shields.io/badge/deps-0-brightgreen?style=flat)](#built-with)
-[![license](https://img.shields.io/badge/license-TBD-lightgrey?style=flat)](#license)
+[![license](https://img.shields.io/badge/license-MIT-blue?style=flat)](#license)
 
 <p>
   武汉大学地球与空间科学技术学院 · 2026 年大学生创新创业训练计划<br />
@@ -41,6 +41,7 @@
     <li><a href="#roadmap">路线图</a></li>
     <li><a href="#contributing">参与贡献</a></li>
     <li><a href="#license">许可证</a></li>
+    <li><a href="#notices">Notices（开源许可登记）</a></li>
     <li><a href="#contact">联系方式</a></li>
     <li><a href="#acknowledgments">致谢</a></li>
   </ol>
@@ -276,11 +277,37 @@ python tools/audit_claims.py
 <a id="license"></a>
 ## 许可证
 
-还没有定。这个仓库是公开的，但没放 LICENSE 文件，默认状态下保留所有权利。
+本仓库采用 [MIT](LICENSE)，版权归项目组所有。为什么不选 Apache-2.0 或 BSD-3-Clause，
+对比写在 [ADR-002](docs/decisions/2026-10-15-许可证选择.md)。
 
-这不是漏了。[ADR-001](docs/decisions/2026-10-14-智能体运行时选型.md) 把定 LICENSE
-列为引入 LangGraph 和 Langfuse 的前置条件，在那之前不会往 `src/` 和 `harness/` 里加
-第三方依赖。参考过的开源项目、用到的协议都会登记在案。
+一句话版本：宽松、无附加义务、不限制团队后续把同一套代码用于论文、专利或软著。
+
+有一个例外要说在前面：`PROVENANCE.md` 表内 17 个搬运件来自一个校内结项项目，
+上游未见许可声明。MIT 覆盖的是本仓库自有代码，不覆盖那 17 件的上游授权，
+引用或复用那一部分前请自行确认上游。逐项登记见下一节。
+
+<p align="right">(<a href="#readme-top">回到顶部</a>)</p>
+
+<!-- 开源许可登记 -->
+<a id="notices"></a>
+## Notices（开源许可登记）
+
+| 项目 | 用在本仓库的哪里 | 许可 |
+|---|---|---|
+| Python | 全部代码的运行时 | PSF-2.0 |
+| matplotlib | `tools/make_cli_figures.py` 的 PNG 出图，可选依赖；缺它时该工具以退出码 2 优雅中止，测试与五项门禁不受影响（登记于 `docs/known-issues.md` KI-09） | BSD-3-Clause（Matplotlib License） |
+| [Best-README-Template](https://github.com/othneildrew/Best-README-Template) | 本页的页面结构 | MIT |
+| [shields.io](https://github.com/badges/shields) | 本页顶部的状态徽章 | CC0-1.0 |
+| [LangGraph](https://github.com/langchain-ai/langgraph) | ADR-001 选定的智能体运行时，尚未导入，M3 起引入 | MIT |
+| [Langfuse](https://github.com/langfuse/langfuse) | ADR-001 选定的 trace 格式参照，尚未导入；参照的是其 schema，不复用其代码 | MIT（核心仓库） |
+
+本仓库的上游来源不是第三方开源项目，单独说明：
+
+| 来源 | 涉及范围 | 状态 |
+|---|---|---|
+| GNSS接收机TEC反演（校内结项项目） | `PROVENANCE.md` 表内 17 个文件 | 未见许可声明。MIT 不覆盖这部分的上游授权，复用前请自行确认 |
+
+徽章与许可标志只是速记，以本表为准。
 
 <p align="right">(<a href="#readme-top">回到顶部</a>)</p>
 
