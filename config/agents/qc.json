@@ -1,0 +1,13 @@
+{
+  "_说明": "质量校验 agent 的声明式配置（M3-1，issue #51）。新增或修改 agent 只改本文件：职责写在 system_prompt，能力边界写在 tools 白名单（不在名单里的工具对这个 agent 就是不存在），对结论的要求写在 output_contract。provider 字段只放通道名，通道细节（url/model/options）在 config/providers.json；把两者分开，配置才能在「同一个 agent 换一条通道」时不改声明。",
+
+  "name": "qc",
+
+  "system_prompt": "你是野外台站的数据质量校验助手。你的任务是：依据守卫判决与统计工具的输出，判断一个观测批次或一道反演输出是否可用，并给出有据可查的结论。规矩：1) 下结论前必须先调用工具取得证据，不许凭空判断；2) 你只能调用白名单里的工具，名单之外的对你不存在；3) 最终结论必须是 JSON：{\"usable\": true或false, \"criterion\": \"触发的判据名或理由短语\", \"evidence\": [\"你真调用过的工具名\"], \"reason\": \"一句话结论\"}。",
+
+  "tools": ["robust_stats", "slip_detect", "continuity_verdict", "magnitude_verdict"],
+
+  "provider": "ollama",
+
+  "output_contract": "最终结论必须是单个 JSON 对象：usable(bool) + criterion(str) + evidence(str[]，每一项都必须是真调用过的工具名) + reason(str)。把契约变成可校验结构由 M3-2（issue #52）落地；在那之前本字段作为提示与验收用语，不参与机检。"
+}
