@@ -13,9 +13,14 @@ M3-0 的落地（issue #50）：接口形状由 ``providers/base.py`` 定死
   「模型没说话」当成「模型说没事」—— 那正是 KI-10 那类「半截写法静默吞错」的
   provider 版。``ProviderError`` 继承 ``RuntimeError``，与 FakeProvider 用尽时的
   异常类型一致，调用方按同一类异常处理。
-* **tool_calls 归一在这里做**：Ollama 返回 ``{"function": {"name":..., "arguments":…}}``，
-  而 ``runtime._dispatch`` 认的是 ``{"name":..., "args":…}``。翻译放 provider，
-  runtime 不需要知道 Ollama 的报文长什么样。
+* **tool_calls 与 tool 描述的归一都在这里做**：
+  - 发出方向：``ToolRegistry.describe()`` 给的是仓库自己的形状
+    （``name / description / params / risk``），Ollama 认的是
+    ``{"type": "function", "function": {"name", "description", "parameters"}}``
+    且 ``parameters`` 是 JSON Schema —— 翻译放 provider（``tools_to_wire``）。
+  - 返回方向：Ollama 给 ``{"function": {"name":..., "arguments":…}}``，
+    而 ``runtime._dispatch`` 认的是 ``{"name":..., "args":…}``。
+    两个方向 runtime 与 registry 都不需要知道 Ollama 的报文长什么样。
 * ``think`` / ``options``（temperature、seed、num_ctx）**原样透传**，本模块不对
   「设了 temperature=0 就可复现」作任何声称 —— 是否真可复现由
   ``tools/probe_provider_live.py`` 实测，结论进 ``docs/decisions/``。
@@ -33,6 +38,41 @@ import urllib.request
 from .base import ChatMessage, ChatResponse, Provider
 
 DEFAULT_URL = "http://127.0.0.1:11434"
+
+
+def tools_to_wire(tools: list[dict]) -> list[dict]:
+    """把注册表口径的工具描述翻成 Ollama/OpenAI 的报文口径。
+
+    入参是 ``ToolRegistry.describe()`` 的形状（每项 ``name / description /
+    params / risk``，``params`` 是仓库自己的参数描述）；返回 Ollama 要求的
+    ``{"type": "function", "function": {..., "parameters": <JSON Schema>}}``。
+    ``params`` 的 ``items`` 是类型字符串（如 ``"number"``），转成 schema 对象
+    ``{"type": "number"}``；``risk`` 是仓库内部的审批元数据，不进报文。
+    """
+    wire: list[dict] = []
+    for t in tools:
+        properties: dict = {}
+        required: list[str] = []
+        for key, spec in (t.get("params") or {}).items():
+            prop: dict = {"type": spec.get("type", "string")}
+            if spec.get("items"):
+                prop["items"] = {"type": spec["items"]}
+            if spec.get("description"):
+                prop["description"] = spec["description"]
+            properties[key] = prop
+            if spec.get("required"):
+                required.append(key)
+        wire.append({
+            "type": "function",
+            "function": {
+                "name": t.get("name", ""),
+                "description": t.get("description", ""),
+                "parameters": {"type": "object",
+                               "properties": properties,
+                               "required": required},
+            },
+        })
+    return wire
 
 
 class ProviderError(RuntimeError):
@@ -63,7 +103,7 @@ class OllamaProvider(Provider):
             "options": self._options,
         }
         if tools:
-            payload["tools"] = tools
+            payload["tools"] = tools_to_wire(tools)
         if self._think is not None:
             payload["think"] = bool(self._think)
 

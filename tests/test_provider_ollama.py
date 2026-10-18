@@ -115,19 +115,57 @@ class TestOllamaProvider(unittest.TestCase):
         self.assertNotIn("tools", sent)  # 无工具时不发 tools 键
 
     def test_tool_calls_normalized_to_runtime_shape(self):
-        """Ollama 的 {function:{name,arguments}} 归一成 runtime 认的 {name,args}。"""
+        """返回侧：Ollama 的 {function:{name,arguments}} 归一成 runtime 认的 {name,args}。
+
+        入参按新契约用注册表口径的描述（providers 不再期待 Ollama 形状的工具）。"""
         self._serve(200, _chat_body({"message": {
             "role": "assistant", "content": "",
             "tool_calls": [{"function": {"name": "qc_flags",
                                          "arguments": {"station": "BADG"}}}],
         }}))
-        spec = [{"type": "function",
-                 "function": {"name": "qc_flags", "parameters": {}}}]
+        spec = [{"name": "qc_flags", "description": "查台站", "risk": "low",
+                 "params": {"station": {"type": "string", "required": True}}}]
         resp = self.provider.chat(
             [ChatMessage(role="user", content="查 BADG")], spec)
         self.assertEqual(resp.tool_calls,
                          [{"name": "qc_flags", "args": {"station": "BADG"}}])
-        self.assertIn("tools", self.srv.httpd.requests[0])  # 有工具时才发
+        sent = self.srv.httpd.requests[0]
+        self.assertEqual(sent["tools"][0]["function"]["name"], "qc_flags")
+        self.assertEqual(sent["tools"][0]["function"]["parameters"]["required"],
+                         ["station"])
+
+    def test_registry_tools_converted_to_wire_schema(self):
+        """请求侧：注册表口径（name/description/params/risk）翻成 Ollama 的
+        {"type":"function","function":{...,"parameters":JSON Schema}} ——
+        required 收齐、items 变 schema 对象、risk 不进报文。"""
+        registry_spec = [{
+            "name": "robust_stats",
+            "description": "稳健统计",
+            "risk": "low",
+            "params": {
+                "values": {"type": "array", "items": "number",
+                           "required": True, "description": "观测序列"},
+                "unit": {"type": "string"},
+            },
+        }]
+        self._serve(200, _chat_body({"message": {"role": "assistant",
+                                                 "content": ""}}))
+        self.provider.chat(
+            [ChatMessage(role="user", content="s")], registry_spec)
+        wire = self.srv.httpd.requests[0]["tools"]
+        self.assertEqual(len(wire), 1)
+        self.assertEqual(set(wire[0]), {"type", "function"})
+        fn = wire[0]["function"]
+        self.assertEqual(set(fn), {"name", "description", "parameters"})
+        self.assertEqual(fn["name"], "robust_stats")
+        self.assertEqual(fn["description"], "稳健统计")
+        parameters = fn["parameters"]
+        self.assertEqual(parameters["type"], "object")
+        self.assertEqual(parameters["required"], ["values"])
+        self.assertEqual(parameters["properties"]["values"],
+                         {"type": "array", "items": {"type": "number"},
+                          "description": "观测序列"})
+        self.assertEqual(parameters["properties"]["unit"], {"type": "string"})
 
     def test_tool_call_without_arguments_gets_empty_args(self):
         self._serve(200, _chat_body({"message": {
@@ -135,7 +173,8 @@ class TestOllamaProvider(unittest.TestCase):
             "tool_calls": [{"function": {"name": "x"}}],
         }}))
         resp = self.provider.chat(
-            [ChatMessage(role="user", content="s")], [{"type": "function"}])
+            [ChatMessage(role="user", content="s")],
+            [{"name": "x", "description": "", "risk": "low", "params": {}}])
         self.assertEqual(resp.tool_calls, [{"name": "x", "args": {}}])
 
     def test_http_error_is_typed_provider_error(self):
