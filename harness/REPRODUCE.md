@@ -191,6 +191,16 @@ PASS 结构化结论、证据引用与 trace 基线一致
 PASS 证据引用有效：t0001
 ```
 
+### 3.2 本地模型通道与 5 次复现性探针
+
+```powershell
+$env:PYTHONPATH="src"; python tools/probe_provider_live.py --runs 5
+```
+
+**判据**：Ollama 可访问；smoke 返回工具调用；5 次回答逐字一致时退出码 0。
+记录写 `logs/probe_provider_YYYYMMDD.json`。该探针依赖本机模型服务，不进入
+固定测试门禁；入库记录 `logs/probe_provider_20261018.json` 是 2026-10-18 的实测证据。
+
 ## 4. 数字回源核对
 
 ```powershell

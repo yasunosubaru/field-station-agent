@@ -1,0 +1,38 @@
+{
+  "utc": "2026-10-18T07:12:39Z",
+  "provider": "ollama",
+  "config_model": "qwen3:8b",
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_ctx": 8192
+  },
+  "ollama_version": "0.40.4",
+  "runs": 5,
+  "smoke": {
+    "content": "",
+    "tool_calls": [
+      {
+        "name": "query_station",
+        "args": {
+          "days": 3,
+          "station": "BADG"
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 198,
+      "completion_tokens": 27
+    }
+  },
+  "reproducibility": {
+    "answers": [
+      "中位数",
+      "中位数",
+      "中位数",
+      "中位数",
+      "中位数"
+    ],
+    "identical": true
+  }
+}
