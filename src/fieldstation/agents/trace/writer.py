@@ -25,9 +25,16 @@ class TraceWriter:
 
     def __init__(self, path: str | Path):
         self._path = Path(path)
+        self._events: list[dict] = []
+
+    @property
+    def events(self) -> tuple[dict, ...]:
+        """本次进程内已写事件的内存视图；读取文件仍是 ``read_trace``。"""
+        return tuple(self._events)
 
     def write(self, kind: str, payload: dict) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         line = {"kind": kind, **payload}
+        self._events.append(line)
         with self._path.open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(line, ensure_ascii=False, separators=(",", ":")) + "\n")

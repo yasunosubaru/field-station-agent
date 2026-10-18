@@ -1,0 +1,82 @@
+{
+  "actual_sha256": "a13504d66064d31198eb1f0e2018a419cf19857dd9fcb739a403915c718a4cb4",
+  "conclusion": "{\"attribution\": {\"evidence\": [{\"call_id\": \"t0001\", \"finding\": \"RMSE 126922.1 TECU 超过 500 TECU 物理上限\", \"tool\": \"magnitude_verdict\"}], \"fault_type\": \"nonphysical_rmse\"}, \"confidence\": 0.99, \"recommendation\": \"拒绝该反演输出，复查接收机钟与相位定平链路\"}",
+  "conclusion_validation": {
+    "evidence_call_ids": [
+      "t0001"
+    ],
+    "valid": true
+  },
+  "config_hash": "7ab489aca3e740477bb3f6f1c64f0fa84d68fa397a05a16d09b72ee6e1c4b963",
+  "kind": "fieldstation.qc_agent_replay.log",
+  "metrics_count": 3,
+  "trace": [
+    {
+      "agent": "qc",
+      "i": 0,
+      "input_digest": "33e165434d9cf249",
+      "kind": "run_start"
+    },
+    {
+      "agent": "qc",
+      "i": 0,
+      "input_digest": "33e165434d9cf249",
+      "kind": "provider_call"
+    },
+    {
+      "agent": "qc",
+      "approved": true,
+      "args": {
+        "rmse": 126922.1
+      },
+      "call_id": "t0001",
+      "i": 1,
+      "input_digest": "33e165434d9cf249",
+      "kind": "tool_call",
+      "tool": "magnitude_verdict"
+    },
+    {
+      "agent": "qc",
+      "call_id": "t0001",
+      "error": null,
+      "i": 1,
+      "input_digest": "33e165434d9cf249",
+      "kind": "tool_result",
+      "ok": true,
+      "result": {
+        "applicable": true,
+        "cap_tecu": 500.0,
+        "criterion": "nonphysical_rmse",
+        "reason": "RMSE 126922.1 TECU 超过物理上限 500 TECU（非物理值）",
+        "rejected": true,
+        "rmse": 126922.1
+      },
+      "result_digest": "d29229c3fea048eb",
+      "tool": "magnitude_verdict"
+    },
+    {
+      "agent": "qc",
+      "i": 1,
+      "input_digest": "33e165434d9cf249",
+      "kind": "provider_call"
+    },
+    {
+      "agent": "qc",
+      "conclusion_digest": "13f37d4738921627",
+      "evidence_call_ids": [
+        "t0001"
+      ],
+      "i": 2,
+      "input_digest": "33e165434d9cf249",
+      "kind": "conclusion_valid"
+    },
+    {
+      "agent": "qc",
+      "i": 2,
+      "input_digest": "33e165434d9cf249",
+      "kind": "run_end"
+    }
+  ],
+  "trace_sha256": "3f36975d6279deeb19ace3292c9297034859e1751f1d597d1449a6cb574726de",
+  "version": 1
+}

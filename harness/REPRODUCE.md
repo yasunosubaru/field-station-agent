@@ -164,6 +164,33 @@ PASS 归因输出与 fixture 期望一致
 仓库在公开前已移除本机绝对路径，见 commit `71f7e6d`；其余逐字未动。
 重跑时该行显示你的仓库路径、时间戳与耗时会不同，判定看 `PASS` 与退出码。）
 
+### 3.1 M3 结构化结论与工具证据回放
+
+```powershell
+$env:PYTHONPATH="src"; python harness/qc_agent_replay.py --fixture harness/fixtures/qc_agent_replay_20261018.json
+$env:PYTHONPATH="src"; python harness/qc_agent_replay.py --verify-log logs/qc_agent_replay.json
+```
+
+**判据**：第一次命令输出 `PASS 结构化结论、证据引用与 trace 基线一致`；
+第二次命令输出 `PASS 证据引用有效：t0001`。两次退出码均为 0。
+
+这条链路用 `config/agents/qc.json` 的真实装配路径，先调用
+`magnitude_verdict`，再要求模型给出 `attribution / recommendation / confidence`
+结构化结论。证据必须引用成功工具调用的 `call_id`；编造引用会在 replay 时被拒。
+决策 trace 与结论保持确定性；token/耗时另写 `logs/qc_agent_metrics.jsonl`，
+该旁路文件每次运行会变化，不参与 sha256 基线。
+
+```text
+  config_hash 7ab489aca3e740477bb3f6f1c64f0fa84d68fa397a05a16d09b72ee6e1c4b963
+  evidence    ['t0001']
+  trace       7 events
+  metrics     3 events
+sha256: a13504d66064d31198eb1f0e2018a419cf19857dd9fcb739a403915c718a4cb4
+  expected    a13504d66064d31198eb1f0e2018a419cf19857dd9fcb739a403915c718a4cb4
+PASS 结构化结论、证据引用与 trace 基线一致
+PASS 证据引用有效：t0001
+```
+
 ## 4. 数字回源核对
 
 ```powershell
@@ -223,6 +250,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | 测试总数、skip==0 | README「现状」行 / 各报告 | 第 1 节（判据含 skipped==0） |
 | 五项门禁 5/5 | README「现状」行 | 第 2 节 |
 | 归因回放 sha256 | `logs/replay_20261013.json` | 第 3 节（与 fixture 对拍） |
+| M3 结构化结论回放 sha256 | `logs/qc_agent_replay.json` | 第 3.1 节（并与证据引用复校） |
 | CLI 插图内容 | `figures/`（如已出图） | 第 6 节（重跑命令即重取输出） |
 
 ## 退出码速查
@@ -232,6 +260,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | unittest 固定命令 | 全绿且 skip 0 | 1=失败/错误；出现 `skipped=N` 视为失败 |
 | `harness/selftest.py` | 被选项全 PASS | 1=任一 FAIL；2=用法错误 |
 | `harness/replay.py` | 与 fixture 期望一致 | 1=漂移；2=用法/IO 错误 |
+| `harness/qc_agent_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
 | `tools/make_cli_figures.py` | 采集并渲染完成 | 2=matplotlib 缺席/用法错误 |
