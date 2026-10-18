@@ -24,3 +24,5 @@ Thumbs.db
 # 所以这几棵目录整体入库（门禁为何把 skip 当失败，见 harness/selftest.py 第 1 项）。
 # SDD 流程临时区（ledger / brief / review package）
 .superpowers/
+# 本机实况的 provider 覆盖配置不入库（每台机器自己一份）：
+config/*.local.json
