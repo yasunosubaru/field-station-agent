@@ -1,13 +1,14 @@
 """provider 抽象层：消息/响应数据类、Provider 协议、get_provider 工厂。
 
 这是 spec §4「provider 抽象」的落地：``chat(messages, tools) -> response``，
-配置全部外置。M0 只提供 fake；真实模型（本地 Ollama / 云 API）在 M3 接入，
-本模块只把接口形状定死，不接真实模型。
+配置全部外置。M0 只提供 fake；M3-0（issue #50）接入本地 Ollama 通道，
+云 API 通道的选型见 X-1（issue #71）的结论，接入时按同一协议加分支。
 
 设计决定（非事实断言）：
-  * ``get_provider`` 目前只认 ``"fake"``，遇到未知名字抛 ``ValueError``，
-    且**不留** ``NotImplementedError`` 的 TODO 分支 —— 一个未实现的占位分支
-    会让 Task 8 的回放评测以为还有别的执行路径可走。
+  * ``get_provider`` 只认在 ``config/providers.json`` 里配过的名字，遇到未知名字
+    抛 ``ValueError``，且**不留** ``NotImplementedError`` 的 TODO 分支 ——
+    一个未实现的占位分支会让回放评测以为还有别的执行路径可走。
+    新接一个通道 = 加一个真实分支 + 配置项，而不是留占位。
   * ``Provider`` 是 ``@runtime_checkable`` 协议：任何带 ``name`` 属性与
     ``chat`` 方法的对象都在结构上满足它，换模型不需要改调用方代码。
 
@@ -51,9 +52,18 @@ class Provider(Protocol):
 
 
 def get_provider(name: str, config: dict) -> Provider:
-    """按名字与配置构造 provider。M0 只认 ``"fake"``，未知名字抛 ``ValueError``。"""
+    """按名字与配置构造 provider。
+
+    ``fake`` 是测试替身（按预置顺序返回）；``ollama`` 是 M3-0 接入的本地通道
+    （配置见 ``config/providers.json``）。未知名字抛 ``ValueError``，不留占位分支。
+    """
     if name == "fake":
         from .fake import FakeProvider
 
         return FakeProvider(list(config.get("responses", [])))
-    raise ValueError(f"未知 provider: {name!r}（当前只支持 'fake'，真实 provider 在 M3 接入）")
+    if name == "ollama":
+        from .ollama import OllamaProvider
+
+        return OllamaProvider(config)
+    raise ValueError(f"未知 provider: {name!r}（支持 'fake' 与 'ollama'，"
+                     "配置见 config/providers.json）")
