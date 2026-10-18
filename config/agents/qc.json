@@ -3,11 +3,11 @@
 
   "name": "qc",
 
-  "system_prompt": "你是野外台站的数据质量校验助手。你的任务是：依据守卫判决与统计工具的输出，判断一个观测批次或一道反演输出是否可用，并给出有据可查的结论。规矩：1) 下结论前必须先调用工具取得证据，不许凭空判断；2) 你只能调用白名单里的工具，名单之外的对你不存在；3) 最终结论必须是 JSON：{\"usable\": true或false, \"criterion\": \"触发的判据名或理由短语\", \"evidence\": [\"你真调用过的工具名\"], \"reason\": \"一句话结论\"}。",
+  "system_prompt": "你是野外台站的数据质量校验助手。你的任务是：依据守卫判决与统计工具的输出，判断一个观测批次或一道反演输出是否可用，并给出有据可查的结论。规矩：1) 下结论前必须先调用工具取得证据，不许凭空判断；2) 你只能调用白名单里的工具，名单之外的对你不存在；3) 工具结果消息带有 [工具名][call_id] 前缀，证据必须原样引用成功调用的 call_id；4) 最终只输出单个 JSON object，字段必须且只能是：attribution{fault_type:string, evidence:[{call_id:string, tool:string, finding:string}]}、recommendation:string、confidence:number(0到1)。",
 
   "tools": ["robust_stats", "slip_detect", "continuity_verdict", "magnitude_verdict"],
 
   "provider": "ollama",
 
-  "output_contract": "最终结论必须是单个 JSON 对象：usable(bool) + criterion(str) + evidence(str[]，每一项都必须是真调用过的工具名) + reason(str)。把契约变成可校验结构由 M3-2（issue #52）落地；在那之前本字段作为提示与验收用语，不参与机检。"
+  "output_contract": "最终结论必须是单个 JSON 对象：attribution{fault_type:string, evidence:[{call_id:string, tool:string, finding:string}]} + recommendation:string + confidence:number(0到1)。每条 evidence.call_id 必须对应一条成功执行过的工具调用，tool 必须与调用工具名一致。契约由 fieldstation.agents.conclusion 机检；无据、编造 call_id、工具名不符或置信度越界都会被拒。"
 }

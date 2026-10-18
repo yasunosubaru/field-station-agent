@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, field
 
 from .approval import ApprovalGate, ApprovalRequest
+from .conclusion import ConclusionContract, ConclusionRejected
 from .providers.base import ChatMessage, Provider
 from .tools import ToolRegistry, ToolResult
 
@@ -85,11 +87,15 @@ def _dispatch(
     registry: ToolRegistry | None,
     approval: ApprovalGate | None,
     messages: list[ChatMessage],
+    call_id: str,
+    metrics: "TraceWriter | None",
+    capture_tool_results: bool,
 ) -> None:
     """执行一次工具调用，并把结果追加进对话。"""
     name = call.get("name", "")
     args = call.get("args") or {}
     tool = registry.get(name) if registry is not None else None
+    started_ns = time.perf_counter_ns()
 
     approved = True
     if tool is not None and approval is not None:
@@ -115,32 +121,47 @@ def _dispatch(
         # 未注册的工具按高风险看待：不执行。模型编个工具名出来，
         # 不能靠猜名字绕过 rules/ 的判据链。
         trace.write("tool_call", {**_base(trace, agent.name, i, digest),
-                                  "tool": name, "args": args, "approved": False})
+                                  "call_id": call_id, "tool": name,
+                                  "args": args, "approved": False})
         result = ToolResult(ok=False, error=f"未注册的工具：{name!r}")
     elif not approved:
         trace.write("tool_call", {**_base(trace, agent.name, i, digest),
-                                  "tool": name, "args": args, "approved": False})
+                                  "call_id": call_id, "tool": name,
+                                  "args": args, "approved": False})
         result = ToolResult(ok=False, error="未获人工批准，未执行")
     else:
         trace.write("tool_call", {**_base(trace, agent.name, i, digest),
-                                  "tool": name, "args": args, "approved": True})
+                                  "call_id": call_id, "tool": name,
+                                  "args": args, "approved": True})
         result = tool.invoke(args)
 
     payload = {
         **_base(trace, agent.name, i, digest),
+        "call_id": call_id,
         "tool": name,
         "ok": result.ok,
         "error": result.error,
     }
     if result.ok:
         payload["result_digest"] = _result_digest(result.data)
+        if capture_tool_results:
+            payload["result"] = result.data
     trace.write("tool_result", payload)
+    if metrics is not None:
+        metrics.write("tool_metrics", {
+            **_base(metrics, agent.name, i, digest),
+            "call_id": call_id,
+            "tool": name,
+            "ok": result.ok,
+            "duration_ms": (time.perf_counter_ns() - started_ns) / 1_000_000.0,
+        })
 
     if result.ok:
         body = json.dumps(result.data, sort_keys=True, ensure_ascii=False)
     else:
         body = f"失败：{result.error}"
-    messages.append(ChatMessage(role="tool", content=f"[{name}] {body}"))
+    messages.append(
+        ChatMessage(role="tool", content=f"[{name}][{call_id}] {body}"))
 
 
 def run(
@@ -151,6 +172,9 @@ def run(
     registry: ToolRegistry | None = None,
     approval: ApprovalGate | None = None,
     max_turns: int = MAX_TURNS_DEFAULT,
+    contract: ConclusionContract | None = None,
+    capture_tool_results: bool = False,
+    metrics: "TraceWriter | None" = None,
 ) -> str:
     """跑一个任务：可以多轮，每轮都可以调工具；高风险动作先过审批门。
 
@@ -166,22 +190,53 @@ def run(
     ]
 
     calls = 0
+    tool_calls = 0
     content = ""
     while True:
         trace.write("provider_call", _base(trace, agent.name, calls, digest))
+        started_ns = time.perf_counter_ns()
         response = agent.provider.chat(messages, agent.tools)
+        if metrics is not None:
+            metrics.write("provider_metrics", {
+                **_base(metrics, agent.name, calls, digest),
+                "call_id": f"p{calls + 1:04d}",
+                "duration_ms": (time.perf_counter_ns() - started_ns) / 1_000_000.0,
+                "usage": dict(response.usage),
+            })
         calls += 1
         content = response.content
 
         if not response.tool_calls:
             break
         for call in response.tool_calls:
-            _dispatch(agent, call, trace, digest, calls, registry, approval, messages)
+            tool_calls += 1
+            _dispatch(
+                agent, call, trace, digest, calls, registry, approval, messages,
+                f"t{tool_calls:04d}", metrics, capture_tool_results)
 
         if calls >= max_turns:
             trace.write("truncated", {**_base(trace, agent.name, calls, digest),
                                       "max_turns": max_turns})
             break
 
+    rejected: ConclusionRejected | None = None
+    if contract is not None:
+        validation = contract.validate(content, list(trace.events))
+        if validation.valid:
+            trace.write("conclusion_valid", {
+                **_base(trace, agent.name, calls, digest),
+                "conclusion_digest": _result_digest(validation.conclusion),
+                "evidence_call_ids": list(validation.evidence_call_ids),
+            })
+        else:
+            trace.write("conclusion_rejected", {
+                **_base(trace, agent.name, calls, digest),
+                "errors": list(validation.errors),
+            })
+            rejected = ConclusionRejected(
+                validation.errors, validation.conclusion)
+
     trace.write("run_end", _base(trace, agent.name, calls, digest))
+    if rejected is not None:
+        raise rejected
     return content
