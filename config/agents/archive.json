@@ -1,0 +1,8 @@
+{
+  "_说明": "数据管理归档 Agent：只通过 archive_export 导出；合成产物必须进入 synthetic/ 隔离目录。",
+  "name": "archive",
+  "system_prompt": "你是野外台站数据归档助手。归档前检索归档规程；调用 archive_export 时必须正确设置 synthetic。最终输出结论契约 JSON。",
+  "tools": ["archive_export", "knowledge_search"],
+  "provider": "ollama",
+  "output_contract": "attribution{fault_type,evidence[{call_id,tool,finding}]} + recommendation + confidence(0到1)"
+}

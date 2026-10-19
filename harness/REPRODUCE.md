@@ -201,6 +201,75 @@ $env:PYTHONPATH="src"; python tools/probe_provider_live.py --runs 5
 记录写 `logs/probe_provider_YYYYMMDD.json`。该探针依赖本机模型服务，不进入
 固定测试门禁；入库记录 `logs/probe_provider_20261018.json` 是 2026-10-18 的实测证据。
 
+### 3.3 M4 四类 Agent 回放与验收分数
+
+```powershell
+$env:PYTHONPATH="src"; python harness/m4_agents_replay.py --fixture harness/fixtures/m4_agents_replay_20261019.json
+$env:PYTHONPATH="src"; python harness/m4_agents_replay.py --verify-log logs/m4_agents_replay.json
+```
+
+**判据**：第一次命令输出 `PASS M4 回放基线与 fixture 一致`（5 条场景的
+`config_hash` 与 `sha256` 全对）；第二次命令逐场景复校结论证据引用，输出
+5 行 `PASS` 加末行 `PASS 5 个场景的证据引用与 checks 全部有效`。两次退出码均为 0。
+
+覆盖哪五条：`device_monitor`（读数含 1 条缺测的空值负例）、`fault_diagnosis`
+（证据同时挂 `magnitude_verdict` / `knowledge_search` / `station_health` 三条
+工具输出）、`operations_dispatch+`（高风险动作过审批门并放行）、
+`operations_dispatch-`（同一动作被驳回、不执行；两条路径的审批 verdict 与
+动作是否执行都进 trace）、`archive`（`synthetic=true` 强制进 `synthetic/`
+子目录 + `SYNTHETIC_` 前缀，落盘文件名核对）。
+
+M4-2 的「回放分数不劣于 M3 基线」对照第 3.1 节 M3 基线（结论契约 valid、
+证据引用有效）：本回放 summary 为 `scenarios 5/5 valid, checks 14/14,
+evidence 9/9, not_worse_than_m3=True`。token/耗时同样另写
+`logs/m4_agents_metrics.jsonl` 旁路文件，不参与 sha256 基线。
+
+```text
+  device_monitor           checks 2/2  sha256 9c233ac2fc7f…  PASS
+  fault_diagnosis          checks 2/2  sha256 99ec58d5a29c…  PASS
+  operations_dispatch+     checks 4/4  sha256 d88684f45619…  PASS
+  operations_dispatch-     checks 4/4  sha256 015cac7829a5…  PASS
+  archive                  checks 2/2  sha256 e7f1890c1733…  PASS
+  summary scenarios 5/5 valid, checks 14/14, evidence 9/9, not_worse_than_m3=True
+  expected    1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389
+sha256: 1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389
+PASS M4 回放基线与 fixture 一致
+PASS device_monitor: 证据引用 t0001；checks 全过
+PASS fault_diagnosis: 证据引用 t0001, t0002, t0003；checks 全过
+PASS operations_dispatch+: 证据引用 t0001, t0002；checks 全过
+PASS operations_dispatch-: 证据引用 t0001；checks 全过
+PASS archive: 证据引用 t0001, t0002；checks 全过
+PASS 5 个场景的证据引用与 checks 全部有效
+```
+
+（以上片段为 2026-10-19 实跑粘贴。）
+
+### 3.4 知识库抽查（构造问题 + 开放探针）
+
+```powershell
+$env:PYTHONPATH="src"; python tools/build_knowledge_base.py
+```
+
+**判据**：退出码 0；输出 `in_scope=10 hits=10 hit_rate=1.000`；重建
+`data/kb/knowledge.sqlite3` 并重写 `logs/kb_smoke_20261019.json`。
+
+怎么读这份记录（**别把 10/10 当成「已解决知识检索」**）：`in_scope` 的 10 条
+问题按库内 10 条规程**逐条反推措辞**，问题与条目一一对应，命中率只证明检索
+通路与切词在工作，不代表开放查询的泛化命中率；`probes` 是库内没有对应条目的
+开放问题，记录不命中/弱命中的实际行为——空结果表示正确报告无覆盖，非空只是
+词面相近的弱命中（见 `top3`），**不构成知识覆盖**。
+
+```text
+documents=10 in_scope=10 hits=10 hit_rate=1.000
+probes=3 empty=1
+db=<仓库根>\data\kb\knowledge.sqlite3
+log=<仓库根>\logs\kb_smoke_20261019.json
+```
+
+（`db`/`log` 行重跑时显示你的仓库路径。探针实测：2 条词面相近弱命中
+`qc-nonphysical-rmse` / `network-loss`，1 条空——见记录文件 `probes` 节，
+`empty=true` 表示无覆盖。）
+
 ## 4. 数字回源核对
 
 ```powershell
@@ -261,6 +330,8 @@ python tools/make_cli_figures.py --command "..." --out figures
 | 五项门禁 5/5 | README「现状」行 | 第 2 节 |
 | 归因回放 sha256 | `logs/replay_20261013.json` | 第 3 节（与 fixture 对拍） |
 | M3 结构化结论回放 sha256 | `logs/qc_agent_replay.json` | 第 3.1 节（并与证据引用复校） |
+| M4 四类 Agent 回放 sha256 | `logs/m4_agents_replay.json` | 第 3.3 节（与 fixture 对拍 + 证据复校） |
+| 知识库抽查命中率与探针行为 | `logs/kb_smoke_20261019.json` | 第 3.4 节（重建索引后重跑） |
 | CLI 插图内容 | `figures/`（如已出图） | 第 6 节（重跑命令即重取输出） |
 
 ## 退出码速查
@@ -271,6 +342,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/selftest.py` | 被选项全 PASS | 1=任一 FAIL；2=用法错误 |
 | `harness/replay.py` | 与 fixture 期望一致 | 1=漂移；2=用法/IO 错误 |
 | `harness/qc_agent_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
+| `harness/m4_agents_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
 | `tools/make_cli_figures.py` | 采集并渲染完成 | 2=matplotlib 缺席/用法错误 |

@@ -62,9 +62,12 @@ SCAN_DIRS = ("src", "tests", "harness", "tools")
 #: 2026-10-15) 同理：model.py 是 GNSS 搬运件且只读，这类观测模型是本项目
 #: 新造的、无源项目对应文件。注意 store/ 整棵子树**不在**豁免内（与搬运件同目录），
 #: 所以按文件逐条加，不能只加 store/ 前缀了事。
+#: `src/fieldstation/store/work_order.py` (M4-3 工单模型与确定性状态机，
+#: 2026-10-18) 同理：本项目从零写的工单模型，无源项目对应文件。
 ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
                           "src/fieldstation/store/station.py",
-                          "src/fieldstation/store/model.py")
+                          "src/fieldstation/store/model.py",
+                          "src/fieldstation/store/work_order.py")
 
 # ---------------------------------------------------------------- 第 1 项
 def check_tests() -> tuple[bool, list[str]]:

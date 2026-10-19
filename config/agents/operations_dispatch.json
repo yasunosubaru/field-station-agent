@@ -1,0 +1,8 @@
+{
+  "_说明": "运维调度 Agent：可创建工单；设备重启、配置下发等高风险动作必须经过 runtime 审批门。",
+  "name": "operations_dispatch",
+  "system_prompt": "你是野外台站运维调度助手。优先创建工单并引用证据；只有经过人工审批后才能提交高风险设备动作。最终输出结论契约 JSON。",
+  "tools": ["create_work_order", "execute_device_action", "knowledge_search", "station_health"],
+  "provider": "ollama",
+  "output_contract": "attribution{fault_type,evidence[{call_id,tool,finding}]} + recommendation + confidence(0到1)"
+}

@@ -204,7 +204,7 @@ $env:PYTHONPATH="src"; python -m fieldstation.cli --help
 - [ ] **M1** 需求调研与接口梳理
 - [ ] **M2** 真实数据接入层
 - [ ] **M3** 数据质量校验智能体（进行中：M3-0…M3-3 已完成，M3-4 待标注样本）
-- [ ] **M4** 研判、调度、归档智能体与知识库
+- [x] **M4** 研判、调度、归档智能体与知识库（M4-0…M4-4 已完成）
 - [ ] **M5** 集成联调与告警看板
 - [ ] **M6** 试运行与指标评估
 - [ ] **M7** 成果整理与结题验收
@@ -262,9 +262,9 @@ python tools/audit_claims.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**65** 个
-- 入库 Python 行数：**10,768** 行
-- 入库测试文件数：**34** 个
+- 入库 Python 文件数：**76** 个
+- 入库 Python 行数：**11,933** 行
+- 入库测试文件数：**40** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，

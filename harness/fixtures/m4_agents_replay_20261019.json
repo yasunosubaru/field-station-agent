@@ -1,0 +1,27 @@
+{
+  "kind": "fieldstation.m4_agents_replay.fixture",
+  "scenarios": {
+    "archive": {
+      "config_hash": "8ff8579660ca06c7d95e997b56944bceefd1c034891a78a654f2a9f9ba7261ee",
+      "sha256": "e7f1890c17332a5465ecf3fc4f2ad20f3e06f0c5ce84cb9fdab06c658caa25b8"
+    },
+    "device_monitor": {
+      "config_hash": "4ac4501b4f8942b9f34264b6720b5c853e0401f804807320f5a76ec86330e541",
+      "sha256": "9c233ac2fc7f242479830f0162b7195fa92650dd0018c64e1bea1110d401f282"
+    },
+    "fault_diagnosis": {
+      "config_hash": "4823db64c3a20095eab78ca947dd7e78645e907bc7cdea000e989f100f73785f",
+      "sha256": "99ec58d5a29c3c0ac0ccbf6cfbb3ff2fb17d879dc67fc81754aa2471058424bd"
+    },
+    "operations_dispatch+": {
+      "config_hash": "0daefe3f570260abe510fc9cdda56eb3cdc9add61fad3f45ad5b63e4da45ef00",
+      "sha256": "d88684f4561949a7757b6c04fcc7a867f53e1ae780e7f54be21cbcf91be494e4"
+    },
+    "operations_dispatch-": {
+      "config_hash": "0daefe3f570260abe510fc9cdda56eb3cdc9add61fad3f45ad5b63e4da45ef00",
+      "sha256": "015cac7829a5355348747743cb20b6a69848f643aabc216088ab396b3a44b979"
+    }
+  },
+  "sha256": "1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389",
+  "version": 1
+}
