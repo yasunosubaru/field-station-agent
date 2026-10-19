@@ -10,12 +10,17 @@
 
 ## 规格与约束
 
-* **阶段之间只有消息**：阶段间的**数据**只经总线 —— 一个阶段的输入文本由它
+* **阶段之间只有消息**：阶段间的**数据**默认只经总线 —— 一个阶段的输入文本由它
   ``consumes`` 的主题上已发布的消息拼出（``Pipeline._input_text``）；要传什么，
   先发布。除此之外，输入文本开头还有一行 ``PipelineStage.note``（本阶段声明的
   任务说明，编译期常量，随输入一起进 ``input_digest``）。注意 ``note`` 不出现在
   trace 里：只看日志的复核者无法从日志还原它 —— M5-4 若要求输入全量可见，
   需要为它另加一条事件。
+* **黑板是第二条、且是声明式的通道**（M5-2）：阶段要读写共享上下文（台站/告警/
+  工单），就在 ``board_reads`` / ``board_writes`` 里声明范围；``Pipeline`` 按声明
+  造视图、把 ``board_read`` / ``board_write`` 注入该阶段**自己的**注册表（克隆，
+  不污染别的阶段）。没声明就没有这两个工具，也没有别的路径能碰到黑板。
+  黑板调用照常落 ``tool_call`` / ``tool_result``，不需要新的 trace 事件类型。
 * **消息全量落 trace**：总线的 ``message`` 事件与各阶段 runtime 事件写入同一条
   trace 文件，读一遍文件就能看到全序（M5-4 的核对建立在这条上）。
 * **每阶段一个 ``TraceWriter`` 视图**：runtime 的结论校验只看
@@ -42,7 +47,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..constants import DEFAULT_PAIR, meas_cycle_sign
@@ -51,10 +56,12 @@ from ..store import product
 from ..store.model import StationReading, to_dict as reading_to_dict
 from . import runtime
 from .approval import ApprovalGate
+from .blackboard import Blackboard, BoardView, check_patterns
 from .bus import Message, MessageBus
 from .conclusion import ConclusionContract, ConclusionRejected
 from .runtime import Agent
 from .tools import ToolRegistry
+from .tools.board_tools import board_tools
 from .trace.writer import TraceWriter
 
 #: 这些工具的成功结果会进入阶段产物（artifacts），键名去掉工具前缀。
@@ -68,7 +75,12 @@ ARTIFACT_KEYS = {
 
 @dataclass
 class PipelineStage:
-    """一个可在链路上运行的阶段：agent + 它的过滤注册表 + 发布主题与消费主题。"""
+    """一个可在链路上运行的阶段：agent + 它的过滤注册表 + 发布主题与消费主题。
+
+    ``board_reads`` / ``board_writes`` 是这个阶段对共享黑板的**声明范围**
+    （前缀模式，``*`` 全通；见 ``blackboard.py``）。声明为空就没有黑板工具 ——
+    声明是唯一的能力来源，不依赖配置里的工具白名单。
+    """
 
     name: str
     agent: Agent
@@ -78,6 +90,8 @@ class PipelineStage:
     note: str = ""
     approval: ApprovalGate | None = None
     contract: ConclusionContract = field(default_factory=ConclusionContract)
+    board_reads: tuple[str, ...] = ()
+    board_writes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not (self.name or "").strip():
@@ -87,6 +101,12 @@ class PipelineStage:
         self.consumes = tuple(self.consumes)
         if len(set(self.consumes)) != len(self.consumes):
             raise ValueError(f"阶段 {self.name!r} 的消费主题有重复：{self.consumes}")
+        self.board_reads = check_patterns(self.board_reads)
+        self.board_writes = check_patterns(self.board_writes)
+
+    @property
+    def uses_board(self) -> bool:
+        return bool(self.board_reads or self.board_writes)
 
 
 @dataclass(frozen=True)
@@ -138,7 +158,12 @@ def _artifacts(events: list[dict]) -> dict:
 
 
 class Pipeline:
-    """把若干 ``PipelineStage`` 按序串成一条链；消息走总线，留痕走 trace。"""
+    """把若干 ``PipelineStage`` 按序串成一条链；消息走总线，留痕走 trace。
+
+    传 ``board`` 时，按每个阶段的 ``board_reads`` / ``board_writes`` 声明造受控
+    视图，并把黑板工具注入该阶段**克隆出来的**注册表与工具描述列表。不传
+    ``board`` 时行为与 M5-1 完全一致（阶段若声明了范围会直接报错 —— 声明必须有板）。
+    """
 
     def __init__(
         self,
@@ -148,6 +173,7 @@ class Pipeline:
         *,
         metrics: TraceWriter | None = None,
         max_turns: int = runtime.MAX_TURNS_DEFAULT,
+        board: Blackboard | None = None,
     ) -> None:
         names = [s.name for s in stages]
         topics = [s.topic for s in stages]
@@ -155,14 +181,41 @@ class Pipeline:
             raise ValueError(f"阶段名重复：{names}")
         if len(set(topics)) != len(topics):
             raise ValueError(f"阶段发布主题重复：{topics}")
+        declared = [s.name for s in stages if s.uses_board]
+        if declared and board is None:
+            raise ValueError(
+                f"阶段声明了黑板范围但没有传 board：{declared}")
         self.bus = bus
         self.trace_path = Path(trace_path)
         self.stages = tuple(stages)
         self.metrics = metrics
         self.max_turns = max_turns
+        self.board = board
+        #: 阶段名 → 该阶段的受控视图（声明为空的阶段没有视图）。
+        self.views: dict[str, BoardView] = {}
+        #: 阶段名 → (实际使用的 agent, 实际使用的注册表) —— 黑板工具已注入。
+        self._wired: dict[str, tuple[Agent, ToolRegistry]] = {}
         for stage in self.stages:
             for topic in stage.consumes:
                 self.bus.subscribe(stage.name, topic)
+            if not stage.uses_board:
+                self._wired[stage.name] = (stage.agent, stage.registry)
+                continue
+            view = board.scope(stage.board_reads, stage.board_writes,
+                               actor=stage.name)
+            self.views[stage.name] = view
+            registry = stage.registry.clone()
+            read_tool, write_tool = board_tools(view)
+            if stage.board_reads:
+                registry.register(read_tool)
+            if stage.board_writes:
+                registry.register(write_tool)
+            self._wired[stage.name] = (
+                replace(stage.agent, tools=registry.describe()), registry)
+
+    def wired(self, stage_name: str) -> tuple[Agent, ToolRegistry]:
+        """该阶段实际使用的 (agent, 注册表)（黑板工具注入后）。测试与看板用。"""
+        return self._wired[stage_name]
 
     # ------------------------------------------------------------- 输入拼装
     def _input_text(self, stage: PipelineStage) -> str:
@@ -205,11 +258,12 @@ class Pipeline:
             text = self._input_text(stage)
             # 阶段本地视图：runtime 的结论校验只看这一个阶段的事件。
             stage_trace = TraceWriter(self.trace_path)
+            agent, registry = self._wired[stage.name]
             content = runtime.run(
-                stage.agent,
+                agent,
                 text,
                 stage_trace,
-                registry=stage.registry,
+                registry=registry,
                 approval=stage.approval,
                 max_turns=self.max_turns,
                 contract=stage.contract,
