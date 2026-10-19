@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>野外台站运行看板（M5-3）</title>
+<style>
+:root { --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --bg:#ffffff;
+         --ok:#1a7f37; --warn:#9a6700; --critical:#cf222e; --accent:#0969da; }
+* { box-sizing:border-box; }
+body { margin:0; padding:24px; font:14px/1.6 "Microsoft YaHei", "Segoe UI", sans-serif;
+        color:var(--fg); background:var(--bg); }
+h1 { font-size:20px; margin:0 0 4px; }
+h2 { font-size:16px; margin:0 0 12px; }
+.meta { color:var(--muted); font-size:12px; margin-bottom:16px; }
+.panel { border:1px solid var(--line); border-radius:8px; padding:16px; margin:0 0 16px; }
+table { border-collapse:collapse; width:100%; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);
+          vertical-align:top; }
+th { color:var(--muted); font-weight:600; font-size:12px; }
+table.inner { margin-top:8px; font-size:12px; }
+.badge { display:inline-block; padding:0 8px; border-radius:999px; font-size:12px;
+          border:1px solid var(--line); }
+.badge.ok { color:var(--ok); border-color:var(--ok); }
+.badge.warn { color:var(--warn); border-color:var(--warn); }
+.badge.critical { color:var(--critical); border-color:var(--critical); }
+.bar { height:8px; background:#eaeef2; border-radius:4px; overflow:hidden;
+        min-width:120px; margin-bottom:2px; }
+.bar span { display:block; height:100%; background:var(--accent); }
+code { font-family:Consolas, monospace; white-space:nowrap; }
+.empty { color:var(--muted); }
+footer { color:var(--muted); font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>野外台站运行看板</h1>
+<div class="meta">
+  数据源：<code>logs/m5_pipeline_replay.json</code>（sha256 <code>164085a842b670c0…</code>）
+  · 链路 5 阶段 / 7 条消息
+  · checks 10/10 · tokens 2140/412
+  · 台站 1 / 告警 2（严重 0、警告 2）/ 工单 1
+</div>
+<div class="meta"><strong>合成样本</strong>：真实台站样本受 #28/#33 阻塞，本页由固定种子合成样本
+  的全链回放日志生成（替代口径，同 M4-0 / M5-1）；真实样本到位后用同一命令重新生成。</div>
+
+<section class="panel">
+  <h2>一、台站健康度</h2>
+  <table><thead><tr><th>台站</th><th>状态</th><th>健康度</th><th>缺测</th>
+  <th>最近读数</th><th>指标</th></tr></thead>
+  <tbody><tr><td><code>BADG</code></td><td><span class="badge warn">degraded</span></td><td><div class="bar"><span style="width:66.7%"></span></div><small>0.667</small></td><td>1/3</td><td>2026-10-19T08:10:00+00:00</td><td><details><summary>指标 3 项</summary><table class="inner"><thead><tr><th>sensor</th><th>metric</th><th>unit</th><th>count</th><th>missing</th><th>min</th><th>max</th><th>mean</th><th>flags</th></tr></thead><tbody><tr><td>link</td><td>rssi</td><td>dBm</td><td>1</td><td>0</td><td>-88.0</td><td>-88.0</td><td>-88.0</td><td>—</td></tr><tr><td>power</td><td>voltage</td><td>V</td><td>1</td><td>0</td><td>12.0</td><td>12.0</td><td>12.0</td><td>—</td></tr><tr><td>uplink</td><td>packets_5min</td><td>count</td><td>1</td><td>1</td><td></td><td></td><td></td><td>missing</td></tr></tbody></table></details></td></tr></tbody></table>
+</section>
+
+<section class="panel">
+  <h2>二、告警</h2>
+  <table><thead><tr><th>级别</th><th>来源</th><th>台站</th><th>标题</th>
+  <th>细节</th><th>证据（agent:call_id）</th></tr></thead>
+  <tbody><tr><td><span class="badge warn">warn</span></td><td>data_quality</td><td><code>BADG</code></td><td>GPS 01 检出周跳 / 相位阶跃</td><td>counts={&#x27;gf&#x27;: 1, &#x27;mw&#x27;: 1, &#x27;union&#x27;: 1, &#x27;split_points&#x27;: 1}；slip_indices=[30]</td><td>qc:t0001</td></tr><tr><td><span class="badge warn">warn</span></td><td>station_health</td><td><code>BADG</code></td><td>BADG 台站状态 degraded</td><td>1/3 条读数缺测；quality_flags=[&#x27;missing&#x27;]</td><td>device_monitor:t0001</td></tr></tbody></table>
+</section>
+
+<section class="panel">
+  <h2>三、工单</h2>
+  <table><thead><tr><th>工单</th><th>优先级</th><th>状态</th><th>台站</th>
+  <th>标题</th><th>动作</th><th>执行</th><th>说明</th></tr></thead>
+  <tbody><tr><td><code>WO-0001</code></td><td><span class="badge warn">P0</span></td><td>open</td><td><code>BADG</code></td><td>GPS 01 L1 持续相位阶跃 + 上行遥测缺测</td><td>restart_receiver</td><td>accepted / simulated</td><td>QC 检出 GPS 01 L1 自历元 30 起 5.0 cycles 持续阶跃；设备侧上行遥测缺测 1 条</td></tr></tbody></table>
+</section>
+
+<footer>
+  口径与规则：<code>docs/operations/dashboard.md</code> ·
+  生成命令：<code>python tools/make_station_dashboard.py</code> ·
+  本页不含时间戳，同一份日志两次生成逐字节相同。
+</footer>
+</body>
+</html>

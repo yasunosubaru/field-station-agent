@@ -1,0 +1,129 @@
+{
+  "alerts": [
+    {
+      "detail": "counts={'gf': 1, 'mw': 1, 'union': 1, 'split_points': 1}；slip_indices=[30]",
+      "evidence": [
+        {
+          "agent": "qc",
+          "call_id": "t0001"
+        }
+      ],
+      "level": "warn",
+      "source": "data_quality",
+      "station": "BADG",
+      "title": "GPS 01 检出周跳 / 相位阶跃"
+    },
+    {
+      "detail": "1/3 条读数缺测；quality_flags=['missing']",
+      "evidence": [
+        {
+          "agent": "device_monitor",
+          "call_id": "t0001"
+        }
+      ],
+      "level": "warn",
+      "source": "station_health",
+      "station": "BADG",
+      "title": "BADG 台站状态 degraded"
+    }
+  ],
+  "chain": {
+    "checks": "10/10",
+    "messages": 7,
+    "stages": 5,
+    "tokens": {
+      "completion": 412,
+      "prompt": 2140
+    }
+  },
+  "counts": {
+    "alerts": 2,
+    "alerts_by_level": {
+      "warn": 2
+    },
+    "orders": 1,
+    "stations": 1
+  },
+  "kind": "fieldstation.m5_dashboard.summary",
+  "orders": [
+    {
+      "action": "restart_receiver",
+      "assigned_to": "",
+      "description": "QC 检出 GPS 01 L1 自历元 30 起 5.0 cycles 持续阶跃；设备侧上行遥测缺测 1 条",
+      "evidence_call_ids": [],
+      "execution": {
+        "action": "restart_receiver",
+        "confidence": 0.99,
+        "execution_mode": "simulated",
+        "reason": "持续相位阶跃疑似接收机异常，远程重启后复检",
+        "station_id": "BADG",
+        "status": "accepted"
+      },
+      "order_id": "WO-0001",
+      "priority": "P0",
+      "risk": "medium",
+      "station_id": "BADG",
+      "status": "open",
+      "title": "GPS 01 L1 持续相位阶跃 + 上行遥测缺测"
+    }
+  ],
+  "page": {
+    "sha256": "667b51784a02a4db05603a7627ea56563a121a6078f0edb19eac2a8d77aa8eb1"
+  },
+  "source": {
+    "log": "logs/m5_pipeline_replay.json",
+    "log_sha256": "164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74",
+    "scenario": "m5-full-chain"
+  },
+  "stations": [
+    {
+      "health_score": 0.667,
+      "latest_observed_at": "2026-10-19T08:10:00+00:00",
+      "metrics": [
+        {
+          "count": 1,
+          "max": -88.0,
+          "mean": -88.0,
+          "metric": "rssi",
+          "min": -88.0,
+          "missing": 0,
+          "quality_flags": [],
+          "sensor": "link",
+          "unit": "dBm"
+        },
+        {
+          "count": 1,
+          "max": 12.0,
+          "mean": 12.0,
+          "metric": "voltage",
+          "min": 12.0,
+          "missing": 0,
+          "quality_flags": [],
+          "sensor": "power",
+          "unit": "V"
+        },
+        {
+          "count": 1,
+          "max": null,
+          "mean": null,
+          "metric": "packets_5min",
+          "min": null,
+          "missing": 1,
+          "quality_flags": [
+            "missing"
+          ],
+          "sensor": "uplink",
+          "unit": "count"
+        }
+      ],
+      "missing": 1,
+      "quality_flags": [
+        "missing"
+      ],
+      "station_id": "BADG",
+      "status": "degraded",
+      "total": 3
+    }
+  ],
+  "version": 1
+}
