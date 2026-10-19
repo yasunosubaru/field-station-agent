@@ -90,6 +90,20 @@ class TestM5PipelineReplay(unittest.TestCase):
                              verify.stdout + verify.stderr)
             self.assertIn("没有对应工具结果", verify.stdout)
 
+    def test_written_fixture_and_log_pin_lf(self):
+        """Windows 上写的 fixture/日志必须钉 LF：否则「跑一遍」后工作区与入库
+        版本字节不同，而 .gitattributes 归一化让 git status 装作看不见。"""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            fixture = td / "fixture.json"
+            bless = _run("--fixture", str(fixture), "--bless",
+                         "--log-dir", str(td / "bless"))
+            self.assertEqual(bless.returncode, 0, bless.stdout + bless.stderr)
+            for path in (fixture, td / "bless" / "m5_pipeline_replay.json"):
+                raw = path.read_bytes()
+                self.assertNotIn(b"\r\n", raw, f"{path} 含 CRLF")
+                self.assertTrue(raw.endswith(b"\n"), f"{path} 末尾缺换行")
+
     def test_drifted_fixture_fails(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)

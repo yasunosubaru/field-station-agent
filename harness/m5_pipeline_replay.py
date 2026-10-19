@@ -674,9 +674,12 @@ def run_once(log_dir: Path) -> dict:
 
 # ------------------------------------------------------------------ 读写与比较
 def _write_json(path: Path, obj: dict) -> None:
+    # 钉 LF（同 harness/m4_agents_replay.py）：Windows 默认写 CRLF，会让「照
+    # REPRODUCE 跑一遍」后工作区里的日志/fixture 与入库版本字节不同，而
+    # .gitattributes 的归一化又让 git status 看不出来 —— 沉默的差异会被当成结论。
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=False) + "\n",
-                    encoding="utf-8")
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=False) + "\n")
 
 
 def _write_fixture(path: Path, log: dict) -> None:
