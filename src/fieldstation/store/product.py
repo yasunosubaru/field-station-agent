@@ -154,7 +154,11 @@ def write_json(obj, path: str | Path, synthetic: bool = False) -> Path:
     if synthetic and isinstance(obj, dict):
         # 保证 JSON 合法，同时让首行内容含标记文本
         payload = {"_synthetic_note": SYNTHETIC_MARKER, **obj}
-    with path.open("w", encoding="utf-8") as fh:
+    # newline="\n"（2026-10-19 加，M5-1 发现）：归档产物的 sha256 会进入回放
+    # trace（archive_export 的工具结果被 capture），而文本模式默认按平台换行——
+    # Windows 写 CRLF、Linux 写 LF，同一输入在两平台得到不同文件字节，回放
+    # trace 的 sha 就成了宿主机函数。钉 LF 是「跨平台逐字节对拍」成立的前提。
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
         json.dump(payload, fh, indent=2, ensure_ascii=False, default=str, allow_nan=True)
         fh.write("\n")
     return path

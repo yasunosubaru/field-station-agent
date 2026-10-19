@@ -3,7 +3,7 @@
   "scenarios": {
     "archive": {
       "config_hash": "8ff8579660ca06c7d95e997b56944bceefd1c034891a78a654f2a9f9ba7261ee",
-      "sha256": "e7f1890c17332a5465ecf3fc4f2ad20f3e06f0c5ce84cb9fdab06c658caa25b8"
+      "sha256": "d53db74eb65787718c23a250ad635b990b59be9184951c91eb3519ce42c007d6"
     },
     "device_monitor": {
       "config_hash": "4ac4501b4f8942b9f34264b6720b5c853e0401f804807320f5a76ec86330e541",
@@ -22,6 +22,6 @@
       "sha256": "015cac7829a5355348747743cb20b6a69848f643aabc216088ab396b3a44b979"
     }
   },
-  "sha256": "1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389",
+  "sha256": "37ba8911cb089e6aa41d05c82b324bf1924e0952a8e437221f1863e4342cdcf9",
   "version": 1
 }

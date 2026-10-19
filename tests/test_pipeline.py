@@ -288,6 +288,20 @@ class TestSyntheticIsolation(unittest.TestCase):
             synthetic.SYNTHETIC_MARKER,
             json.loads(syn.read_text(encoding="utf-8"))["_synthetic_note"])
 
+    def test_write_json_pins_lf_line_endings(self):
+        """跨平台逐字节一致：文本模式默认在 Windows 写 CRLF。
+
+        M5-1（2026-10-19）发现：归档产物的 sha256 会进入回放 trace（archive_export
+        的工具结果被 capture），换行随平台一变，同一条回放在不同宿主机上就得到
+        不同的 trace sha —— 回放基线要求同输入在任何宿主机上逐字节相同。写文件
+        时钉 ``newline="\\n"`` 是这个前提的落点；本测试在任一平台上都拒收 CRLF。
+        """
+        base = Path(tempfile.mkdtemp())
+        path = product.write_json({"a": 1, "b": [1, 2]}, base / "x.json")
+        data = path.read_bytes()
+        self.assertNotIn(b"\r\n", data)
+        self.assertTrue(data.endswith(b"\n"))
+
     def test_manifest_isolated_and_self_consistent(self):
         rec = _tec_record(synthetic.generate(synthetic.default_cfg())[1][0])
         base = Path(tempfile.mkdtemp())

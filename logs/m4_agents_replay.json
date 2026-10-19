@@ -678,7 +678,7 @@
         "knowledge_search"
       ],
       "key": "archive",
-      "sha256": "e7f1890c17332a5465ecf3fc4f2ad20f3e06f0c5ce84cb9fdab06c658caa25b8",
+      "sha256": "d53db74eb65787718c23a250ad635b990b59be9184951c91eb3519ce42c007d6",
       "trace": [
         {
           "agent": "archive",
@@ -720,10 +720,10 @@
           "ok": true,
           "result": {
             "path": "qc/m4/synthetic/SYNTHETIC_summary.json",
-            "sha256": "59fb02cc0b59f17ea194c181bf05b428413e3f3c925d3694ea8a48a9f2ad17e0",
+            "sha256": "ac306518ae2f569e707c91d8b3467eb840778974d1497c7a42c030b6d5bf0a26",
             "synthetic": true
           },
-          "result_digest": "30bc2634ec421ca7",
+          "result_digest": "b7837fcab4195c7e",
           "tool": "archive_export"
         },
         {
@@ -788,10 +788,10 @@
           "kind": "run_end"
         }
       ],
-      "trace_sha256": "dd295aa5590dfa3ffc214e75e0776fdb59da8df387aca2997a0c5db434c7b3ce"
+      "trace_sha256": "3836624697a672f7017af7d433b97d39bc953e76790e71d7faf14843b4911dbd"
     }
   ],
-  "sha256": "1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389",
+  "sha256": "37ba8911cb089e6aa41d05c82b324bf1924e0952a8e437221f1863e4342cdcf9",
   "summary": {
     "baseline_m3": {
       "contract_valid": true,
