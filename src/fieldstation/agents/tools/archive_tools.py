@@ -34,10 +34,15 @@ class ArchiveExportTool:
         if not isinstance(synthetic, bool):
             return ToolResult(ok=False, error="synthetic 必须是布尔值")
 
-        raw = Path(relative)
-        if raw.is_absolute() or any(part == ".." for part in raw.parts):
+        # 判据必须与宿主无关：在 POSIX 上 "C:/x.json" 不算绝对路径、反斜杠也
+        # 不是分隔符，只信 Path.is_absolute()/parts 会让同一份输入随宿主变号
+        # （CI 的 Linux 跑法与 Windows 开发机不一致，2026-10-19 由 CI 抓到）。
+        unixish = relative.replace("\\", "/")
+        if (relative.startswith(("/", "\\"))
+                or (len(unixish) > 1 and unixish[1] == ":")
+                or any(part == ".." for part in unixish.split("/"))):
             return ToolResult(ok=False, error="归档路径不得为绝对路径或包含 ..")
-        target = (self.root / raw).resolve()
+        target = (self.root / relative).resolve()
         try:
             target.relative_to(self.root)
         except ValueError:

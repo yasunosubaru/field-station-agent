@@ -41,7 +41,12 @@ class TestArchiveExport(unittest.TestCase):
     def test_path_traversal_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             tool = ArchiveExportTool(Path(td))
-            for path in ("../outside.json", "a/../../outside.json", "C:/x.json"):
+            # 判据与宿主无关：盘符 / UNC / 反斜杠逃逸 / POSIX 绝对路径全都拒，
+            # 在 Windows 与 Linux 上跑出同一结论（2026-10-19 CI 回归）。
+            for path in ("../outside.json", "a/../../outside.json",
+                         "..\\outside.json", "/etc/passwd", "C:/x.json",
+                         "C:\\x.json", "\\\\server\\share\\x.json",
+                         "//server/share/x.json"):
                 with self.subTest(path=path):
                     result = tool.invoke({
                         "relative_path": path,
