@@ -350,6 +350,34 @@ $env:PYTHONPATH="src"; python tools/make_station_dashboard.py
 页面不含时间戳，同一份日志两次生成逐字节相同（`tests/test_m5_dashboard.py` 钉死）。
 样本口径同 §3.5：真实样本受 #28/#33 阻塞，当前用固定种子合成样本的替代口径。
 
+### 3.7 审批门端到端联调（M5-4）
+
+```powershell
+$env:PYTHONPATH="src"; python harness/m5_approval_audit.py
+```
+
+与 M5-1 **同一装配**跑两条完整链，只换审批者：放行（`ApproveAll`）与拒绝
+（`RejectAll`）。实跑输出（2026-10-19）：
+
+```text
+放行路径：7 条消息，trace sha256 1edead598c41b5e6…
+拒绝路径：停在审批门（5 条消息），trace sha256 8b17994df96ace9a…
+checks 13/13：全部通过
+[OK] 审计记录 logs/m5_approval_audit.json
+```
+
+核对项（13 条，任一条失败退出码 1）：放行 trace 的规范 sha 等于 M5-1 基线
+（`logs/m5_pipeline_replay.json` 的 `trace_sha256`）；消息 ↔ trace 双射（msg_id 与
+payload 规范 JSON 一致）；payload 全量（不是 digest）；refs 闭合；放行路径恰一条
+`approved` 审批记录且动作 accepted/simulated；拒绝路径恰一条 `rejected` 记录、
+动作 `tool_call.approved=false` / `tool_result.ok=false`（「未获人工批准，未执行」）、
+没有 `dispatch.work_order` / `archive.done` 消息、阶段结论被 `ConclusionRejected`
+拒绝（`t0002 不存在于成功的工具调用中`）。
+
+审计记录确定性（无时间戳/耗时、钉 LF、两次生成逐字节相同）；
+`tests/test_m5_approval_audit.py`（4 条）含一条**负例**：把「拒绝」换成放行，
+审计必须失败 —— 防止这个审计只是在自证「跑完了」。
+
 ## 4. 数字回源核对
 
 ```powershell
@@ -364,9 +392,9 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 ```text
 声明项            文档中        实测         结论
 ---------------------------------------------------
-入库 Python 文件数  85         85         PASS
-入库 Python 行数   14034      14034      PASS
-入库测试文件数        45         45         PASS
+入库 Python 文件数  86         86         PASS
+入库 Python 行数   14136      14136      PASS
+入库测试文件数        46         46         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0
 
@@ -413,6 +441,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | M4 四类 Agent 回放 sha256 | `logs/m4_agents_replay.json` | 第 3.3 节（与 fixture 对拍 + 证据复校） |
 | M5 全链回放 sha256 | `logs/m5_pipeline_replay.json` | 第 3.5 节（与 fixture 对拍 + 证据复校） |
 | 运行看板（台站 / 告警 / 工单）与页面 sha | `logs/m5_dashboard.json` | 第 3.6 节（重跑生成器，输出与入库逐字节一致） |
+| 审批门联调与消息 trace 核对 | `logs/m5_approval_audit.json` | 第 3.7 节（重跑审计，13/13） |
 | 知识库抽查命中率与探针行为 | `logs/kb_smoke_20261019.json` | 第 3.4 节（重建索引后重跑） |
 | CLI 插图内容 | `figures/`（如已出图） | 第 6 节（重跑命令即重取输出） |
 
@@ -427,6 +456,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/m4_agents_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m5_pipeline_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `tools/make_station_dashboard.py` | 页面与摘要生成完成 | 1=日志缺三类视图所需数据；2=用法/日志不可读 |
+| `harness/m5_approval_audit.py` | 13 项核对全过 | 1=有核对项失败；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
 | `tools/make_cli_figures.py` | 采集并渲染完成 | 2=matplotlib 缺席/用法错误 |
