@@ -1,0 +1,16 @@
+{
+  "high_risk_actions": [
+    "restart_receiver",
+    "power_cycle",
+    "push_configuration",
+    "upgrade_firmware",
+    "disable_alarm",
+    "modify_security_policy"
+  ],
+  "low_risk_actions": [
+    "create_work_order",
+    "query_status",
+    "generate_report",
+    "archive_export"
+  ]
+}

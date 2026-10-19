@@ -1,0 +1,807 @@
+{
+  "kind": "fieldstation.m4_agents_replay.log",
+  "scenarios": [
+    {
+      "checks": {
+        "contract_valid": true,
+        "null_reading_tolerated": true
+      },
+      "conclusion": "{\"attribution\": {\"evidence\": [{\"call_id\": \"t0001\", \"finding\": \"BADG 供电电压 2 条中缺测 1 条；健康度 0.667、状态 degraded（标记 missing）\", \"tool\": \"station_health\"}], \"fault_type\": \"power_reading_missing\"}, \"confidence\": 0.8, \"recommendation\": \"先核对供电传感器与采集链路，确认缺测原因后再决定是否派单\"}",
+      "config": "device_monitor.json",
+      "config_hash": "4ac4501b4f8942b9f34264b6720b5c853e0401f804807320f5a76ec86330e541",
+      "evidence_call_ids": [
+        "t0001"
+      ],
+      "evidence_tools": [
+        "station_health"
+      ],
+      "key": "device_monitor",
+      "sha256": "9c233ac2fc7f242479830f0162b7195fa92650dd0018c64e1bea1110d401f282",
+      "trace": [
+        {
+          "agent": "device_monitor",
+          "i": 0,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "run_start"
+        },
+        {
+          "agent": "device_monitor",
+          "i": 0,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "device_monitor",
+          "approved": true,
+          "args": {
+            "readings": [
+              {
+                "metric": "voltage",
+                "observed_at": "2026-10-19T08:00:00+00:00",
+                "quality_flag": "",
+                "sensor": "power",
+                "station_id": "BADG",
+                "unit": "V",
+                "value": 12.0
+              },
+              {
+                "metric": "voltage",
+                "observed_at": "2026-10-19T08:03:00+00:00",
+                "quality_flag": "missing",
+                "sensor": "power",
+                "station_id": "BADG",
+                "unit": "V",
+                "value": null
+              },
+              {
+                "metric": "rssi",
+                "observed_at": "2026-10-19T08:05:00+00:00",
+                "quality_flag": "",
+                "sensor": "link",
+                "station_id": "BADG",
+                "unit": "dBm",
+                "value": -88.0
+              }
+            ]
+          },
+          "call_id": "t0001",
+          "i": 1,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "tool_call",
+          "tool": "station_health"
+        },
+        {
+          "agent": "device_monitor",
+          "call_id": "t0001",
+          "error": null,
+          "i": 1,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "stations": [
+              {
+                "health_score": 0.667,
+                "latest_observed_at": "2026-10-19T08:05:00+00:00",
+                "metrics": [
+                  {
+                    "count": 1,
+                    "max": -88.0,
+                    "mean": -88.0,
+                    "metric": "rssi",
+                    "min": -88.0,
+                    "missing": 0,
+                    "quality_flags": [],
+                    "sensor": "link",
+                    "unit": "dBm"
+                  },
+                  {
+                    "count": 2,
+                    "max": 12.0,
+                    "mean": 12.0,
+                    "metric": "voltage",
+                    "min": 12.0,
+                    "missing": 1,
+                    "quality_flags": [
+                      "missing"
+                    ],
+                    "sensor": "power",
+                    "unit": "V"
+                  }
+                ],
+                "missing": 1,
+                "quality_flags": [
+                  "missing"
+                ],
+                "station_id": "BADG",
+                "status": "degraded",
+                "total": 3
+              }
+            ],
+            "summary": {
+              "alerts": [
+                "BADG"
+              ],
+              "missing": 1,
+              "total": 3
+            }
+          },
+          "result_digest": "e20ed35bda96b33f",
+          "tool": "station_health"
+        },
+        {
+          "agent": "device_monitor",
+          "i": 1,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "device_monitor",
+          "conclusion_digest": "e78bac83a1f8ae32",
+          "evidence_call_ids": [
+            "t0001"
+          ],
+          "i": 2,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "conclusion_valid"
+        },
+        {
+          "agent": "device_monitor",
+          "i": 2,
+          "input_digest": "e0bd27841aaef88e",
+          "kind": "run_end"
+        }
+      ],
+      "trace_sha256": "ee364ac88f438485b2e9ff693b17bb23c1bef11534620cad11fc3f1459fa076c"
+    },
+    {
+      "checks": {
+        "contract_valid": true,
+        "kb_hit_cited": true
+      },
+      "conclusion": "{\"attribution\": {\"evidence\": [{\"call_id\": \"t0001\", \"finding\": \"RMSE 126922.1 TECU 超过 500 TECU 物理上限\", \"tool\": \"magnitude_verdict\"}, {\"call_id\": \"t0002\", \"finding\": \"命中规程 qc-nonphysical-rmse：超限应拒绝输出并复查定平链路\", \"tool\": \"knowledge_search\"}, {\"call_id\": \"t0003\", \"finding\": \"BADG 读数健康度 1.0、状态 ok，问题集中在反演输出而非设备侧\", \"tool\": \"station_health\"}], \"fault_type\": \"nonphysical_rmse\"}, \"confidence\": 0.97, \"recommendation\": \"拒绝该反演输出，复查接收机钟与相位定平链路；设备侧暂无需动作\"}",
+      "config": "fault_diagnosis.json",
+      "config_hash": "4823db64c3a20095eab78ca947dd7e78645e907bc7cdea000e989f100f73785f",
+      "evidence_call_ids": [
+        "t0001",
+        "t0002",
+        "t0003"
+      ],
+      "evidence_tools": [
+        "magnitude_verdict",
+        "knowledge_search",
+        "station_health"
+      ],
+      "key": "fault_diagnosis",
+      "sha256": "99ec58d5a29c3c0ac0ccbf6cfbb3ff2fb17d879dc67fc81754aa2471058424bd",
+      "trace": [
+        {
+          "agent": "fault_diagnosis",
+          "i": 0,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "run_start"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "i": 0,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "approved": true,
+          "args": {
+            "rmse": 126922.1
+          },
+          "call_id": "t0001",
+          "i": 1,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "tool_call",
+          "tool": "magnitude_verdict"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "call_id": "t0001",
+          "error": null,
+          "i": 1,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "applicable": true,
+            "cap_tecu": 500.0,
+            "criterion": "nonphysical_rmse",
+            "reason": "RMSE 126922.1 TECU 超过物理上限 500 TECU（非物理值）",
+            "rejected": true,
+            "rmse": 126922.1
+          },
+          "result_digest": "d29229c3fea048eb",
+          "tool": "magnitude_verdict"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "i": 1,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "approved": true,
+          "args": {
+            "limit": 3,
+            "query": "RMSE 超过 500 TECU"
+          },
+          "call_id": "t0002",
+          "i": 2,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "tool_call",
+          "tool": "knowledge_search"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "call_id": "t0002",
+          "error": null,
+          "i": 2,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "count": 1,
+            "query": "RMSE 超过 500 TECU",
+            "results": [
+              {
+                "body": "反演相对参考解的 RMSE 超过 500 TECU 时属于非物理值。应拒绝该反演输出，并复查接收机钟、相位定平链路与参考解覆盖情况。",
+                "category": "质控规程",
+                "doc_id": "qc-nonphysical-rmse",
+                "score": -6.0495299179264075,
+                "source": "docs/spec/2026-10-13-野外台站智能体基础设计.md；rules/qc.py",
+                "title": "非物理 RMSE 量级守卫"
+              }
+            ]
+          },
+          "result_digest": "d80ccb44b602fdd3",
+          "tool": "knowledge_search"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "approved": true,
+          "args": {
+            "readings": [
+              {
+                "metric": "voltage",
+                "observed_at": "2026-10-19T08:00:00+00:00",
+                "quality_flag": "",
+                "sensor": "power",
+                "station_id": "BADG",
+                "unit": "V",
+                "value": 12.0
+              },
+              {
+                "metric": "rssi",
+                "observed_at": "2026-10-19T08:05:00+00:00",
+                "quality_flag": "",
+                "sensor": "link",
+                "station_id": "BADG",
+                "unit": "dBm",
+                "value": -88.0
+              }
+            ]
+          },
+          "call_id": "t0003",
+          "i": 2,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "tool_call",
+          "tool": "station_health"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "call_id": "t0003",
+          "error": null,
+          "i": 2,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "stations": [
+              {
+                "health_score": 1.0,
+                "latest_observed_at": "2026-10-19T08:05:00+00:00",
+                "metrics": [
+                  {
+                    "count": 1,
+                    "max": -88.0,
+                    "mean": -88.0,
+                    "metric": "rssi",
+                    "min": -88.0,
+                    "missing": 0,
+                    "quality_flags": [],
+                    "sensor": "link",
+                    "unit": "dBm"
+                  },
+                  {
+                    "count": 1,
+                    "max": 12.0,
+                    "mean": 12.0,
+                    "metric": "voltage",
+                    "min": 12.0,
+                    "missing": 0,
+                    "quality_flags": [],
+                    "sensor": "power",
+                    "unit": "V"
+                  }
+                ],
+                "missing": 0,
+                "quality_flags": [],
+                "station_id": "BADG",
+                "status": "ok",
+                "total": 2
+              }
+            ],
+            "summary": {
+              "alerts": [],
+              "missing": 0,
+              "total": 2
+            }
+          },
+          "result_digest": "b19005aa409ddc62",
+          "tool": "station_health"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "i": 2,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "conclusion_digest": "cb09b308d0571a70",
+          "evidence_call_ids": [
+            "t0001",
+            "t0002",
+            "t0003"
+          ],
+          "i": 3,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "conclusion_valid"
+        },
+        {
+          "agent": "fault_diagnosis",
+          "i": 3,
+          "input_digest": "e831259d1a8a0da7",
+          "kind": "run_end"
+        }
+      ],
+      "trace_sha256": "b54f0261c896ef36e36f63b2614f9abe42bf48742b6ab151f52055d4dfecd4a7"
+    },
+    {
+      "checks": {
+        "action_executed": true,
+        "approval_approved": true,
+        "contract_valid": true,
+        "work_order_created": true
+      },
+      "conclusion": "{\"attribution\": {\"evidence\": [{\"call_id\": \"t0001\", \"finding\": \"工单 WO-0001 已建：BADG P0 网络失联\", \"tool\": \"create_work_order\"}, {\"call_id\": \"t0002\", \"finding\": \"重启接收机已获人工批准并受理（simulated）\", \"tool\": \"execute_device_action\"}], \"fault_type\": \"link_outage\"}, \"confidence\": 0.95, \"recommendation\": \"跟踪重启结果；若 15 分钟内未恢复，升级为现场处置\"}",
+      "config": "operations_dispatch.json",
+      "config_hash": "0daefe3f570260abe510fc9cdda56eb3cdc9add61fad3f45ad5b63e4da45ef00",
+      "evidence_call_ids": [
+        "t0001",
+        "t0002"
+      ],
+      "evidence_tools": [
+        "create_work_order",
+        "execute_device_action"
+      ],
+      "key": "operations_dispatch+",
+      "sha256": "d88684f4561949a7757b6c04fcc7a867f53e1ae780e7f54be21cbcf91be494e4",
+      "trace": [
+        {
+          "agent": "operations_dispatch",
+          "i": 0,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "run_start"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 0,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "operations_dispatch",
+          "approved": true,
+          "args": {
+            "action": "restart_receiver",
+            "description": "4G 链路连续 30 分钟无上报",
+            "priority": "P0",
+            "risk": "medium",
+            "station_id": "BADG",
+            "title": "台站连续失联"
+          },
+          "call_id": "t0001",
+          "i": 1,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_call",
+          "tool": "create_work_order"
+        },
+        {
+          "agent": "operations_dispatch",
+          "call_id": "t0001",
+          "error": null,
+          "i": 1,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "action": "restart_receiver",
+            "assigned_to": "",
+            "description": "4G 链路连续 30 分钟无上报",
+            "evidence_call_ids": [],
+            "order_id": "WO-0001",
+            "priority": "P0",
+            "risk": "medium",
+            "station_id": "BADG",
+            "status": "open",
+            "title": "台站连续失联"
+          },
+          "result_digest": "02d2fa4fcb4e94f0",
+          "tool": "create_work_order"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 1,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "provider_call"
+        },
+        {
+          "action": "execute_device_action",
+          "agent": "operations_dispatch",
+          "by": "approve_all",
+          "confidence": 1.0,
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "approval",
+          "risk": "high",
+          "verdict": "approved"
+        },
+        {
+          "agent": "operations_dispatch",
+          "approved": true,
+          "args": {
+            "action": "restart_receiver",
+            "confidence": 0.99,
+            "reason": "连续失联，需远程重启接收机",
+            "station_id": "BADG"
+          },
+          "call_id": "t0002",
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_call",
+          "tool": "execute_device_action"
+        },
+        {
+          "agent": "operations_dispatch",
+          "call_id": "t0002",
+          "error": null,
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "action": "restart_receiver",
+            "confidence": 0.99,
+            "execution_mode": "simulated",
+            "reason": "连续失联，需远程重启接收机",
+            "station_id": "BADG",
+            "status": "accepted"
+          },
+          "result_digest": "11b0203ad41bb16e",
+          "tool": "execute_device_action"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "operations_dispatch",
+          "conclusion_digest": "65aae8ea92864807",
+          "evidence_call_ids": [
+            "t0001",
+            "t0002"
+          ],
+          "i": 3,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "conclusion_valid"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 3,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "run_end"
+        }
+      ],
+      "trace_sha256": "bcc87620ae11eae1d8030320aab0a654ff84afe11fe49aa70408e38b33176706"
+    },
+    {
+      "checks": {
+        "action_blocked": true,
+        "approval_rejected": true,
+        "contract_valid": true,
+        "work_order_created": true
+      },
+      "conclusion": "{\"attribution\": {\"evidence\": [{\"call_id\": \"t0001\", \"finding\": \"工单 WO-0001 已建：BADG P0 网络失联，等待人工决策\", \"tool\": \"create_work_order\"}], \"fault_type\": \"link_outage\"}, \"confidence\": 0.6, \"recommendation\": \"重启请求被驳回、未执行任何设备动作；转人工确认现场状态后重新评估\"}",
+      "config": "operations_dispatch.json",
+      "config_hash": "0daefe3f570260abe510fc9cdda56eb3cdc9add61fad3f45ad5b63e4da45ef00",
+      "evidence_call_ids": [
+        "t0001"
+      ],
+      "evidence_tools": [
+        "create_work_order"
+      ],
+      "key": "operations_dispatch-",
+      "sha256": "015cac7829a5355348747743cb20b6a69848f643aabc216088ab396b3a44b979",
+      "trace": [
+        {
+          "agent": "operations_dispatch",
+          "i": 0,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "run_start"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 0,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "operations_dispatch",
+          "approved": true,
+          "args": {
+            "action": "restart_receiver",
+            "description": "4G 链路连续 30 分钟无上报",
+            "priority": "P0",
+            "risk": "medium",
+            "station_id": "BADG",
+            "title": "台站连续失联"
+          },
+          "call_id": "t0001",
+          "i": 1,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_call",
+          "tool": "create_work_order"
+        },
+        {
+          "agent": "operations_dispatch",
+          "call_id": "t0001",
+          "error": null,
+          "i": 1,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "action": "restart_receiver",
+            "assigned_to": "",
+            "description": "4G 链路连续 30 分钟无上报",
+            "evidence_call_ids": [],
+            "order_id": "WO-0001",
+            "priority": "P0",
+            "risk": "medium",
+            "station_id": "BADG",
+            "status": "open",
+            "title": "台站连续失联"
+          },
+          "result_digest": "02d2fa4fcb4e94f0",
+          "tool": "create_work_order"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 1,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "provider_call"
+        },
+        {
+          "action": "execute_device_action",
+          "agent": "operations_dispatch",
+          "by": "reject_all",
+          "confidence": 1.0,
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "approval",
+          "risk": "high",
+          "verdict": "rejected"
+        },
+        {
+          "agent": "operations_dispatch",
+          "approved": false,
+          "args": {
+            "action": "restart_receiver",
+            "confidence": 0.99,
+            "reason": "连续失联，需远程重启接收机",
+            "station_id": "BADG"
+          },
+          "call_id": "t0002",
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_call",
+          "tool": "execute_device_action"
+        },
+        {
+          "agent": "operations_dispatch",
+          "call_id": "t0002",
+          "error": "未获人工批准，未执行",
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "tool_result",
+          "ok": false,
+          "tool": "execute_device_action"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 2,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "operations_dispatch",
+          "conclusion_digest": "26357712173f1563",
+          "evidence_call_ids": [
+            "t0001"
+          ],
+          "i": 3,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "conclusion_valid"
+        },
+        {
+          "agent": "operations_dispatch",
+          "i": 3,
+          "input_digest": "5069d7ad58eacf66",
+          "kind": "run_end"
+        }
+      ],
+      "trace_sha256": "44e9275652f3f97674c87db5ab20bc8132838a5bcc2818728ecdfb8b6c8a78a8"
+    },
+    {
+      "checks": {
+        "contract_valid": true,
+        "synthetic_isolated": true
+      },
+      "conclusion": "{\"attribution\": {\"evidence\": [{\"call_id\": \"t0001\", \"finding\": \"合成产物已隔离写入 qc/m4/synthetic/SYNTHETIC_summary.json\", \"tool\": \"archive_export\"}, {\"call_id\": \"t0002\", \"finding\": \"命中归档规程 archive-synthetic：合成数据必须进 synthetic/ 目录\", \"tool\": \"knowledge_search\"}], \"fault_type\": \"archive_exported\"}, \"confidence\": 0.9, \"recommendation\": \"归档完成；该产物为合成数据，不得与真实产物混放\"}",
+      "config": "archive.json",
+      "config_hash": "8ff8579660ca06c7d95e997b56944bceefd1c034891a78a654f2a9f9ba7261ee",
+      "evidence_call_ids": [
+        "t0001",
+        "t0002"
+      ],
+      "evidence_tools": [
+        "archive_export",
+        "knowledge_search"
+      ],
+      "key": "archive",
+      "sha256": "e7f1890c17332a5465ecf3fc4f2ad20f3e06f0c5ce84cb9fdab06c658caa25b8",
+      "trace": [
+        {
+          "agent": "archive",
+          "i": 0,
+          "input_digest": "fd74661df21ee195",
+          "kind": "run_start"
+        },
+        {
+          "agent": "archive",
+          "i": 0,
+          "input_digest": "fd74661df21ee195",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "archive",
+          "approved": true,
+          "args": {
+            "payload": {
+              "note": "synthetic replay artifact",
+              "result": "passed",
+              "run": "m4-replay"
+            },
+            "relative_path": "qc/m4/summary.json",
+            "synthetic": true
+          },
+          "call_id": "t0001",
+          "i": 1,
+          "input_digest": "fd74661df21ee195",
+          "kind": "tool_call",
+          "tool": "archive_export"
+        },
+        {
+          "agent": "archive",
+          "call_id": "t0001",
+          "error": null,
+          "i": 1,
+          "input_digest": "fd74661df21ee195",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "path": "qc/m4/synthetic/SYNTHETIC_summary.json",
+            "sha256": "59fb02cc0b59f17ea194c181bf05b428413e3f3c925d3694ea8a48a9f2ad17e0",
+            "synthetic": true
+          },
+          "result_digest": "30bc2634ec421ca7",
+          "tool": "archive_export"
+        },
+        {
+          "agent": "archive",
+          "approved": true,
+          "args": {
+            "limit": 3,
+            "query": "合成产物归档放在哪里"
+          },
+          "call_id": "t0002",
+          "i": 1,
+          "input_digest": "fd74661df21ee195",
+          "kind": "tool_call",
+          "tool": "knowledge_search"
+        },
+        {
+          "agent": "archive",
+          "call_id": "t0002",
+          "error": null,
+          "i": 1,
+          "input_digest": "fd74661df21ee195",
+          "kind": "tool_result",
+          "ok": true,
+          "result": {
+            "count": 1,
+            "query": "合成产物归档放在哪里",
+            "results": [
+              {
+                "body": "合成数据必须写入 synthetic/ 目录，文件名带 SYNTHETIC_ 前缀，并在 manifest 标记 synthetic=true。真实数据不得与合成数据混放；归档导出沿用 store/product.py 的同一隔离口径。",
+                "category": "归档规程",
+                "doc_id": "archive-synthetic",
+                "score": -2.0,
+                "source": "store/product.py；spec §3.2",
+                "title": "合成数据与真实数据隔离归档"
+              }
+            ]
+          },
+          "result_digest": "9d21b8e63b6de3e8",
+          "tool": "knowledge_search"
+        },
+        {
+          "agent": "archive",
+          "i": 1,
+          "input_digest": "fd74661df21ee195",
+          "kind": "provider_call"
+        },
+        {
+          "agent": "archive",
+          "conclusion_digest": "a984cfdc7755698b",
+          "evidence_call_ids": [
+            "t0001",
+            "t0002"
+          ],
+          "i": 2,
+          "input_digest": "fd74661df21ee195",
+          "kind": "conclusion_valid"
+        },
+        {
+          "agent": "archive",
+          "i": 2,
+          "input_digest": "fd74661df21ee195",
+          "kind": "run_end"
+        }
+      ],
+      "trace_sha256": "dd295aa5590dfa3ffc214e75e0776fdb59da8df387aca2997a0c5db434c7b3ce"
+    }
+  ],
+  "sha256": "1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389",
+  "summary": {
+    "baseline_m3": {
+      "contract_valid": true,
+      "evidence_valid": true
+    },
+    "checks": "14/14",
+    "contract_valid": 5,
+    "evidence": "9/9",
+    "not_worse_than_m3": true,
+    "scenarios": 5
+  },
+  "version": 1
+}

@@ -1,0 +1,20 @@
+{
+  "_说明": "知识库抽查输入。in_scope 的问题按库内 10 条规程逐条构造（问题与条目一一对应），命中率只证明检索通路与切词在工作，不代表开放查询的泛化命中率；probes 是库内没有对应条目的开放问题，用来记录不命中或弱命中的实际行为。",
+  "in_scope": [
+    {"query": "RMSE 超过 500 TECU", "expected_id": "qc-nonphysical-rmse"},
+    {"query": "载波相位出现持续阶跃", "expected_id": "qc-phase-slip"},
+    {"query": "弧段数比卫星序列数太多", "expected_id": "qc-continuity"},
+    {"query": "太阳能电池掉电台站失联", "expected_id": "power-outage"},
+    {"query": "4G 网络中断数据未上报", "expected_id": "network-loss"},
+    {"query": "传感器读数漂移超出量程", "expected_id": "sensor-drift"},
+    {"query": "远程重启设备需要谁批准", "expected_id": "workorder-high-risk"},
+    {"query": "P0 告警怎么分派工单", "expected_id": "workorder-priority"},
+    {"query": "合成产物归档放在哪里", "expected_id": "archive-synthetic"},
+    {"query": "门禁入侵告警怎么处理", "expected_id": "security-alarm"}
+  ],
+  "probes": [
+    {"query": "接收机面板进水怎么处理", "note": "库内无硬件物理损坏条目"},
+    {"query": "观测数据磁盘空间不足如何清理", "note": "库内无存储运维条目"},
+    {"query": "如何申请新的观测频段", "note": "库内无行政申请类条目"}
+  ]
+}

@@ -1,0 +1,10 @@
+{"doc_id":"qc-nonphysical-rmse","title":"非物理 RMSE 量级守卫","category":"质控规程","body":"反演相对参考解的 RMSE 超过 500 TECU 时属于非物理值。应拒绝该反演输出，并复查接收机钟、相位定平链路与参考解覆盖情况。","source":"docs/spec/2026-10-13-野外台站智能体基础设计.md；rules/qc.py"}
+{"doc_id":"qc-phase-slip","title":"载波相位周跳与单历元尖峰","category":"质控规程","body":"持续到弧段末尾的载波相位阶跃按周跳处理；单历元出现后立刻回到基线的扰动按相位粗差处理。周跳检测使用几何无关组合与 Melbourne-Wubbena 组合，并排除码粗差位。","source":"rules/qc.py；docs/known-issues.md KI-07"}
+{"doc_id":"qc-continuity","title":"相位定平连续性守卫","category":"质控规程","body":"相位定平结果需要检查弧段数与卫星序列数之比。弧段/序列比过高说明结果可能被周跳或异常切分污染，应按连续性守卫拒绝或人工复核。","source":"rules/qc.py phase_continuity_verdict"}
+{"doc_id":"power-outage","title":"供电掉电与太阳能电池异常","category":"运维规程","body":"供电电压为零、太阳能电池电压持续低于工作区间或台站整体失联时，优先判断掉电。先核对最后一条有效观测和供电读数，再派发远程检查；远程断电和重启属于高风险动作。","source":"全流程实施计划 M4-1/M4-3；spec §9"}
+{"doc_id":"network-loss","title":"网络中断与数据未上报","category":"运维规程","body":"4G、光纤或卫星链路异常时，观测可能仍在本地采集但未上报。先检查链路状态和最后上报时间，不要仅凭数据缺口判定传感器损坏。","source":"全流程实施计划 M4-1/M4-2"}
+{"doc_id":"sensor-drift","title":"传感器漂移、粗差与量程异常","category":"设备手册","body":"传感器读数持续偏离同站同类设备基线、超过量程或出现大量非有限值时，标记为漂移或粗差候选。需要结合时间连续性和相邻传感器读数，不能只看单个点。","source":"全流程实施计划 M4-1；StationReading 数据模型"}
+{"doc_id":"workorder-high-risk","title":"高风险设备动作清单","category":"运维规程","body":"远程重启设备、下发配置、升级固件、远程断电、关闭告警和修改安全策略均属于高风险动作，必须经过人工审批。创建工单、查询状态、生成报告属于低风险动作。","source":"docs/operations/high-risk-actions.md；spec §9"}
+{"doc_id":"workorder-priority","title":"工单优先级与分派","category":"运维规程","body":"P0 用于台站整体失联、数据完全中断或安全事件；P1 用于关键传感器持续异常；P2 用于一般质量下降和常规维护。工单必须带台站、证据 call_id、风险和处置建议。","source":"全流程实施计划 M4-3；spec §7"}
+{"doc_id":"archive-synthetic","title":"合成数据与真实数据隔离归档","category":"归档规程","body":"合成数据必须写入 synthetic/ 目录，文件名带 SYNTHETIC_ 前缀，并在 manifest 标记 synthetic=true。真实数据不得与合成数据混放；归档导出沿用 store/product.py 的同一隔离口径。","source":"store/product.py；spec §3.2"}
+{"doc_id":"security-alarm","title":"安防门禁与入侵告警","category":"设备手册","body":"门禁、入侵、机柜开启和视频异常告警应记录来源、发生时间与关联台站。无法确认原因时不得自动关闭告警，应先人工核验现场状态。","source":"全流程实施计划 M4-1/M4-3"}
