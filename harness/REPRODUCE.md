@@ -326,6 +326,30 @@ fixture/日志与入库版本字节不同，而 `.gitattributes` 的归一化让
 看不出来；回归测试 `tests/test_m5_pipeline_replay.py::
 test_written_fixture_and_log_pin_lf` 钉死）。
 
+### 3.6 运行看板（M5-3）
+
+```powershell
+$env:PYTHONPATH="src"; python tools/make_station_dashboard.py
+```
+
+从已提交的 M5-1 日志生成三类视图（台站健康度 / 告警 / 工单）：
+
+- `figures/m5_dashboard.html` —— 单文件静态页（内联 CSS，无 JS、无外部资源）；
+- `logs/m5_dashboard.json` —— 机读摘要（计数、健康度、告警、工单、源日志 sha、
+  页面 sha），供数字回源。
+
+实跑输出（2026-10-19）：
+
+```text
+[OK] 页面 figures/m5_dashboard.html（4875 B，sha256 667b51784a02a4db…）
+[OK] 摘要 logs/m5_dashboard.json：台站 1 / 告警 2 {'warn': 2} / 工单 1
+```
+
+口径（健康度只读 `station_health` 的结果、不复算阈值；告警两条机械规则；工单字段）
+见 `docs/operations/dashboard.md`。数据流是「日志 → 黑板（M5-2）→ `snapshot()`」；
+页面不含时间戳，同一份日志两次生成逐字节相同（`tests/test_m5_dashboard.py` 钉死）。
+样本口径同 §3.5：真实样本受 #28/#33 阻塞，当前用固定种子合成样本的替代口径。
+
 ## 4. 数字回源核对
 
 ```powershell
@@ -340,9 +364,9 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 ```text
 声明项            文档中        实测         结论
 ---------------------------------------------------
-入库 Python 文件数  42         42         PASS
-入库 Python 行数   6458       6458       PASS
-入库测试文件数        19         19         PASS
+入库 Python 文件数  85         85         PASS
+入库 Python 行数   14034      14034      PASS
+入库测试文件数        45         45         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0
 
@@ -388,6 +412,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | M3 结构化结论回放 sha256 | `logs/qc_agent_replay.json` | 第 3.1 节（并与证据引用复校） |
 | M4 四类 Agent 回放 sha256 | `logs/m4_agents_replay.json` | 第 3.3 节（与 fixture 对拍 + 证据复校） |
 | M5 全链回放 sha256 | `logs/m5_pipeline_replay.json` | 第 3.5 节（与 fixture 对拍 + 证据复校） |
+| 运行看板（台站 / 告警 / 工单）与页面 sha | `logs/m5_dashboard.json` | 第 3.6 节（重跑生成器，输出与入库逐字节一致） |
 | 知识库抽查命中率与探针行为 | `logs/kb_smoke_20261019.json` | 第 3.4 节（重建索引后重跑） |
 | CLI 插图内容 | `figures/`（如已出图） | 第 6 节（重跑命令即重取输出） |
 
@@ -401,6 +426,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/qc_agent_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m4_agents_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m5_pipeline_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
+| `tools/make_station_dashboard.py` | 页面与摘要生成完成 | 1=日志缺三类视图所需数据；2=用法/日志不可读 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
 | `tools/make_cli_figures.py` | 采集并渲染完成 | 2=matplotlib 缺席/用法错误 |
