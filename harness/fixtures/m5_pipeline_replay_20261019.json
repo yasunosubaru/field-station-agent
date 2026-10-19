@@ -1,0 +1,79 @@
+{
+  "kind": "fieldstation.m5_pipeline_replay.fixture",
+  "version": 1,
+  "created": "2026-10-19",
+  "scenario": "m5-full-chain",
+  "note": "M5-1 全链回放基线：合成样本（受 #28/#33 阻塞的替代口径）+ 五阶段脚本化响应；sha 为 canonical JSON 的 sha256。",
+  "sample": {
+    "mode": "synthetic",
+    "note": "真实台站样本受 #28/#33 阻塞；本基线为固定种子合成样本，真实样本到位后同一命令 --bless 复跑",
+    "station": "BADG",
+    "seed": 20261013,
+    "systems": [
+      "GPS"
+    ],
+    "sats": {
+      "GPS": [
+        1,
+        2
+      ]
+    },
+    "n_epochs": 60,
+    "generator_slips": [],
+    "postprocess": {
+      "target": "GPS 01 L1",
+      "from_index": 30,
+      "step_cycles": 5.0
+    },
+    "n_obs": 240
+  },
+  "stages": [
+    {
+      "stage": "qc",
+      "config_hash": "7ab489aca3e740477bb3f6f1c64f0fa84d68fa397a05a16d09b72ee6e1c4b963",
+      "sha256": "be282c14faf8c0acd7b783afd14d8e2f2d388b80ecf35a0316c6b3b0d0c633b4"
+    },
+    {
+      "stage": "device_monitor",
+      "config_hash": "4ac4501b4f8942b9f34264b6720b5c853e0401f804807320f5a76ec86330e541",
+      "sha256": "3b1f8cce9b6eb9931e89ca5cd354ba3ed308efd3487db6fa04e74b42203534fa"
+    },
+    {
+      "stage": "fault_diagnosis",
+      "config_hash": "4823db64c3a20095eab78ca947dd7e78645e907bc7cdea000e989f100f73785f",
+      "sha256": "f8d76d3e7313424efe3790532d046eb0aab54faebe7c4d96c38f3045bbb7409e"
+    },
+    {
+      "stage": "operations_dispatch",
+      "config_hash": "0daefe3f570260abe510fc9cdda56eb3cdc9add61fad3f45ad5b63e4da45ef00",
+      "sha256": "e53fe3e61676a0b4303f9e51e0a3f050db6a43e8c6f84f4e88cfcaad5228f8c2"
+    },
+    {
+      "stage": "archive",
+      "config_hash": "8ff8579660ca06c7d95e997b56944bceefd1c034891a78a654f2a9f9ba7261ee",
+      "sha256": "599ac6ff9fdf6303a3b6d5f2b07f9ae8a1ef451eb632134afe3837ddfdcefc65"
+    }
+  ],
+  "checks": {
+    "chain_complete": true,
+    "messages_in_trace": true,
+    "qc_slip_detected": true,
+    "device_missing_flagged": true,
+    "diagnosis_kb_cited": true,
+    "approval_recorded": true,
+    "work_order_created": true,
+    "action_executed": true,
+    "archive_synthetic_isolated": true,
+    "tokens_recorded": true
+  },
+  "summary": {
+    "stages": 5,
+    "messages": 7,
+    "checks": "10/10",
+    "tokens": {
+      "prompt": 2140,
+      "completion": 412
+    }
+  },
+  "sha256": "164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74"
+}

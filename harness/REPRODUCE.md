@@ -229,10 +229,10 @@ evidence 9/9, not_worse_than_m3=True`。token/耗时同样另写
   fault_diagnosis          checks 2/2  sha256 99ec58d5a29c…  PASS
   operations_dispatch+     checks 4/4  sha256 d88684f45619…  PASS
   operations_dispatch-     checks 4/4  sha256 015cac7829a5…  PASS
-  archive                  checks 2/2  sha256 e7f1890c1733…  PASS
+  archive                  checks 2/2  sha256 d53db74eb657…  PASS
   summary scenarios 5/5 valid, checks 14/14, evidence 9/9, not_worse_than_m3=True
-  expected    1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389
-sha256: 1a2e7ef13d38da07d3b5c093cab3b2e7d2f0d3390ca747a61c960be1c8754389
+  expected    37ba8911cb089e6aa41d05c82b324bf1924e0952a8e437221f1863e4342cdcf9
+sha256: 37ba8911cb089e6aa41d05c82b324bf1924e0952a8e437221f1863e4342cdcf9
 PASS M4 回放基线与 fixture 一致
 PASS device_monitor: 证据引用 t0001；checks 全过
 PASS fault_diagnosis: 证据引用 t0001, t0002, t0003；checks 全过
@@ -242,7 +242,10 @@ PASS archive: 证据引用 t0001, t0002；checks 全过
 PASS 5 个场景的证据引用与 checks 全部有效
 ```
 
-（以上片段为 2026-10-19 实跑粘贴。）
+（以上片段为 2026-10-19 实跑粘贴。同日二跑：`store/product.py::write_json` 钉 LF
+（PROVENANCE.md 有登记，起因是 M5-1 发现归档 sha 进 trace 会让回放成为宿主机函数）
+——`archive` 场景 sha 与 log sha 随之变更（`e7f1890c…` → `d53db74e…`、
+`1a2e7ef1…` → `37ba8911…`），其余四场景 sha 未变。）
 
 ### 3.4 知识库抽查（构造问题 + 开放探针）
 
@@ -269,6 +272,53 @@ log=<仓库根>\logs\kb_smoke_20261019.json
 （`db`/`log` 行重跑时显示你的仓库路径。探针实测：2 条词面相近弱命中
 `qc-nonphysical-rmse` / `network-loss`，1 条空——见记录文件 `probes` 节，
 `empty=true` 表示无覆盖。）
+
+### 3.5 M5 全链回放（观测数据进，工单与归档出）
+
+```powershell
+$env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --fixture harness/fixtures/m5_pipeline_replay_20261019.json
+$env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --verify-log logs/m5_pipeline_replay.json
+```
+
+**判据**：第一条命令输出 5 行阶段 `PASS` 加末行 `PASS M5 回放基线与 fixture 一致`；
+第二条逐阶段复校结论证据引用（含**结论正文里**的证据列表）与 checks，末行
+`PASS 5 个阶段、7 条消息、checks 10/10 全部有效`。两次退出码均为 0。
+
+链路：`intake` 发两条消息（观测批次 + BADG 设备读数）→ `qc` → `device_monitor`
+→ `fault_diagnosis` → `operations_dispatch`（高风险动作过审批门）→ `archive`，
+共 7 条消息；每条消息以 `message` 事件**全量**落同一条 trace（M5-4 的核对
+建立在这条上）。
+
+**样本口径（替代口径，不是真实台站样本）**：真实样本受 #28/#33 阻塞（成员侧
+脱敏样本未到）。本基线用固定种子合成样本：`seed=20261013`、`station=BADG`、
+`n_epochs=60`、`systems=["GPS"]`、`sats={"GPS":[1,2]}`、生成器 `slips=[]`；
+后处理把 GPS 01 的 L1 相位自第 30 个历元起整体 +5.0 cycles（持续阶跃）。
+实测该步长在 `slip_detect` 的 gf/mw 双通道均命中（counts 全 1、
+`slip_indices=[30]`），GPS 02 全 0。真实样本到位后：换样本、同一条命令加
+`--bless` 复跑，场景与 checks 不用改。
+
+```text
+  qc                   sha256 be282c14faf8…  PASS
+  device_monitor       sha256 3b1f8cce9b6e…  PASS
+  fault_diagnosis      sha256 f8d76d3e7313…  PASS
+  operations_dispatch  sha256 e53fe3e61676…  PASS
+  archive              sha256 599ac6ff9fdf…  PASS
+  summary 5 阶段, checks 10/10, 7 条消息, tokens 2140/412
+  expected    164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74
+sha256: 164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74
+PASS M5 回放基线与 fixture 一致
+```
+
+（以上片段为 2026-10-19 实跑粘贴；单次回放约 0.3 s。逐次耗时另写
+`logs/m5_pipeline_metrics.jsonl` —— **耗时等非确定性量不进 sha256 基线**，
+token 用量是脚本化响应算出的确定性量，进基线。）
+
+这一段同时是「归档字节跨平台一致」的守卫：归档产物的 sha256 会进入回放
+trace，若 `store/product.py::write_json` 按平台写换行（Windows CRLF / Linux
+LF），同一基线在两平台就会算出不同的顶层 sha。2026-10-19 已钉 LF
+（PROVENANCE.md 有登记；本机回归测试 `tests/test_pipeline.py::
+test_write_json_pins_lf_line_endings`），且 `tests/test_m5_pipeline_replay.py`
+会在 CI（Linux）上重跑已提交 fixture 与 log。
 
 ## 4. 数字回源核对
 
@@ -331,6 +381,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | 归因回放 sha256 | `logs/replay_20261013.json` | 第 3 节（与 fixture 对拍） |
 | M3 结构化结论回放 sha256 | `logs/qc_agent_replay.json` | 第 3.1 节（并与证据引用复校） |
 | M4 四类 Agent 回放 sha256 | `logs/m4_agents_replay.json` | 第 3.3 节（与 fixture 对拍 + 证据复校） |
+| M5 全链回放 sha256 | `logs/m5_pipeline_replay.json` | 第 3.5 节（与 fixture 对拍 + 证据复校） |
 | 知识库抽查命中率与探针行为 | `logs/kb_smoke_20261019.json` | 第 3.4 节（重建索引后重跑） |
 | CLI 插图内容 | `figures/`（如已出图） | 第 6 节（重跑命令即重取输出） |
 
@@ -343,6 +394,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/replay.py` | 与 fixture 期望一致 | 1=漂移；2=用法/IO 错误 |
 | `harness/qc_agent_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m4_agents_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
+| `harness/m5_pipeline_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
 | `tools/make_cli_figures.py` | 采集并渲染完成 | 2=matplotlib 缺席/用法错误 |
