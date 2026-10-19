@@ -320,6 +320,12 @@ LF），同一基线在两平台就会算出不同的顶层 sha。2026-10-19 已
 test_write_json_pins_lf_line_endings`），且 `tests/test_m5_pipeline_replay.py`
 会在 CI（Linux）上重跑已提交 fixture 与 log。
 
+同一守卫也覆盖本 harness 自己写的 fixture 与日志：`_write_json` 钉 LF
+（2026-10-19 修复 —— Windows 默认写 CRLF，会让「照本节跑一遍」后工作区里的
+fixture/日志与入库版本字节不同，而 `.gitattributes` 的归一化让 `git status`
+看不出来；回归测试 `tests/test_m5_pipeline_replay.py::
+test_written_fixture_and_log_pin_lf` 钉死）。
+
 ## 4. 数字回源核对
 
 ```powershell
