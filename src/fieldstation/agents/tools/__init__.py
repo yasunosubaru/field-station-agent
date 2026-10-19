@@ -70,6 +70,16 @@ class ToolRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._tools))
 
+    def clone(self) -> "ToolRegistry":
+        """复制一份注册表（工具对象共享，登记表不共享）。
+
+        黑板工具的注入（``pipeline.Pipeline``）要给每个阶段一份自己的注册表 ——
+        往阶段共用的注册表里塞工具会污染别的阶段。重名检查仍在 ``register`` 里。
+        """
+        other = ToolRegistry()
+        other._tools = dict(self._tools)
+        return other
+
     def describe(self) -> list[dict]:
         """喂给 provider 的工具描述列表。键集合固定，多了少了都算接口漂移。"""
         return [
