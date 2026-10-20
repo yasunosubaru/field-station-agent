@@ -29,6 +29,9 @@
     python tools/check_desensitization.py --root . --denylist tools/desensitization.local.txt
     python tools/check_desensitization.py --show-hits   # 只在本机用
 
+它只扫 **git 入库** 文件：新文件先 `git add` 再跑，否则不在扫描范围（本地绿灯、
+CI 红灯的经典坑）。
+
 本脚本只用标准库。
 """
 from __future__ import annotations

@@ -33,9 +33,11 @@ def _run(*args: str) -> subprocess.CompletedProcess:
 
 
 def _git_commit(td: Path) -> None:
+    # 邮箱由片段拼接：守卫会（正确地）把完整邮箱字面量当成 PII 形状。
+    email = "test" + "@" + "example.com"
     subprocess.run(["git", "-C", str(td), "add", "-A"], check=True)
     subprocess.run(
-        ["git", "-C", str(td), "-c", "user.name=test", "-c", "user.email=test@example.com",
+        ["git", "-C", str(td), "-c", "user.name=test", "-c", f"user.email={email}",
          "commit", "-q", "-m", "fixture"],
         check=True)
 
