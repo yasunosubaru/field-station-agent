@@ -1,4 +1,4 @@
-"""合成数据生成器：正演伪距/相位，可注入噪声、周跳、缺测、粗差。
+"""合成数据生成器：正演伪距/相位（可注入噪声、周跳、缺测、粗差），以及台站设备读数（供电/网络/安防）的异常场景。
 
 重要声明：合成数据仅用于验证“流程与代码自洽性”，**不是真实观测，
 不得作为实验结论**。所有输出文件与返回值都带 SYNTHETIC 标记。
@@ -17,11 +17,14 @@ import copy
 import csv
 import math
 import random
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 
 from . import constants as C
 from .model import Observation, epoch_utc_str, gps_to_utc, GPS_WEEK_S
+from .store.model import StationReading
 
 SYNTHETIC_MARKER = "合成数据，非真实观测，不得作为实验结论"
 SYNTHETIC_TAG = "SYNTHETIC"
@@ -246,6 +249,72 @@ def generate(cfg: dict | None = None) -> tuple[list[Observation], list[Truth], d
 
 
 # ---------------------------------------------------------------- 落盘
+#: 设备侧合成异常（X-1 第 5 项）。与观测侧的 ``slips`` 平行：这里只造
+#: 「读数 + 质量标记」，判据仍在 ``agents/tools/station_tools.py`` 与 ``rules/``，
+#: 合成器不写第二套阈值。
+DEVICE_ANOMALIES = ("power_undervoltage", "link_loss", "security_intrusion")
+
+#: 基线读数：(sensor, metric, value, unit, jitter 幅度)
+_DEVICE_BASELINE = (
+    ("power", "voltage", 12.0, "V", 0.05),
+    ("link", "rssi", -88.0, "dBm", 1.0),
+    ("uplink", "packets_5min", 120.0, "count", 5.0),
+)
+
+
+def device_readings(
+    *,
+    station: str,
+    observed_at: datetime,
+    anomalies: Iterable[str] = (),
+    seed: int | None = None,
+) -> list[StationReading]:
+    """生成一台站的设备读数（供电 / 网络 / 安防），可注入三类异常。
+
+    异常只改**读数与 quality_flag**，不判定健康度 —— 健康度统一由
+    ``agents/tools/station_tools.py::station_health`` 计算，避免第二套阈值。
+
+    * ``power_undervoltage``：供电 10.2 V + ``quality_flag="undervoltage"``
+      → station_health 判 degraded；
+    * ``link_loss``：链路 rssi 与上行包数都缺测（``value=None`` + ``"missing"``）
+      → 缺测 2/3，station_health 判 critical；
+    * ``security_intrusion``：追加 ``security/door=1`` + ``"door_open"``
+      → 有质量标记，判 degraded。
+
+    ``seed`` 非空时给基线值加确定性抖动（可复现）；缺省用固定值。
+    读数顺序固定：power、link、uplink（+ 安防门状态）。
+    """
+    if not isinstance(station, str) or not station.strip():
+        raise ValueError("station 必须是非空字符串")
+    if not isinstance(observed_at, datetime):
+        raise ValueError("observed_at 必须是 datetime")
+    chosen = tuple(dict.fromkeys(anomalies))
+    unknown = [name for name in chosen if name not in DEVICE_ANOMALIES]
+    if unknown:
+        raise ValueError(
+            f"未知的设备异常：{unknown}（支持 {list(DEVICE_ANOMALIES)}）")
+
+    rnd = random.Random(seed) if seed is not None else None
+    readings: list[StationReading] = []
+    for sensor, metric, value, unit, spread in _DEVICE_BASELINE:
+        if rnd is not None:
+            value = round(value + rnd.uniform(-spread, spread), 3)
+        readings.append(StationReading(
+            station_id=station, sensor=sensor, metric=metric, value=value,
+            unit=unit, observed_at=observed_at))
+    if "power_undervoltage" in chosen:
+        readings[0] = replace(readings[0], value=10.2,
+                              quality_flag="undervoltage")
+    if "link_loss" in chosen:
+        readings[1] = replace(readings[1], value=None, quality_flag="missing")
+        readings[2] = replace(readings[2], value=None, quality_flag="missing")
+    if "security_intrusion" in chosen:
+        readings.append(StationReading(
+            station_id=station, sensor="security", metric="door", value=1.0,
+            unit="state", observed_at=observed_at, quality_flag="door_open"))
+    return readings
+
+
 def write_observations_csv(obs: list[Observation], path: str | Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
