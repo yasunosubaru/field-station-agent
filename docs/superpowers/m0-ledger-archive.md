@@ -11,7 +11,7 @@
 
 # SDD ledger — plan: docs/superpowers/plans/2026-10-13-M0-地基与旧代码整合.md
 
-仓库：F:\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体
+仓库：`<仓库根>`（本机路径已脱敏）
 分支：m0-foundation（BASE 52fb64e）
 远端：origin main（private）
 

@@ -262,9 +262,9 @@ python tools/audit_claims.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**86** 个
-- 入库 Python 行数：**14,316** 行
-- 入库测试文件数：**46** 个
+- 入库 Python 文件数：**87** 个
+- 入库 Python 行数：**14,474** 行
+- 入库测试文件数：**47** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，
@@ -316,6 +316,8 @@ python tools/audit_claims.py
 ## 联系方式
 
 个人姓名、学号、电话、邮箱不进这个仓库，它是公开的。
+
+CI 里有一道脱敏守卫（`tools/check_desensitization.py`）：扫入库文本里的用户目录路径、手机号、邮箱、13 位学号形状与私钥/token；姓名等无法公开列词的类别靠本机 `tools/desensitization.local.txt`（gitignored）。它是**绊线不是证明**——M0 的教训是正则扫描器给过假的「0 命中」，最终靠字面值比对才验干净。
 
 协作走这两个地方就行：
 

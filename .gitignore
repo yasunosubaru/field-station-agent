@@ -26,3 +26,5 @@ Thumbs.db
 .superpowers/
 # 本机实况的 provider 覆盖配置不入库（每台机器自己一份）：
 config/*.local.json
+# 脱敏守卫的本地词表（含真实姓名/学号等，绝不能入库）
+tools/desensitization.local.txt

@@ -83,6 +83,12 @@ skip==0（读 `result.skipped`，不靠眼看）、无源项目包名残留、
 PROVENANCE 与 `src/` 双向一致、同 seed 两次 `config_hash` 相同、
 `audit_claims.py` 退出码 0。
 
+**额外（不在五项内）**：`python tools/check_desensitization.py` —— 脱敏守卫，扫入库
+文本里的用户目录路径 / 手机号 / 邮箱 / 13 位学号形状 / 私钥 / token；本机词表
+`tools/desensitization.local.txt`（gitignored）补姓名等无法公开列词的类别。命中退出 1，
+只打印 `文件:行 [类别]`、**不回显内容**（公开 CI 日志不能二次泄露）。它是绊线不是
+证明 —— M0 决策第 24 条：两版正则扫描器都给过假的「0 命中」。
+
 ```text
 ==============================================================================
 harness 自检（发布门禁）  ——  2026-10-14 11:05:11
@@ -394,9 +400,9 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 ```text
 声明项            文档中        实测         结论
 ---------------------------------------------------
-入库 Python 文件数  86         86         PASS
-入库 Python 行数   14316      14316      PASS
-入库测试文件数        46         46         PASS
+入库 Python 文件数  87         87         PASS
+入库 Python 行数   14474      14474      PASS
+入库测试文件数        47         47         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0
 
@@ -458,6 +464,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/m4_agents_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m5_pipeline_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `tools/make_station_dashboard.py` | 页面与摘要生成完成 | 1=日志缺数据或告警无法归属；2=用法/日志不可读/非 UTF-8 |
+| `tools/check_desensitization.py` | 命中 0 处 | 1=有命中；2=用法/非 git 仓库/词表被跟踪 |
 | `harness/m5_approval_audit.py` | 13 项核对全过 | 1=有核对项失败；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
