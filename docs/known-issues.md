@@ -401,6 +401,23 @@
   - 真实样本 `badg0010.24o.gz` 修复**前后逐字节一致**（4964 条，首条字段相同）
 - **影响面**：M0 不接真实数据故当时不紧急；M2 接入真实台站配置前必须处理（现已修）
 
+### KI-11 阶段 `note` 不在 trace：输入可见性有个小缺口（未修，已登记）
+
+- **位置**：`src/fieldstation/agents/pipeline.py` 的 `Pipeline._input_text` 与
+  `PipelineStage.note`；`harness/m5_pipeline_replay.py` 的 `STAGE_SPECS`。
+- **症状**：阶段输入文本 = `【任务】{note}` + 上游消息。`note` 是编译期常量，随输入
+  一起进 `run_start.input_digest`，但 **trace 里没有它的正文**；只看日志的复核者
+  无法还原「模型到底被交代了什么任务」。`stage.note` 也不进 `stages` 记录。
+- **影响**：M5-4 的「无隐藏状态：消息全量可见」只覆盖**消息**，这句是准确的；但若
+  把「输入全量可见」当验收口径，就不成立。M5-1 终审（2026-10-19）已记录，M5-2/3/4
+  终审（2026-10-20）再次确认。
+- **不修的理由**：补一条 `stage_input` 事件会改 trace → M5-1 基线 sha、M5-4 审计
+  trace sha、M5-3 页面/摘要全部要重 bless/重生成，影响面跨四个交付物；当前 `note`
+  在 harness 源码里可查（`STAGE_SPECS`），不是运行期随机量，风险低。
+- **修法（最小）**：`Pipeline.run` 在 `runtime.run` 之前写一条 `stage_input`
+  （agent / note / input_digest），然后按 REPRODUCE §3.5–§3.7 重跑 `--bless`、
+  重生成审计与看板，并把三节的粘贴数字一起更新。
+
 ## 维护约定
 
 1. 新发现的缺陷**先登记在这里，再决定修不修**；"不修"的理由必须写出来。

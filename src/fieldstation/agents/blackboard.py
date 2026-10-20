@@ -13,7 +13,9 @@ M5-1 把「agent 之间的数据通道」钉成消息总线；本模块补上另
 * 值：**dict**，且必须可 JSON 序列化（非 JSON 类型与 NaN/Inf 一律拒收 —— 与总线的
   序列化纪律同一条）。**整值替换，不提供就地修改**：想改就给一个新 dict。没有
   「就地改一半」这个口子，读者就不会看到写者改到一半的半个状态。
-* 每个键带只增不减的版本号（创建 = 1，每次写 +1）与最近写入者 ``by``。
+* 每个键带只增不减的版本号（创建从 1 开始，每次写 +1；**删除后重建也不回退**，
+  从上一版本继续加，防止删除前拿到的 CAS token 在重建后命中新条目）与最近写入者
+  ``by``。
 
 ## 并发语义（tests/test_m5_blackboard.py 用真线程钉死）
 
@@ -176,6 +178,9 @@ class Blackboard:
     def __init__(self, *, on_event: Callable[[dict], None] | None = None) -> None:
         self._lock = threading.RLock()
         self._entries: dict[str, BoardEntry] = {}
+        #: 每个键见过的最大版本。删除不清理 —— 删除后重建的版本继续往上加，
+        #: 否则删除前拿到的 CAS token 会在重建后命中新条目（ABA）。
+        self._versions: dict[str, int] = {}
         self._on_event = on_event
 
     # ------------------------------------------------------------------ 读
@@ -210,8 +215,10 @@ class Blackboard:
             current = self._entries.get(key)
             if current is not None:
                 raise BoardConflict(key, "键不存在", f"已存在（version={current.version}）")
-            entry = BoardEntry(key, copy.deepcopy(value), 1, by)
+            version = self._versions.get(key, 0) + 1
+            entry = BoardEntry(key, copy.deepcopy(value), version, by)
             self._entries[key] = entry
+            self._versions[key] = version
             self._notify("create", entry)
             return _copy_entry(entry)
 
@@ -228,6 +235,7 @@ class Blackboard:
                 raise BoardConflict(key, expect_version, current.version)
             entry = BoardEntry(key, copy.deepcopy(value), current.version + 1, by)
             self._entries[key] = entry
+            self._versions[key] = entry.version
             self._notify("update", entry)
             return _copy_entry(entry)
 
@@ -236,10 +244,10 @@ class Blackboard:
         key = check_key(key)
         check_value(value)
         with self._lock:
-            current = self._entries.get(key)
-            version = 1 if current is None else current.version + 1
+            version = self._versions.get(key, 0) + 1
             entry = BoardEntry(key, copy.deepcopy(value), version, by)
             self._entries[key] = entry
+            self._versions[key] = version
             self._notify("upsert", entry)
             return _copy_entry(entry)
 

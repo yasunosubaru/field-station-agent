@@ -31,7 +31,8 @@
   无外部资源、不引第三方 BI）；
 - `logs/m5_dashboard.json`：同一版页面的机读摘要（计数、健康度、告警、工单、
   源日志 sha 与页面 sha），供 REPRODUCE 数字回源。
-- 输出**不含时间戳与随机量**：同一份日志两次生成的页面与摘要逐字节相同
+- 输出**不含生成时间戳与随机量**（页面里的 `latest_observed_at` 是数据时间，来自
+  日志）：同一份日志两次生成的页面与摘要逐字节相同
   （`tests/test_m5_dashboard.py` 钉死）。页面落盘钉 LF（同 `store/product.py`
   的跨平台口径）。
 
@@ -79,6 +80,8 @@ def load_log(path: Path) -> dict:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise DashboardInputError(f"日志读不了：{path}（{exc}）") from exc
+    except UnicodeDecodeError as exc:
+        raise DashboardInputError(f"日志不是 UTF-8：{path}（{exc}）") from exc
     try:
         log = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -154,13 +157,14 @@ def build_board(log: dict) -> Blackboard:
     board = Blackboard()
 
     health_result = next((event for event in results
-                          if event.get("tool") == "station_health"
+                          if event.get("agent") == "device_monitor"
+                          and event.get("tool") == "station_health"
                           and event.get("ok")), None)
     health = (health_result or {}).get("result") or {}
     stations = health.get("stations") or []
     if not stations:
         raise DashboardDataError(
-            "日志里没有 station_health 的台站结果（device_monitor 阶段）—— "
+            "日志里没有 device_monitor 的 station_health 台站结果 —— "
             "台站健康度视图无法生成")
 
     for station in stations:
@@ -188,17 +192,21 @@ def build_board(log: dict) -> Blackboard:
             }, by=ACTOR)
 
     for event in results:
-        if event.get("tool") != "slip_detect" or not event.get("ok"):
+        if (event.get("agent") != "qc" or event.get("tool") != "slip_detect"
+                or not event.get("ok")):
             continue
         result = event.get("result") or {}
         counts = result.get("counts") or {}
         if int(counts.get("union", 0) or 0) <= 0:
             continue
         args = (calls.get((event.get("agent"), event.get("call_id"))) or {}).get("args") or {}
-        station_id, group = groups.get(
-            canonical_json(args),
-            (next(iter(sorted({s.get("station_id") for s in stations})), "未知台站"),
-             "未知卫星组"))
+        match = groups.get(canonical_json(args))
+        if match is None:
+            # 归属不上就不猜：一条无法归到台站/卫星的周跳告警会静默误报。
+            raise DashboardDataError(
+                f"qc 的 slip_detect 调用 {event.get('call_id')!r} 的入参与任何输入"
+                "观测组都匹配不上，无法归属卫星组（不猜）")
+        station_id, group = match
         board.upsert(f"alert/{station_id}/data_quality/{_slug(group)}", {
             "station": station_id,
             "level": "warn",
@@ -399,7 +407,7 @@ footer {{ color:var(--muted); font-size:12px; margin-top:8px; }}
 <footer>
   口径与规则：<code>docs/operations/dashboard.md</code> ·
   生成命令：<code>python tools/make_station_dashboard.py</code> ·
-  本页不含时间戳，同一份日志两次生成逐字节相同。
+  本页不含生成时间戳（只含数据时间）；同一份日志两次生成逐字节相同。
 </footer>
 </body>
 </html>

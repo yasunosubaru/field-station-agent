@@ -32,7 +32,7 @@ from fieldstation.agents.providers.base import ChatResponse
 from fieldstation.agents.providers.fake import FakeProvider
 from fieldstation.agents.runtime import Agent
 from fieldstation.agents.tools import ToolRegistry, ToolResult
-from fieldstation.agents.tools.board_tools import BoardReadTool
+from fieldstation.agents.tools.board_tools import BoardReadTool, BoardWriteTool
 from fieldstation.agents.trace.writer import TraceWriter
 
 
@@ -120,6 +120,19 @@ class TestBoardStore(unittest.TestCase):
     def test_upsert_creates_then_bumps_version(self):
         self.assertEqual(self.board.upsert("order/WO-1", {"s": "open"}).version, 1)
         self.assertEqual(self.board.upsert("order/WO-1", {"s": "done"}).version, 2)
+
+    def test_version_never_resets_after_delete_and_recreate(self):
+        """删除后重建不能把版本退回 1：否则删除前的 CAS token 会命中新条目（ABA）。"""
+        self.board.create("station/BADG", {"v": 1})
+        self.board.delete("station/BADG", expect_version=1)
+        entry = self.board.create("station/BADG", {"v": 2})
+        self.assertEqual(entry.version, 2)
+        with self.assertRaises(BoardConflict):
+            self.board.update("station/BADG", {"v": "stale"}, expect_version=1)
+        self.assertEqual(self.board.read("station/BADG").value, {"v": 2})
+        # upsert 同样从上一版本继续
+        self.board.delete("station/BADG", expect_version=2)
+        self.assertEqual(self.board.upsert("station/BADG", {"v": 3}).version, 3)
 
     def test_delete_returns_entry_and_removes_key(self):
         self.board.create("alert/A-1", {"v": 1})
@@ -289,6 +302,50 @@ class TestBoardConcurrency(unittest.TestCase):
         self.assertEqual(board.read("station/BADG").value["n"], 400)
 
 
+class TestBoardTools(unittest.TestCase):
+    """工具层约定：失败返回 ToolResult，不抛；越权/冲突/参数错误都翻成 ok=False。"""
+
+    def setUp(self):
+        self.board = Blackboard()
+        self.board.create("station/BADG", {"v": 1})
+        self.view = self.board.scope(reads=("station",), writes=("order",),
+                                     actor="tester")
+
+    def test_must_not_exist_must_be_bool(self):
+        result = BoardWriteTool(self.view).invoke(
+            {"key": "order/WO-1", "value": {"s": "open"},
+             "must_not_exist": "false"})
+        self.assertFalse(result.ok)
+        self.assertIn("布尔值", result.error)
+        self.assertIsNone(self.board.read("order/WO-1"))
+
+    def test_permission_error_becomes_failed_result(self):
+        result = BoardWriteTool(self.view).invoke(
+            {"key": "station/BADG", "value": {"forged": True}})
+        self.assertFalse(result.ok)
+        self.assertIn("超出视图范围", result.error)
+        self.assertEqual(self.board.read("station/BADG").value, {"v": 1})
+
+    def test_conflict_and_retry_with_version(self):
+        tool = BoardWriteTool(self.view)
+        missing = tool.invoke({"key": "order/WO-1", "value": {"s": "x"},
+                               "expect_version": 1})
+        self.assertFalse(missing.ok)
+        self.assertIn("版本冲突", missing.error)
+        self.assertTrue(tool.invoke({"key": "order/WO-1",
+                                     "value": {"s": "open"}}).ok)
+        ok = tool.invoke({"key": "order/WO-1", "value": {"s": "done"},
+                          "expect_version": 1})
+        self.assertTrue(ok.ok)
+        self.assertEqual(ok.data["version"], 2)
+        self.assertEqual(ok.data["by"], "tester")
+
+    def test_read_missing_key_is_not_an_error(self):
+        result = BoardReadTool(self.view).invoke({"key": "station/NOPE"})
+        self.assertTrue(result.ok)
+        self.assertFalse(result.data["found"])
+
+
 class TestChainIntegration(unittest.TestCase):
     def _pipeline(self, board, stages):
         td = tempfile.TemporaryDirectory()
@@ -379,6 +436,23 @@ class TestChainIntegration(unittest.TestCase):
         self.assertEqual(plain_registry.names(), ())
         ro_agent, _ = pipeline.wired("ro")
         self.assertIn("board_read", [tool["name"] for tool in ro_agent.tools])
+
+    def test_preexisting_board_tool_rejected_in_any_direction(self):
+        """预置黑板工具一律拒绝：只声明写 + 预置读、完全不声明 + 预置读都不行。
+
+        终审实测过漏洞：只“追加声明的方向”会让预置的 board_read 留在只声明写的
+        阶段里，绕过「声明是唯一能力来源」。
+        """
+        board = Blackboard()
+        for kwargs in ({"board_writes": ("order",)}, {}):
+            stage = _stage("leaky", "t.leaky", (), [], [], **kwargs)
+            stage.registry.register(
+                BoardReadTool(board.scope(reads=("station",))))
+            with tempfile.TemporaryDirectory() as td:
+                trace_path = Path(td) / "trace.jsonl"
+                bus = MessageBus(TraceWriter(trace_path))
+                with self.assertRaises(ValueError):
+                    Pipeline(bus, trace_path, [stage], board=board)
 
     def test_declared_scope_without_board_rejected(self):
         stage = _stage("ro", "t.ro", (), [], [], board_reads=("station",))

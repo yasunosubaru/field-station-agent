@@ -313,7 +313,7 @@ def main(argv=None) -> int:
 
     try:
         log = run_audit(Path(args.fixture))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         print(f"[阻断] 读不了 fixture/基线日志：{exc}")
         return 2
     log["sha256"] = _sha256_canonical(

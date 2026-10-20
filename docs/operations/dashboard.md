@@ -32,7 +32,8 @@ figures/m5_dashboard.html（静态页） + logs/m5_dashboard.json（机读摘要
 - 页面展示：台站、状态徽标、健康度（数值 + 条形）、缺测数/总数、最近读数时间，
   以及每个指标（sensor / metric / unit / count / missing / min / max / mean /
   quality_flags）的明细。
-- 状态含义：`ok` = 无缺测且无质量标记；`degraded` = 健康度 < 0.95 或存在质量标记；
+- 状态含义（阈值在 `station_tools.py`，看板只转述）：`ok` = 健康度 ≥ 0.95 且无质量
+  标记（允许 ≤5% 缺测仍算 ok）；`degraded` = 健康度 < 0.95 或存在质量标记；
   `critical` = 健康度 ≤ 0.5。
 
 ### 2. 告警
@@ -81,12 +82,13 @@ $env:PYTHONPATH="src"; python tools/make_station_dashboard.py
 - `logs/m5_dashboard.json`：机读摘要（计数、台站、告警、工单、源日志 sha、
   页面 sha），供数字回源。
 
-**确定性**：输出不含时间戳与随机量；页面与摘要都钉 LF；同一份日志两次生成逐字节
-相同；入库产物必须等于当前生成器的输出（`tests/test_m5_dashboard.py` 钉死，
-改口径后要重新生成并提交）。
+**确定性**：输出不含**生成**时间戳与随机量（页面里的 `latest_observed_at` 是数据
+时间，来自日志）；页面与摘要都钉 LF；同一份日志两次生成逐字节相同；入库产物必须
+等于当前生成器的输出（`tests/test_m5_dashboard.py` 钉死，改口径后要重新生成并提交）。
 
-退出码：`0` 生成完成；`1` 日志缺三类视图所需数据（没有 `station_health` 或
-`create_work_order` 结果）；`2` 用法错误或日志不可读 / 不是 M5 回放日志。
+退出码：`0` 生成完成；`1` 日志缺三类视图所需数据（没有 `device_monitor` 的
+`station_health` 或 `create_work_order` 结果）、或周跳告警无法归属卫星组（不猜）；
+`2` 用法错误、日志不可读 / 非 UTF-8 / 不是 M5 回放日志。
 
 ## 不做什么（边界）
 

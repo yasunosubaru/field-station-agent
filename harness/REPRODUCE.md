@@ -341,13 +341,13 @@ $env:PYTHONPATH="src"; python tools/make_station_dashboard.py
 实跑输出（2026-10-19）：
 
 ```text
-[OK] 页面 figures/m5_dashboard.html（4875 B，sha256 667b51784a02a4db…）
+[OK] 页面 figures/m5_dashboard.html（4905 B，sha256 1c187b3d35694ac1…）
 [OK] 摘要 logs/m5_dashboard.json：台站 1 / 告警 2 {'warn': 2} / 工单 1
 ```
 
 口径（健康度只读 `station_health` 的结果、不复算阈值；告警两条机械规则；工单字段）
 见 `docs/operations/dashboard.md`。数据流是「日志 → 黑板（M5-2）→ `snapshot()`」；
-页面不含时间戳，同一份日志两次生成逐字节相同（`tests/test_m5_dashboard.py` 钉死）。
+页面不含生成时间戳（只含数据时间），同一份日志两次生成逐字节相同（`tests/test_m5_dashboard.py` 钉死）。
 样本口径同 §3.5：真实样本受 #28/#33 阻塞，当前用固定种子合成样本的替代口径。
 
 ### 3.7 审批门端到端联调（M5-4）
@@ -393,7 +393,7 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 声明项            文档中        实测         结论
 ---------------------------------------------------
 入库 Python 文件数  86         86         PASS
-入库 Python 行数   14136      14136      PASS
+入库 Python 行数   14290      14290      PASS
 入库测试文件数        46         46         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0
@@ -455,7 +455,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/qc_agent_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m4_agents_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `harness/m5_pipeline_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
-| `tools/make_station_dashboard.py` | 页面与摘要生成完成 | 1=日志缺三类视图所需数据；2=用法/日志不可读 |
+| `tools/make_station_dashboard.py` | 页面与摘要生成完成 | 1=日志缺数据或告警无法归属；2=用法/日志不可读/非 UTF-8 |
 | `harness/m5_approval_audit.py` | 13 项核对全过 | 1=有核对项失败；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |

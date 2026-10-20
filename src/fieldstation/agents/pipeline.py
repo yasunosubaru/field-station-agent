@@ -61,7 +61,7 @@ from .bus import Message, MessageBus
 from .conclusion import ConclusionContract, ConclusionRejected
 from .runtime import Agent
 from .tools import ToolRegistry
-from .tools.board_tools import board_tools
+from .tools.board_tools import BOARD_TOOL_NAMES, board_tools
 from .trace.writer import TraceWriter
 
 #: 这些工具的成功结果会进入阶段产物（artifacts），键名去掉工具前缀。
@@ -198,6 +198,15 @@ class Pipeline:
         for stage in self.stages:
             for topic in stage.consumes:
                 self.bus.subscribe(stage.name, topic)
+            # 黑板工具只能由本类按声明注入：阶段注册表里预置任何一个都算装配错误。
+            # 只“追加声明的方向”不够 —— 预置的 board_read 会在只声明写的阶段里
+            # 原样留下，等于绕过声明（终审实测）。
+            preexisting = [name for name in BOARD_TOOL_NAMES
+                           if stage.registry.get(name) is not None]
+            if preexisting:
+                raise ValueError(
+                    f"阶段 {stage.name!r} 的注册表里预置了黑板工具 {preexisting}："
+                    "黑板工具只能由 Pipeline 按 board_reads/board_writes 声明注入")
             if not stage.uses_board:
                 self._wired[stage.name] = (stage.agent, stage.registry)
                 continue
@@ -214,7 +223,7 @@ class Pipeline:
                 replace(stage.agent, tools=registry.describe()), registry)
 
     def wired(self, stage_name: str) -> tuple[Agent, ToolRegistry]:
-        """该阶段实际使用的 (agent, 注册表)（黑板工具注入后）。测试与看板用。"""
+        """该阶段实际使用的 (agent, 注册表)（黑板工具注入后）。测试用。"""
         return self._wired[stage_name]
 
     # ------------------------------------------------------------- 输入拼装
