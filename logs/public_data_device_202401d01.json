@@ -1,0 +1,122 @@
+{
+  "caveat": "这是**环境**读数（气温/湿度/气压/风速），不是供电/链路/安防 —— 后三类没有公开对应物，仍用 synthetic 的设备异常场景。",
+  "health": {
+    "stations": [
+      {
+        "health_score": 1.0,
+        "latest_observed_at": "2024-01-01T23:00:00+00:00",
+        "metrics": [
+          {
+            "count": 24,
+            "max": 87.0,
+            "mean": 69.95833333333333,
+            "metric": "relative_humidity_percent",
+            "min": 43.0,
+            "missing": 0,
+            "quality_flags": [],
+            "sensor": "env",
+            "unit": "%"
+          },
+          {
+            "count": 24,
+            "max": 941.3,
+            "mean": 936.7583333333337,
+            "metric": "surface_pressure_hpa",
+            "min": 934.4,
+            "missing": 0,
+            "quality_flags": [],
+            "sensor": "env",
+            "unit": "hPa"
+          },
+          {
+            "count": 24,
+            "max": -2.4,
+            "mean": -8.116666666666667,
+            "metric": "temperature_c",
+            "min": -11.6,
+            "missing": 0,
+            "quality_flags": [],
+            "sensor": "env",
+            "unit": "degC"
+          },
+          {
+            "count": 24,
+            "max": 13.1,
+            "mean": 6.216666666666666,
+            "metric": "wind_speed_mps",
+            "min": 1.1,
+            "missing": 0,
+            "quality_flags": [],
+            "sensor": "env",
+            "unit": "m/s"
+          }
+        ],
+        "missing": 0,
+        "quality_flags": [],
+        "station_id": "BADG",
+        "status": "ok",
+        "total": 96
+      }
+    ],
+    "summary": {
+      "alerts": [],
+      "missing": 0,
+      "total": 96
+    }
+  },
+  "input": {
+    "path": "data/public/samples/openmeteo_badg_202401_d01.json",
+    "records": 24,
+    "sha256": "b63504b9f45419ed2a313e183e8434f67c7f12b27e12c6ffd858d5a441f18d07",
+    "window": [
+      "2024-01-01T00:00",
+      "2024-01-01T23:00"
+    ]
+  },
+  "kind": "fieldstation.public_data_device.log",
+  "mapping": {
+    "metrics": [
+      {
+        "count": 24,
+        "metric": "relative_humidity_percent",
+        "missing": 0,
+        "sensor": "env",
+        "unit": "%"
+      },
+      {
+        "count": 24,
+        "metric": "surface_pressure_hpa",
+        "missing": 0,
+        "sensor": "env",
+        "unit": "hPa"
+      },
+      {
+        "count": 24,
+        "metric": "temperature_c",
+        "missing": 0,
+        "sensor": "env",
+        "unit": "degC"
+      },
+      {
+        "count": 24,
+        "metric": "wind_speed_mps",
+        "missing": 0,
+        "sensor": "env",
+        "unit": "m/s"
+      }
+    ],
+    "readings": 96,
+    "station": "BADG"
+  },
+  "source": {
+    "attribution": "Open-Meteo.com（ERA5 再分析）",
+    "id": "openmeteo_badg_202401_d01",
+    "license": "CC BY 4.0",
+    "retrieved": "2026-10-20",
+    "sha256": "b63504b9f45419ed2a313e183e8434f67c7f12b27e12c6ffd858d5a441f18d07",
+    "title": "Open-Meteo 八达岭 2024-01-01 逐小时气象（入库样本，24 条）",
+    "url": "https://archive-api.open-meteo.com/v1/archive?latitude=40.37&longitude=116.28&start_date=2024-01-01&end_date=2024-01-31&hourly=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m&timezone=UTC",
+    "used_for": "CI 可离线复算的公开数据样本（回放与测试）"
+  },
+  "version": 1
+}

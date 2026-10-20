@@ -1,0 +1,36 @@
+{
+  "kind": "fieldstation.public_data.manifest",
+  "version": 1,
+  "updated": "2026-10-20",
+  "note": "公开数据源登记：来源、许可、校验和、用途。取数用 tools/fetch_public_data.py；整份数据只进本地缓存（体积与许可），入库的是小样本与摘要。",
+  "sources": [
+    {
+      "id": "openmeteo_badg_202401",
+      "title": "Open-Meteo 历史归档：八达岭（BADG）逐小时气象 2024-01",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=40.37&longitude=116.28&start_date=2024-01-01&end_date=2024-01-31&hourly=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m&timezone=UTC",
+      "license": "CC BY 4.0",
+      "attribution": "Open-Meteo.com（ERA5 再分析）",
+      "retrieved": "2026-10-20",
+      "sha256": "819d232df1b383d95a318e4b52c7105c4b6a18175ffb06a1135aa88610a8aab0",
+      "bytes": 28472,
+      "cache": "data/public/cache/openmeteo_badg_202401.json",
+      "committed_sample": null,
+      "used_for": "设备侧真实读数（气温 / 相对湿度 / 地表气压 / 风速）→ station_health 判据",
+      "caveat": "这是**环境**读数，不是供电 / 链路 / 安防 —— 后三类没有公开对应物，仍用 synthetic 的设备异常场景（见 docs/operations/synthetic-device-scenarios.md）。"
+    },
+    {
+      "id": "openmeteo_badg_202401_d01",
+      "title": "Open-Meteo 八达岭 2024-01-01 逐小时气象（入库样本，24 条）",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=40.37&longitude=116.28&start_date=2024-01-01&end_date=2024-01-31&hourly=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m&timezone=UTC",
+      "license": "CC BY 4.0",
+      "attribution": "Open-Meteo.com（ERA5 再分析）",
+      "retrieved": "2026-10-20",
+      "sha256": "b63504b9f45419ed2a313e183e8434f67c7f12b27e12c6ffd858d5a441f18d07",
+      "bytes": 2239,
+      "cache": null,
+      "committed_sample": "data/public/samples/openmeteo_badg_202401_d01.json",
+      "used_for": "CI 可离线复算的公开数据样本（回放与测试）",
+      "caveat": "同上；本条目是整月的裁剪，登记的 sha256 是入库样本文件的。"
+    }
+  ]
+}
