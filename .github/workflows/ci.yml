@@ -58,3 +58,7 @@ jobs:
       # README 里每个对外数字与仓库实际状态对照，不一致即失败。
       - name: 文档数字回源核对
         run: python tools/audit_claims.py
+
+      # 脱敏守卫：公开仓库的绊线（通用模式 + 本机词表；不是证明，见工具文件头）。
+      - name: 脱敏守卫
+        run: python tools/check_desensitization.py
