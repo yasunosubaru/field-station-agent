@@ -28,3 +28,5 @@ Thumbs.db
 config/*.local.json
 # 脱敏守卫的本地词表（含真实姓名/学号等，绝不能入库）
 tools/desensitization.local.txt
+# 公开数据的本地缓存（原始文件只进缓存，不入库；见 data/public/manifest.json）
+data/public/cache/
