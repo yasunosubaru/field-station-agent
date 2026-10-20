@@ -200,5 +200,89 @@ class TestDashboard(unittest.TestCase):
             self.assertIn("[阻断]", run.stdout)
 
 
+class TestDashboardEdgeCases(unittest.TestCase):
+    """边界场景：空告警、critical、多台站。防止看板只对单一 golden log 正确。"""
+
+    def _generate_with(self, td: Path, mutate) -> tuple[dict, str]:
+        log = json.loads(COMMITTED_LOG.read_text(encoding="utf-8"))
+        mutate(log)
+        path = td / "edge.json"
+        path.write_text(json.dumps(log, ensure_ascii=False), encoding="utf-8")
+        page = td / "edge.html"
+        summary = td / "edge-summary.json"
+        run = _run("--log", str(path), "--page", str(page),
+                   "--summary", str(summary))
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        return (json.loads(summary.read_text(encoding="utf-8")),
+                page.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _health_stations(log: dict) -> list[dict]:
+        for event in log["trace"]:
+            if (event.get("kind") == "tool_result"
+                    and event.get("agent") == "device_monitor"
+                    and event.get("tool") == "station_health"):
+                return event["result"]["stations"]
+        raise AssertionError("日志里没有 device_monitor 的 station_health")
+
+    @staticmethod
+    def _zero_slips(log: dict) -> None:
+        for event in log["trace"]:
+            if (event.get("kind") == "tool_result"
+                    and event.get("agent") == "qc"
+                    and event.get("tool") == "slip_detect"):
+                event["result"]["counts"] = {
+                    key: 0 for key in event["result"]["counts"]}
+                event["result"]["slip_indices"] = []
+
+    def test_no_alerts_renders_empty_state(self):
+        def mutate(log):
+            station = self._health_stations(log)[0]
+            station.update({"status": "ok", "health_score": 1.0,
+                            "missing": 0, "quality_flags": []})
+            self._zero_slips(log)
+
+        with tempfile.TemporaryDirectory() as td:
+            data, page = self._generate_with(Path(td), mutate)
+            self.assertEqual(data["alerts"], [])
+            self.assertEqual(data["counts"]["alerts"], 0)
+            self.assertEqual(data["counts"]["alerts_by_level"], {})
+            self.assertIn("无告警", page)
+
+    def test_critical_station_alert_level(self):
+        def mutate(log):
+            station = self._health_stations(log)[0]
+            station.update({"status": "critical", "health_score": 0.4,
+                            "missing": 2, "total": 3,
+                            "quality_flags": ["missing"]})
+
+        with tempfile.TemporaryDirectory() as td:
+            data, page = self._generate_with(Path(td), mutate)
+            levels = {(alert["source"], alert["level"])
+                      for alert in data["alerts"]}
+            self.assertIn(("station_health", "critical"), levels)
+            self.assertEqual(data["counts"]["alerts_by_level"]["critical"], 1)
+            self.assertIn("critical", page)
+
+    def test_multiple_stations_render(self):
+        def mutate(log):
+            self._health_stations(log).append({
+                "station_id": "FAKE", "health_score": 1.0, "status": "ok",
+                "missing": 0, "total": 1, "quality_flags": [],
+                "latest_observed_at": "2026-10-19T08:10:00+00:00",
+                "metrics": [{"sensor": "power", "metric": "voltage",
+                             "unit": "V", "count": 1, "missing": 0,
+                             "min": 12.0, "max": 12.0, "mean": 12.0,
+                             "quality_flags": []}],
+            })
+
+        with tempfile.TemporaryDirectory() as td:
+            data, page = self._generate_with(Path(td), mutate)
+            self.assertEqual([s["station_id"] for s in data["stations"]],
+                             ["BADG", "FAKE"])
+            self.assertEqual(data["counts"]["stations"], 2)
+            self.assertIn("FAKE", page)
+
+
 if __name__ == "__main__":
     unittest.main()
