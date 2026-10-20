@@ -105,6 +105,6 @@ $env:PYTHONPATH="src"; python tools/make_station_dashboard.py
 ```
 
 - 摘要里的 `source.log_sha256` 必须等于 `logs/m5_pipeline_replay.json` 的顶层
-  `sha256`（当前 `164085a8…`）；`page.sha256` 是页面内容的 sha。
+  `sha256`（当前 `04fa5d7c…`）；`page.sha256` 是页面内容的 sha。
 - 台站 1（BADG，0.667，degraded）、告警 2（均 warn：`data_quality` GPS 01、
   `station_health`）、工单 1（WO-0001，P0，open，执行 accepted/simulated）。

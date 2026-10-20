@@ -276,7 +276,7 @@ log=<仓库根>\logs\kb_smoke_20261019.json
 ### 3.5 M5 全链回放（观测数据进，工单与归档出）
 
 ```powershell
-$env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --fixture harness/fixtures/m5_pipeline_replay_20261019.json
+$env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --fixture harness/fixtures/m5_pipeline_replay_20261020.json
 $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --verify-log logs/m5_pipeline_replay.json
 ```
 
@@ -287,7 +287,9 @@ $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --verify-log logs/m5
 链路：`intake` 发两条消息（观测批次 + BADG 设备读数）→ `qc` → `device_monitor`
 → `fault_diagnosis` → `operations_dispatch`（高风险动作过审批门）→ `archive`，
 共 7 条消息；每条消息以 `message` 事件**全量**落同一条 trace（M5-4 的核对
-建立在这条上）。
+建立在这条上）。每个阶段在 `run_start` 之前另有一条 `stage_input` 事件
+（`note` + 消费的 `msg_ids` + `input_digest`），所以只看日志也能还原「模型被交代了
+什么任务、读了哪几条消息」（KI-11）。
 
 **样本口径（替代口径，不是真实台站样本）**：真实样本受 #28/#33 阻塞（成员侧
 脱敏样本未到）。本基线用固定种子合成样本：`seed=20261013`、`station=BADG`、
@@ -304,8 +306,8 @@ $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --verify-log logs/m5
   operations_dispatch  sha256 e53fe3e61676…  PASS
   archive              sha256 599ac6ff9fdf…  PASS
   summary 5 阶段, checks 10/10, 7 条消息, tokens 2140/412
-  expected    164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74
-sha256: 164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74
+  expected    04fa5d7ce63405cd4aab478ae90ef79433229529680195dfbc30ffd87a335ded
+sha256: 04fa5d7ce63405cd4aab478ae90ef79433229529680195dfbc30ffd87a335ded
 PASS M5 回放基线与 fixture 一致
 ```
 
@@ -341,7 +343,7 @@ $env:PYTHONPATH="src"; python tools/make_station_dashboard.py
 实跑输出（2026-10-19）：
 
 ```text
-[OK] 页面 figures/m5_dashboard.html（4905 B，sha256 1c187b3d35694ac1…）
+[OK] 页面 figures/m5_dashboard.html（4905 B，sha256 849ff2031b4a5f5b…）
 [OK] 摘要 logs/m5_dashboard.json：台站 1 / 告警 2 {'warn': 2} / 工单 1
 ```
 
@@ -360,8 +362,8 @@ $env:PYTHONPATH="src"; python harness/m5_approval_audit.py
 （`RejectAll`）。实跑输出（2026-10-19）：
 
 ```text
-放行路径：7 条消息，trace sha256 1edead598c41b5e6…
-拒绝路径：停在审批门（5 条消息），trace sha256 8b17994df96ace9a…
+放行路径：7 条消息，trace sha256 65055e44a6567418…
+拒绝路径：停在审批门（5 条消息），trace sha256 a92df577498cabe9…
 checks 13/13：全部通过
 [OK] 审计记录 logs/m5_approval_audit.json
 ```
@@ -393,7 +395,7 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 声明项            文档中        实测         结论
 ---------------------------------------------------
 入库 Python 文件数  86         86         PASS
-入库 Python 行数   14290      14290      PASS
+入库 Python 行数   14316      14316      PASS
 入库测试文件数        46         46         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0

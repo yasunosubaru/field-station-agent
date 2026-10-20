@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPLAY = ROOT / "harness" / "m5_pipeline_replay.py"
-COMMITTED_FIXTURE = ROOT / "harness" / "fixtures" / "m5_pipeline_replay_20261019.json"
+COMMITTED_FIXTURE = ROOT / "harness" / "fixtures" / "m5_pipeline_replay_20261020.json"
 COMMITTED_LOG = ROOT / "logs" / "m5_pipeline_replay.json"
 _SHA_RE = re.compile(r"(?m)^sha256: ([0-9a-f]{64})$")
 

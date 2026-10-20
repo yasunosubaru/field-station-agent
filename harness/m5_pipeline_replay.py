@@ -50,7 +50,7 @@
 
 ::
 
-    $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --fixture harness/fixtures/m5_pipeline_replay_20261019.json
+    $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --fixture harness/fixtures/m5_pipeline_replay_20261020.json
     $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --verify-log logs/m5_pipeline_replay.json
     $env:PYTHONPATH="src"; python harness/m5_pipeline_replay.py --fixture <路径> --bless
 
@@ -112,7 +112,7 @@ FIXTURE_VERSION = 1
 LOG_KIND = "fieldstation.m5_pipeline_replay.log"
 LOG_NAME = "m5_pipeline_replay.json"
 METRICS_NAME = "m5_pipeline_metrics.jsonl"
-FIXTURE_NAME = "m5_pipeline_replay_20261019.json"
+FIXTURE_NAME = "m5_pipeline_replay_20261020.json"
 CONFIG_DIR = ROOT / "config" / "agents"
 KB_DOCS = ROOT / "data" / "kb" / "knowledge.jsonl"
 DEFAULT_FIXTURE = ROOT / "harness" / "fixtures" / FIXTURE_NAME
@@ -686,7 +686,7 @@ def _write_fixture(path: Path, log: dict) -> None:
     _write_json(path, {
         "kind": FIXTURE_KIND,
         "version": FIXTURE_VERSION,
-        "created": "2026-10-19",
+        "created": "2026-10-20",
         "scenario": SCENARIO,
         "note": ("M5-1 全链回放基线：合成样本（受 #28/#33 阻塞的替代口径）+ "
                  "五阶段脚本化响应；sha 为 canonical JSON 的 sha256。"),

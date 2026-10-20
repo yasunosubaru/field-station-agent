@@ -3963,6 +3963,16 @@
       }
     },
     {
+      "kind": "stage_input",
+      "agent": "qc",
+      "i": 0,
+      "input_digest": "03520fb3f9948543",
+      "note": "对本批观测做质量控制：检查相位阶跃并给出结论。",
+      "msg_ids": [
+        "m0001"
+      ]
+    },
+    {
       "kind": "run_start",
       "agent": "qc",
       "i": 0,
@@ -5716,6 +5726,16 @@
       }
     },
     {
+      "kind": "stage_input",
+      "agent": "device_monitor",
+      "i": 0,
+      "input_digest": "09f4440f7cac531e",
+      "note": "汇总 BADG 的设备读数健康度（含缺测）并给出结论。",
+      "msg_ids": [
+        "m0002"
+      ]
+    },
+    {
       "kind": "run_start",
       "agent": "device_monitor",
       "i": 0,
@@ -5957,6 +5977,17 @@
       }
     },
     {
+      "kind": "stage_input",
+      "agent": "fault_diagnosis",
+      "i": 0,
+      "input_digest": "a3ac1f1205e2f457",
+      "note": "结合质控结论与设备健康度做故障研判，引用规程。",
+      "msg_ids": [
+        "m0003",
+        "m0004"
+      ]
+    },
+    {
       "kind": "run_start",
       "agent": "fault_diagnosis",
       "i": 0,
@@ -6129,6 +6160,16 @@
         ],
         "artifacts": {}
       }
+    },
+    {
+      "kind": "stage_input",
+      "agent": "operations_dispatch",
+      "i": 0,
+      "input_digest": "2def7cef8e1afbbf",
+      "note": "按研判结果建单并评估是否需要设备动作（高风险动作需人工批准）。",
+      "msg_ids": [
+        "m0005"
+      ]
     },
     {
       "kind": "run_start",
@@ -6326,6 +6367,16 @@
       }
     },
     {
+      "kind": "stage_input",
+      "agent": "archive",
+      "i": 0,
+      "input_digest": "a7f9b7c949ed02e4",
+      "note": "把本次全链摘要作为合成产物归档。",
+      "msg_ids": [
+        "m0006"
+      ]
+    },
+    {
       "kind": "run_start",
       "agent": "archive",
       "i": 0,
@@ -6500,6 +6551,6 @@
       }
     }
   ],
-  "trace_sha256": "1edead598c41b5e6e66350819423bd9cf598f105f1c62472822034dcb3f2cd92",
-  "sha256": "164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74"
+  "trace_sha256": "65055e44a65674186d4a61e97365e55095765d56e062bbd1cb5186f0ef934cff",
+  "sha256": "04fa5d7ce63405cd4aab478ae90ef79433229529680195dfbc30ffd87a335ded"
 }

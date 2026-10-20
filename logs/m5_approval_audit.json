@@ -123,7 +123,7 @@
         "tool": "knowledge_search"
       }
     ],
-    "trace_sha256": "1edead598c41b5e6e66350819423bd9cf598f105f1c62472822034dcb3f2cd92"
+    "trace_sha256": "65055e44a65674186d4a61e97365e55095765d56e062bbd1cb5186f0ef934cff"
   },
   "checks": {
     "approve_action_executed": true,
@@ -197,15 +197,15 @@
     "rejected_errors": [
       "evidence[1].call_id 't0002' 不存在于成功的工具调用中"
     ],
-    "trace_sha256": "8b17994df96ace9ac1759b538f42219595d15a4f2b6ac7388b69abdd8f92cda1"
+    "trace_sha256": "a92df577498cabe90e5498309b2d4f2f7ff8a008979e99f25ef3ea8746b03034"
   },
   "kind": "fieldstation.m5_approval_audit.log",
-  "sha256": "970c3b8fcb4b9987d5e0cd3d6960e85654d9edb610d2ed97064ca3ab81152bcf",
+  "sha256": "bfd71d9a12deb1aeea864fb93598bc931fce0f6325bd17690319ed9493befe76",
   "source": {
     "baseline_log": "logs/m5_pipeline_replay.json",
-    "baseline_trace_sha256": "1edead598c41b5e6e66350819423bd9cf598f105f1c62472822034dcb3f2cd92",
-    "fixture": "harness/fixtures/m5_pipeline_replay_20261019.json",
-    "fixture_sha256": "164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74"
+    "baseline_trace_sha256": "65055e44a65674186d4a61e97365e55095765d56e062bbd1cb5186f0ef934cff",
+    "fixture": "harness/fixtures/m5_pipeline_replay_20261020.json",
+    "fixture_sha256": "04fa5d7ce63405cd4aab478ae90ef79433229529680195dfbc30ffd87a335ded"
   },
   "summary": {
     "approve_messages": 7,
