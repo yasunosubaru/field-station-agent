@@ -1,11 +1,11 @@
 """M5-4：审批门端到端联调与消息全量落 trace 核对（issue #63）。
 
-三条：
+覆盖：
 
-* 审计本身全过（13/13），且入库记录与当前生成器逐字节一致（确定性、钉 LF）；
+* 审计本身全过，且入库记录与当前生成器逐字节一致（确定性、钉 LF）；
 * 拒绝路径**确实停住**：换回 ``ApproveAll`` 时审计必须报失败 —— 否则这个审计
   只是在自证「跑完了」，不能证明审批门停得住；
-* 两次运行输出相同。
+* 两次运行输出相同；非 UTF-8 输入按约定退出 2。
 """
 from __future__ import annotations
 
@@ -96,6 +96,16 @@ class TestApprovalAudit(unittest.TestCase):
                                 in error for error in log["deny"]["rejected_errors"]))
             self.assertEqual(log["approve"]["approval"][0]["verdict"], "approved")
             self.assertEqual(log["approve"]["action_result"]["status"], "accepted")
+
+
+    def test_non_utf8_fixture_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "bad-utf8.json"
+            bad.write_bytes(b"\xff\xfe\x00A")
+            out = Path(td) / "audit.json"
+            run = _run("--fixture", str(bad), "--out", str(out))
+            self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
+            self.assertIn("[阻断]", run.stdout)
 
 
 if __name__ == "__main__":

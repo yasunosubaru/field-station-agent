@@ -1,11 +1,13 @@
 """M5-3：运行看板的生成与口径（issue #62）。
 
-四条：
+覆盖：
 
 * 三类视图能从已提交的 M5-1 全链日志生成，关键数值与口径钉死；
+* 阶段归属：只认 `device_monitor` 的 `station_health` 与 `qc` 的 `slip_detect`，
+  其他阶段的同名结果不参与；卫星组匹配不上时失败而不是猜；
 * 输出确定（同一份日志两次生成逐字节相同）且钉 LF；
 * 入库的页面与摘要与当前生成器一致 —— 改口径必须重新生成并提交；
-* 输入错误的退出码分层（2 = 用法/日志不可读，1 = 日志缺三类视图所需数据）。
+* 输入错误的退出码分层（2 = 用法/日志不可读或非 UTF-8，1 = 日志缺三类视图所需数据）。
 """
 from __future__ import annotations
 
@@ -129,7 +131,7 @@ class TestDashboard(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
 
-            # 缺 station_health 的工具结果 → 台站健康度视图无法生成
+            # 缺 device_monitor 的 station_health → 台站健康度视图无法生成
             log = json.loads(COMMITTED_LOG.read_text(encoding="utf-8"))
             log["trace"] = [event for event in log["trace"]
                             if not (event.get("kind") == "tool_result"
@@ -140,7 +142,7 @@ class TestDashboard(unittest.TestCase):
             self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
             self.assertIn("station_health", run.stdout)
 
-            # 缺 create_work_order 的结果 → 工单视图无法生成
+            # 缺 create_work_order → 工单视图无法生成
             log = json.loads(COMMITTED_LOG.read_text(encoding="utf-8"))
             for stage in log["stages"]:
                 if stage.get("stage") == "operations_dispatch":
@@ -150,6 +152,52 @@ class TestDashboard(unittest.TestCase):
             run, _, _ = self._generate(td, log=stripped)
             self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
             self.assertIn("create_work_order", run.stdout)
+
+    def test_other_stage_station_health_ignored(self):
+        """别的阶段（如 fault_diagnosis）也调了 station_health：不得改变台站视图。"""
+        log = json.loads(COMMITTED_LOG.read_text(encoding="utf-8"))
+        log["trace"].append({
+            "kind": "tool_call", "agent": "fault_diagnosis", "call_id": "t0099",
+            "tool": "station_health", "args": {}, "approved": True})
+        log["trace"].append({
+            "kind": "tool_result", "agent": "fault_diagnosis", "call_id": "t0099",
+            "tool": "station_health", "ok": True, "error": None,
+            "result": {"stations": [{"station_id": "FAKE", "health_score": 1.0,
+                                     "status": "ok", "missing": 0, "total": 1,
+                                     "metrics": [], "quality_flags": []}],
+                       "summary": {"total": 1, "missing": 0, "alerts": []}}})
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            fake_log = td / "fake-health.json"
+            fake_log.write_text(json.dumps(log, ensure_ascii=False), encoding="utf-8")
+            run, _, summary = self._generate(td, log=fake_log)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            data = json.loads(summary.read_text(encoding="utf-8"))
+            self.assertEqual([s["station_id"] for s in data["stations"]], ["BADG"])
+
+    def test_unmatched_slip_group_exits_1_instead_of_guessing(self):
+        log = json.loads(COMMITTED_LOG.read_text(encoding="utf-8"))
+        for event in log["trace"]:
+            if (event.get("kind") == "tool_call" and event.get("agent") == "qc"
+                    and event.get("tool") == "slip_detect"):
+                event["args"]["series"][0]["gps_tow_s"] += 1  # 破坏与输入组的匹配
+                break
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            bad = td / "bad-slip.json"
+            bad.write_text(json.dumps(log, ensure_ascii=False), encoding="utf-8")
+            run, _, _ = self._generate(td, log=bad)
+            self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+            self.assertIn("无法归属卫星组", run.stdout)
+
+    def test_non_utf8_log_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            bad = td / "bad-utf8.json"
+            bad.write_bytes(b"\xff\xfe\x00A")
+            run, _, _ = self._generate(td, log=bad)
+            self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
+            self.assertIn("[阻断]", run.stdout)
 
 
 if __name__ == "__main__":

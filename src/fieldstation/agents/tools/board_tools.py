@@ -21,6 +21,9 @@ from . import ToolResult
 
 _KEY_DESC = "黑板键，形如 station/BADG、station/BADG/health、alert/A-0001、order/WO-0001"
 
+#: 黑板工具的名字。``Pipeline`` 用它做装配检查：阶段注册表里预置这些名字直接报错。
+BOARD_TOOL_NAMES = ("board_read", "board_write")
+
 
 class BoardReadTool:
     """读共享黑板的一个上下文条目（受视图范围约束）。"""
@@ -76,6 +79,8 @@ class BoardWriteTool:
         value = args.get("value")
         must_not_exist = args.get("must_not_exist", False)
         expect = args.get("expect_version")
+        if not isinstance(must_not_exist, bool):
+            return ToolResult(ok=False, error="must_not_exist 必须是布尔值")
         if must_not_exist and expect is not None:
             return ToolResult(ok=False,
                               error="must_not_exist 与 expect_version 不能同时给")
