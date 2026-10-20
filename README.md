@@ -263,7 +263,7 @@ python tools/audit_claims.py
 ## 代码量（机维护，请勿手改）
 
 - 入库 Python 文件数：**86** 个
-- 入库 Python 行数：**14,290** 行
+- 入库 Python 行数：**14,316** 行
 - 入库测试文件数：**46** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。

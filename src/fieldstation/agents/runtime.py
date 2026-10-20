@@ -59,7 +59,8 @@ class Agent:
     tools: list[dict] = field(default_factory=list)
 
 
-def _digest(user_input: str) -> str:
+def digest_input(user_input: str) -> str:
+    """输入文本的稳定摘要（trace 的 ``input_digest``；``Pipeline`` 的 stage_input 也用它）。"""
     return hashlib.sha256(user_input.encode("utf-8")).hexdigest()[:16]
 
 
@@ -181,7 +182,7 @@ def run(
     返回模型最后一次的正文字符串。``registry`` 与 ``approval`` 都不传时行为
     与 M0 的单轮循环完全一致 —— 老调用方不必改。
     """
-    digest = _digest(user_input)
+    digest = digest_input(user_input)
     trace.write("run_start", _base(trace, agent.name, 0, digest))
 
     messages = [

@@ -13,9 +13,10 @@
 * **阶段之间只有消息**：阶段间的**数据**默认只经总线 —— 一个阶段的输入文本由它
   ``consumes`` 的主题上已发布的消息拼出（``Pipeline._input_text``）；要传什么，
   先发布。除此之外，输入文本开头还有一行 ``PipelineStage.note``（本阶段声明的
-  任务说明，编译期常量，随输入一起进 ``input_digest``）。注意 ``note`` 不出现在
-  trace 里：只看日志的复核者无法从日志还原它 —— M5-4 若要求输入全量可见，
-  需要为它另加一条事件。
+  任务说明，编译期常量，随输入一起进 ``input_digest``）。
+* **输入全量落 trace**：每个阶段在 ``runtime.run`` 之前写一条 ``stage_input`` 事件
+  （``agent`` / ``i`` / ``input_digest`` / ``note`` / ``msg_ids``），所以只看日志
+  也能还原「模型被交代了什么任务 + 读了哪几条消息」（KI-11，2026-10-20 修复）。
 * **黑板是第二条、且是声明式的通道**（M5-2）：阶段要读写共享上下文（台站/告警/
   工单），就在 ``board_reads`` / ``board_writes`` 里声明范围；``Pipeline`` 按声明
   造视图、把 ``board_read`` / ``board_write`` 注入该阶段**自己的**注册表（克隆，
@@ -267,6 +268,14 @@ class Pipeline:
             text = self._input_text(stage)
             # 阶段本地视图：runtime 的结论校验只看这一个阶段的事件。
             stage_trace = TraceWriter(self.trace_path)
+            # 输入全量落 trace：note（编译期常量）+ 本次消费的消息 + 输入摘要。
+            stage_trace.write("stage_input", {
+                "agent": stage.name,
+                "i": 0,
+                "input_digest": runtime.digest_input(text),
+                "note": stage.note,
+                "msg_ids": list(self._refs(stage)),
+            })
             agent, registry = self._wired[stage.name]
             content = runtime.run(
                 agent,

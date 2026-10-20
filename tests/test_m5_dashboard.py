@@ -24,7 +24,7 @@ TOOL = ROOT / "tools" / "make_station_dashboard.py"
 COMMITTED_LOG = ROOT / "logs" / "m5_pipeline_replay.json"
 COMMITTED_PAGE = ROOT / "figures" / "m5_dashboard.html"
 COMMITTED_SUMMARY = ROOT / "logs" / "m5_dashboard.json"
-LOG_SHA = "164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74"
+LOG_SHA = "04fa5d7ce63405cd4aab478ae90ef79433229529680195dfbc30ffd87a335ded"
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:

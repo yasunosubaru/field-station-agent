@@ -153,6 +153,22 @@ class TestPipeline(unittest.TestCase):
             self.assertNotIn("device.health", text2)
             self.assertIn("汇总设备健康度", text2)
 
+    def test_stage_input_events_record_note_messages_and_digest(self):
+        """KI-11：输入全量落 trace —— note、消费的消息、与 run_start 一致的摘要。"""
+        with tempfile.TemporaryDirectory() as td:
+            _, _, _, trace_path = self._chain(td)
+            events = read_trace(trace_path)
+            inputs = [e for e in events if e["kind"] == "stage_input"]
+            self.assertEqual([e["agent"] for e in inputs], ["qc", "device"])
+            self.assertEqual([e["note"] for e in inputs],
+                             ["评估批次质量", "汇总设备健康度"])
+            self.assertEqual(inputs[0]["msg_ids"], ["m0001"])
+            self.assertEqual(inputs[1]["msg_ids"], ["m0002"])
+            self.assertTrue(all(e["i"] == 0 for e in inputs))
+            run_starts = [e for e in events if e["kind"] == "run_start"]
+            self.assertEqual([e["input_digest"] for e in inputs],
+                             [e["input_digest"] for e in run_starts])
+
     def test_all_messages_land_in_trace_with_full_payload(self):
         with tempfile.TemporaryDirectory() as td:
             result, _, _, trace_path = self._chain(td)

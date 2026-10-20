@@ -1,7 +1,7 @@
 {
   "kind": "fieldstation.m5_pipeline_replay.fixture",
   "version": 1,
-  "created": "2026-10-19",
+  "created": "2026-10-20",
   "scenario": "m5-full-chain",
   "note": "M5-1 全链回放基线：合成样本（受 #28/#33 阻塞的替代口径）+ 五阶段脚本化响应；sha 为 canonical JSON 的 sha256。",
   "sample": {
@@ -75,5 +75,5 @@
       "completion": 412
     }
   },
-  "sha256": "164085a842b670c0e5ed7ba8d78be935527193e3f16955bcf8ebc980dce72d74"
+  "sha256": "04fa5d7ce63405cd4aab478ae90ef79433229529680195dfbc30ffd87a335ded"
 }
