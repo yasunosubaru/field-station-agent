@@ -1,0 +1,37 @@
+{
+  "dependencies": {
+    "note": "third_party_imports 全部来自可选工具；unittest / selftest / 回放 / 审计 / 看板 / 脱敏守卫均只用标准库",
+    "tests_use_third_party": false,
+    "third_party_imports": [
+      "matplotlib"
+    ]
+  },
+  "git": {
+    "commit": "1c6d3492ff3bd526cd9bfe1628ce2ca426428438",
+    "dirty": false
+  },
+  "kind": "fieldstation.env_snapshot",
+  "model_channel": [
+    {
+      "name": "fake"
+    },
+    {
+      "model": "qwen3:8b",
+      "name": "ollama",
+      "num_ctx": 8192,
+      "seed": 42,
+      "temperature": 0,
+      "think": false
+    }
+  ],
+  "platform": {
+    "machine": "AMD64",
+    "release": "10",
+    "system": "Windows"
+  },
+  "python": {
+    "implementation": "CPython",
+    "version": "3.11.15"
+  },
+  "version": 1
+}
