@@ -88,6 +88,7 @@ PROVENANCE 与 `src/` 双向一致、同 seed 两次 `config_hash` 相同、
 `tools/desensitization.local.txt`（gitignored）补姓名等无法公开列词的类别。命中退出 1，
 只打印 `文件:行 [类别]`、**不回显内容**（公开 CI 日志不能二次泄露）。它是绊线不是
 证明 —— M0 决策第 24 条：两版正则扫描器都给过假的「0 命中」。
+**新文件先 `git add` 再跑**：它只扫入库文件，未跟踪的新文件不在扫描范围。
 
 ```text
 ==============================================================================
@@ -386,6 +387,22 @@ payload 规范 JSON 一致）；payload 全量（不是 digest）；refs 闭合�
 `tests/test_m5_approval_audit.py`（4 条）含一条**负例**：把「拒绝」换成放行，
 审计必须失败 —— 防止这个审计只是在自证「跑完了」。
 
+### 3.8 环境快照与干净环境重跑（M7-3 的一部分）
+
+```powershell
+python tools/env_snapshot.py            # → logs/env_snapshot_<日期>.json
+```
+
+快照记录 Python / OS / git commit / 第三方 import / 模型通道；**不含**本机路径、
+用户名、环境变量值（`tests/test_env_snapshot.py` 钉住）。`third_party_imports`
+当前只有 `matplotlib`（仅 `tools/make_cli_figures.py` 可选使用）；测试与门禁只用标准库。
+
+干净环境（同一台机器全新 venv）重跑记录：`logs/clean_room_20261020.txt`
+（8 条命令全部退出 0：unittest / selftest / audit_claims / M5 回放对拍 /
+`--verify-log` / 审批审计 / 看板 / 脱敏守卫）。跨平台由 CI（ubuntu-latest）覆盖；
+真正的干净机器验证与真实样本一起等 #69 的收尾条件。详见
+`docs/operations/environment.md`。
+
 ## 4. 数字回源核对
 
 ```powershell
@@ -400,9 +417,9 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 ```text
 声明项            文档中        实测         结论
 ---------------------------------------------------
-入库 Python 文件数  87         87         PASS
-入库 Python 行数   14558      14558      PASS
-入库测试文件数        47         47         PASS
+入库 Python 文件数  88         88         PASS
+入库 Python 行数   14661      14661      PASS
+入库测试文件数        48         48         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0
 
@@ -450,6 +467,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | M5 全链回放 sha256 | `logs/m5_pipeline_replay.json` | 第 3.5 节（与 fixture 对拍 + 证据复校） |
 | 运行看板（台站 / 告警 / 工单）与页面 sha | `logs/m5_dashboard.json` | 第 3.6 节（重跑生成器，输出与入库逐字节一致） |
 | 审批门联调与消息 trace 核对 | `logs/m5_approval_audit.json` | 第 3.7 节（重跑审计，13/13） |
+| 环境快照（Python / OS / 依赖 / 模型） | `logs/env_snapshot_<日期>.json` | 第 3.8 节（重跑快照工具） |
 | 知识库抽查命中率与探针行为 | `logs/kb_smoke_20261019.json` | 第 3.4 节（重建索引后重跑） |
 | CLI 插图内容 | `figures/`（如已出图） | 第 6 节（重跑命令即重取输出） |
 
@@ -465,6 +483,7 @@ python tools/make_cli_figures.py --command "..." --out figures
 | `harness/m5_pipeline_replay.py` | 基线一致或日志证据有效 | 1=漂移/证据无效；2=用法/IO 错误 |
 | `tools/make_station_dashboard.py` | 页面与摘要生成完成 | 1=日志缺数据或告警无法归属；2=用法/日志不可读/非 UTF-8 |
 | `tools/check_desensitization.py` | 命中 0 处 | 1=有命中；2=用法/非 git 仓库/词表被跟踪 |
+| `tools/env_snapshot.py` | 快照写入 | 2=用法/非 git 仓库 |
 | `harness/m5_approval_audit.py` | 13 项核对全过 | 1=有核对项失败；2=用法/IO 错误 |
 | `tools/audit_claims.py` | 全部核对项通过 | 1=FAIL/UNVERIFIED；2=文档缺失/空口径 |
 | `tools/sync_code_counts.py` | 已同步 | 2=找不到 README 锚点/空口径 |
