@@ -34,5 +34,19 @@
       "used_for": "CI 可离线复算的公开数据样本（回放与测试）",
       "caveat": "同上；本条目是整月的裁剪，登记的 sha256 是入库样本文件的。"
     }
+    {
+      "id": "openmeteo_badg_202401_month",
+      "title": "Open-Meteo 八达岭 2024-01 逐小时气象（入库整月样本，744 条）",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=40.37&longitude=116.28&start_date=2024-01-01&end_date=2024-01-31&hourly=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m&timezone=UTC",
+      "license": "CC BY 4.0",
+      "attribution": "Open-Meteo.com（ERA5 再分析）",
+      "retrieved": "2026-10-21",
+      "sha256": "b017bc2be025c375019d2d72e9882615feb588d93c2d55a036e6deb0326de7d0",
+      "bytes": 54641,
+      "cache": null,
+      "committed_sample": "data/public/samples/openmeteo_badg_202401_month.json",
+      "used_for": "试运行演练（31 天）的公开数据输入；CI 可离线复算",
+      "caveat": "环境读数（气温/湿度/气压/风速），不是供电/链路/安防；再分析 ≠ 台站实测。"
+    }
   ]
 }

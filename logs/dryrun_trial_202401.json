@@ -1172,7 +1172,7 @@
   "source": {
     "device": {
       "attribution": "Open-Meteo.com（ERA5 再分析）",
-      "cache": "data/public/cache/openmeteo_badg_202401.json",
+      "cache": "data/public/samples/openmeteo_badg_202401_month.json",
       "dataset": "Open-Meteo 八达岭 2024-01 逐小时气象",
       "kind": "public",
       "license": "CC BY 4.0",

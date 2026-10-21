@@ -36,7 +36,8 @@ from fieldstation.agents.tools.qc_tools import slip_detect_tool  # noqa: E402
 from fieldstation.agents.tools.station_tools import station_health_tool  # noqa: E402
 from fieldstation.store.model import StationReading, to_dict  # noqa: E402
 
-CACHE = ROOT / "data" / "public" / "cache" / "openmeteo_badg_202401.json"
+CACHE = (ROOT / "data" / "public" / "samples" /
+         "openmeteo_badg_202401_month.json")
 LOG_KIND = "fieldstation.dryrun_trial.log"
 LOG_VERSION = 1
 STATION = "BADG"
@@ -144,8 +145,8 @@ def _device_verdict(readings: list[StationReading]) -> dict:
 def run(*, days: int = DAYS) -> dict:
     if not CACHE.is_file():
         raise SystemExit(
-            f"[阻断] 缺公开数据缓存：{CACHE}\n"
-            "先跑：python tools/fetch_public_data.py --id openmeteo_badg_202401")
+            f"[阻断] 缺公开数据（入库整月样本）：{CACHE}\n"
+            "取数：python tools/fetch_public_data.py --id openmeteo_badg_202401_month")
     data = json.loads(CACHE.read_text(encoding="utf-8"))
     if len(data["hourly"]["time"]) < days * 24:
         raise SystemExit(f"[阻断] 缓存只有 {len(data['hourly']['time'])} 小时，不够 {days} 天")
@@ -213,8 +214,7 @@ def run(*, days: int = DAYS) -> dict:
                 "dataset": "Open-Meteo 八达岭 2024-01 逐小时气象",
                 "license": "CC BY 4.0",
                 "attribution": "Open-Meteo.com（ERA5 再分析）",
-                "cache": CACHE.relative_to(ROOT).as_posix(),
-                "sha256_normalized": _normalized_sha(CACHE),
+                "cache": CACHE.relative_to(ROOT).as_posix(),                "sha256_normalized": _normalized_sha(CACHE),
             },
             "observations": {
                 "kind": "synthetic",
