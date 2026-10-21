@@ -90,6 +90,22 @@ $env:PYTHONPATH="src"; python tools/make_station_dashboard.py
 `station_health` 或 `create_work_order` 结果）、或周跳告警无法归属卫星组（不猜）；
 `2` 用法错误、日志不可读 / 非 UTF-8 / 不是 M5 回放日志。
 
+## 第二类输入：公开数据链路（#98）
+
+看板也接受 `harness/public_data_chain.py` 的输出（`kind=fieldstation.public_data_chain.log`，
+与 M5-1 日志同形）：设备侧是公开数据、观测侧是合成样本、模型被事实合成器替代。页面会
+自动多出一行「数据来源」标注（设备侧样本路径 / 许可 / 署名；观测侧合成 + 原因），
+并把 tokens 显示为 `0/0（无模型调用）`。
+
+```powershell
+$env:PYTHONPATH="src"
+python tools/make_station_dashboard.py --log logs/public_data_chain_202401d01.json `
+    --page figures/m5_public_chain_dashboard.html --summary logs/public_chain_dashboard.json
+```
+
+M5-1 的页面（`figures/m5_dashboard.html`）与这份页并存：前者是合成基线，后者是公开
+数据链路的真实数值。
+
 ## 不做什么（边界）
 
 - 不引第三方 BI / 图表库：一个静态 HTML 足够三人同步与对外演示，没有交互筛选需求。

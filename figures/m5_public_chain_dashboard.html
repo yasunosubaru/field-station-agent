@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>野外台站运行看板（M5-3）</title>
+<style>
+:root { --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --bg:#ffffff;
+         --ok:#1a7f37; --warn:#9a6700; --critical:#cf222e; --accent:#0969da; }
+* { box-sizing:border-box; }
+body { margin:0; padding:24px; font:14px/1.6 "Microsoft YaHei", "Segoe UI", sans-serif;
+        color:var(--fg); background:var(--bg); }
+h1 { font-size:20px; margin:0 0 4px; }
+h2 { font-size:16px; margin:0 0 12px; }
+.meta { color:var(--muted); font-size:12px; margin-bottom:16px; }
+.panel { border:1px solid var(--line); border-radius:8px; padding:16px; margin:0 0 16px; }
+table { border-collapse:collapse; width:100%; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);
+          vertical-align:top; }
+th { color:var(--muted); font-weight:600; font-size:12px; }
+table.inner { margin-top:8px; font-size:12px; }
+.badge { display:inline-block; padding:0 8px; border-radius:999px; font-size:12px;
+          border:1px solid var(--line); }
+.badge.ok { color:var(--ok); border-color:var(--ok); }
+.badge.warn { color:var(--warn); border-color:var(--warn); }
+.badge.critical { color:var(--critical); border-color:var(--critical); }
+.bar { height:8px; background:#eaeef2; border-radius:4px; overflow:hidden;
+        min-width:120px; margin-bottom:2px; }
+.bar span { display:block; height:100%; background:var(--accent); }
+code { font-family:Consolas, monospace; white-space:nowrap; }
+.empty { color:var(--muted); }
+footer { color:var(--muted); font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>野外台站运行看板</h1>
+<div class="meta">
+  数据源：<code>logs/public_data_chain_202401d01.json</code>（sha256 <code>c62a804e89aee8b2…</code>）
+  · 链路 5 阶段 / 7 条消息
+  · checks 8/8 · tokens 0/0（无模型调用）
+  · 台站 1 / 告警 2（严重 0、警告 2）/ 工单 1
+</div>
+<div class="meta"><strong>数据来源</strong>：设备侧 <code>data/public/samples/openmeteo_badg_202401_d01.json</code>（CC BY 4.0，Open-Meteo.com（ERA5 再分析））；观测侧为<strong>合成样本</strong>（公开 GNSS 观测自 1999 年起全是 CRINEX，仓库按既有决定不解码 —— issue #99）。</div>
+<div class="meta"><strong>口径</strong>：设备侧是<strong>环境读数</strong>（气温/湿度/气压/风速），不是供电/链路/安防；低温标记是演示用示例阈值，不是工程判据。观测侧是合成样本，结论里的数字来自工具返回。</div>
+
+<section class="panel">
+  <h2>一、台站健康度</h2>
+  <table><thead><tr><th>台站</th><th>状态</th><th>健康度</th><th>缺测</th>
+  <th>最近读数</th><th>指标</th></tr></thead>
+  <tbody><tr><td><code>BADG</code></td><td><span class="badge warn">degraded</span></td><td><div class="bar"><span style="width:100.0%"></span></div><small>1.0</small></td><td>0/96</td><td>2024-01-01T23:00:00+00:00</td><td><details><summary>指标 4 项</summary><table class="inner"><thead><tr><th>sensor</th><th>metric</th><th>unit</th><th>count</th><th>missing</th><th>min</th><th>max</th><th>mean</th><th>flags</th></tr></thead><tbody><tr><td>env</td><td>relative_humidity_percent</td><td>%</td><td>24</td><td>0</td><td>43.0</td><td>87.0</td><td>69.95833333333333</td><td>—</td></tr><tr><td>env</td><td>surface_pressure_hpa</td><td>hPa</td><td>24</td><td>0</td><td>934.4</td><td>941.3</td><td>936.7583333333337</td><td>—</td></tr><tr><td>env</td><td>temperature_c</td><td>degC</td><td>24</td><td>0</td><td>-11.6</td><td>-2.4</td><td>-8.116666666666667</td><td>low_temp</td></tr><tr><td>env</td><td>wind_speed_mps</td><td>m/s</td><td>24</td><td>0</td><td>1.1</td><td>13.1</td><td>6.216666666666666</td><td>—</td></tr></tbody></table></details></td></tr></tbody></table>
+</section>
+
+<section class="panel">
+  <h2>二、告警</h2>
+  <table><thead><tr><th>级别</th><th>来源</th><th>台站</th><th>标题</th>
+  <th>细节</th><th>证据（agent:call_id）</th></tr></thead>
+  <tbody><tr><td><span class="badge warn">warn</span></td><td>data_quality</td><td><code>BADG</code></td><td>GPS 01 检出周跳 / 相位阶跃</td><td>counts={&#x27;gf&#x27;: 1, &#x27;mw&#x27;: 1, &#x27;split_points&#x27;: 1, &#x27;union&#x27;: 1}；slip_indices=[30]</td><td>qc:t0001</td></tr><tr><td><span class="badge warn">warn</span></td><td>station_health</td><td><code>BADG</code></td><td>BADG 台站状态 degraded</td><td>0/96 条读数缺测；quality_flags=[&#x27;low_temp&#x27;]</td><td>device_monitor:t0001</td></tr></tbody></table>
+</section>
+
+<section class="panel">
+  <h2>三、工单</h2>
+  <table><thead><tr><th>工单</th><th>优先级</th><th>状态</th><th>台站</th>
+  <th>标题</th><th>动作</th><th>执行</th><th>说明</th></tr></thead>
+  <tbody><tr><td><code>WO-0001</code></td><td><span class="badge warn">P1</span></td><td>open</td><td><code>BADG</code></td><td>BADG 载波相位周跳 + 设备读数异常 处置</td><td>restart_receiver</td><td>accepted / simulated</td><td>研判 phase_slip_with_device_degradation；证据 [&#x27;t0001&#x27;, &#x27;t0002&#x27;]；建议 按命中规程处置：质控 phase_slip_detected，设备健康度 1.0（degraded）</td></tr></tbody></table>
+</section>
+
+<footer>
+  口径与规则：<code>docs/operations/dashboard.md</code> ·
+  生成命令：<code>python tools/make_station_dashboard.py</code> ·
+  本页不含生成时间戳（只含数据时间）；同一份日志两次生成逐字节相同。
+</footer>
+</body>
+</html>

@@ -56,6 +56,45 @@ python harness/public_data_replay.py \
     --out logs/public_data_device_202401d01.json       # 离线复算（CI 用这个）
 ```
 
+## 接进 M5 链路与看板（#98）
+
+`harness/public_data_chain.py` 把**公开设备读数**接进完整五阶段链：
+
+```text
+公开气象样本（data/public/samples/openmeteo_badg_202401_d01.json）
+   │  readings_from_open_meteo + apply_low_temp_rule（演示规则）
+   ▼
+data.device ──► device_monitor ──► … ──► archive      （五阶段 / 7 消息）
+data.observations（合成，M5-1 同款）──► qc ──┘
+```
+
+- **模型层**换成 `harness/fact_provider.py` 的「事实合成器」：按上游消息选工具与参数，
+  结论按工具返回的真实数字拼 —— 结论里的每个数字都能在 trace 里对上；
+- **为什么没改 `m5_pipeline_replay.py`**：那是 M5-1 的**基线**（fixture/log 的 sha 钉死），
+  给它加分支只会让基线变脆。集成放在新 harness 里，基线不动（回归测试守住）；
+- 输出 `logs/public_data_chain_202401d01.json` 与 M5-1 日志**同形**（trace / messages /
+  stages / artifacts / checks / summary），看板可直接消费。
+
+**看板（真实数值）**：
+
+```powershell
+$env:PYTHONPATH="src"
+python tools/make_station_dashboard.py --log logs/public_data_chain_202401d01.json `
+    --page figures/m5_public_chain_dashboard.html --summary logs/public_chain_dashboard.json
+```
+
+页面顶部会标出**数据来源与许可**（设备侧 Open-Meteo / CC BY 4.0，观测侧合成 + 原因），
+以及「环境读数 ≠ 供电/链路/安防」的口径提示。当前这版渲染出的真实数值：
+
+| 视图 | 值 |
+|---|---|
+| 台站健康度 | BADG，健康度 **1.0**（**degraded**），缺测 0/96，`low_temp` 标记 |
+| 告警 | 2 条（均 warn）：`data_quality`（GPS 01 周跳，证据 `qc:t0001`）、`station_health`（证据 `device_monitor:t0001`） |
+| 工单 | **WO-0001**，P1，open，动作 restart_receiver（accepted / simulated） |
+
+M5-1 的看板页（`figures/m5_dashboard.html`）保持不变（逐字节），两页并存：一页是合成
+基线，一页是公开数据链路。
+
 ## 校验口径：活响应的字节逐次不同
 
 实测：Open-Meteo 的 archive 响应**每次取回的字节数都不一样**（28471 / 28472）——

@@ -1,0 +1,144 @@
+{
+  "alerts": [
+    {
+      "detail": "counts={'gf': 1, 'mw': 1, 'split_points': 1, 'union': 1}；slip_indices=[30]",
+      "evidence": [
+        {
+          "agent": "qc",
+          "call_id": "t0001"
+        }
+      ],
+      "level": "warn",
+      "source": "data_quality",
+      "station": "BADG",
+      "title": "GPS 01 检出周跳 / 相位阶跃"
+    },
+    {
+      "detail": "0/96 条读数缺测；quality_flags=['low_temp']",
+      "evidence": [
+        {
+          "agent": "device_monitor",
+          "call_id": "t0001"
+        }
+      ],
+      "level": "warn",
+      "source": "station_health",
+      "station": "BADG",
+      "title": "BADG 台站状态 degraded"
+    }
+  ],
+  "chain": {
+    "checks": "8/8",
+    "messages": 7,
+    "stages": 5,
+    "tokens": {
+      "completion": 0,
+      "prompt": 0
+    },
+    "tokens_note": "事实合成器不调用模型：token 为 0，不是模型成本"
+  },
+  "counts": {
+    "alerts": 2,
+    "alerts_by_level": {
+      "warn": 2
+    },
+    "orders": 1,
+    "stations": 1
+  },
+  "kind": "fieldstation.m5_dashboard.summary",
+  "orders": [
+    {
+      "action": "restart_receiver",
+      "assigned_to": "",
+      "description": "研判 phase_slip_with_device_degradation；证据 ['t0001', 't0002']；建议 按命中规程处置：质控 phase_slip_detected，设备健康度 1.0（degraded）",
+      "evidence_call_ids": [
+        "t0001",
+        "t0002"
+      ],
+      "execution": {
+        "action": "restart_receiver",
+        "confidence": 0.9,
+        "execution_mode": "simulated",
+        "reason": "研判 phase_slip_with_device_degradation；证据 ['t0001', 't0002']；建议 按命中规程处置：质控 phase_slip_detected，设备健康度 1.0（degraded）",
+        "station_id": "BADG",
+        "status": "accepted"
+      },
+      "order_id": "WO-0001",
+      "priority": "P1",
+      "risk": "medium",
+      "station_id": "BADG",
+      "status": "open",
+      "title": "BADG 载波相位周跳 + 设备读数异常 处置"
+    }
+  ],
+  "page": {
+    "sha256": "88e408faff86f25f9c0c1c2ed48e9eda1144ea64839bb6bdf387ee66c451f71b"
+  },
+  "source": {
+    "log": "logs/public_data_chain_202401d01.json",
+    "log_sha256": "c62a804e89aee8b20581acde2e022e104a47c07c674744b0553b5047bdc73ac9",
+    "scenario": "public-data-chain"
+  },
+  "stations": [
+    {
+      "health_score": 1.0,
+      "latest_observed_at": "2024-01-01T23:00:00+00:00",
+      "metrics": [
+        {
+          "count": 24,
+          "max": 87.0,
+          "mean": 69.95833333333333,
+          "metric": "relative_humidity_percent",
+          "min": 43.0,
+          "missing": 0,
+          "quality_flags": [],
+          "sensor": "env",
+          "unit": "%"
+        },
+        {
+          "count": 24,
+          "max": 941.3,
+          "mean": 936.7583333333337,
+          "metric": "surface_pressure_hpa",
+          "min": 934.4,
+          "missing": 0,
+          "quality_flags": [],
+          "sensor": "env",
+          "unit": "hPa"
+        },
+        {
+          "count": 24,
+          "max": -2.4,
+          "mean": -8.116666666666667,
+          "metric": "temperature_c",
+          "min": -11.6,
+          "missing": 0,
+          "quality_flags": [
+            "low_temp"
+          ],
+          "sensor": "env",
+          "unit": "degC"
+        },
+        {
+          "count": 24,
+          "max": 13.1,
+          "mean": 6.216666666666666,
+          "metric": "wind_speed_mps",
+          "min": 1.1,
+          "missing": 0,
+          "quality_flags": [],
+          "sensor": "env",
+          "unit": "m/s"
+        }
+      ],
+      "missing": 0,
+      "quality_flags": [
+        "low_temp"
+      ],
+      "station_id": "BADG",
+      "status": "degraded",
+      "total": 96
+    }
+  ],
+  "version": 1
+}
