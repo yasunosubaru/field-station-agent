@@ -479,7 +479,8 @@ def _checks(result, trace: list[dict], device_payload: dict,
 
 
 # ------------------------------------------------------------------ 运行
-def run(out_path: Path) -> dict:
+def run(out_path: Path, keep_dir: Path | None = None) -> dict:
+    """跑一次全链；``keep_dir`` 给定时把 trace 与归档产物留出来（给人核对）。"""
     sample_sha = hashlib.sha256(PUBLIC_SAMPLE.read_bytes()).hexdigest()
     device_payload, device_summary = public_device_payload()
     scene = _scenario(_sample())
@@ -529,6 +530,19 @@ def run(out_path: Path) -> dict:
         ])
         trace = read_trace(trace_path)
         checks = _checks(result, trace, device_payload, archive_root)
+        if keep_dir is not None:
+            keep_dir.mkdir(parents=True, exist_ok=True)
+            with (keep_dir / "trace.jsonl").open("w", encoding="utf-8",
+                                               newline="\n") as handle:
+                for event in trace:
+                    handle.write(json.dumps(event, ensure_ascii=False,
+                                           sort_keys=True) + "\n")
+            if archive_root.is_dir():
+                for path in sorted(archive_root.rglob("*")):
+                    if path.is_file():
+                        target = keep_dir / "archive" / path.relative_to(archive_root)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(path.read_bytes())
 
     passed = sum(1 for value in checks.values() if value)
     log = {
@@ -576,9 +590,12 @@ def main(argv=None) -> int:
         description="公开数据全流程演示（五阶段链 + 结题标准核对）")
     parser.add_argument("--out",
                         default=str(ROOT / "logs" / "public_data_full_run_202401d01.json"))
+    parser.add_argument("--keep-trace", default=None,
+                        help="把 trace 与归档产物留到这个目录（供人工核对）")
     args = parser.parse_args(argv)
     try:
-        log = run(Path(args.out))
+        log = run(Path(args.out),
+                  keep_dir=Path(args.keep_trace) if args.keep_trace else None)
     except Exception as exc:  # noqa: BLE001 —— 演示脚本：失败要看得见
         print(f"[阻断] {type(exc).__name__}: {exc}")
         return 2
