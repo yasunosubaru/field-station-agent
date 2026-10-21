@@ -33,7 +33,7 @@
       "committed_sample": "data/public/samples/openmeteo_badg_202401_d01.json",
       "used_for": "CI 可离线复算的公开数据样本（回放与测试）",
       "caveat": "同上；本条目是整月的裁剪，登记的 sha256 是入库样本文件的。"
-    }
+    },
     {
       "id": "openmeteo_badg_202401_month",
       "title": "Open-Meteo 八达岭 2024-01 逐小时气象（入库整月样本，744 条）",
