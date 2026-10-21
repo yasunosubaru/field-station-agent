@@ -12,6 +12,8 @@
       "attribution": "Open-Meteo.com（ERA5 再分析）",
       "retrieved": "2026-10-20",
       "sha256": "819d232df1b383d95a318e4b52c7105c4b6a18175ffb06a1135aa88610a8aab0",
+      "sha256_normalized": "ebe38d4d21e2dc9127e215bb869af7fcdec34336bdc8c65011c6eb948ec25757",
+      "sha256_note": "活取数的响应含逐次变化的 generationtime_ms，原始字节 sha 每次都不同；校验按规范化摘要（去该字段后的规范 JSON）算。",
       "bytes": 28472,
       "cache": "data/public/cache/openmeteo_badg_202401.json",
       "committed_sample": null,

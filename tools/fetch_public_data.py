@@ -31,6 +31,28 @@ MANIFEST = ROOT / "data" / "public" / "manifest.json"
 DEFAULT_CACHE = ROOT / "data" / "public" / "cache"
 TIMEOUT_S = 120
 
+#: 响应里逐次变化的字段（API 自己的生成耗时）。**校验和按「去掉这些字段后的规范
+#: JSON」算** —— 否则同一份数据每次取的 sha 都不同，「校验」就成了摆设
+#: （实测：Open-Meteo 的 archive 响应每次差 1 字节）。
+VOLATILE_FIELDS = ("generationtime_ms",)
+
+
+def normalized_digest(payload: bytes) -> str:
+    """规范化后的 sha256：JSON 去掉逐次变化的字段后按规范形式算。
+
+    不是 JSON 的载荷按原始字节算（gz / RINEX 文本没有这个问题）。
+    """
+    try:
+        data = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return hashlib.sha256(payload).hexdigest()
+    if isinstance(data, dict):
+        for field in VOLATILE_FIELDS:
+            data.pop(field, None)
+    canonical = json.dumps(data, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 def load_manifest(path: Path = MANIFEST) -> dict:
     """读清单；不存在或结构不对抛 ``ValueError``。"""
@@ -95,16 +117,25 @@ def main(argv=None) -> int:
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             print(f"[阻断] {sid}: 取数失败 {source['url']}（{exc}）")
             return 2
-        digest = hashlib.sha256(payload).hexdigest()
-        if digest != source["sha256"]:
-            failures.append(f"{sid}: sha256 不符（登记 {source['sha256'][:12]}…，"
+        # 活取数的 JSON 源：原始字节逐次不同（响应含 generationtime_ms），
+        # 因此登记了 `sha256_normalized` 就按规范化摘要比，否则按原始字节 sha 比。
+        normalized = source.get("sha256_normalized")
+        if normalized:
+            digest = normalized_digest(payload)
+            expected = normalized
+        else:
+            digest = hashlib.sha256(payload).hexdigest()
+            expected = source["sha256"]
+        if digest != expected:
+            failures.append(f"{sid}: sha256 不符（登记 {expected[:12]}…，"
                             f"实际 {digest[:12]}…）—— 数据源可能变了，别默默换基线")
             continue
         target = cache_dir / Path(source["cache"]).name
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as handle:
             handle.write(payload)
-        print(f"[OK] {sid}: {len(payload)} B，sha256 {digest[:12]}… → "
+        scope = "规范化摘要" if normalized else "原始字节"
+        print(f"[OK] {sid}: {len(payload)} B，{scope} sha256 {digest[:12]}… → "
               f"{target.relative_to(ROOT) if target.is_relative_to(ROOT) else target}")
         checked += 1
 
