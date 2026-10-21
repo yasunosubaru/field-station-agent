@@ -59,7 +59,11 @@ for _p in (str(ROOT / "src"), str(ROOT)):
 from fieldstation.agents.blackboard import Blackboard  # noqa: E402
 from fieldstation.store.product import canonical_json  # noqa: E402
 
-KIND = "fieldstation.m5_pipeline_replay.log"
+KINDS = (
+    "fieldstation.m5_pipeline_replay.log",
+    "fieldstation.public_data_chain.log",
+)
+KIND = KINDS[0]
 ACTOR = "dashboard:hydrate"
 #: 台站状态 → 告警级别；``ok`` 不产生告警。
 STATUS_LEVEL = {"degraded": "warn", "critical": "critical"}
@@ -86,10 +90,10 @@ def load_log(path: Path) -> dict:
         log = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise DashboardInputError(f"日志不是合法 JSON：{path}（{exc}）") from exc
-    if not isinstance(log, dict) or log.get("kind") != KIND:
+    if not isinstance(log, dict) or log.get("kind") not in KINDS:
         raise DashboardInputError(
-            f"不是 M5 全链回放日志：{path}（kind={log.get('kind') if isinstance(log, dict) else type(log).__name__}，"
-            f"期望 {KIND}）")
+            f"不是可用的全链日志：{path}（kind={log.get('kind') if isinstance(log, dict) else type(log).__name__}，"
+            f"期望 {list(KINDS)} 之一）")
     for key in ("stages", "messages", "trace", "summary"):
         if key not in log:
             raise DashboardInputError(f"日志缺字段 {key!r}：{path}")
@@ -338,6 +342,27 @@ def render_page(board: Blackboard, log: dict, *, source_name: str) -> str:
         level = entry.value.get("level")
         if level in counts:
             counts[level] += 1
+
+    # 公开数据链路（issue #98）：页面上必须标明「哪一侧是公开数据、什么许可」
+    sources = log.get("data_sources") or {}
+    device_src = sources.get("device") or {}
+    obs_src = sources.get("observations") or {}
+    source_line = ""
+    sample_note = ("<strong>合成样本</strong>：真实台站样本受 #28/#33 阻塞，本页由固定种子合成样本\n"
+                   "  的全链回放日志生成（替代口径，同 M4-0 / M5-1）；真实样本到位后用同一命令重新生成。")
+    if device_src.get("kind") == "public":
+        source_line = (
+            "<div class=\"meta\"><strong>数据来源</strong>：设备侧 "
+            f"<code>{_escape(device_src.get('sample'))}</code>"
+            f"（{_escape(device_src.get('license'))}，{_escape(device_src.get('attribution'))}）；"
+            "观测侧为<strong>合成样本</strong>（公开 GNSS 观测自 1999 年起全是 CRINEX，"
+            "仓库按既有决定不解码 —— issue #99）。</div>\n")
+        sample_note = ("<strong>口径</strong>：设备侧是<strong>环境读数</strong>（气温/湿度/气压/风速），"
+                       "不是供电/链路/安防；低温标记是演示用示例阈值，不是工程判据。"
+                       "观测侧是合成样本，结论里的数字来自工具返回。")
+    tokens_line = (f"tokens {_escape(tokens.get('prompt'))}/{_escape(tokens.get('completion'))}")
+    if summary.get("tokens_note"):
+        tokens_line += "（无模型调用）"
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -377,11 +402,10 @@ footer {{ color:var(--muted); font-size:12px; margin-top:8px; }}
 <div class="meta">
   数据源：<code>{_escape(source_name)}</code>（sha256 <code>{_escape(log_sha[:16])}…</code>）
   · 链路 {_escape(summary.get('stages'))} 阶段 / {_escape(summary.get('messages'))} 条消息
-  · checks {_escape(checks)} · tokens {_escape(tokens.get('prompt'))}/{_escape(tokens.get('completion'))}
+  · checks {_escape(checks)} · {tokens_line}
   · 台站 {len(stations)} / 告警 {len(alerts)}（严重 {counts['critical']}、警告 {counts['warn']}）/ 工单 {len(orders)}
 </div>
-<div class="meta"><strong>合成样本</strong>：真实台站样本受 #28/#33 阻塞，本页由固定种子合成样本
-  的全链回放日志生成（替代口径，同 M4-0 / M5-1）；真实样本到位后用同一命令重新生成。</div>
+{source_line}<div class="meta">{sample_note}</div>
 
 <section class="panel">
   <h2>一、台站健康度</h2>

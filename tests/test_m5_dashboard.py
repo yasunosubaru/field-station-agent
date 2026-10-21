@@ -125,7 +125,7 @@ class TestDashboard(unittest.TestCase):
             bad.write_text("{}", encoding="utf-8")
             run, _, _ = self._generate(td, log=bad)
             self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
-            self.assertIn("不是 M5 全链回放日志", run.stdout)
+            self.assertIn("不是可用的全链日志", run.stdout)
 
     def test_log_without_required_data_exits_1(self):
         with tempfile.TemporaryDirectory() as td:

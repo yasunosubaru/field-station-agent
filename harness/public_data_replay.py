@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import sys
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,6 +61,22 @@ def readings_from_open_meteo(data: dict, station: str = STATION) -> list[Station
                 unit=unit, observed_at=observed_at,
                 quality_flag="" if value is not None else "missing"))
     return readings
+
+
+def apply_low_temp_rule(readings: list[StationReading], *,
+                        threshold_c: float = -10.0) -> list[StationReading]:
+    """演示规则：气温低于阈值记 ``low_temp`` 质量标记（**示例阈值，非工程判据**）。
+
+    只改 ``quality_flag``，不判健康度 —— 健康度仍由 ``station_health`` 统一计算。
+    """
+    out = []
+    for reading in readings:
+        if (reading.metric == "temperature_c" and reading.value is not None
+                and reading.value < threshold_c):
+            out.append(replace(reading, quality_flag="low_temp"))
+        else:
+            out.append(reading)
+    return out
 
 
 def _source_for(input_path: Path, digest: str) -> dict:
