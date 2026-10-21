@@ -1,0 +1,1300 @@
+{
+  "kind": "fieldstation.dryrun_trial.log",
+  "rows": [
+    {
+      "date": "2024-01-01",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 12,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-02",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 1,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-03",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 3,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-04",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 1,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-05",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 6,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-06",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 11,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-07",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 16,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-08",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 3,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-09",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 6,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-10",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 2,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-11",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-12",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-13",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-14",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 10,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-15",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 10,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-16",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 3,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-17",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-18",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-19",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-20",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 11,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-21",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 24,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-22",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 20,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-23",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 16,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-24",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 2,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-25",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 2,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-26",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 8,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-27",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 10,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-28",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 4,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-29",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [],
+        "status": "ok",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 0,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-30",
+      "detected": true,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": true,
+      "injected_cycles": 5.0,
+      "low_temp_hours": 3,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 1,
+            "mw": 1,
+            "split_points": 1,
+            "union": 1
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      "source_ok": true
+    },
+    {
+      "date": "2024-01-31",
+      "detected": false,
+      "device": {
+        "health_score": 1.0,
+        "missing": 0,
+        "quality_flags": [
+          "low_temp"
+        ],
+        "status": "degraded",
+        "total": 96
+      },
+      "false_positive": false,
+      "injected": false,
+      "injected_cycles": null,
+      "low_temp_hours": 5,
+      "n_readings": 96,
+      "qc": {
+        "groups": {
+          "GPS 01": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          },
+          "GPS 02": {
+            "gf": 0,
+            "mw": 0,
+            "split_points": 0,
+            "union": 0
+          }
+        },
+        "slip_indices": [],
+        "union": 0
+      },
+      "source_ok": true
+    }
+  ],
+  "rules": {
+    "low_temp_c": -10.0,
+    "note": "低温标记是演示用示例阈值，不是工程判据"
+  },
+  "source": {
+    "device": {
+      "attribution": "Open-Meteo.com（ERA5 再分析）",
+      "cache": "data/public/samples/openmeteo_badg_202401_month.json",
+      "dataset": "Open-Meteo 八达岭 2024-01 逐小时气象",
+      "kind": "public",
+      "license": "CC BY 4.0",
+      "sha256_normalized": "ebe38d4d21e2dc9127e215bb869af7fcdec34336bdc8c65011c6eb948ec25757"
+    },
+    "observations": {
+      "injection": "奇数日在 GPS 01 L1 自历元 30 起注入 5.0 cycles 持续阶跃；偶数日不注入",
+      "kind": "synthetic",
+      "n_epochs": 60,
+      "seed": "FIXTURE_SEED + day（20261013…）"
+    }
+  },
+  "summary": {
+    "availability": 1.0,
+    "clean_days": 16,
+    "days": 31,
+    "detected_days": 15,
+    "detection_rate": 1.0,
+    "device_degraded_days": 24,
+    "false_positive_days": 0,
+    "false_positive_rate": 0.0,
+    "injected_days": 15,
+    "low_temp_hours": 189,
+    "sensitivity": [
+      {
+        "cycles": 1.0,
+        "detected": true,
+        "mode": "sustained",
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      {
+        "cycles": 2.0,
+        "detected": true,
+        "mode": "sustained",
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      {
+        "cycles": 3.0,
+        "detected": true,
+        "mode": "sustained",
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      {
+        "cycles": 5.0,
+        "detected": true,
+        "mode": "sustained",
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      {
+        "cycles": 10.0,
+        "detected": true,
+        "mode": "sustained",
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      {
+        "cycles": 20.0,
+        "detected": true,
+        "mode": "sustained",
+        "slip_indices": [
+          30
+        ],
+        "union": 1
+      },
+      {
+        "cycles": 1.0,
+        "detected": false,
+        "mode": "spike",
+        "slip_indices": [],
+        "union": 0
+      },
+      {
+        "cycles": 2.0,
+        "detected": false,
+        "mode": "spike",
+        "slip_indices": [],
+        "union": 0
+      },
+      {
+        "cycles": 3.0,
+        "detected": false,
+        "mode": "spike",
+        "slip_indices": [],
+        "union": 0
+      },
+      {
+        "cycles": 5.0,
+        "detected": false,
+        "mode": "spike",
+        "slip_indices": [],
+        "union": 0
+      },
+      {
+        "cycles": 10.0,
+        "detected": false,
+        "mode": "spike",
+        "slip_indices": [],
+        "union": 0
+      },
+      {
+        "cycles": 20.0,
+        "detected": false,
+        "mode": "spike",
+        "slip_indices": [],
+        "union": 0
+      }
+    ],
+    "source_ok_days": 31
+  },
+  "version": 1
+}
