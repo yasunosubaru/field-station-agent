@@ -56,6 +56,22 @@ python harness/public_data_replay.py \
     --out logs/public_data_device_202401d01.json       # 离线复算（CI 用这个）
 ```
 
+## 校验口径：活响应的字节逐次不同
+
+实测：Open-Meteo 的 archive 响应**每次取回的字节数都不一样**（28471 / 28472）——
+响应里含 API 自己的 `generationtime_ms`。按原始字节算的 sha256 对活取数**不成立**，
+「校验」会变成永远失败的摆设。
+
+因此清单里分开登记两种摘要：
+
+| 字段 | 口径 | 适用 |
+|---|---|---|
+| `sha256` | 原始字节 | 固定文件（入库样本） |
+| `sha256_normalized` | 去掉 `VOLATILE_FIELDS`（逐次变化字段）后的规范 JSON | 活取数的 JSON 源 |
+
+取数时按清单里**有哪个字段**决定用哪种口径（`tools/fetch_public_data.py`）。
+台账每行记的是当次用于校验的那个摘要（见 `docs/operations/trial-ledger.md`）。
+
 ## 口径
 
 **映射**（Open-Meteo 的 hourly 变量 → 本仓读数口径）：

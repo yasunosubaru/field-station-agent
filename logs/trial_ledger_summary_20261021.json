@@ -1,0 +1,23 @@
+{
+  "by_failure_class": {
+    "字段缺失": 1,
+    "校验不符": 1,
+    "格式不支持": 1,
+    "连接失败": 1
+  },
+  "by_status": {
+    "failed": 4,
+    "ok": 2
+  },
+  "distinct_sources": 6,
+  "failure_classes": [
+    "连接失败",
+    "超时",
+    "校验不符",
+    "格式不支持",
+    "字段缺失",
+    "未知"
+  ],
+  "rows": 6,
+  "success_rate": 0.333
+}
