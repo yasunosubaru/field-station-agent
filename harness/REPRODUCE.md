@@ -417,9 +417,9 @@ python tools/audit_claims.py --doc PATH   # 核对任意交付文档
 ```text
 声明项            文档中        实测         结论
 ---------------------------------------------------
-入库 Python 文件数  91         91         PASS
+入库 Python 文件数  92         92         PASS
 入库 Python 行数   15144      15144      PASS
-入库测试文件数        51         51         PASS
+入库测试文件数        52         52         PASS
 
 核对 3 项：PASS 3，FAIL 0，SKIP 0，UNVERIFIED 0
 
