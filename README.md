@@ -38,6 +38,7 @@
       </ul>
     </li>
     <li><a href="#usage">用法</a></li>
+    <li><a href="#reverse-engineering">逆向与重实现（NovAtel Application Suite）</a></li>
     <li><a href="#roadmap">路线图</a></li>
     <li><a href="#contributing">参与贡献</a></li>
     <li><a href="#license">许可证</a></li>
@@ -194,6 +195,39 @@ $env:PYTHONPATH="src"; python -m fieldstation.cli --help
 
 <a href="#readme-top">回到顶部</a>
 
+<!-- 逆向与重实现 -->
+<a id="reverse-engineering"></a>
+## 逆向与重实现（NovAtel Application Suite）
+
+台站里那套 **NovAtel Application Suite 2.11.0**（Manage / Playback / Convert / GRIT Monitor /
+Graph）是接收机侧的官方配套软件。它只给二进制、没有源码，行为却直接决定我们能不能自动读出
+接收机状态、能不能把日志转成可用格式。所以 [`逆向/`](逆向/README.md) 把它整个拆开，做成
+「文档 + 可运行重实现」两件东西，全部以 `文件:行号` 为据。
+
+| 项 | 现状 |
+|---|---|
+| 逆向文档 | 12 篇子系统文档，约 1.1 万行，**R1–R101** 条可验收断言（协议/解析/Manage/配置/Convert/Playback/GRIT/Graph/Edie/安装更新） |
+| 重实现 | 零依赖 TypeScript，Node ≥ 22.6 直接跑 `.ts`，**375 项测试全绿** |
+| 协议层 | CRC32（对过 OEM7 手册向量）、SBF 长/短头、成帧、ASCII/二进制命令、123 条消息 879 个字段、31 条重复块布局 |
+| 会话层 | TCP/UDP/串口、心跳、日志订阅，回环端到端 |
+| 视图层 | 无依赖 DOM 子集、页签与瓦片系统、Packery 等价布局、连接流程、节流、语言、`updateView` 契约；14 个 status 组件、14 个配置页 + 7 个设备操作页、GRIT 七个组件 |
+
+```powershell
+cd 逆向/04_重实现
+node --test "packages/protocol/test/*.test.ts"
+node --test --test-force-exit "packages/session/test/*.test.ts"
+node --test --test-force-exit "packages/view/test/*.test.ts"
+```
+
+覆盖边界写在 [`逆向/04_重实现/packages/view/ACCEPTANCE.md`](逆向/04_重实现/packages/view/ACCEPTANCE.md)：
+**729 / OEM7 路径 1:1**（含与真机对接的 `probe.ts`）；Longhorn（PIM222A）分支只到结构 + 文档，
+需要真机才能推进；Convert 的 9 种格式、Graph 应用、Longhorn PIMTP 状态机仍是已知缺口。
+
+`01_解包/`（解包后的厂商二进制，260 MB）与 `02_证据/`（REA 分析产物，163 MB）**不入库**，
+重建方式见 [`逆向/README.md`](逆向/README.md)。
+
+<a href="#readme-top">回到顶部</a>
+
 <!-- 路线图 -->
 <a id="roadmap"></a>
 ## 路线图
@@ -306,6 +340,7 @@ python tools/audit_claims.py
 | 来源 | 涉及范围 | 状态 |
 |---|---|---|
 | GNSS接收机TEC反演（校内结项项目） | `PROVENANCE.md` 表内 17 个文件 | 未见许可声明。MIT 不覆盖这部分的上游授权，复用前请自行确认 |
+| NovAtel Application Suite 2.11.0（厂商软件） | `逆向/` 下**仅**自产的分析文档与重实现代码；解包产物、原生模块、安装包与手册原文不入库（见 `逆向/.gitignore`） | 厂商专有。重实现是行为复刻，不复用其代码；解包证据需从本机安装目录重建 |
 
 徽章与许可标志只是速记，以本表为准。
 
@@ -315,7 +350,7 @@ python tools/audit_claims.py
 <a id="contact"></a>
 ## 联系方式
 
-个人姓名、学号、电话、邮箱不进这个仓库，它是公开的。
+个人姓名、学号、电话、邮箱不进这个仓库，仓库已转为私有也一样。
 
 CI 里有一道脱敏守卫（`tools/check_desensitization.py`）：扫入库文本里的用户目录路径、手机号、邮箱、13 位学号形状与私钥/token；姓名等无法公开列词的类别靠本机 `tools/desensitization.local.txt`（gitignored）。它是**绊线不是证明**——M0 的教训是正则扫描器给过假的「0 命中」，最终靠字面值比对才验干净。
 
