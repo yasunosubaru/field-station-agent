@@ -1,0 +1,72 @@
+{
+  "_source": "01_解包/Graph/out/renderer/assets/index-B86bHcCD.js:582 @562300..@563200 / @575103 / @566019",
+  "_note": "chartType 只有 line / bar / geomap 三种；geomap 不是 echarts map，而是自绘散点+折线的经纬度图（见 06_Graph应用.md §3.3）",
+  "groups": {
+    "GOS": { "legend": "Overview", "plots": [] },
+    "PVT": {
+      "legend": "PVT",
+      "plots": [
+        { "table": "positionmode",  "title": "Position Type",       "chartType": "bar",    "yAxisUnits": "" },
+        { "table": "positionvalid", "title": "Position Status",     "chartType": "bar",    "yAxisUnits": "" },
+        { "table": "positionsd",    "title": "Position SD",         "chartType": "line",   "yAxisUnits": "(m)" },
+        { "table": "solutionstatistic", "title": "Solution Statistics", "chartType": "line", "yAxisUnits": "" },
+        { "table": "trajectory",    "title": "2D Trajectory",       "chartType": "geomap", "yAxisUnits": "" },
+        { "table": "height",        "title": "Height",              "chartType": "line",   "yAxisUnits": "(m)" },
+        { "table": "velocity",      "title": "Velocity",            "chartType": "line",   "yAxisUnits": "(m/s)" }
+      ]
+    },
+    "Heading & Attitude": {
+      "legend": "Heading & Attitude",
+      "plots": [
+        { "table": "insattitude_azimuth", "title": "Azimuth",           "chartType": "line", "yAxisUnits": "(degrees)" },
+        { "table": "insattitude_pitch",   "title": "Roll and Pitch",    "chartType": "line", "yAxisUnits": "(degrees)" },
+        { "table": "insupdate",           "title": "SPAN Filter Updates","chartType": "bar",  "yAxisUnits": "" }
+      ]
+    },
+    "Tracking & Measurements": {
+      "legend": "Tracking & Measurements",
+      "plots": [
+        { "table": "cno",              "dbFilename": "cno.db",              "title": "GNSS Signal Strength",   "chartType": "line", "yAxisUnits": "C/No (dB-Hz)" },
+        { "table": "satellitestracked","dbFilename": "satellitestracked.db","title": "Satellites and Signals","chartType": "line", "yAxisUnits": "", "minYZero": true },
+        { "table": "locktime",         "dbFilename": "locktime.db",         "title": "Tracking Time",          "chartType": "line", "yAxisUnits": "(s)", "minYZero": true }
+      ]
+    },
+    "Receiver Status": {
+      "legend": "Receiver Status",
+      "plots": [
+        { "table": "rxstatus",  "title": "Receiver Status",   "chartType": "bar",  "yAxisUnits": "" },
+        { "table": "cpuusage",  "title": "CPU Usage",         "chartType": "line", "yAxisUnits": "(%)", "minYZero": true },
+        { "table": "hwmonitor", "title": "HW Monitor Status", "chartType": "line", "yAxisUnits": "",    "minYZero": true }
+      ]
+    },
+    "Project Information": { "legend": "Project Information", "plots": [] }
+  },
+  "graph_group_response_plot_summary_alias": {
+    "GOS": "Position View",
+    "PVT": "PVT",
+    "HEADING_ATTITUDE": "Heading_Attitude",
+    "TRACKING_MEASUREMENTS": "Tracking_Measurements",
+    "RECEIVER_STATUS": "Receiver_Status",
+    "PROJECT_INFORMATION": "Project Information"
+  },
+  "chart_title_map_observed": {
+    "insattitude_azimuth:line": "Azimuth",
+    "insattitude_pitch:line": "Roll and Pitch",
+    "positionsd:line": "Position SD",
+    "positionllh:geomap": "2D Trajectory"
+  },
+  "limits": {
+    "MAX_DECIMATION_POINTS": 100000,
+    "MAX_GOS_THRESHOLD_messages": 200000,
+    "EXPORT_TIMEOUT_ms": 15000,
+    "MAX_RECENT_ENTRIES": 12,
+    "MAX_FLAGS_per_project": 10,
+    "MAX_FIELD_LENGTH": 256,
+    "DESCRIPTION_MAX_LENGTH": 160
+  },
+  "series_sampling": {
+    "line": { "large": true, "progressive": 2000, "progressiveThreshold": 3000, "sampling": "lttb", "sampling_exception": "Position Status / Position Type 两张图 sampling='none'" },
+    "geomap": { "type": "line", "smooth": true, "progressive": 2000, "progressiveThreshold": 3000, "symbol": "circle", "symbolSize": 5, "lineStyle.color": "transparent" }
+  },
+  "playback_speeds": [1, 2, 5, 10, 20]
+}

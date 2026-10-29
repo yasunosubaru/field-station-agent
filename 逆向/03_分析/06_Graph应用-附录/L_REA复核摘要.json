@@ -1,0 +1,257 @@
+{
+ "_note": "REA 6.5.0 analyze-javascript-application 的裁剪摘要；原始输出 175 MB 未入库（临时目录），可重跑：rea analyze-javascript-application \"01_解包/Graph\" --artifact-format directory --source-path out/renderer/assets/index-B86bHcCD.js --format json",
+ "evidence_id": "ev_d3572105b265b2ada07ed850e41381a0ba394373f42ded954ace8356012086ee",
+ "subject": {
+  "name": "Graph",
+  "format": "directory",
+  "sha256": "140614e2e4a08d684c948ecfd813a9d36777b80c1518ef2a65eb9d272239f161"
+ },
+ "statistics": {
+  "relevant_files": 13,
+  "nested_asar_containers": 0,
+  "text_bytes_read": 16252082,
+  "invalid_utf8_files": 0,
+  "parsed_javascript_files": 1,
+  "visited_ast_nodes": 1181367,
+  "findings": 1137,
+  "modules": 0,
+  "parse_failures": 0
+ },
+ "summary": {
+  "browser_windows": 0,
+  "explicit_web_preferences": 0,
+  "preload_entrypoints": 0,
+  "context_bridge_apis": 0,
+  "exposed_api_members": 0,
+  "ipc": {
+   "operations": 0,
+   "literal_channels": 0,
+   "dynamic_channel_operations": 0,
+   "renderer_transmissions": 0,
+   "renderer_listeners": 0,
+   "main_handlers": 0,
+   "paired_renderer_transmissions": 0,
+   "ambiguous_renderer_transmissions": 0,
+   "unpaired_literal_renderer_transmissions": 0
+  },
+  "sender_validation_observations": 0,
+  "utility_processes": 0,
+  "resolved_utility_entrypoints": 0,
+  "native_addon_bindings": 0,
+  "resolved_native_addon_bindings": 0
+ },
+ "node_kinds": {
+  "unknown": 12,
+  "endpoint": 421,
+  "artifact": 5,
+  "storage": 12,
+  "native-addon": 2,
+  "javascript-asset": 6,
+  "javascript-module": 4,
+  "worker": 2
+ },
+ "edge_kinds": {
+  "unknown": 1163
+ },
+ "storage_native_worker_nodes": [
+  {
+   "kind": "storage",
+   "label": "session-storage",
+   "identity": "call:window.sessionStorage.setItem",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": null,
+    "mechanism": "call:window.sessionStorage.setItem"
+   }
+  },
+  {
+   "kind": "native-addon",
+   "label": "resources/native_modules/windows/graph-node-wrapper.node",
+   "identity": "d1ce5433d0678e5c1fcf07c996830061f18c3aa4e78649da5a4e5170697af51b",
+   "props": {
+    "path": "resources/native_modules/windows/graph-node-wrapper.node",
+    "bytes": 8848896,
+    "inventory_artifact_id": "art_c3c99cfc184d189590e5b64669d3f93dca9ba65d98fbcef2100ded5c00f89f8b",
+    "unpacked": false,
+    "file_kind": "native-addon",
+    "text_status": "outside-analysis-scope",
+    "parse_status": null,
+    "json_parse_status": null,
+    "json_top_level_keys": [],
+    "omitted_json_top_level_keys": 0,
+    "vendor_markers": []
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "local-storage",
+   "identity": "call:localStorage.getItem",
+   "namespace": "local-storage",
+   "props": {
+    "storage_kind": "local-storage",
+    "name": null,
+    "mechanism": "call:localStorage.getItem"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "local-storage",
+   "identity": "call:window.localStorage.getItem",
+   "namespace": "local-storage",
+   "props": {
+    "storage_kind": "local-storage",
+    "name": null,
+    "mechanism": "call:window.localStorage.getItem"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "EncryptionKey",
+   "identity": "EncryptionKey",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": "EncryptionKey",
+    "mechanism": "call:sessionStorage.getItem"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "session-storage",
+   "identity": "call:sessionStorage.getItem",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": null,
+    "mechanism": "call:sessionStorage.getItem"
+   }
+  },
+  {
+   "kind": "native-addon",
+   "label": "resources/native_modules/linux/graph-node-wrapper.node",
+   "identity": "97feb80a36a96579225987fad352d0146c7ba26cb5af658b60913375685f6ab6",
+   "props": {
+    "path": "resources/native_modules/linux/graph-node-wrapper.node",
+    "bytes": 10225664,
+    "inventory_artifact_id": "art_861c6943ea03465995c4297470c47a0e8654766456bb34f86c0fbdb45e259616",
+    "unpacked": false,
+    "file_kind": "native-addon",
+    "text_status": "outside-analysis-scope",
+    "parse_status": null,
+    "json_parse_status": null,
+    "json_top_level_keys": [],
+    "omitted_json_top_level_keys": 0,
+    "vendor_markers": []
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "local-storage",
+   "identity": "call:window.localStorage.setItem",
+   "namespace": "local-storage",
+   "props": {
+    "storage_kind": "local-storage",
+    "name": null,
+    "mechanism": "call:window.localStorage.setItem"
+   }
+  },
+  {
+   "kind": "worker",
+   "label": null,
+   "identity": "new Worker(workerUrl,{name:\"lcd_base\"})",
+   "namespace": "worker",
+   "props": {
+    "declared_specifier": null,
+    "expression": "new Worker(workerUrl,{name:\"lcd_base\"})",
+    "resolved_path": null,
+    "resolution_status": null
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "session-storage",
+   "identity": "call:sessionStorage.clear",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": null,
+    "mechanism": "call:sessionStorage.clear"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "local-storage",
+   "identity": "call:localStorage.setItem",
+   "namespace": "local-storage",
+   "props": {
+    "storage_kind": "local-storage",
+    "name": null,
+    "mechanism": "call:localStorage.setItem"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "session-storage",
+   "identity": "call:sessionStorage.setItem",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": null,
+    "mechanism": "call:sessionStorage.setItem"
+   }
+  },
+  {
+   "kind": "worker",
+   "label": null,
+   "identity": "new Worker(workerUrl,{name:\"lcd_gltf\"})",
+   "namespace": "worker",
+   "props": {
+    "declared_specifier": null,
+    "expression": "new Worker(workerUrl,{name:\"lcd_gltf\"})",
+    "resolved_path": null,
+    "resolution_status": null
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "session-storage",
+   "identity": "call:window.sessionStorage.removeItem",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": null,
+    "mechanism": "call:window.sessionStorage.removeItem"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "local-storage",
+   "identity": "call:window.localStorage.removeItem",
+   "namespace": "local-storage",
+   "props": {
+    "storage_kind": "local-storage",
+    "name": null,
+    "mechanism": "call:window.localStorage.removeItem"
+   }
+  },
+  {
+   "kind": "storage",
+   "label": "session-storage",
+   "identity": "call:window.sessionStorage.getItem",
+   "namespace": "session-storage",
+   "props": {
+    "storage_kind": "session-storage",
+    "name": null,
+    "mechanism": "call:window.sessionStorage.getItem"
+   }
+  }
+ ],
+ "confirmations": [
+  "text_bytes_read = 16 252 082，与 index-B86bHcCD.js 的字节数一致 → 产物未被改写",
+  "ipc.literal_channels / renderer_transmissions / renderer_listeners 全为 0 → 渲染进程无 IPC 直连（本报告 R5）",
+  "native-addon 节点 = win/linux 两份 graph-node-wrapper.node（带 sha256）",
+  "storage 节点含具名 sessionStorage 键 EncryptionKey",
+  "worker 节点 = new Worker(workerUrl,{name:'lcd_base'}) / {name:'lcd_gltf'}"
+ ]
+}

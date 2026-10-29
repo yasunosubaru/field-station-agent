@@ -1,0 +1,10 @@
+{
+ "4096": "",
+ "4098": "",
+ "4101": "type,mac,reserved,details",
+ "4103": "",
+ "4105": "",
+ "4106": "",
+ "4107": "",
+ "4108": "type,slotId,moduleId,psn,hwVersion,swVersion,pbcVersion,sbcVersion,fpgaVersion,compDate,compTime,fwInfoTag,pbcInfoTag,sbcInfoTag"
+}

@@ -1,0 +1,229 @@
+{
+ "positionStatus": {
+  "rxconfigb": "onchanged,0",
+  "modelfeaturesb": "onchanged,0",
+  "interfacemodeb": "onchanged,0",
+  "itdetectstatusb": "ontime,5",
+  "aveposb": "onchanged,0"
+ },
+ "statusBar": {
+  "rxconfigb": "onchanged,0",
+  "versionb": "once,0",
+  "bestposb": "ontime,1",
+  "hwmonitorb": "ontime,1",
+  "satvis2b": "onchanged,0",
+  "filesystemcapacityb": "ontime,1",
+  "timeb": "ontime,1",
+  "aveposb": "onchanged,0",
+  "rxstatusb": "ontime,1",
+  "interfacemodeb": "onchanged,0",
+  "loglistb": "ontime,1",
+  "itdetectstatusb": "ontime,1",
+  "filestatusb": "ontime,1",
+  "portstatsb": "ontime,1",
+  "skdetectconfigb": "onchanged,0",
+  "inspvaxb": "ontime,1",
+  "inscommandb": "ontime,1",
+  "connectimub": "onchanged,0",
+  "assignlbandbeamb": "onchanged,0",
+  "ntripconfigb": "once,0",
+  "itdetectconfigb": "onchanged,0"
+ },
+ "deviceInfo": {
+  "filesystemcapacityb": "ontime,1",
+  "rxstatusb": "ontime,1"
+ },
+ "satelliteView": {
+  "lbandbeamtableb": "onchanged,0",
+  "chanconfiglistb": "onchanged,0",
+  "trackstatb": "ontime,1",
+  "satvis2b": "onchanged,0",
+  "bestsatsb": "ontime,1",
+  "psrdopb": "onchanged,0",
+  "lbandtrackstatb": "ontime,1"
+ },
+ "interferenceStatus": {
+  "itdetectstatusb": "ontime,1"
+ },
+ "interferenceToolKit": {
+  "chanconfiglistb": "once,0",
+  "itbandpassbankb": "once,0",
+  "itprogfiltbankb": "once,0",
+  "itspectralanalysisb": "onchanged,0",
+  "itpsdfinalb": "onnew,0",
+  "itfilttableb": "onchanged,0",
+  "itfrontendmodeb": "onchanged,0",
+  "itdetectconfigb": "onchanged,0"
+ },
+ "spanStatus": {
+  "connectimub": "onchanged,0"
+ },
+ "alignStatus": {
+  "dualantennaalignb": "once,0",
+  "wifialignautomationb": "once,0",
+  "alignautomationb": "once,0",
+  "heading2b": "onchanged,0"
+ },
+ "radioStatus": {
+  "satelstatusb": "ontime,1",
+  "sateldetectb": "onchanged,0"
+ },
+ "portConfig": {
+  "interfacemodeb": "onchanged,0",
+  "icomconfigb": "once,0",
+  "serialconfigb": "ontime,1",
+  "ntripconfigb": "once,0",
+  "sourcetableb": "once,0",
+  "nmeatalkerb": "onchanged,0",
+  "nmeabeidoutalkerb": "onchanged,0",
+  "satvis2b": "once,0",
+  "nmeaformatb": "onchanged,0",
+  "ggaqualityb": "onchanged,0"
+ },
+ "portStatus": {
+  "serialconfigb": "ontime,1",
+  "interfacemodeb": "ontime,1",
+  "rxstatusb": "ontime,1",
+  "sourcetableb": "once,0"
+ },
+ "logStatus": {
+  "filestatusb": "ontime,1"
+ },
+ "spanConfig": {
+  "setimueventb": "onchanged,0",
+  "connectimub": "onchanged,0",
+  "insconfigb": "onchanged,0",
+  "setimutoantoffsetb": "onchanged,0",
+  "setimutoantoffset2b": "onchanged,0",
+  "serialconfigb": "ontime,1"
+ },
+ "loggingConfig": {
+  "filestatusb": "ontime,1",
+  "nmeatalkerb": "onchanged,0",
+  "nmeabeidoutalkerb": "onchanged,0",
+  "nmeaformatb": "onchanged,0",
+  "ggaqualityb": "onchanged,0"
+ },
+ "alignConfig": {
+  "dualantennaalignb": "once,0",
+  "wifialignautomationb": "once,0",
+  "headingoffsetb": "onchanged,0",
+  "wifimodeb": "once,0",
+  "wifistatusb": "onchanged,0",
+  "alignautomationb": "once,0"
+ },
+ "deviceExport": {
+  "filestatusb": "ontime,1",
+  "filelistb": "ontime,1",
+  "filesystemstatusb": "onchanged,0",
+  "filesystemcapacityb": "ontime,1",
+  "ipserviceb": "onchanged,0",
+  "filetransferstatusb": "onchanged,0",
+  "ipstatusb": "ontime,1"
+ },
+ "positionConfig": {
+  "rxconfigb": "onchanged,0",
+  "modelfeaturesb": "onchanged,0",
+  "versionb": "once,0",
+  "chanconfiglistb": "once,0",
+  "posaveb": "onchanged,0",
+  "serialconfigb": "ontime,1",
+  "ntripconfigb": "onchanged,0",
+  "lbandbeamtableb": "onchanged,0",
+  "sourcetableb": "once,0",
+  "aveposb": "onchanged,0",
+  "thisantennatypeb": "onchanged,0",
+  "baseantennatypeb": "onchanged,0",
+  "rtkantennab": "onchanged,0",
+  "baseantennapcob": "onchanged,0",
+  "thisantennapcob": "onchanged,0"
+ },
+ "positioningConfig": {
+  "assignlbandbeamb": "onchanged,0",
+  "terrastarinfob": "onchanged, 0",
+  "lbandbeamtableb": "onchanged,0"
+ },
+ "deviceUpdate": {
+  "versionb": "once,0",
+  "softloadstatusb": "onchanged,0",
+  "authcodesb": "once,0"
+ },
+ "events": {
+  "rxstatuseventb": "onchanged,0",
+  "timeb": "ontime,1",
+  "hwmonitorb": "ontime,1",
+  "trackstatb": "ontime,1",
+  "lbandtrackstatb": "ontime,1",
+  "inspvaxb": "ontime,1",
+  "modelfeaturesb": "onchanged,0"
+ },
+ "networkingSettings": {
+  "wifiapchannelb": "onchanged,0",
+  "wifiapsettingsb": "ontime,1",
+  "ipconfigb": "onchanged,0",
+  "ipstatusb": "ontime,1",
+  "wifinetlistb": "onchanged,0",
+  "wifistatusb": "onchanged,0",
+  "dnsconfigb": "onchanged,0"
+ },
+ "deviceDetails": {
+  "versionb": "once,0",
+  "oceanixstatusb": "onchanged,0",
+  "modelfeaturesb": "onchanged,0",
+  "chanconfiglistb": "onchanged,0",
+  "terrastarinfob": "onchanged, 0",
+  "oceanixinfob": "onchanged,0",
+  "validmodelsb": "once,0",
+  "authcodesb": "once,0",
+  "veriposinfob": "onchanged,0"
+ },
+ "radioConfig": {
+  "satel9infob": "ontime,1",
+  "satel4configb": "ontime,1",
+  "satelstatusb": "ontime,1",
+  "versionb": "once,0",
+  "sateldetectb": "onchanged,0"
+ },
+ "satelliteTracking": {
+  "lbandbeamtableb": "onchanged,0",
+  "rxconfigb": "onchanged,0",
+  "trackstatb": "ontime,1",
+  "satvis2b": "onchanged,0",
+  "chanconfiglistb": "once,0",
+  "rxstatusb": "ontime,1",
+  "lbandtrackstatb": "ontime,1"
+ },
+ "ragindicators": {
+  "chanconfiglistb": "onchanged,0",
+  "bestposb": "ontime,1",
+  "loglistb": "ontime,1",
+  "inspvaxb": "ontime,1",
+  "connectimub": "onchanged,0",
+  "hwmonitorb": "ontime,1",
+  "filesystemcapacityb": "ontime,1",
+  "itdetectstatusb": "ontime,1",
+  "filestatusb": "ontime,1",
+  "interfacemodeb": "ontime,1",
+  "portstatsb": "ontime,1",
+  "rxstatusb": "ontime,1",
+  "inscommandb": "ontime,1"
+ },
+ "pppCorrections": {
+  "veriposdecoderstatusb": "onchanged,0",
+  "lbandtrackstatb": "ontime,1",
+  "oceanixstatusb": "ontime,1",
+  "terrastarstatusb": "ontime,1",
+  "terrastarinfob": "onchanged, 0",
+  "oceanixinfob": "onchanged,0",
+  "assignlbandbeamb": "onchanged,0",
+  "veriposinfob": "onchanged,0"
+ },
+ "gnssConfig": {
+  "elevationcutoffb": "ontime,1",
+  "ppscontrolb": "ontime,1"
+ },
+ "spoofingConfiguration": {
+  "skcalibratestatusb": "onchanged,0",
+  "skdetectconfigb": "onchanged,0"
+ }
+}

@@ -1,0 +1,131 @@
+{
+  "gritStatusBar": {
+    "rxconfigb": "onchanged,0",
+    "portstatsb": "ontime,1",
+    "versionb": "once,0",
+    "bestposb": "ontime,1",
+    "hwmonitorb": "ontime,1",
+    "satvis2b": "onchanged,0",
+    "timeb": "ontime,1",
+    "aveposb": "onchanged,0",
+    "rxstatusb": "ontime,1",
+    "interfacemodeb": "onchanged,0",
+    "loglistb": "ontime,1",
+    "itdetectstatusb": "ontime,1",
+    "skdetectconfigb": "onchanged,0",
+    "trackstatb": "ontime,1",
+    "sbascontrolb": "onchanged,0",
+    "assignlbandbeamb": "onchanged,0",
+    "bestsatsb": "ontime,1",
+    "ntripconfigb": "once,0",
+    "inspvaxb": "ontime,1",
+    "inscommandb": "ontime,1",
+    "connectimub": "onchanged,0",
+    "filestatusb": "ontime,1",
+    "itdetectconfigb": "onchanged,0"
+  },
+  "gritLandingPage": {
+    "itpsdfinalb": "onnew,0",
+    "itpsddetectb": "onnew,0",
+    "chanconfiglistb": "onchanged,0",
+    "itdetectstatusb": "ontime,1",
+    "itspectralanalysisb": "onchanged,0",
+    "itfilttableb": "onchanged,0",
+    "assignlbandbeamb": "onchanged,0",
+    "itprogfiltbankb": "once,0",
+    "itbandpassbankb": "once,0",
+    "itfrontendmodeb": "onchanged,0"
+  },
+  "mitigationAssistant": {
+    "itfilttableb": "onchanged,0",
+    "rxstatusb": "ontime,1",
+    "itdetectstatusb": "ontime,1",
+    "bestposb": "ontime,1",
+    "itprogfiltbankb": "once,0",
+    "itbandpassbankb": "once,0",
+    "chanconfiglistb": "once,0",
+    "itprogfiltconfigb": "onchanged,0",
+    "itbandpassconfigb": "onchanged,0",
+    "versionb": "once,0",
+    "skdetectconfigb": "onchanged,0"
+  },
+  "spoofingConfiguration": {
+    "skcalibratestatusb": "onchanged,0",
+    "skdetectconfigb": "onchanged,0"
+  },
+  "signalMatrix": {
+    "chanconfiglistb": "onchanged,0",
+    "trackstatb": "ontime,1",
+    "satvis2b": "onchanged,0",
+    "bestsatsb": "ontime,1"
+  },
+  "positionOverview": {
+    "bestposb": "ontime,1",
+    "bestvelb": "ontime,1",
+    "heading2b": "onchanged,0",
+    "itfilttableb": "onchanged,0",
+    "itdetectstatusb": "ontime,1"
+  },
+  "luciadPositionOverview": {
+    "bestposb": "ontime,1",
+    "bestvelb": "ontime,1",
+    "heading2b": "onchanged,0",
+    "itfilttableb": "onchanged,0",
+    "itdetectstatusb": "ontime,1"
+  },
+  "gritRagIndicators": {
+    "bestposb": "ontime,1",
+    "loglistb": "ontime,1",
+    "inspvaxb": "ontime,1",
+    "connectimub": "onchanged,0",
+    "hwmonitorb": "ontime,1",
+    "filesystemcapacityb": "ontime,1",
+    "itdetectstatusb": "ontime,1",
+    "filestatusb": "ontime,1",
+    "interfacemodeb": "ontime,1",
+    "bestvelb": "ontime,1"
+  },
+  "gritEvents": {
+    "rxstatuseventb": "onchanged,0",
+    "timeb": "ontime,1",
+    "bestposb": "ontime,1",
+    "hwmonitorb": "ontime,1",
+    "trackstatb": "ontime,1",
+    "lbandtrackstatb": "ontime,1",
+    "inspvaxb": "ontime,1",
+    "loglistb": "ontime,1",
+    "modelfeaturesb": "onchanged,0"
+  },
+  "pointOfInterest": {
+    "bestposb": "ontime,1"
+  },
+  "triggers": {
+    "markposb": "onnew,0",
+    "mark2posb": "onnew,0",
+    "mark3posb": "onnew,0",
+    "mark4posb": "onnew,0",
+    "mark1pvab": "onnew,0",
+    "mark2pvab": "onnew,0",
+    "mark3pvab": "onnew,0",
+    "mark4pvab": "onnew,0"
+  },
+  "gritNetworkingSettings": {
+    "wifimodeb": "onchanged,0",
+    "wifiapchannelb": "onchanged,0",
+    "wifiapsettingsb": "ontime,1",
+    "ipconfigb": "onchanged,0",
+    "ipstatusb": "ontime,1",
+    "wifinetlistb": "onchanged,0",
+    "wifistatusb": "onchanged,0",
+    "dnsconfigb": "onchanged,0"
+  },
+  "deviceInfo": {
+    "hwmonitorb": "ontime,1",
+    "filesystemcapacityb": "ontime,1"
+  },
+  "spanStatus": {
+    "inspvaxb": "ontime,1",
+    "inscommandb": "ontime,1",
+    "connectimub": "onchanged,0"
+  }
+}

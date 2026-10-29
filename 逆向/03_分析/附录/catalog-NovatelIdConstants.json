@@ -1,0 +1,5579 @@
+{
+ "maxConnection": 10,
+ "tabName": "",
+ "msgPeriodDecimal": 3,
+ "GPStoUTCcorrection": 18000,
+ "MessageHeaderLength": 28,
+ "DragText": "Slide to Open Configuration",
+ "Version": "OEM7700",
+ "loadConfigComponents": false,
+ "PSNVal": "PP7",
+ "PWRPKCheck": "PWRPAK7",
+ "Version718D": "OEM718D",
+ "hardwareVersion": {},
+ "marketHardwareVersion": "",
+ "userLogged": false,
+ "isHelpMenuClicked": false,
+ "innerAccordianClicked": false,
+ "ntripSettingClicked": false,
+ "isHamburgerMenuClosed": false,
+ "isHamburgerMenuClicked": false,
+ "reconnectingAgain": false,
+ "sendSaveConfig": false,
+ "configClicked": false,
+ "isFileSupported": false,
+ "getDefaultLocale": "en-US",
+ "PP7SupportedPSNList": [
+  "MND",
+  "MNE",
+  "MUR",
+  "MUS",
+  "MRV",
+  "MRW",
+  "MYC",
+  "MYL",
+  "NFX",
+  "NFY"
+ ],
+ "PP7DSupportedPSNList": [
+  "MPL",
+  "MPM",
+  "MUT",
+  "MRX",
+  "MRY",
+  "MYD",
+  "MYM",
+  "NFZ",
+  "NGA"
+ ],
+ "SM7SupportedPSNList": [
+  "MRT",
+  "MSR",
+  "MPX",
+  "MUH"
+ ],
+ "SPNCPT7SupportedPSNList": [
+  "MZT"
+ ],
+ "SPNCPT7DSupportedPSNList": [
+  "MZU"
+ ],
+ "fileSupportedList": [
+  "MND",
+  "MNE",
+  "MPL",
+  "MPM",
+  "MUS",
+  "MUR",
+  "MUT",
+  "MPL",
+  "MYL",
+  "MYM",
+  "MZT",
+  "MZU",
+  "NFZ",
+  "NGA",
+  "NFX",
+  "NFY"
+ ],
+ "wifiSupportedPSNList": [
+  "MND",
+  "MNE",
+  "MPL",
+  "MPM",
+  "MUS",
+  "MUR",
+  "MUT",
+  "MPX",
+  "MSR",
+  "MUH",
+  "MRT"
+ ],
+ "PP6EnclosurePSNList": [
+  "MCM",
+  "MCN",
+  "MCP",
+  "MCR",
+  "MCS",
+  "MDF",
+  "MDG",
+  "MDH",
+  "MDJ"
+ ],
+ "supportedBaudRatesList": [
+  "2400",
+  "4800",
+  "9600",
+  "19200",
+  "38400",
+  "57600",
+  "115200",
+  "230400",
+  "460800"
+ ],
+ "OEM6supportedBaudRatesList": [
+  "300",
+  "600",
+  "900",
+  "1200",
+  "2400",
+  "4800",
+  "9600",
+  "19200",
+  "38400",
+  "57600",
+  "115200",
+  "230400",
+  "460800",
+  "921600"
+ ],
+ "OEMSTARsupportedBaudRatesList": [
+  "300",
+  "600",
+  "1200",
+  "2400",
+  "4800",
+  "9600",
+  "19200",
+  "38400",
+  "57600",
+  "115200",
+  "230400",
+  "460800"
+ ],
+ "configComponents": [
+  "knowledgeBase",
+  "positionConfig",
+  "positioningConfig",
+  "portConfig",
+  "glossary",
+  "troubleShooting",
+  "languageSettings",
+  "alignConfig",
+  "spanConfig",
+  "loggingConfig",
+  "events",
+  "radioConfig",
+  "gnssConfig",
+  "spoofingConfiguration"
+ ],
+ "statusComponents": [
+  "satelliteView",
+  "positionStatus",
+  "spanStatus",
+  "alignStatus",
+  "radioStatus",
+  "interferenceStatus",
+  "deviceStatus",
+  "portStatus",
+  "logStatus",
+  "events",
+  "pppCorrections"
+ ],
+ "gritStatusComponents": [
+  "gritStatusBar",
+  "signalMatrix",
+  "positionOverview",
+  "mitigationAssistant",
+  "triggers",
+  "gritLandingPage"
+ ],
+ "gritConfigComponents": [
+  "gritStatusBar",
+  "spoofingConfiguration",
+  "triggers"
+ ],
+ "statusPage2Components": [
+  "satelliteTracking"
+ ],
+ "outputFormatList": [
+  "NONE",
+  "CMR",
+  "NMEA",
+  "NOVATEL",
+  "NOVATELX",
+  "RTCA",
+  "RTCM",
+  "RTCMV3"
+ ],
+ "inputFormatList": [
+  "NONE",
+  "AUTO",
+  "CMR",
+  "NOVATEL",
+  "NOVATELX",
+  "RTCA",
+  "RTCM",
+  "RTCMV3",
+  "VERIPOS"
+ ],
+ "triggersInputList": [
+  "MARK1POS",
+  "MARK2POS",
+  "MARK3POS",
+  "MARK4POS",
+  "MARK1PVA",
+  "MARK2PVA",
+  "MARK3PVA",
+  "MARK4PVA"
+ ],
+ "OEMSTAROutputFormatList": [
+  "NONE",
+  "NOVATEL",
+  "RTCM",
+  "RTCMV3",
+  "RTCA",
+  "CMR",
+  "NMEA"
+ ],
+ "OEMSTARInputFormatList": [
+  "NONE",
+  "AUTO",
+  "NOVATEL",
+  "RTCM",
+  "RTCMV3",
+  "RTCA",
+  "CMR"
+ ],
+ "giiistatusComponents": [
+  "statusBar",
+  "satelliteView",
+  "solutionStatus",
+  "deviceInfo",
+  "deviceDetails",
+  "agcStatus",
+  "ragindicators",
+  "satelliteTracking"
+ ],
+ "menuComponents": [
+  "statusBar",
+  "networkingSettings",
+  "events"
+ ],
+ "gritMenuComponents": [
+  "gritNetworkingSettings",
+  "gritStatusBar",
+  "gritEvents"
+ ],
+ "gritSupported": false,
+ "currentActiveApp": "HOME",
+ "gritMandatoryLogs": [
+  37,
+  1148
+ ],
+ "terraStarError": "Error: Cannot read properties of undefined (reading 'authKey')",
+ "noInternetError": "getaddrinfo ENOTFOUND lambda.ap-south-1.amazonaws.com",
+ "errTerrastarFailedtoFetch": "Failed to fetch",
+ "darkTheme": "darkView",
+ "lightTheme": "streetView",
+ "POITHRESHOLDCOUNT": 10000,
+ "additionalRecordLogs": [
+  43,
+  2065,
+  2063,
+  7,
+  723,
+  1696,
+  1309,
+  1336,
+  2123,
+  8
+ ],
+ "liveConnState": {
+  "live": 0,
+  "playback": 1,
+  "handleMissedData": 2,
+  "unknown": 3
+ },
+ "satvisConstellationMap": {
+  "0": "GPS",
+  "1": "GLONASS",
+  "2": "SBAS",
+  "5": "GALILEO",
+  "6": "BEIDOU",
+  "7": "QZSS",
+  "9": "NAVIC"
+ },
+ "giiiSatvisConstellationMap": {
+  "0": "GPS",
+  "2": "GALILEO",
+  "3": "NAVIC"
+ },
+ "trackstatConstellationMap": {
+  "0": "GPS",
+  "1": "GLONASS",
+  "2": "SBAS",
+  "3": "GALILEO",
+  "4": "BEIDOU",
+  "5": "QZSS",
+  "6": "NAVIC",
+  "7": "OTHER"
+ },
+ "solutionStatus": {
+  "0": "SOL_COMPUTED",
+  "1": "INSUFFICIENT_OBS",
+  "2": "NO_CONVERGENCE",
+  "3": "SINGULARITY",
+  "4": "COV_TRACE",
+  "5": "TEST_DIST",
+  "6": "COLD_START",
+  "7": "V_H_LIMIT",
+  "8": "VARIANCE",
+  "9": "RESIDUALS",
+  "13": "INTEGRITY_WARNING",
+  "18": "PENDING",
+  "19": "INVALID_FIX",
+  "20": "UNAUTHORIZED",
+  "22": "INVALID_RATE"
+ },
+ "firmware7_9Logs": [
+  "RXCONFIGUSER",
+  "PTPDELTATIME",
+  "USERCANDATA",
+  "USERCANSTATUS"
+ ],
+ "firmware7_09_01Logs": [
+  "PGN127250"
+ ],
+ "posaveStatus": {
+  "0": "OFF",
+  "1": "INPROGRESS",
+  "2": "COMPLETE"
+ },
+ "giiiTimeSolutionClockModel": {
+  "0": "Not Computed",
+  "1": "Computed"
+ },
+ "giiiOperatingMode": {
+  "0": "Normal",
+  "1": "Failed"
+ },
+ "giiiOperatingState": {
+  "0": "OFF",
+  "1": "Configuration",
+  "2": "Operational",
+  "3": "Maintenance",
+  "4": "Boot"
+ },
+ "giiiSignalTypeEnums": {
+  "0": "L1 C/A GPS",
+  "1": "L2 P(Y)",
+  "2": "L1 C",
+  "3": "L2 C",
+  "4": "L5 GPS",
+  "5": "L1 C/A SBAS",
+  "6": "L5 SBAS",
+  "7": "L5",
+  "8": "S",
+  "64": "E1 GALILEO",
+  "65535": "Unknown"
+ },
+ "giiiComponentTypeEnums": {
+  "0": "UNKNOWN",
+  "1": "IOMASTER",
+  "2": "DSPC",
+  "3": "RFCC",
+  "4": "RFDC"
+ },
+ "giiiSatPosSystem": {
+  "0": "GPS"
+ },
+ "giiiMessageIdConstants": {
+  "rxCommands": 4105,
+  "cardStatus": 4098,
+  "timeSolution": 4107,
+  "measurementData": 4103,
+  "satPos": 4106
+ },
+ "GIIIAGCCardIdEnum": {
+  "3": "DSPC1",
+  "4": "DSPC2"
+ },
+ "eGIIIAgcRfEnum": {
+  "0": "L1",
+  "1": "L2",
+  "2": "L5",
+  "3": "S"
+ },
+ "eGIIIActiveFlagEnum": {
+  "0": "False",
+  "1": "True"
+ },
+ "eGIIIBinSkew": {
+  "0": "Not Present",
+  "1": "Present"
+ },
+ "eAGCCalibrated": {
+  "0": "Coarse",
+  "1": "Fine"
+ },
+ "eAGCRange": {
+  "0": "Bits 7, 6, 5",
+  "1": "Bits 7, 5, 4",
+  "2": "Bits 7, 4, 3",
+  "3": "Bits 7, 3, 2",
+  "4": "Bits 7, 2, 1",
+  "5": "Bits 7, 1, 0"
+ },
+ "eNoiseFloorCal": {
+  "1": "AGC",
+  "2": "Post Correlation"
+ },
+ "eBitCountOverflow": {
+  "0": "Less than 2 bins completely filled",
+  "1": "2+ Bins Completely Filled"
+ },
+ "eRailedGain": {
+  "0": "VGA not railed",
+  "1": "VGA railed for 3+ seconds"
+ },
+ "eBitsNotFull": {
+  "0": "One of more bins filled",
+  "1": "All Bins Not Filled"
+ },
+ "eBitsEmpty": {
+  "0": "Bins contain data",
+  "1": "All bins are empty"
+ },
+ "positionType": {
+  "0": "NONE",
+  "1": "FIXEDPOS",
+  "2": "FIXEDHEIGHT",
+  "4": "FLOATCONV",
+  "5": "WIDELANE",
+  "6": "NARROWLANE",
+  "8": "DOPPLER_VELOCITY",
+  "16": "SINGLE",
+  "17": "PSRDIFF",
+  "18": "WAAS",
+  "19": "PROPAGATED",
+  "32": "L1_FLOAT",
+  "33": "IONOFREE_FLOAT",
+  "34": "NARROW_FLOAT",
+  "48": "L1_INT",
+  "49": "WIDE_INT",
+  "50": "NARROW_INT",
+  "51": "RTK_DIRECT_INS",
+  "52": "INS_SBAS",
+  "53": "INS_PSRSP",
+  "54": "INS_PSRDIFF",
+  "55": "INS_RTKFLOAT",
+  "56": "INS_RTKFIXED",
+  "68": "PPP_CONVERGING",
+  "69": "PPP",
+  "70": "OPERATIONAL",
+  "71": "WARNING",
+  "72": "OUT_OF_BOUNDS",
+  "73": "INS_PPP_CONVERGING",
+  "74": "INS_PPP",
+  "77": "PPP_BASIC_CONVERGING",
+  "78": "PPP_BASIC",
+  "79": "INS_PPP_BASIC_CONVERGING",
+  "80": "INS_PPP_BASIC"
+ },
+ "datumId": {
+  "61": "WGS84",
+  "63": "USER"
+ },
+ "observationStatus": {
+  "0": "GOOD",
+  "1": "BADHEALTH",
+  "2": "OLDEPHEMERIS",
+  "6": "ELEVATIONERROR",
+  "7": "MISCLOSURE",
+  "8": "NODIFFCORR",
+  "9": "NOEPHEMERIS",
+  "10": "INVALIDIODE",
+  "11": "LOCKEDOUT",
+  "12": "LOWPOWER",
+  "13": "OBSL2",
+  "15": "UNKNOWN",
+  "16": "NOIONOCORR",
+  "17": "NOTUSED",
+  "18": "OBSL1",
+  "19": "OBSE1",
+  "20": "OBSL5",
+  "21": "OBSE5",
+  "22": "OBSB2",
+  "23": "OBSB1",
+  "24": "OBSB3",
+  "25": "NOSIGNALMATCH",
+  "26": "SUPPLEMENTARY",
+  "99": "NA",
+  "100": "BAD_INTEGRITY",
+  "101": "LOSSOFLOCK",
+  "102": "NOAMBIGUITY"
+ },
+ "GIIIComponentType": {
+  "0": "UNKNOWN",
+  "1": "IOMASTER",
+  "2": "DSPC",
+  "3": "RFCC",
+  "4": "RFDC"
+ },
+ "GIIIEthernetInterface": {
+  "0": "ETHA",
+  "1": "ETHB"
+ },
+ "GIIIEthernetDetails": {
+  "1": "Not Connected",
+  "2": "10 Mbits/Full",
+  "3": "10 Mbits/Half",
+  "4": "100 Mbits/Full",
+  "5": "100 Mbits/Half"
+ },
+ "componentType": {
+  "0": "UNKNOWN",
+  "1": "GPSCARD",
+  "2": "CONTROLLER",
+  "3": "ENCLOSURE",
+  "7": "IMUCARD",
+  "8": "USERINFO",
+  "12": "OEM6FPGA",
+  "13": "GPSCARD2",
+  "15": "WIFI",
+  "18": "RADIO",
+  "19": "WWW_CONTENT",
+  "20": "Regulatory",
+  "21": "OEM7FPGA",
+  "22": "APPLICATION",
+  "23": "Package",
+  "25": "DEFAULT_CONFIG",
+  "26": "WHEELSENSOR",
+  "27": "EMBEDDED_AUTH",
+  "981073920": "DB_HEIGHTMODEL",
+  "981073928": "DB_WWWISO",
+  "981073930": "DB_LUA_SCRIPTS"
+ },
+ "featureStatus": {
+  "0": "AUTHORIZED",
+  "1": "UNAUTHORIZED",
+  "2": "0Hz",
+  "6": "20Hz",
+  "8": "100Hz",
+  "9": "RATE_INVALID",
+  "15": "STANDARD",
+  "20": "COMMERCIAL_MEMS",
+  "21": "TACTICAL",
+  "22": "HIGH_GRADE_TACTICAL",
+  "23": "NAVIGATION",
+  "25": "SINGLE",
+  "26": "DUAL",
+  "30": "LITE",
+  "33": "CONSUMER_MEMS",
+  "37": "RADIO_TX"
+ },
+ "OceanixSubscriptionService": {
+  "0x2": "Oceanix H",
+  "0x4": "Oceanix Premium"
+ },
+ "featureType": {
+  "0": "MAX_MSR_RATE",
+  "1": "MAX_POS_RATE",
+  "3": "MEAS_OUTPUT",
+  "4": "DGPS_TX",
+  "5": "RTK_TX",
+  "6": "RTK_FLOAT",
+  "7": "RTK_FIXED",
+  "8": "RAIM",
+  "9": "LOW_END_POSITIONING",
+  "10": "ALIGN_HEADING",
+  "11": "ALIGN_RELATIVE_POS",
+  "12": "API",
+  "15": "NTRIP",
+  "19": "PPP",
+  "20": "SCINTILLATION",
+  "22": "INS",
+  "23": "IMU",
+  "26": "FEATURE_INTERFERENCE_MITIGATION",
+  "28": "ANTENNA",
+  "29": "GENERIC_IMU",
+  "30": "INS_PLUS_PROFILES",
+  "31": "HEAVE",
+  "32": "RELATIVE_INS",
+  "999": "MODEL_INVALID"
+ },
+ "HwMonitorStatusReadingType": {
+  "1": "temperature",
+  "2": "antennaCurrent",
+  "6": "digitalCoreVoltage3V3",
+  "7": "antennaVoltage",
+  "8": "digitalCoreVoltage1V2",
+  "15": "supplyVoltage",
+  "17": "voltage1V8",
+  "22": "secondaryTemperature",
+  "23": "peripheralCoreVoltage",
+  "24": "secondaryAntennaCurrent",
+  "25": "secondaryAntennaVoltage"
+ },
+ "CpuStorageUsageBoundaryLimitStatus": {
+  "lowerLimit": 80,
+  "upperLimit": 90
+ },
+ "lghnHwMonitorStatusBoundaryLimitStatus": {
+  "good": 0,
+  "bad": 1
+ },
+ "HwMonitorStatusBoundaryLimitStatus": {
+  "acceptable bounds": 0,
+  "lower warning limit": 1,
+  "lower error limit": 2,
+  "upper warning limit": 3,
+  "upper error limit": 4
+ },
+ "SynchBits": {
+  "synchBit_1": 170,
+  "synchBit_2": 68,
+  "synchBit_3": 18
+ },
+ "messageIdConstants": {
+  "bestposMessageId": 42,
+  "bestvelMessageId": 99,
+  "timeMessageId": 101,
+  "trackstatMessageId": 83,
+  "unlogMessageId": 36,
+  "versionMessageId": 37,
+  "unlogAllMessageId": 38,
+  "psrdopMessageId": 174,
+  "posaveIntervalMessageId": 1822,
+  "RxConfigMessageId": 128,
+  "transferPortStatusId": 2114,
+  "usbStickEjectId": 2115,
+  "sbasControlMessageId": 652,
+  "assignLbandBeamMessageId": 1733,
+  "pppsourceMessageId": 1707,
+  "lbandbeamtableId": 1718,
+  "aveposMessageId": 172,
+  "interfaceModeMessageId": 3,
+  "loglistMessageId": 5,
+  "logMessageId": 1,
+  "portstatsMessageId": 72,
+  "rtkSourceMessageID": 494,
+  "psrdiffsourceMessageId": 493,
+  "ntripConfigMessageID": 1249,
+  "generateRTKCorrections": 1260,
+  "generateDIFFCorrections": 1296,
+  "generateAlignCorrectionsMessageId": 1349,
+  "headingOffsetMessageId": 1082,
+  "posaveMessageId": 173,
+  "savedSurveyPositionsMessageId": 1951,
+  "autoSurveyMessageId": 1795,
+  "fixMessageId": 44,
+  "satvis2MessageId": 1043,
+  "gpggaMessageId": 218,
+  "elevationEcutOffMessageId": 1735,
+  "ppsControlMessageId": 613,
+  "profileMessageId": 1411,
+  "profileInfoMessageId": 1412,
+  "lbandTrackstatMessageId": 1201,
+  "terrastarInfoMessageId": 1719,
+  "markposMessageId": 181,
+  "mark2posMessageId": 615,
+  "mark3posMessageId": 1738,
+  "mark4posMessageId": 1739,
+  "mark1pvaMessageId": 1067,
+  "mark2pvaMessageId": 1068,
+  "mark3pvaMessageId": 1118,
+  "mark4pvaMessageId": 1119,
+  "wifiApChannelMessageId": 2091,
+  "wifiCliStatusMessageId": 1613,
+  "wifiApPassKeyMessageId": 2090,
+  "wifiModeMessageId": 2144,
+  "wifiApSettingsMessageId": 2093,
+  "wifiApIpConfigMessageId": 2096,
+  "dhcpconfigMessageId": 1710,
+  "ipconfigMessageId": 1243,
+  "ipStatusMessageId": 1289,
+  "rxStatusMessageId": 93,
+  "fileSystemStatusMessageId": 2104,
+  "inspvaMessageId": 507,
+  "inspvaxMessageId": 1465,
+  "ipServiceMessageId": 1575,
+  "fileCopyModeMessageId": 1581,
+  "saveEthernetDataMessageId": 1679,
+  "fileConfigMessageId": 2116,
+  "fileMediaConfigMessageId": 2117,
+  "fileStatusMessageId": 2127,
+  "fileSystemCapacityMessageId": 2137,
+  "fileRotateConfigMessageId": 2133,
+  "fileListMessageId": 2100,
+  "dosCommandMessageId": 1355,
+  "fileTransferMessageId": 2109,
+  "fileAutoTransferMessageId": 2135,
+  "fileTransferStatusMessageId": 2101,
+  "authCommandMessageId": 49,
+  "connectImuMessageId": 1428,
+  "inscommandMessageId": 379,
+  "insconfigMessageId": 1945,
+  "setInsRotationMessageId": 1921,
+  "setInsTranslationMessageId": 1920,
+  "setImuOrientationMessageId": 567,
+  "applyVBRMessageId": 1071,
+  "VehicleBodyRotationMessageId": 642,
+  "setImuToAntOffsetMessageId": 383,
+  "setImuToAntOffset2MessageId": 1205,
+  "setImuEventMessageId": 1965,
+  "setInsOffsetMessageId": 676,
+  "alignmentModeMessageId": 1214,
+  "setInitAzimuthMessageId": 863,
+  "heaveFilterMessageId": 1427,
+  "sourceTableMessageId": 1344,
+  "ntripSourceTableMessageId": 1343,
+  "movingBaseStationMessageId": 763,
+  "heading2MessageId": 1335,
+  "dualantennaalignMessageId": 1761,
+  "serialConfigMessageId": 1246,
+  "resetMessageId": 18,
+  "fresetMessageId": 20,
+  "surveyPositionMessageId": 1952,
+  "satelStatusMessageId": 2205,
+  "satel4InfoMessageId": 2216,
+  "satel4ConfigMessageId": 2215,
+  "satel9InfoMessageId": 2220,
+  "satel9ConfigNMessageId": 2219,
+  "satel9ConfigLMessageId": 2218,
+  "satelControlMessageId": 2203,
+  "satelDetectMessageId": 2204,
+  "wifiNetConfigMessageId": 2213,
+  "wifiStatusMessageId": 2207,
+  "wifiNetListMessageId": 2210,
+  "wifiAlignAutomationMessageId": 2214,
+  "hwMonitorMessageId": 963,
+  "modelFeaturesMessageId": 1329,
+  "itPSDFinalMessageId": 1968,
+  "itPSDDetectMessageId": 2063,
+  "setAdminPswdMessageId": 1579,
+  "itdetectstatusMessageId": 2065,
+  "chanConfigListMessageId": 1148,
+  "saveConfigMessageId": 19,
+  "icomConfigMessageId": 1248,
+  "itFiltTableMessageId": 1991,
+  "itProgFiltBankMessageId": 2023,
+  "itBandPassBankMessageId": 2022,
+  "itSpectralAnalysisMessageId": 1967,
+  "itFrontEndModeMessageId": 2039,
+  "sendHexMessageId": 178,
+  "softloadstatusMessageId": 1235,
+  "insposxMessageId": 1459,
+  "alignAutomationMessageId": 1323,
+  "rxStatusEventMessageId": 94,
+  "bestsatsMessageId": 1194,
+  "eCutoffMessageId": 50,
+  "galECutoffMessageId": 1114,
+  "gloECutoffMessageId": 735,
+  "navicECutoffMessageId": 2134,
+  "qzssECutoffMessageId": 1350,
+  "bdsECutoffMessageId": 1582,
+  "logfileMessageId": 157,
+  "logFileStatusMessageId": 1146,
+  "authcodesMessageId": 1348,
+  "nmeaTalkerMessageId": 861,
+  "nmeaBeiDouTalkerMessageId": 2258,
+  "nmeaFormatMessageId": 1861,
+  "ggaQualityMessageId": 691,
+  "skDetectConfigMessageId": 2358,
+  "skCalibrateMessageId": 2366,
+  "skCalibrateStatusMessageId": 2364,
+  "setimueventMessageId": 1965,
+  "terrastarStatusMessageId": 1729,
+  "validModelsMessageId": 206,
+  "veriposDecoderStatusMessageId": 2075,
+  "thisantennatypeMessageId": 1420,
+  "baseantennatypeMessageId": 1419,
+  "rtkantennaMessageId": 858,
+  "baseantennapcoMessageId": 1415,
+  "thisantennapcoMessageId": 1417,
+  "oceanixinfoMessageId": 2159,
+  "veriposinfoMessageId": 1728,
+  "oceanixStatusMessageId": 2160,
+  "itdetectconfigMessageId": 2143,
+  "dnsconfigMessageId": 1244
+ },
+ "setIMUeventDirectionEnum": {
+  "1": "IN",
+  "2": "OUT",
+  "3": "IN2"
+ },
+ "setIMUeventEnum": {
+  "1": "OFF",
+  "2": "DEFAULT",
+  "3": "EVENT1",
+  "4": "EVENT2",
+  "5": "EVENT3",
+  "6": "EVENT4"
+ },
+ "eFileAutoTransferMode": {
+  "OFF": 1,
+  "COPY": 2,
+  "MOVE": 3
+ },
+ "signals": {
+  "L1CA": 1,
+  "L2P": 3,
+  "L2PC": 3,
+  "L5Q": 5,
+  "L1CP": 4,
+  "L2CM": 2,
+  "L2CA": 2,
+  "L3Q": 4,
+  "E1C": 1,
+  "E5AQ": 2,
+  "E5BQ": 3,
+  "ALTBOCQ": 4,
+  "L5I": 3,
+  "B1D1": 1,
+  "B1D2": 1,
+  "B2D1": 2,
+  "B2D2": 2,
+  "B3D1": 3,
+  "B3D2": 3,
+  "L5SPS": 1,
+  "L6P": 5
+ },
+ "signalColors": {
+  "1": "sigType1",
+  "2": "sigType2",
+  "3": "sigType3",
+  "4": "sigType4",
+  "5": "sigType5"
+ },
+ "ipServiceEnum": {
+  "0": "NO_PORT",
+  "1": "FTP_SERVER",
+  "2": "WEB_SERVER",
+  "3": "SECURE_ICOM"
+ },
+ "veriposInfoModeEnum": {
+  "0": "UNASSIGNED",
+  "7": "NCC_CONTROLLED",
+  "8": "NO_DISABLE",
+  "100": "BUBBLE",
+  "101": "MODEL_DENIED"
+ },
+ "PortIdentifierConstants": {
+  "THISPORT_30": 222
+ },
+ "ConstellationErrorMessages": {
+  "TrackedError": "Minimum of 4 satellites are required to compute position.",
+  "UsedError": "Minimum of 4 satellites with Good Health are required to compute position."
+ },
+ "SolutionStatusDetails": {
+  "0": {
+   "indicatorColor": "#6b9b29",
+   "asciiMessage": "SOL COMPUTED",
+   "description": "Solution computed"
+  },
+  "1": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "INSUFFICIENT OBS",
+   "description": "There are not enough observable satellites to compute the position"
+  },
+  "2": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "NO CONVERGENCE",
+   "description": "Solution has not converged"
+  },
+  "3": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "SINGULARITY",
+   "description": "Singularity in parameters matrix"
+  },
+  "4": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "COV TRACE",
+   "description": "Co-variance trace exceeds maximum (trace > 1000 m)"
+  },
+  "5": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "TEST DIST",
+   "description": "Test distance exceeded (maximum of 3 rejections if distance >10 km)"
+  },
+  "6": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "COLD START",
+   "description": "Solution has not converged from Cold Start"
+  },
+  "7": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "V_H_LIMIT",
+   "description": "Height or velocity limits exceeded (in accordance with export licensing restrictions)"
+  },
+  "8": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "VARIANCE",
+   "description": "Variance exceeds limits"
+  },
+  "9": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "RESIDUALS",
+   "description": "Residuals are too large"
+  },
+  "13": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "INTEGRITY WARNING",
+   "description": "Unreliable Position due to large Residuals"
+  },
+  "18": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "PENDING",
+   "description": "There are not enough number of  satellites to verify the fixed position entered."
+  },
+  "19": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "INVALID_FIX",
+   "description": "The fixed position, entered using the FIX POSITION command, is not valid"
+  },
+  "20": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "UNAUTHORIZED",
+   "description": "Position type is unauthorized - HP or XP on a receiver not authorized for it"
+  },
+  "22": {
+   "indicatorColor": "#c5240f",
+   "asciiMessage": "INVALID RATE",
+   "description": "The selected logging rate is not supported for this solution type"
+  }
+ },
+ "PositionTypeDetails": {
+  "0": {
+   "asciiMessage": "NONE",
+   "description": "No position solution available"
+  },
+  "1": {
+   "asciiMessage": "FIXEDPOS",
+   "description": "Position has been fixed by the FIX POSITION command"
+  },
+  "2": {
+   "asciiMessage": "FIXEDHEIGHT",
+   "description": "Position has been fixed by the FIX HEIGHT/AUTO command"
+  },
+  "8": {
+   "asciiMessage": "DOPPLER_VELOCITY",
+   "description": "Velocity computed using instantaneous Doppler"
+  },
+  "16": {
+   "asciiMessage": "SINGLE",
+   "description": "Single point position"
+  },
+  "17": {
+   "asciiMessage": "PSRDIFF",
+   "description": "Pseudorange differential solution"
+  },
+  "18": {
+   "asciiMessage": "WAAS",
+   "description": "Solution calculated using corrections from an WAAS"
+  },
+  "19": {
+   "asciiMessage": "PROPAGATED",
+   "description": "Propagated by a Kalman filter without new observations"
+  },
+  "20": {
+   "asciiMessage": "OMNISTAR",
+   "description": "OmniSTAR VBS position"
+  },
+  "32": {
+   "asciiMessage": "L1_FLOAT",
+   "description": "Floating L1 ambiguity solution"
+  },
+  "33": {
+   "asciiMessage": "IONOFREE FLOAT",
+   "description": "Floating ionospheric-free ambiguity solution"
+  },
+  "34": {
+   "asciiMessage": "NARROW FLOAT",
+   "description": "Floating narrow-lane ambiguity solution"
+  },
+  "48": {
+   "asciiMessage": "L1 INT",
+   "description": "Integer L1 ambiguity solution"
+  },
+  "49": {
+   "asciiMessage": "WIDE INT",
+   "description": "Multi-frequency RTK solution with carrier phase ambiguities resolved to wide-lane integers"
+  },
+  "50": {
+   "asciiMessage": "NARROW INT",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "51": {
+   "asciiMessage": "RTK DIRECT INS",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "52": {
+   "asciiMessage": "INS SBAS",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "53": {
+   "asciiMessage": "INS PSRSP",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "54": {
+   "asciiMessage": "INS PSRDIFF",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "55": {
+   "asciiMessage": "INS RTKFLOAT",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "56": {
+   "asciiMessage": "INS RTKFIXED",
+   "description": "Integer narrow-lane ambiguity solution"
+  },
+  "64": {
+   "asciiMessage": "OMNISTAR_HP",
+   "description": "OmniSTAR HP position"
+  },
+  "65": {
+   "asciiMessage": "OMNISTAR_XP",
+   "description": "OmniSTAR XP or G2 position"
+  },
+  "68": {
+   "asciiMessage": "PPP CONVERGING",
+   "description": "Converging PPP solution"
+  },
+  "69": {
+   "asciiMessage": "PPP",
+   "description": "Converged PPP solution"
+  },
+  "70": {
+   "asciiMessage": "OPERATIONAL",
+   "description": "Solution accuracy is within UAL operational limit"
+  },
+  "71": {
+   "asciiMessage": "WARNING",
+   "description": "Solution accuracy is outside UAL operational limit but within warning limit"
+  },
+  "72": {
+   "asciiMessage": "OUT OF BOUNDS",
+   "description": "Solution accuracy is outside UAL limits"
+  },
+  "73": {
+   "asciiMessage": "INS PPP CONVERGING",
+   "description": "Solution accuracy is outside UAL limits"
+  },
+  "74": {
+   "asciiMessage": "INS_PPP",
+   "description": "Solution accuracy is outside UAL limits"
+  },
+  "77": {
+   "asciiMessage": "PPP BASIC CONVERGING",
+   "description": "Converging TerraStar-L solution"
+  },
+  "78": {
+   "asciiMessage": "PPP BASIC",
+   "description": "Converging TerraStar-L solution"
+  }
+ },
+ "PositionTypeJSONMap": {
+  "NONE": 0,
+  "FIXEDPOS": 1,
+  "FIXEDHEIGHT": 2,
+  "FLOATCONV": 4,
+  "WIDELANE": 5,
+  "NARROWLANE": 6,
+  "DOPPLER_VELOCITY": 8,
+  "SINGLE": 16,
+  "PSRDIFF": 17,
+  "WAAS": 18,
+  "PROPAGATED": 19,
+  "OMNISTAR": 20,
+  "L1_FLOAT": 32,
+  "IONOFREE_FLOAT": 33,
+  "NARROW_FLOAT": 34,
+  "L1_INT": 48,
+  "WIDE_INT": 49,
+  "NARROW_INT": 50,
+  "OMNISTAR_HP": 64,
+  "OMNISTAR_XP": 65,
+  "RTK_DIRECT_INS": 51,
+  "INS_SBAS": 52,
+  "INS_PSRSP": 53,
+  "INS_PSRDIFF": 54,
+  "INS_RTKFLOAT": 55,
+  "INS_RTKFIXED": 56,
+  "PPPCONVERGING": 68,
+  "PPP": 69,
+  "PPP_BASIC_CONVERGING": 77,
+  "PPP_BASIC": 78,
+  "OPERATIONAL": 70,
+  "WARNING": 71,
+  "OUT_OF_BOUNDS": 72,
+  "INS_PPP_CONVERGING": 73,
+  "INS_PPP": 74,
+  "INS_PPP_BASIC": 79,
+  "INS_PPP_BASIC_CONVERGING ": 80
+ },
+ "RTKModeValidRoverTypes": [
+  32,
+  34,
+  48,
+  50
+ ],
+ "PPPSourceTypes": {
+  "NONE": 0,
+  "TERRASTAR": 1,
+  "VERIPOS": 2,
+  "PACE": 3,
+  "AUTO": 100
+ },
+ "PositionModeUITabSTRINGS": {
+  "SBAS": "SBAS",
+  "PPP": "TERRASTAR",
+  "DIFFERENTIAL": "RTK",
+  "RTKBase": "RTKBase",
+  "NTRIPServer": "NTRIPServer",
+  "PSRDIFF": "PSRDIFF",
+  "NTRIP": "NTRIP"
+ },
+ "GenricPositioModes": {
+  "NONE": 0,
+  "RTK_BASE": 1,
+  "RTK_ROVER": 2,
+  "PPP": 3,
+  "PSRDIFF_BASE": 4,
+  "PSRDIFF_ROVER": 5,
+  "SBAS": 6,
+  "NTRIP_SERVER": 7,
+  "NTRIP_CLIENT": 8
+ },
+ "PositioModeTypes": {
+  "NONE": 99,
+  "RTK_BASE": 1,
+  "RTK_ROVER": 2,
+  "NTRIP_SERVER": 3,
+  "NTRIP_CLIENT": 4,
+  "PPP": 5,
+  "PSRDIFF_BASE": 6,
+  "PSRDIFF_ROVER": 7,
+  "SBAS": 8,
+  "ALIGN_STATUS": 98
+ },
+ "GraphTypes": {
+  "C/NO": "cno",
+  "PSR": "psr",
+  "DOPPLER": "doppler",
+  "RESIDUAL": "residual",
+  "LOCK TIME": "lockTime"
+ },
+ "PositioModeTypesDisplayStrings": {
+  "1": "RTK BASE",
+  "2": "RTK ROVER",
+  "3": "NTRIP Server",
+  "4": "NTRIP Client",
+  "5": "PPP",
+  "6": "PSRDIFF BASE",
+  "7": "PSRDIFF ROVER",
+  "8": "SBAS"
+ },
+ "assignLbandBeamOptions": {
+  "IDLE": 0,
+  "AUTO": 1,
+  "MANUAL": 2
+ },
+ "SBASCONTROLOPTIONS": {
+  "DISABLE": 0,
+  "ENABLE": 1
+ },
+ "RTKSOURCEType": {
+  "RTCM": 0,
+  "RTCA": 1,
+  "CMR": 2,
+  "OMNISTAR": 3,
+  "SBAS": 5,
+  "RTK": 6,
+  "AUTO": 10,
+  "NONE": 11,
+  "RTCMV3": 13,
+  "NOVATELX": 14
+ },
+ "SerialPortInterface": {
+  "NONE": 0,
+  "NOVATEL": 1,
+  "RTCM": 2,
+  "RTCA": 3,
+  "CMR": 4,
+  "IMU": 7,
+  "RTCMNOCR": 8,
+  "TCOM1": 10,
+  "TCOM2": 11,
+  "TCOM3": 12,
+  "RTCMV3": 14,
+  "NOVATELBINARY": 15,
+  "GENERIC": 18,
+  "IMARIMU": 19,
+  "MRTCA": 20,
+  "KVHIMU": 23,
+  "AUTO": 27,
+  "NOVATELX": 35,
+  "KVH1750IMU": 41,
+  "TCCOM1": 46,
+  "TCCOM2": 47,
+  "TCCOM3": 48,
+  "NOVATELMINBINARY": 49,
+  "TCCOM4": 50,
+  "TCCOM5": 51,
+  "TCCOM6": 52
+ },
+ "RTKCorrectionTypes": [
+  "CMR",
+  "NOVATELX",
+  "RTCA",
+  "RTCM",
+  "RTCMV3",
+  "VERIPOS"
+ ],
+ "RTKCorrectionTypesRover": [
+  "AUTO",
+  "CMR",
+  "NOVATELX",
+  "RTCA",
+  "RTCM",
+  "RTCMV3",
+  "VERIPOS"
+ ],
+ "MP7RTKCorrectionTypesRover": [
+  "AUTO",
+  "CMR",
+  "NOVATELX",
+  "RTCA",
+  "RTCM",
+  "RTCMV3"
+ ],
+ "PPPorrectionTypes": [
+  "VERIPOS"
+ ],
+ "OEMSTARRTKCorrectionTypes": [
+  "CMR",
+  "RTCA",
+  "RTCM",
+  "RTCMV3"
+ ],
+ "OEMSTARRTKCorrectionTypesRover": [
+  "AUTO",
+  "CMR",
+  "RTCA",
+  "RTCM",
+  "RTCMV3"
+ ],
+ "PSRDIFFCorrectionTypes": [
+  "RTCM",
+  "RTCA"
+ ],
+ "PSRDIFFCorrectionTypesRover": [
+  "RTCM",
+  "RTCA",
+  "AUTO"
+ ],
+ "AveposPosaveStatus": {
+  "OFF": 0,
+  "INPROGRESS": 1,
+  "COMPLETED": 2
+ },
+ "AutoSurveyStatus": {
+  "DISABLE": 0,
+  "ENABLE": 1
+ },
+ "AutoSurvey_NVM_Status": {
+  "OFF": 0,
+  "ON": 1
+ },
+ "PosaveStatus": {
+  "OFF": 0,
+  "ON": 1
+ },
+ "RTK_Correctionlogs": {
+  "RTCM": [
+   107,
+   117,
+   118,
+   129,
+   260,
+   275,
+   307,
+   374,
+   665,
+   667,
+   765,
+   768,
+   770,
+   772,
+   774,
+   776,
+   852,
+   854,
+   864,
+   866,
+   873,
+   875,
+   885,
+   887,
+   889,
+   891,
+   893,
+   895,
+   1097,
+   1472,
+   1473,
+   1474,
+   1475,
+   1476,
+   1477,
+   1478,
+   1479,
+   1480,
+   1481,
+   1482,
+   1483,
+   1484,
+   1485,
+   1486,
+   1487,
+   1488,
+   1489,
+   1490,
+   1491,
+   1492,
+   1592,
+   1593,
+   1594,
+   1595,
+   1596,
+   1597,
+   1598,
+   1641,
+   1642,
+   1643,
+   1644,
+   1645,
+   1646,
+   1647,
+   1648,
+   1649,
+   1650,
+   1651,
+   1652,
+   1653,
+   1654,
+   1655,
+   2171,
+   2173,
+   2175,
+   2177
+  ],
+  "RTCMV3": [
+   107,
+   117,
+   118,
+   129,
+   260,
+   275,
+   307,
+   374,
+   665,
+   667,
+   765,
+   768,
+   770,
+   772,
+   774,
+   776,
+   852,
+   854,
+   864,
+   866,
+   873,
+   875,
+   885,
+   887,
+   889,
+   891,
+   893,
+   895,
+   1097,
+   1472,
+   1473,
+   1474,
+   1475,
+   1476,
+   1477,
+   1478,
+   1479,
+   1480,
+   1481,
+   1482,
+   1483,
+   1484,
+   1485,
+   1486,
+   1487,
+   1488,
+   1489,
+   1490,
+   1491,
+   1492,
+   1592,
+   1593,
+   1594,
+   1595,
+   1596,
+   1597,
+   1598,
+   1641,
+   1642,
+   1643,
+   1644,
+   1645,
+   1646,
+   1647,
+   1648,
+   1649,
+   1650,
+   1651,
+   1652,
+   1653,
+   1654,
+   1655,
+   2171,
+   2173,
+   2175,
+   2177
+  ],
+  "RTCA": [
+   6,
+   10,
+   11,
+   805,
+   1340
+  ],
+  "CMR": [
+   103,
+   105,
+   717,
+   882
+  ],
+  "NOVATELX": [
+   1618
+  ]
+ },
+ "PSRDIFF_Correctionlogs": {
+  "RTCM": [
+   107,
+   864,
+   117
+  ],
+  "RTCA": [
+   10,
+   11
+  ]
+ },
+ "ALIGN_Status_Correctionlogs": {
+  "NOVATELX": [
+   1618,
+   1620
+  ],
+  "RTCA": [
+   1340,
+   1049
+  ]
+ },
+ "NTRIPConfigStaus": {
+  "DISABLED": 1,
+  "CLIENT": 2,
+  "SERVER": 3
+ },
+ "OEM7WEBUI_Colors": {
+  "RED": "#C5240F",
+  "GREEN": "#6B9B29",
+  "YELLOW": "#EEB826",
+  "GREY": "#A9A9A9"
+ },
+ "SBASControlSystemEnums": {
+  "NONE": 0,
+  "AUTO": 1,
+  "ANY": 2,
+  "WAAS": 3,
+  "EGNOS": 4,
+  "MSAS": 5,
+  "GAGAN": 6,
+  "QZSS": 7
+ },
+ "commandsAndEnums": {
+  "ntripsourcetable": {
+   "messageId": 1343
+  },
+  "skcalibrate": {
+   "messageId": 2366,
+   "mode": {
+    "START": 1
+   },
+   "option": {
+    "ALL": 0,
+    "REMAINING": 1
+   }
+  },
+  "skdetectconfig": {
+   "messageId": 2358,
+   "mode": {
+    "ENABLE": 1,
+    "DISABLE": 0
+   }
+  },
+  "elevationcutoff": {
+   "messageId": 1735,
+   "constellation": {
+    "GPS": 0,
+    "GLONASS": 1,
+    "SBAS": 2,
+    "GALILEO": 5,
+    "BEIDOU": 6,
+    "QZSS": 7,
+    "NAVIC": 9,
+    "ALL": 32
+   }
+  },
+  "ppscontrol": {
+   "messageId": 613,
+   "switch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   },
+   "polarity": {
+    "NEGATIVE": 0,
+    "POSITIVE": 1
+   }
+  },
+  "autosurvey": {
+   "messageId": 1795,
+   "state": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   },
+   "savePos": {
+    "OFF": 0,
+    "ON": 1
+   }
+  },
+  "undulation": {
+   "messageId": 214,
+   "option": {
+    "USER": 1,
+    "OSU89B": 2,
+    "EGM96": 3
+   }
+  },
+  "fixposition": {
+   "messageId": 44,
+   "state": {
+    "NONE": 0,
+    "AUTO": 1,
+    "HEIGHT": 2,
+    "POSITION": 3
+   }
+  },
+  "posave": {
+   "messageId": 173,
+   "state": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   }
+  },
+  "sbascontrol": {
+   "messageId": 652,
+   "system": {
+    "NONE": 0,
+    "AUTO": 1,
+    "ANY": 2,
+    "WAAS": 3,
+    "EGNOS": 4,
+    "MSAS": 5,
+    "GAGAN": 6,
+    "QZSS": 7
+   },
+   "testmode": {
+    "NONE": 0,
+    "ZEROTOTWO": 1,
+    "IGNOREZERO": 2
+   },
+   "switch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   }
+  },
+  "setadminpassword": {
+   "messageId": 1579
+  },
+  "serialconfig": {
+   "messageId": 1246,
+   "port": {
+    "ALL": 8,
+    "BT1": 33,
+    "CCOM1": 38,
+    "CCOM2": 39,
+    "CCOM3": 40,
+    "CCOM4": 41,
+    "CCOM5": 42,
+    "CCOM6": 43,
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3,
+    "COM4": 19,
+    "COM5": 31,
+    "COM6": 32,
+    "COM7": 33,
+    "COM8": 34,
+    "COM9": 35,
+    "COM10": 36,
+    "ETH1": 20,
+    "FILE": 7,
+    "ICOM1": 23,
+    "ICOM2": 24,
+    "ICOM3": 25,
+    "ICOM4": 29,
+    "ICOM5": 46,
+    "ICOM6": 47,
+    "ICOM7": 48,
+    "IMU": 21,
+    "NCOM1": 26,
+    "NCOM2": 27,
+    "NCOM3": 28,
+    "NOPORT": 0,
+    "SCOM1": 49,
+    "SCOM2": 50,
+    "SCOM3": 51,
+    "SCOM4": 52,
+    "THISPORT": 6,
+    "USB1": 13,
+    "USB2": 14,
+    "USB3": 15,
+    "WCOM1": 30
+   },
+   "parity": {
+    "N": 0,
+    "E": 1,
+    "O": 2
+   },
+   "handshake": {
+    "N": 0,
+    "XON": 1,
+    "CTS": 2
+   },
+   "break": {
+    "OFF": 0,
+    "ON": 1
+   },
+   "databits": {
+    "7": 1,
+    "8": 2
+   },
+   "stopbits": {
+    "1": 1,
+    "2": 2
+   }
+  },
+  "auth": {
+   "messageId": 49,
+   "state": {
+    "REMOVE": 0,
+    "ADD": 1,
+    "ERASE_TABLE": 7,
+    "CLEAN_TABLE": 8
+   }
+  },
+  "assignlbandbeam": {
+   "messageId": 1733,
+   "option": {
+    "IDLE": 0,
+    "AUTO": 1,
+    "MANUAL": 2
+   }
+  },
+  "nmeaConfig": {
+   "messageId": 861,
+   "option": {
+    "GP": 0,
+    "AUTO": 1
+   }
+  },
+  "nmeaBeiDouConfig": {
+   "messageId": 2258,
+   "option": {
+    "GB": 0,
+    "BD": 1
+   }
+  },
+  "nmeaFormatConfig": {
+   "messageId": 1861,
+   "field": {
+    "GGA_LATITUDE": 0,
+    "GGA_LONGITUDE": 1,
+    "GGA_ALTITUDE": 2,
+    "GGA_UNDULATION": 3,
+    "GGALONG_LATITUDE": 10,
+    "GGALONG_LONGITUDE": 11,
+    "GGALONG_ALTITUDE": 12,
+    "GGALONG_UNDULATION": 13
+   }
+  },
+  "ggaQualityConfig": {
+   "messageId": 691,
+   "posType": {
+    "NONE": 0,
+    "FIXEDPOS": 1,
+    "FIXEDHEIGHT": 2,
+    "DOPPLER_VELOCITY": 8,
+    "SINGLE": 16,
+    "PSRDIFF": 17,
+    "WAAS": 18,
+    "PROPAGATED": 19,
+    "L1_FLOAT": 32,
+    "IONOFREE_FLOAT": 33,
+    "NARROW_FLOAT": 34,
+    "L1_INT": 48,
+    "WIDE_INT": 49,
+    "NARROW_INT": 50,
+    "RTK_DIRECT_INS": 51,
+    "INS_SBAS": 52,
+    "INS_PSRSP": 53,
+    "INS_PSRDIFF": 54,
+    "INS_RTKFLOAT": 55,
+    "INS_RTKFIXED": 56,
+    "PPP_CONVERGING": 68,
+    "PPP": 69,
+    "OPERATIONAL": 70,
+    "WARNING": 71,
+    "OUT_OF_BOUNDS": 72,
+    "INS_PPP_CONVERGING": 73,
+    "INS_PPP": 74,
+    "PPP_BASIC_CONVERGING": 77,
+    "PPP_BASIC": 78,
+    "INS_PPP_BASIC_CONVERGING": 79,
+    "INS_PPP_BASIC": 80
+   },
+   "quality": {
+    "2": 2,
+    "5": 5
+   }
+  },
+  "icomport": {
+   "messageId": 1248,
+   "port": {
+    "ALL": 8,
+    "BT1": 33,
+    "CCOM1": 38,
+    "CCOM2": 39,
+    "CCOM3": 40,
+    "CCOM4": 41,
+    "CCOM5": 42,
+    "CCOM6": 43,
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3,
+    "COM4": 19,
+    "COM5": 31,
+    "COM6": 32,
+    "COM7": 33,
+    "COM8": 34,
+    "COM9": 35,
+    "COM10": 36,
+    "ETH1": 20,
+    "FILE": 7,
+    "ICOM1": 23,
+    "ICOM2": 24,
+    "ICOM3": 25,
+    "ICOM4": 29,
+    "ICOM5": 46,
+    "ICOM6": 47,
+    "ICOM7": 48,
+    "IMU": 21,
+    "NCOM1": 26,
+    "NCOM2": 27,
+    "NCOM3": 28,
+    "NOPORT": 0,
+    "SCOM1": 49,
+    "SCOM2": 50,
+    "SCOM3": 51,
+    "SCOM4": 52,
+    "THISPORT": 6,
+    "USB1": 13,
+    "USB2": 14,
+    "USB3": 15,
+    "WCOM1": 30
+   },
+   "protocol": {
+    "DISABLED": 1,
+    "TCP": 2,
+    "UDP": 3,
+    "TCP_SERVER": 4
+   },
+   "bindinterface": {
+    "ALL": 1
+   }
+  },
+  "interfacemode": {
+   "messageId": 3,
+   "port": {
+    "ALL": 8,
+    "BT1": 33,
+    "CCOM1": 38,
+    "CCOM2": 39,
+    "CCOM3": 40,
+    "CCOM4": 41,
+    "CCOM5": 42,
+    "CCOM6": 43,
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3,
+    "COM4": 19,
+    "COM5": 31,
+    "COM6": 32,
+    "COM7": 34,
+    "COM8": 35,
+    "COM9": 36,
+    "COM10": 37,
+    "ETH1": 20,
+    "FILE": 7,
+    "ICOM1": 23,
+    "ICOM2": 24,
+    "ICOM3": 25,
+    "ICOM4": 29,
+    "ICOM5": 46,
+    "ICOM6": 47,
+    "ICOM7": 48,
+    "IMU": 21,
+    "NCOM1": 26,
+    "NCOM2": 27,
+    "NCOM3": 28,
+    "NOPORT": 0,
+    "SCOM1": 49,
+    "SCOM2": 50,
+    "SCOM3": 51,
+    "SCOM4": 52,
+    "THISPORT": 6,
+    "USB1": 13,
+    "USB2": 14,
+    "USB3": 15,
+    "WCOM1": 30
+   },
+   "txtype": {
+    "NONE": 0,
+    "NOVATEL": 1,
+    "RTCM": 2,
+    "RTCA": 3,
+    "CMR": 4,
+    "IMU": 7,
+    "RTCMNOCR": 8,
+    "TCOM1": 10,
+    "TCOM2": 11,
+    "TCOM3": 12,
+    "TAUX": 13,
+    "RTCMV3": 14,
+    "NOVATELBINARY": 15,
+    "GENERIC": 18,
+    "IMARIMU": 19,
+    "MRTCA": 20,
+    "IGIIMU\t": 21,
+    "SEATEXIMU": 22,
+    "KVHIMU": 23,
+    "MICROIRSIMU": 24,
+    "AUTO": 27,
+    "LITEFIMU": 28,
+    "LANDMARK20": 29,
+    "GENERIC_IMU": 30,
+    "TAMAMIMU": 31,
+    "MIC": 32,
+    "TCOM5": 33,
+    "TCOM6": 34,
+    "NOVATELX": 35,
+    "TCOM7": 37,
+    "TCOM8": 38,
+    "TCOM9": 39,
+    "TCOM10": 40,
+    "KVH1750IMU": 41,
+    "VERIPOS": 42,
+    "IMARFRIMU": 44,
+    "TCCOM1": 46,
+    "TCCOM2": 47,
+    "TCCOM3": 48,
+    "NOVATELMINBINARY": 49,
+    "TCCOM4": 50,
+    "TCCOM5": 51,
+    "TCCOM6": 52,
+    "TCCOM7": 53,
+    "TCCOM8": 54,
+    "NOVATELMULTI": 57,
+    "STIM300DIMU": 59,
+    "TSCOM1": 60,
+    "TSCOM2": 61,
+    "TSCOM3": 62,
+    "TSCOM4": 63,
+    "LUA": 64,
+    "HONEYWELLIMU": 65
+   },
+   "rxtype": {
+    "NONE": 0,
+    "NOVATEL": 1,
+    "RTCM": 2,
+    "RTCA": 3,
+    "CMR": 4,
+    "IMU": 7,
+    "RTCMNOCR": 8,
+    "TCOM1": 10,
+    "TCOM2": 11,
+    "TCOM3": 12,
+    "TAUX": 13,
+    "RTCMV3": 14,
+    "NOVATELBINARY": 15,
+    "GENERIC": 18,
+    "IMARIMU": 19,
+    "MRTCA": 20,
+    "IGIIMU\t": 21,
+    "SEATEXIMU": 22,
+    "KVHIMU": 23,
+    "MICROIRSIMU": 24,
+    "AUTO": 27,
+    "LITEFIMU": 28,
+    "LANDMARK20": 29,
+    "GENERIC_IMU": 30,
+    "TAMAMIMU": 31,
+    "MIC": 32,
+    "TCOM5": 33,
+    "TCOM6": 34,
+    "NOVATELX": 35,
+    "TCOM7": 37,
+    "TCOM8": 38,
+    "TCOM9": 39,
+    "TCOM10": 40,
+    "KVH1750IMU": 41,
+    "VERIPOS": 42,
+    "IMARFRIMU": 44,
+    "TCCOM1": 46,
+    "TCCOM2": 47,
+    "TCCOM3": 48,
+    "NOVATELMINBINARY": 49,
+    "TCCOM4": 50,
+    "TCCOM5": 51,
+    "TCCOM6": 52,
+    "TCCOM7": 53,
+    "TCCOM8": 54,
+    "NOVATELMULTI": 57,
+    "STIM300DIMU": 59,
+    "TSCOM1": 60,
+    "TSCOM2": 61,
+    "TSCOM3": 62,
+    "TSCOM4": 63,
+    "LUA": 64,
+    "HONEYWELLIMU": 65
+   },
+   "responses": {
+    "OFF": 0,
+    "ON": 1
+   }
+  },
+  "filerotateconfig": {
+   "messageId": 2133,
+   "diskFullAction": {
+    "STOP": 0,
+    "OVERWRITE": 1
+   }
+  },
+  "inscommand": {
+   "messageId": 379,
+   "switch": {
+    "RESET": 0,
+    "DISABLE": 1,
+    "ENABLE": 2,
+    "START_NO_TIME": 3,
+    "START_FINE_TIME": 4,
+    "RESTART": 5
+   }
+  },
+  "setimuevent": {
+   "messageId": 1965,
+   "direction": {
+    "IN": 1,
+    "OUT": 2,
+    "IN2": 3
+   },
+   "event": {
+    "OFF": 1,
+    "DEFAULT": 2,
+    "EVENT1": 3,
+    "EVENT2": 4,
+    "EVENT3": 5,
+    "EVENT4": 6
+   }
+  },
+  "itdetectconfig": {
+   "messageId": 2143,
+   "rfpath": {
+    "NONE": 0,
+    "ALL": 1,
+    "L1": 2,
+    "L2": 3,
+    "L5": 4
+   }
+  },
+  "connectimu": {
+   "messageId": 1428,
+   "IMUPort": {
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3,
+    "COM6": 32,
+    "SPI": 7,
+    "COM4": 19,
+    "COM5": 31
+   },
+   "IMUType": {
+    "UNKNOWN": 0,
+    "HG1700_AG11": 1,
+    "HG1700_AG17": 4,
+    "HG1900_CA29": 5,
+    "LN200": 8,
+    "HG1700_AG58": 11,
+    "HG1700_AG62": 12,
+    "IMAR_FSAS": 13,
+    "KVH_COTS": 16,
+    "HG1930_AA99": 20,
+    "ISA100C": 26,
+    "HG1900_CA50": 27,
+    "HG1930_CA50": 28,
+    "ADIS16488": 31,
+    "STIM300": 32,
+    "KVH_1750": 33,
+    "ISA100": 34,
+    "EPSON_G320": 41,
+    "EPSON_G320N": 41,
+    "KVH-1725": 45,
+    "BOSCH_SMI130": 50,
+    "LITEF_MICROIMU": 52,
+    "STIM300D": 56,
+    "INVENSENSE_IAM20680": 57,
+    "HG4930_AN01": 58,
+    "EPSON_G370": 61,
+    "HG4930_AN04": 68,
+    "HG4930_AN04_400HZ": 69,
+    "LITEF_MICROIMUD_400HZ": 71
+   }
+  },
+  "setinsrotation": {
+   "messageId": 1921,
+   "rotationalOffset": {
+    "USER": 4,
+    "MARK1": 5,
+    "MARK2": 6,
+    "ALIGN": 8,
+    "MARK3": 9,
+    "MARK4": 10,
+    "RBV": 11,
+    "RBM": 12
+   }
+  },
+  "setinsoffset": {
+   "messageId": 676
+  },
+  "setimutoant": {
+   "messageId": 383
+  },
+  "setimutoant2": {
+   "messageId": 1205
+  },
+  "setimuorientation": {
+   "messageId": 567,
+   "switch": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6
+   }
+  },
+  "applyVBR": {
+   "messageId": 1071,
+   "Switch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   }
+  },
+  "vehiclebodyrotation": {
+   "messageId": 642
+  },
+  "setinstranslation": {
+   "messageId": 1920,
+   "insTranslation": {
+    "ANT1": 1,
+    "ANT2": 2,
+    "EXTERNAL": 3,
+    "USER": 4,
+    "MARK1": 5,
+    "MARK2": 6,
+    "GIMBAL": 7,
+    "MARK3": 9,
+    "MARK4": 10
+   },
+   "inputFrame": {
+    "IMUBODY": 0,
+    "VEHICLE": 1
+   }
+  },
+  "generatertk": {
+   "messageId": 1260,
+   "mode": {
+    "RTCM": 2,
+    "RTCA": 3,
+    "CMR": 4,
+    "RTCMV3": 14,
+    "NOVATELX": 35
+   },
+   "port": {
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3,
+    "THISPORT": 6,
+    "COM4": 19,
+    "IMU": 21,
+    "COM5": 31,
+    "COM6": 32,
+    "BT1": 33,
+    "COM7": 34,
+    "COM8": 35,
+    "COM9": 36,
+    "COM10": 37,
+    "ETH1": 20,
+    "FILE": 7,
+    "ICOM1": 23,
+    "ICOM2": 24,
+    "ICOM3": 25,
+    "ICOM4": 29,
+    "ICOM5": 46,
+    "ICOM6": 47,
+    "ICOM7": 48,
+    "NCOM1": 26,
+    "NCOM2": 27,
+    "NCOM3": 28,
+    "NOPORT": 0,
+    "SCOM1": 49,
+    "SCOM2": 50,
+    "SCOM3": 51,
+    "SCOM4": 52,
+    "USB1": 13,
+    "USB2": 14,
+    "USB3": 15,
+    "WCOM1": 30
+   }
+  },
+  "generatediff": {
+   "messageId": 1296,
+   "mode": {
+    "RTCM": 2,
+    "RTCA": 3
+   }
+  },
+  "filedelete": {
+   "messageId": 2190
+  },
+  "filetransfer": {
+   "messageId": 2109,
+   "operation": {
+    "COPY": 1,
+    "MOVE": 2,
+    "CANCEL": 3
+   }
+  },
+  "ntripconfig": {
+   "messageId": 1249,
+   "port": {
+    "NCOM1": 26,
+    "NCOM2": 27,
+    "NCOM3": 28
+   },
+   "type": {
+    "DISABLED": 1,
+    "CLIENT": 2,
+    "SERVER": 3
+   },
+   "protocol": {
+    "V1": 2,
+    "V2": 3
+   },
+   "bindinterface": {
+    "ALL": 1
+   }
+  },
+  "unlogall": {
+   "messageId": 38,
+   "held": {
+    "FALSE": 0,
+    "TRUE": 1
+   },
+   "port": {
+    "COM1": 32,
+    "COM2": 64,
+    "COM3": 96,
+    "FILE": 224,
+    "THISPORT_30": 222,
+    "COM4": 2976,
+    "COM5": 6048,
+    "COM6": 6304,
+    "COM7": 6816,
+    "COM8": 7072,
+    "COM9": 7328,
+    "COM10": 7584,
+    "ICOM1": 4000,
+    "ICOM2": 4256,
+    "ICOM3": 4512,
+    "ICOM4": 5536,
+    "ICOM5": 9888,
+    "ICOM6": 10144,
+    "ICOM7": 10400,
+    "NCOM1": 4768,
+    "NCOM2": 5024,
+    "NCOM3": 5280,
+    "WCOM1_30": 5822,
+    "USB1": 1440,
+    "USB2": 1696,
+    "USB3": 1952,
+    "THISPORT_29": 221,
+    "SPECIAL_29": 189,
+    "COM1_29": 61,
+    "COM2_29": 93,
+    "COM3_29": 125,
+    "USB1_29": 1469,
+    "USB2_29": 1725,
+    "USB3_29": 1981,
+    "ICOM1_29": 4029,
+    "ICOM2_29": 4285,
+    "ICOM3_29": 4541,
+    "ICOM4_29": 5565,
+    "ICOM5_29": 9917,
+    "ICOM6_29": 10173,
+    "ICOM7_29": 10429,
+    "BT1": 6560,
+    "BT1_29": 6589,
+    "BT1_30": 6590
+   }
+  },
+  "unlog": {
+   "messageId": 36,
+   "port": {
+    "COM1": 32,
+    "COM2": 64,
+    "COM3": 96,
+    "FILE": 224,
+    "COM4": 2976,
+    "COM5": 6048,
+    "COM6": 6304,
+    "COM7": 6816,
+    "COM8": 7072,
+    "COM9": 7328,
+    "COM10": 7584,
+    "NCOM1": 4768,
+    "NCOM2": 5024,
+    "NCOM3": 5280,
+    "USB1": 1440,
+    "USB2": 1696,
+    "USB3": 1952,
+    "ICOM1": 4000,
+    "ICOM2": 4256,
+    "ICOM3": 4512,
+    "ICOM4": 5536,
+    "ICOM5": 9888,
+    "ICOM6": 10144,
+    "ICOM7": 10400,
+    "THISPORT_29": 221,
+    "THISPORT_30": 222,
+    "SPECIAL_29": 189,
+    "COM1_29": 61,
+    "COM2_29": 93,
+    "COM3_29": 125,
+    "USB1_29": 1469,
+    "USB2_29": 1725,
+    "USB3_29": 1981,
+    "ICOM1_29": 4029,
+    "ICOM2_29": 4285,
+    "ICOM3_29": 4541,
+    "ICOM4_29": 5565,
+    "ICOM5_29": 9917,
+    "ICOM6_29": 10173,
+    "ICOM7_29": 10429,
+    "BT1": 6560,
+    "BT1_29": 6589,
+    "BT1_30": 6590
+   }
+  },
+  "reset": {
+   "messageId": 18
+  },
+  "freset": {
+   "messageId": 20,
+   "target": {
+    "STANDARD": 0,
+    "COMMAND": 1,
+    "GPSALMANAC": 2,
+    "USER_ACCOUNTS": 60
+   }
+  },
+  "log": {
+   "messageId": 1,
+   "port": {
+    "COM1": 32,
+    "COM2": 64,
+    "COM3": 96,
+    "FILE": 224,
+    "COM4": 2976,
+    "COM5": 6048,
+    "COM6": 6304,
+    "COM7": 6816,
+    "COM8": 7072,
+    "COM9": 7328,
+    "COM10": 7584,
+    "NCOM1": 4768,
+    "NCOM2": 5024,
+    "NCOM3": 5280,
+    "USB1": 1440,
+    "USB2": 1696,
+    "USB3": 1952,
+    "ICOM1": 4000,
+    "ICOM2": 4256,
+    "ICOM3": 4512,
+    "ICOM4": 5536,
+    "ICOM5": 9888,
+    "ICOM6": 10144,
+    "ICOM7": 10400,
+    "THISPORT_29": 221,
+    "THISPORT_30": 222,
+    "SPECIAL_29": 189,
+    "COM1_29": 61,
+    "COM2_29": 93,
+    "COM3_29": 125,
+    "USB1_29": 1469,
+    "USB2_29": 1725,
+    "USB3_29": 1981,
+    "ICOM1_29": 4029,
+    "ICOM2_29": 4285,
+    "ICOM3_29": 4541,
+    "ICOM4_29": 5565,
+    "ICOM5_29": 9917,
+    "ICOM6_29": 10173,
+    "ICOM7_29": 10429,
+    "BT1": 6560,
+    "BT1_29": 6589,
+    "BT1_30": 6590
+   },
+   "trigger": {
+    "ONNEW": 0,
+    "ONCHANGED": 1,
+    "ONTIME": 2,
+    "ONNEXT": 3,
+    "ONCE": 4,
+    "ONMARK": 5,
+    "ONALL": 6
+   },
+   "hold": {
+    "NOHOLD": 0,
+    "HOLD": 1
+   }
+  },
+  "saveconfig": {
+   "messageId": 19
+  },
+  "fileconfig": {
+   "messageId": 2116,
+   "fileOperation": {
+    "OPEN": 1,
+    "CLOSE": 2
+   }
+  },
+  "logfile": {
+   "messageId": 157,
+   "fileOperation": {
+    "OPEN": 0,
+    "CLOSE": 1
+   }
+  },
+  "terrastarinfo": {
+   "messageId": 1719,
+   "subscriptionType": {
+    "UNASSIGNED": 0,
+    "TERM": 1,
+    "MODEL": 5,
+    "BUBBLE": 100,
+    "INCOMPATIBLE_SUBSCRIPTION": 104
+   },
+   "subscriptionService": {
+    "0x400": "TerraStar-L",
+    "0x200": "TerraStar-C",
+    "0x2000": "TerraStar-C PRO",
+    "0x800": "RTK ASSIST",
+    "0x1000": "RTK ASSIST PRO",
+    "0x4000": "TerraStar-X",
+    "0x8000": "TerraStar-X"
+   },
+   "regionRestriction": {
+    "NONE": 0,
+    "GEOGATED": 1,
+    "LOCAL_AREA": 2,
+    "NEARSHORE": 3
+   }
+  },
+  "itprogfiltconfig": {
+   "messageId": 2000,
+   "frequency": {
+    "GPSL1": 0,
+    "GPSL2": 1,
+    "GLONASSL1": 2,
+    "GLONASSL2": 3,
+    "Reserved": 4,
+    "GPSL5": 5,
+    "LBAND": 6,
+    "GALILEOE1": 7,
+    "GALILEOE5A": 8,
+    "GALILEOE5B": 9,
+    "GALILEOALTBOC": 10,
+    "BEIDOUB1": 11,
+    "BEIDOUB2": 12,
+    "QZSSL1": 13,
+    "QZSSL2": 14,
+    "QZSSL5": 15,
+    "QZSSL6": 16,
+    "GALILEOE6": 17,
+    "BEIDOUB3": 18,
+    "GLONASSL3": 19,
+    "NAVICL5": 20,
+    "BEIDOUB1C": 21,
+    "BEIDOUB2A": 22,
+    "BEIDOUB2B": 23
+   },
+   "filterId": {
+    "PF0": 0,
+    "PF1": 1
+   },
+   "filterSwitch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   },
+   "filterMode": {
+    "NOTCHFILTER": 0,
+    "BANDPASSFILTER": 1,
+    "NONE": 2
+   }
+  },
+  "itbandpassconfig": {
+   "messageId": 1999,
+   "frequency": {
+    "GPSL1": 0,
+    "GPSL2": 1,
+    "GLONASSL1": 2,
+    "GLONASSL2": 3,
+    "Reserved": 4,
+    "GPSL5": 5,
+    "LBAND": 6,
+    "GALILEOE1": 7,
+    "GALILEOE5A": 8,
+    "GALILEOE5B": 9,
+    "GALILEOALTBOC": 10,
+    "BEIDOUB1": 11,
+    "BEIDOUB2": 12,
+    "QZSSL1": 13,
+    "QZSSL2": 14,
+    "QZSSL5": 15,
+    "QZSSL6": 16,
+    "GALILEOE6": 17,
+    "BEIDOUB3": 18,
+    "GLONASSL3": 19,
+    "NAVICL5": 20,
+    "BEIDOUB1C": 21,
+    "BEIDOUB2A": 22,
+    "BEIDOUB2B": 23
+   },
+   "filterSwitch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   }
+  },
+  "itfrontendmode": {
+   "messageId": 2039,
+   "frequencyBand": {
+    "L1": 2,
+    "L2": 3,
+    "LBand": 4,
+    "L5": 5
+   },
+   "mode": {
+    "CIC3": 0,
+    "HDR": 1
+   }
+  },
+  "itspectralanalysis": {
+   "messageId": 1967,
+   "mode": {
+    "OFF": 0,
+    "PREDECIMATION": 1,
+    "POSTDECIMATION": 2,
+    "POSTFILTER": 3
+   },
+   "frequency": {
+    "GPSL1": 0,
+    "GPSL2": 1,
+    "GLONASSL1": 2,
+    "GLONASSL2": 3,
+    "Reserved": 4,
+    "GPSL5": 5,
+    "LBAND": 6,
+    "GALILEOE1": 7,
+    "GALILEOE5A": 8,
+    "GALILEOE5B": 9,
+    "GALILEOALTBOC": 10,
+    "BEIDOUB1": 11,
+    "BEIDOUB2": 12,
+    "QZSSL1": 13,
+    "QZSSL2": 14,
+    "QZSSL5": 15,
+    "QZSSL6": 16,
+    "GALILEOE6": 17,
+    "BEIDOUB3": 18,
+    "GLONASSL3": 19,
+    "NAVICL5": 20,
+    "BEIDOUB1C": 21,
+    "BEIDOUB2A": 22,
+    "BEIDOUB2B": 23
+   },
+   "fftSize": {
+    "1K": 0,
+    "2K": 1,
+    "4K": 2,
+    "8K": 3,
+    "16K": 4,
+    "32K": 5,
+    "64K": 6
+   }
+  },
+  "sendhex": {
+   "messageId": 178,
+   "port": {
+    "THISPORT": 192,
+    "THISPORT_30": 222
+   }
+  },
+  "send": {
+   "messageId": 177,
+   "port": {
+    "THISPORT": 192,
+    "THISPORT_30": 222
+   }
+  },
+  "dualantennaalign": {
+   "messageId": 1761,
+   "switch": {
+    "ENABLE": 1,
+    "DISABLE": 0
+   }
+  },
+  "headingoffset": {
+   "messageId": 1082
+  },
+  "wifialignautomation": {
+   "messageId": 2214,
+   "option": {
+    "ENABLE": 1,
+    "DISABLE": 0
+   },
+   "rover_icom": {
+    "ICOM1": 23,
+    "ICOM2": 24,
+    "ICOM3": 25,
+    "ICOM4": 29,
+    "ICOM5": 46,
+    "ICOM6": 47,
+    "ICOM7": 48
+   },
+   "headingextboption": {
+    "ON": 1,
+    "OFF": 0
+   },
+   "interfacemode": {
+    "NONE": 0,
+    "NOVATELX": 35
+   }
+  },
+  "softloadreset": {
+   "messageId": 476
+  },
+  "softloadcommit": {
+   "messageId": 475
+  },
+  "softloaddata": {
+   "messageId": 1218
+  },
+  "softloadsrec": {
+   "messageId": 477
+  },
+  "validmodels": {
+   "messageId": 206
+  },
+  "wifimode": {
+   "messageId": 2144,
+   "mode": {
+    "OFF": 0,
+    "AP": 1,
+    "CLIENT": 2,
+    "ON": 3,
+    "CONCURRENT": 4
+   }
+  },
+  "baseantennatype": {
+   "messageId": 1419,
+   "antennatype": {
+    "NOV850": 240,
+    "USER_ANTENNA_1": 1001,
+    "USER_ANTENNA_2": 1002
+   },
+   "randomtype": {
+    "NONE": 0
+   },
+   "correctiontype": {
+    "AUTO": 10
+   }
+  },
+  "thisantennatype": {
+   "messageId": 1420,
+   "antennatype": {
+    "NOV850": 240,
+    "USER_ANTENNA_1": 1001,
+    "USER_ANTENNA_2": 1002
+   },
+   "randomtype": {
+    "NONE": 0
+   }
+  },
+  "rtkantenna": {
+   "messageId": 858,
+   "posref": {
+    "L1PC": 0,
+    "ARP": 1,
+    "UNKNOWN": 2
+   },
+   "pcv": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   }
+  },
+  "baseantennapco": {
+   "messageId": 1415,
+   "frequency": {
+    "GPSL1": 0,
+    "GPSL2": 1
+   },
+   "correctiontype": {
+    "AUTO": 10
+   }
+  },
+  "thisantennapco": {
+   "messageId": 1417,
+   "frequency": {
+    "GPSL1": 0,
+    "GPSL2": 1
+   }
+  },
+  "wifiapchannel": {
+   "messageId": 2091
+  },
+  "wifiapssid": {
+   "messageId": 2206
+  },
+  "wifiappasskey": {
+   "messageId": 2090
+  },
+  "wifinetconfig": {
+   "messageId": 2213,
+   "switch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   },
+   "address_mode": {
+    "DHCP": 1,
+    "STATIC": 2
+   }
+  },
+  "ipConfig": {
+   "messageId": 1243,
+   "mode": {
+    "DHCP": 1,
+    "STATIC": 2
+   },
+   "interfaceName": {
+    "ETHA": 2
+   }
+  },
+  "dnsConfig": {
+   "messageId": 1244,
+   "dnsserver": {
+    "0": 0,
+    "1": 1
+   }
+  },
+  "saveethernetdata": {
+   "messageId": 1679,
+   "interfaceName": {
+    "ETHA": 2
+   }
+  },
+  "sateldetect": {
+   "messageId": 2204,
+   "port": {
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3
+   }
+  },
+  "satel4config": {
+   "messageId": 2215,
+   "radioBehavior": {
+    "RX": 0,
+    "TX": 1
+   },
+   "baseType": {
+    "PACCREST": 0,
+    "TRIMBLE": 4,
+    "NONE": 9
+   }
+  },
+  "satel9confign": {
+   "messageId": 2219,
+   "modemmode": {
+    "P2MP_MASTER": 2,
+    "P2MP_SLAVE": 3,
+    "P2MP_RX_SLAVE": 8
+   },
+   "repeaters": {
+    "FALSE": 0,
+    "TRUE": 1
+   }
+  },
+  "satel9configl": {
+   "messageId": 2218,
+   "modemmode": {
+    "P2MP_MASTER": 2,
+    "P2MP_SLAVE": 3,
+    "P2MP_RX_SLAVE": 8
+   },
+   "repeaters": {
+    "FALSE": 0,
+    "TRUE": 1
+   }
+  },
+  "satelstartupdetect": {
+   "messageId": 2221,
+   "switch": {
+    "DISABLE": 0,
+    "ENABLE": 1
+   },
+   "port": {
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3
+   }
+  },
+  "alignautomation": {
+   "messageId": 1323,
+   "option": {
+    "ENABLE": 1,
+    "DISABLE": 0
+   },
+   "comport": {
+    "COM1": 1,
+    "COM2": 2,
+    "COM3": 3
+   },
+   "headingextboption": {
+    "ON": 1,
+    "OFF": 0
+   },
+   "interfacemode": {
+    "NONE": 0,
+    "NOVATELX": 35
+   }
+  }
+ },
+ "commandResponseEnums": {
+  "UNKOWN": 0,
+  "OK": 1,
+  "ERROR": 2
+ },
+ "SBASTestModeEnums": {
+  "NONE": 0,
+  "ZEROTOTWO": 1,
+  "IGNOREZERO": 2
+ },
+ "CommunicationPortIdentifiers": {
+  "0": "NOPORT",
+  "1": "COM1",
+  "2": "COM2",
+  "3": "COM3",
+  "4": "ACK",
+  "5": "UNKNOWN",
+  "6": "THISPORT",
+  "7": "FILE",
+  "8": "ALL",
+  "9": "XCOM1",
+  "10": "XCOM2",
+  "13": "USB1",
+  "14": "USB2",
+  "15": "USB3",
+  "16": "AUX",
+  "17": "XCOM3",
+  "19": "COM4",
+  "20": "ETH1",
+  "21": "IMU",
+  "23": "ICOM1",
+  "24": "ICOM2",
+  "25": "ICOM3",
+  "26": "NCOM1",
+  "27": "NCOM2",
+  "28": "NCOM3",
+  "29": "ICOM4",
+  "30": "WCOM1",
+  "31": "COM5",
+  "32": "COM6",
+  "33": "BT1",
+  "34": "COM7",
+  "35": "COM8",
+  "36": "COM9",
+  "37": "COM10",
+  "38": "CCOM1",
+  "39": "CCOM2",
+  "40": "CCOM3",
+  "41": "CCOM4",
+  "42": "CCOM5",
+  "43": "CCOM6",
+  "44": "CCOM7",
+  "45": "CCOM8",
+  "46": "ICOM5",
+  "47": "ICOM6",
+  "48": "ICOM7"
+ },
+ "NCOMPortIdentifiers": [
+  26,
+  27,
+  28
+ ],
+ "ConstellationIdConstantsForElevation": {
+  "GPS": 0,
+  "GLONASS": 1,
+  "SBAS": 2,
+  "GALILEO": 5,
+  "BEIDOU": 6,
+  "QZSS": 7,
+  "LBAND": 8,
+  "NONE": 31,
+  "ALL": 32
+ },
+ "PPSControlStatus": {
+  "DISABLE": 0,
+  "ENABLE": 1
+ },
+ "rtkAntennaPCV": {
+  "DISABLE": 0,
+  "ENABLE": 1
+ },
+ "antennaTypeStatus": {
+  "NOV850": 240,
+  "AERAT3075_560S": 1001,
+  "TRM44830.00": 1002
+ },
+ "rtkantennaPosref": {
+  "L1PC": 0,
+  "ARP": 1,
+  "UNKNOWN": 2
+ },
+ "PolarityPluseStatus": {
+  "NEGATIVE": 0,
+  "POSITIVE": 1
+ },
+ "baseAntennaPCOFrequency": {
+  "GPSL1": 0,
+  "GPSL2": 1
+ },
+ "thisAntennaPCOFrequency": {
+  "GPSL1": 0,
+  "GPSL2": 1
+ },
+ "itdetectconfigRFPath": {
+  "NONE": 0,
+  "ALL": 1,
+  "L1": 2,
+  "L2": 3,
+  "L5": 4
+ },
+ "ConstellationIdConstants": {
+  "GPS": 0,
+  "GLONASS": 1,
+  "SBAS": 2,
+  "GALILEO": 3,
+  "BEIDOU": 4,
+  "QZSS": 5,
+  "OTHER": 7,
+  "NAVIC": 6
+ },
+ "ConstellationWiseSingalEnums": {
+  "GPS": {
+   "0": "L1CA",
+   "5": "L2P",
+   "9": "L2PCL",
+   "14": "L5Q",
+   "16": "L1CP",
+   "17": "L2CM"
+  },
+  "GLONASS": {
+   "0": "L1CA",
+   "1": "L2CA",
+   "5": "L2P",
+   "6": "L3Q"
+  },
+  "GALILEO": {
+   "2": "E1C",
+   "6": "E6B",
+   "7": "E6C",
+   "12": "E5AQ",
+   "17": "E5BQ",
+   "20": "ALTBOCQ",
+   "22": "ALTBOCIQ"
+  },
+  "QZSS": {
+   "0": "L1CA",
+   "14": "L5Q",
+   "16": "L1CP",
+   "17": "L2CM",
+   "24": "L1CB",
+   "27": "L6P",
+   "28": "L6D"
+  },
+  "SBAS": {
+   "0": "L1CA",
+   "6": "L5I"
+  },
+  "BEIDOU": {
+   "0": "B1I",
+   "1": "B2I",
+   "2": "B3I",
+   "4": "B1I",
+   "5": "B2I",
+   "6": "B3I",
+   "7": "B1C",
+   "9": "B2a",
+   "11": "B2B"
+  },
+  "OTHER": {
+   "19": "L-band"
+  },
+  "NAVIC": {
+   "0": "L5SPS"
+  },
+  "LBAND": {
+   "19": "L-band"
+  }
+ },
+ "FileCopyModeEnum": {
+  "1": "MANUAL",
+  "2": "AUTO_ALL",
+  "3": "AUTO_ALL_DELETE",
+  "4": "AUTO_NEWEST",
+  "5": "AUTO_NEWEST_DELETE"
+ },
+ "FileSystemStatusConstants": {
+  "1": "UNMOUNTED",
+  "2": "MOUNTED",
+  "3": "BUSY",
+  "4": "ERROR",
+  "5": "UNMOUNTING",
+  "6": "MOUNTING"
+ },
+ "USBDetectionTypeEnum": {
+  "1": "NONE",
+  "2": "USBSTICK",
+  "3": "PC",
+  "4": "ERROR"
+ },
+ "USBModeEnum": {
+  "0": "Device",
+  "1": "Host",
+  "2": "OTG",
+  "3": "Invalid",
+  "4": "None",
+  "5": "Transition"
+ },
+ "MassStorageDeviceEnum": {
+  "0": "SD",
+  "1": "USBSTICK",
+  "2": "RAMDRIVE",
+  "3": "DEFAULT_NO_STORAGE",
+  "4": "INTERNAL_FLASH"
+ },
+ "TriggerCountersForPortstats": {
+  "ONTIME": 5,
+  "ONNEWorONCHANGED": 300
+ },
+ "UpdateComponentConstants": {
+  "FIRMWARECONTENT": "Receiver Firmware",
+  "WEBCONTENT": "Receiver Web Content"
+ },
+ "SerialConfigHandShakeEnums": {
+  "N": 0,
+  "XON": 1,
+  "CTS": 2
+ },
+ "CommonOnOFFEnums": {
+  "OFF": 0,
+  "ON": 1
+ },
+ "ParityEnums": {
+  "N": 0,
+  "E": 1,
+  "O": 2
+ },
+ "ProtocolEnums": {
+  "DISABLED": 1,
+  "TCP": 2,
+  "UDP": 3,
+  "TCP_SERVER": 4
+ },
+ "WifiApSettingsWifiSecurityTypeEnum": {
+  "1": "OPEN",
+  "2": "WPA",
+  "3": "WPA2"
+ },
+ "WifiApSettingsWifiEncryptionTypeEnum": {
+  "OPEN": 1,
+  "TKIP": 2,
+  "CCMP": 3
+ },
+ "WifiModeEnum": {
+  "0": "OFF",
+  "1": "AP",
+  "2": "CLIENT",
+  "3": "ON",
+  "4": "CONCURRENT"
+ },
+ "skDetectModeEnum": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "skCalibrateModeEnum": {
+  "0": "ALL",
+  "1": "REMAINING"
+ },
+ "skCalibrateStatusModeEnum": {
+  "0": "PASS",
+  "1": "FAIL",
+  "2": "INPROGRESS",
+  "3": "NONE"
+ },
+ "IpconfigAddressModeEnums": {
+  "DHCP": 1,
+  "STATIC": 2
+ },
+ "FileOperationEnum": {
+  "1": "OPEN",
+  "2": "CLOSE"
+ },
+ "FileTransferEnum": {
+  "COPY": 1,
+  "MOVE": 2,
+  "CANCEL": 3
+ },
+ "DOSCommandEnum": {
+  "DIR": 1,
+  "CD": 2,
+  "FORMAT": 3,
+  "RMDIR": 4,
+  "MKDIR": 5,
+  "PWD": 6,
+  "COPY": 7,
+  "DEL": 8,
+  "RENAME": 9,
+  "CHKDSK": 10
+ },
+ "FileTransferStatusEnum": {
+  "1": "NONE",
+  "2": "TRANSFERRING",
+  "3": "FINISHED",
+  "4": "ERROR",
+  "5": "CANCELLED"
+ },
+ "constellationDomKeysToUupdateCount": {
+  "GPS": "#gpscount",
+  "GLONASS": "#glonasscount",
+  "BEIDOU": "#beidoucount",
+  "GALILEO": "#galileocount",
+  "QZSS": "#qzsscount",
+  "SBAS": "#sbascount",
+  "NAVIC": "#naviccount",
+  "Lband": "#lbandcount"
+ },
+ "constellationDomKeysToUupdateCountInCOnfig": {
+  "GPS": "#gpscountconfig",
+  "GLONASS": "#glonasscountconfig",
+  "BEIDOU": "#beidoucountconfig",
+  "GALILEO": "#galileocountconfig",
+  "QZSS": "#qzsscountconfig",
+  "SBAS": "#sbascountconfig"
+ },
+ "HoursMinuteMap": {
+  "MINUTE": 1,
+  "HOUR": 60
+ },
+ "MetersCentimetersMap": {
+  "CM": 100,
+  "M": 1
+ },
+ "messageCommands": {
+  "1": "LOG",
+  "3": "INTERFACEMODE",
+  "20": "FRESET",
+  "38": "UNLOGALL",
+  "44": "FIX",
+  "475": "SOFTLOADCOMMIT",
+  "476": "SOFTLOADRESET",
+  "477": "SOFTLOADSREC",
+  "567": "SETIMUORIENTATION",
+  "676": "SETINSOFFSET",
+  "763": "MOVINGBASESTATION",
+  "1214": "ALIGNMENTMODE",
+  "1218": "SOFTLOADDATA",
+  "1243": "IPCONFIG",
+  "1246": "SERIALCONFIG",
+  "1247": "ECHO",
+  "1248": "ICOMCONFIG",
+  "1249": "NTRIPCONFIG",
+  "1260": "GENERATERTKCORRECTIONS",
+  "1296": "GENERATEDIFFCORRECTIONS",
+  "1349": "GENERATEALIGNCORRECTIONS",
+  "1411": "PROFILE",
+  "1428": "CONNECTIMU",
+  "1710": "DHCPCONFIG",
+  "1719": "TERRASTARINFO",
+  "1733": "ASSIGNLBANDBEAM",
+  "1735": "ELEVATIONCUTOFF",
+  "1761": "DUALANTENNAALIGN",
+  "1795": "AUTOSURVEY",
+  "1920": "SETINSTRANSLATION",
+  "1921": "SETINSROTATION",
+  "1951": "SAVEDSURVEYPOSITION",
+  "2090": "WIFIAPPASSKEY",
+  "2091": "WIFIAPCHANNEL",
+  "2093": "WIFIAPSETTINGS",
+  "2096": "WIFIAPIPCONFIG",
+  "2109": "FILETRANSFER",
+  "2116": "FILECONFIG",
+  "2144": "WIFIMODE",
+  "2207": "WIFISTATUS",
+  "2213": "WIFINETCONFIG",
+  "2214": "WIFIALIGNAUTOMATION",
+  "2215": "SATEL4CONFIG",
+  "2218": "SATEL9CONFIGL",
+  "2219": "SATEL9CONFIGN"
+ },
+ "inspvaStatusEnum": {
+  "0": "INS_INACTIVE",
+  "1": "INS_ALIGNING",
+  "2": "INS_HIGH_VARIANCE",
+  "3": "INS_SOLUTION_GOOD",
+  "6": "INS_SOLUTION_FREE",
+  "7": "INS_ALIGNMENT_COMPLETE",
+  "8": "DETERMINING_ORIENTATION",
+  "9": "WAITING_INITIALPOS",
+  "10": "WAITING_AZIMUTH",
+  "11": "INITIALIZING_BIASES",
+  "12": "MOTION_DETECT",
+  "14": "WAITING_ALIGNMENTORIENTATION"
+ },
+ "insvpaxConvergedFlag": {
+  "0": "Not Converged",
+  "1": "Converged"
+ },
+ "inspvaxAlignment": {
+  "0": "Incomplete",
+  "1": "Static",
+  "2": "Kinematic",
+  "3": "Dual Antenna",
+  "4": "User Command",
+  "5": "NVM Seed"
+ },
+ "serialPortEnum": {
+  "1": "COM1",
+  "2": "COM2",
+  "3": "COM3",
+  "7": "SPI",
+  "19": "COM4",
+  "31": "COM5",
+  "32": "COM6",
+  "33": "BT1",
+  "34": "COM7",
+  "35": "COM8",
+  "36": "COM9",
+  "37": "COM10"
+ },
+ "insCommandSwitchEnum": {
+  "0": "RESET",
+  "1": "DISABLE",
+  "2": "ENABLE",
+  "3": "START_NO_TIME",
+  "4": "START_FINE_TIME",
+  "5": "RESTART"
+ },
+ "imuTypeEnum": {
+  "0": "UNKNOWN",
+  "1": "HG1700_AG11",
+  "4": "HG1700_AG17",
+  "5": "HG1900_CA29",
+  "8": "LN200",
+  "11": "HG1700_AG58",
+  "12": "HG1700_AG62",
+  "13": "IMAR_FSAS",
+  "16": "KVH_COTS",
+  "20": "HG1930_AA99",
+  "26": "ISA100C",
+  "27": "HG1900_CA50",
+  "28": "HG1930_CA50",
+  "31": "ADIS16488",
+  "32": "STIM300",
+  "33": "KVH_1750",
+  "34": "ISA100",
+  "41": "EPSON_G320",
+  "45": "KVH-1725",
+  "50": "(7500 EVK) Bosch SMI130",
+  "52": "LITEF_MICROIMU",
+  "56": "STIM300D",
+  "57": "(7500 EVK) Invensense IAM-20680",
+  "58": "HG4930_AN01",
+  "61": "EPSON_G370",
+  "68": "HG4930_AN04",
+  "69": "HG4930_AN04_400HZ",
+  "71": "LITEF_MICROIMUD_400HZ"
+ },
+ "imuOrientationEnum": {
+  "0": "AUTO",
+  "1": "IMU X axis is pointing UP",
+  "2": "IMU X axis is pointing DOWN",
+  "3": "IMU Y axis is pointing UP",
+  "4": "IMU Y axis is pointing DOWN",
+  "5": "IMU Z axis is pointing UP",
+  "6": "IMU Z axis is pointing DOWN"
+ },
+ "applyVBREnum": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "insRotationEnum": {
+  "4": "USER",
+  "5": "MARK1",
+  "6": "MARK2",
+  "8": "ALIGN",
+  "9": "MARK3",
+  "10": "MARK4",
+  "11": "RBV",
+  "12": "RBM"
+ },
+ "insTranslationEnum": {
+  "1": "ANT1",
+  "2": "ANT2",
+  "3": "EXTERNAL",
+  "4": "USER",
+  "5": "MARK1",
+  "6": "MARK2",
+  "7": "GIMBAL",
+  "9": "MARK3",
+  "10": "MARK4"
+ },
+ "imuOrientation": {
+  "1": "+X AXIS UPWARD",
+  "2": "-X AXIS UPWARD",
+  "3": "+Y AXIS UPWARD",
+  "4": "-Y AXIS UPWARD",
+  "5": "+Z AXIS UPWARD",
+  "6": "-Z AXIS UPWARD"
+ },
+ "alignmentModeEnum": {
+  "0": "UNAIDED",
+  "1": "AIDED_STATIC",
+  "2": "AIDED_TRANSFER",
+  "3": "AUTOMATIC",
+  "4": "STATIC",
+  "5": "KINEMATIC"
+ },
+ "heaveFilterEnum": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "TerrastarSubscriptionType": {
+  "0": "UNASSIGNED",
+  "1": "TERM",
+  "100": "BUBBLE",
+  "101": "MODEL_DENIED"
+ },
+ "OceanixInfoSubscriptionType": {
+  "UNASSIGNED": 0,
+  "TERM": 1,
+  "MODEL": 5,
+  "BUBBLE": 100,
+  "INCOMPATIBLE_SUBSCRIPTION": 104
+ },
+ "TerrastarRegionRestriction": {
+  "0": "NONE",
+  "1": "GEOGATED",
+  "2": "LOCAL_AREA",
+  "3": "NEARSHORE"
+ },
+ "LogTriggerEnum": {
+  "0": "ONNEW",
+  "1": "ONCHANGED",
+  "2": "ONTIME",
+  "3": "ONNEXT",
+  "4": "ONCE",
+  "5": "ONMARK",
+  "6": "ONALL"
+ },
+ "FormatValue": {
+  "10": "Abbr ASCII",
+  "11": "Reserved",
+  "00": "Binary",
+  "01": "ASCII"
+ },
+ "portsMapForLoglist": {
+  "0": "NO_PORTS",
+  "1": "COM1_ALL",
+  "2": "COM2_ALL",
+  "3": "COM3_ALL",
+  "6": "THISPOST_ALL",
+  "7": "FILE_ALL",
+  "8": "ALL_PORTS",
+  "9": "XCOM1_ALL",
+  "10": "XCOM2_ALL",
+  "13": "USB1_ALL",
+  "14": "USB2_ALL",
+  "15": "USB3_ALL",
+  "16": "AUX_ALL",
+  "17": "XCOM3_ALL",
+  "19": "COM4_ALL",
+  "20": "ETH1_ALL",
+  "21": "IMU_ALL",
+  "23": "ICOM1_ALL",
+  "24": "ICOM2_ALL",
+  "25": "ICOM3_ALL",
+  "26": "NCOM1_ALL",
+  "27": "NCOM2_ALL",
+  "28": "NCOM3_ALL",
+  "30": "WCOM1_ALL",
+  "32": "COM1",
+  "61": "COM1_29",
+  "64": "COM2",
+  "93": "COM2_29",
+  "96": "COM3",
+  "125": "COM3_29",
+  "192": "THISPORT",
+  "221": "THISPORT_29",
+  "222": "THISPORT_30",
+  "224": "FILE",
+  "1469": "USB1_29",
+  "1725": "USB2_29",
+  "1981": "USB3_29",
+  "2976": "COM4",
+  "4000": "ICOM1",
+  "4029": "ICOM1_29",
+  "4256": "ICOM2",
+  "4285": "ICOM2_29",
+  "4512": "ICOM3",
+  "4541": "ICOM3_29",
+  "4768": "NCOM1",
+  "5024": "NCOM2",
+  "5280": "NCOM3",
+  "5565": "ICOM4_29",
+  "5566": "ICOM4_30",
+  "5826": "BT1_ALL",
+  "6048": "COM5",
+  "6304": "COM6",
+  "6560": "BT1",
+  "6589": "BT1_29",
+  "6590": "BT1_30",
+  "6816": "COM7",
+  "7072": "COM8",
+  "7328": "COM9",
+  "7584": "COM10",
+  "9917": "ICOM5_29",
+  "9918": "ICOM5_30",
+  "10173": "ICOM6_29",
+  "10174": "ICOM6_30",
+  "10429": "ICOM7_29",
+  "10430": "ICOM7_30"
+ },
+ "FileSystemEntryTypeEnum": {
+  "0": "NONE",
+  "1": "FILE",
+  "2": "DIR"
+ },
+ "FileSystemOperationEnum": {
+  "1": "OPEN",
+  "2": "CLOSED",
+  "3": "BUSY",
+  "4": "ERROR",
+  "5": "COPY",
+  "6": "PENDING"
+ },
+ "diskActionEnum": {
+  "0": "STOP",
+  "1": "OVERWRITE"
+ },
+ "portsMap": {
+  "0": "NO_PORTS",
+  "1": "COM1_ALL",
+  "2": "COM2_ALL",
+  "3": "COM3_ALL",
+  "6": "THISPOST_ALL",
+  "7": "FILE_ALL",
+  "8": "ALL_PORTS",
+  "9": "XCOM1_ALL",
+  "10": "XCOM2_ALL",
+  "13": "USB1_ALL",
+  "14": "USB2_ALL",
+  "15": "USB3_ALL",
+  "16": "AUX_ALL",
+  "17": "XCOM3_ALL",
+  "19": "COM4_ALL",
+  "20": "ETH1_ALL",
+  "21": "IMU_ALL",
+  "23": "ICOM1_ALL",
+  "24": "ICOM2_ALL",
+  "25": "ICOM3_ALL",
+  "26": "NCOM1_ALL",
+  "27": "NCOM2_ALL",
+  "28": "NCOM3_ALL",
+  "30": "WCOM1_ALL",
+  "32": "COM1",
+  "60": "COM1_28",
+  "61": "COM1_29",
+  "62": "COM1_30",
+  "64": "COM2",
+  "92": "COM2_28",
+  "93": "COM2_29",
+  "94": "COM2_30",
+  "96": "COM3",
+  "97": "COM3_1",
+  "124": "COM3_28",
+  "125": "COM3_29",
+  "126": "COM3_30",
+  "192": "THISPORT",
+  "220": "THISPORT_28",
+  "221": "THISPORT_29",
+  "222": "THISPORT_30",
+  "224": "FILE",
+  "416": "XCOM1",
+  "672": "XCOM2",
+  "1440": "USB1",
+  "1468": "USB1_28",
+  "1469": "USB1_29",
+  "1470": "USB1_30",
+  "1696": "USB2",
+  "1724": "USB2_28",
+  "1725": "USB2_29",
+  "1726": "USB2_30",
+  "1952": "USB3",
+  "1980": "USB3_28",
+  "1981": "USB3_29",
+  "1982": "USB3_30",
+  "2464": "XCOM3",
+  "2976": "COM4",
+  "4000": "ICOM1",
+  "4028": "ICOM1_28",
+  "4029": "ICOM1_29",
+  "4030": "ICOM1_30",
+  "4256": "ICOM2",
+  "4284": "ICOM2_28",
+  "4285": "ICOM2_29",
+  "4286": "ICOM2_30",
+  "4512": "ICOM3",
+  "4540": "ICOM3_28",
+  "4541": "ICOM3_29",
+  "4542": "ICOM3_30",
+  "4768": "NCOM1",
+  "5024": "NCOM2",
+  "5280": "NCOM3",
+  "5536": "ICOM4",
+  "5564": "ICOM4_28",
+  "5565": "ICOM4_29",
+  "5566": "ICOM4_30",
+  "5792": "WCOM1",
+  "5822": "WCOM1_30",
+  "6048": "COM5",
+  "6304": "COM6",
+  "6560": "BT1",
+  "6589": "BT1_29",
+  "6590": "BT1_30",
+  "6816": "COM7",
+  "7072": "COM8",
+  "7328": "COM9",
+  "7584": "COM10",
+  "7840": "CCOM1",
+  "8096": "CCOM2",
+  "8352": "CCOM3",
+  "8608": "CCOM4",
+  "8864": "CCOM5",
+  "9120": "CCOM6",
+  "9376": "CCOM7",
+  "9888": "ICOM5",
+  "9916": "ICOM5_28",
+  "9917": "ICOM5_29",
+  "9918": "ICOM5_30",
+  "10144": "ICOM6",
+  "10172": "ICOM6_28",
+  "10173": "ICOM6_29",
+  "10174": "ICOM6_30",
+  "10400": "ICOM7",
+  "10428": "ICOM7_28",
+  "10429": "ICOM7_29",
+  "10430": "ICOM7_30"
+ },
+ "alignStatusEnum": {
+  "0": "SOL_COMPUTED",
+  "1": "INSUFFICIENT_OBS",
+  "2": "NO_CONVERGENCE",
+  "3": "SINGULARITY",
+  "4": "COV_TRACE",
+  "5": "TEST_DIST",
+  "6": "COLD_START",
+  "7": "V_H_LIMIT",
+  "8": "VARIANCE",
+  "9": "RESIDUALS",
+  "13": "INTEGRITY_WARNING",
+  "18": "PENDING",
+  "19": "INVALID_FIX",
+  "20": "UNAUTHORIZED",
+  "22": "INVALID_RATE"
+ },
+ "SwitchEnum": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "satelStatusStateEnum": {
+  "0": "OFF",
+  "1": "UNDETECTED",
+  "2": "DETECTING",
+  "3": "READY",
+  "4": "BUSY",
+  "5": "ERROR"
+ },
+ "satelDetectPortEnum": {
+  "1": "COM1",
+  "2": "COM2",
+  "3": "COM3"
+ },
+ "satelStatusErrorEnum": {
+  "0": "NONE",
+  "1": "COMMAND_FAILED",
+  "2": "TIMEOUT"
+ },
+ "satel4ConfigCompatibilityEnum": {
+  "1": "Pacific Crest/GMSK/4800/12.5/ON",
+  "2": "Pacific Crest/GMSK/4800/12.5/OFF",
+  "3": "Pacific Crest/4FSK/9600/12.5/ON",
+  "4": "Pacific Crest/4FSK/9600/12.5/OFF",
+  "5": "Pacific Crest FST/4FSK/9600/12.5/ON",
+  "6": "Pacific Crest FST/4FSK/9600/12.5/OFF",
+  "7": "Trimtalk/GMSK/4800/12.5/*",
+  "8": "Trimtalk/GMSK/8000/*/*",
+  "9": "Satel 3AS/4FSK/9600/12.5/ON",
+  "10": "Satel 3AS/4FSK/9600/12.5/OFF",
+  "11": "Pacific Crest/GMSK/9600/25.0/ON",
+  "12": "Pacific Crest/GMSK/9600/25.0/OFF",
+  "13": "Pacific Crest/4FSK/19200/25.0/ON",
+  "14": "Pacific Crest/4FSK/19200/25.0/OFF",
+  "15": "Pacific Crest FST/4FSK/19200/25.0/ON",
+  "16": "Pacific Crest FST/4FSK/19200/25.0/OFF",
+  "17": "Trimtalk/GMSK/9600/25.0/*",
+  "18": "Trimtalk/GMSK/16000/*/*",
+  "19": "Satel 3AS/4FSK/19200/25.0/ON",
+  "20": "Satel 3AS/4FSK/19200/25.0/OFF"
+ },
+ "satel4ProtocolEnum": {
+  "0": "Satelline-3AS",
+  "1": "PacCrest-4FSK",
+  "2": "PacCrest-GMSK",
+  "3": "Trimtalk450s (PacCrest transmitter)",
+  "4": "Trimtalk450s (Trimble transmitter)",
+  "5": "PacCrest-FST"
+ },
+ "satel4CompatibilityModeEnum": {
+  "1": "Pacific Crest Compatible, GMSK, 4800 / 12.5, FEC on",
+  "2": "Pacific Crest Compatible, GMSK, 4800, FEC off *",
+  "3": "Pacific Crest Compatible, 4FSK, 9600 / 12.5, FEC on",
+  "4": "Pacific Crest Compatible, 4FSK, 9600, FEC off *",
+  "5": "Pacific Crest FST Compatible, 4FSK, 9600 / 12.5, FEC on",
+  "6": "Pacific Crest FST Compatible, 4FSK, 9600, FEC off *",
+  "7": "Trimtalk Compatible, GMSK, 4800 / 12.5",
+  "8": "Trimtalk Compatible, GMSK, 8000 **",
+  "9": "Satel 3AS, 4FSK, 9600 / 12.5, FEC on",
+  "10": "Satel 3AS 4FSK, 9600, FEC off",
+  "11": "Pacific Crest Compatible, GMSK, 9600 / 25.0, FEC on",
+  "12": "Pacific Crest Compatible, GMSK, 9600, FEC off *",
+  "13": "Pacific Crest Compatible, 4FSK, 19200 / 25.0, FEC on",
+  "14": "Pacific Crest Compatible 4FSK, , 19200, FEC off *",
+  "15": "Pacific Crest FST Compatible, 4FSK, 19200 / 25.0, FEC on",
+  "16": "Pacific Crest FST Compatible 4FSK, 19200, FEC off *",
+  "17": "Trimtalk Compatible, GMSK, 9600 / 25.0",
+  "18": "Trimtalk Compatible,  GMSK, 16000 **",
+  "19": "Satel 3AS, 4FSK, 19200 / 25.0, FEC on",
+  "20": "Satel 3AS, 4FSK, 19200 / 25.0, FEC off"
+ },
+ "FECEnum": {
+  "FALSE": 0,
+  "TRUE": 1
+ },
+ "radioBehaviourEnum": {
+  "0": "RX",
+  "1": "TX"
+ },
+ "satel4BaseTypeEnum": {
+  "0": "PACCREST",
+  "4": "TRIMBLE",
+  "9": "NONE"
+ },
+ "RadioTypes": {
+  "SATEL_UNKOWN_TYPE": 0,
+  "SATEL_4_TYPE": 1,
+  "SATEL_9_TYPE": 2
+ },
+ "OEM7SatelStatusStateEnum": {
+  "OFF": 0,
+  "UNDETECTED": 1,
+  "DETECTING": 2,
+  "READY": 3,
+  "BUSY": 4,
+  "ERROR": 5
+ },
+ "modemModeEnum": {
+  "P2MP_MASTER": 2,
+  "P2MP_SLAVE": 3
+ },
+ "satel900Protocol": {
+  "NOVARIANT": "Freewave Novariant",
+  "LEICA": "Freewave Leica"
+ },
+ "wifiStatusEnum": {
+  "0": "Startup",
+  "1": "Off",
+  "2": "On",
+  "3": "Configuring Accesspoint",
+  "4": "Accesspoint Operational",
+  "5": "Configuring Client",
+  "6": "Client Operational",
+  "7": "Booting Up",
+  "8": "Bootup Complete",
+  "9": "Upgrade Required",
+  "10": "Upgrading Firmware",
+  "11": "Upgrading Firmware 10",
+  "12": "Upgrading Firmware 20",
+  "13": "Upgrading Firmware 30",
+  "14": "Upgrading Firmware 40",
+  "15": "Upgrading Firmware 50",
+  "16": "Upgrading Firmware 60",
+  "17": "Upgrading Firmware 70",
+  "18": "Upgrading Firmware 80",
+  "19": "Upgrading Firmware 90",
+  "20": "Upgrading Firmware Complete",
+  "21": "Error",
+  "22": "Configuring Concurrent",
+  "23": "Concurrent Operational",
+  "24": "Connecting To AP",
+  "25": "Connected To AP",
+  "26": "Connection Failure",
+  "27": "Configuring Network Parameters",
+  "28": "Connection Refused",
+  "29": "Preferred Network Misconfigured",
+  "30": "Concurrent Connecting To AP",
+  "31": "Concurrent Configuring Network Parms",
+  "32": "Concurrent Connected To AP",
+  "33": "Disconnecting from AP",
+  "34": "Concurrent Disconnecting from AP"
+ },
+ "ITDetectStatusRFPath": {
+  "2": "L1",
+  "3": "L2",
+  "5": "L5"
+ },
+ "ITDetectStatusType": {
+  "0": "SPECTRALANALYSIS",
+  "1": "STATISTICALANALYSIS"
+ },
+ "updatedChanConfigListSignalType": {
+  "0": "GPSL1",
+  "1": "GPSL1L2",
+  "4": "SBASL1",
+  "5": "GPSL5",
+  "6": "GPSL1L2C",
+  "7": "GPSL1L2AUTO",
+  "8": "GLOL1L2",
+  "9": "LBAND",
+  "10": "GLOL1",
+  "11": "GALE1",
+  "12": "GALE5A",
+  "13": "GALE5B",
+  "14": "GALALTBOC",
+  "15": "BEIDOUB1",
+  "16": "GPSL1L2PL2C",
+  "17": "GPSL1L5",
+  "18": "SBASL1L5",
+  "19": "GPSL1L2PL2CL5",
+  "20": "GPSL1L2PL5",
+  "21": "GALE1E5AE5B",
+  "22": "GALE1E5AE5BALTBOC",
+  "23": "GALE1E5A",
+  "24": "GLOL1L2C",
+  "25": "GLOL1L2PL2C",
+  "26": "QZSSL1CAL1CB",
+  "27": "QZSSL1CAL1CBL2C",
+  "28": "QZSSL1CAL1CBL2CL5",
+  "29": "QZSSL1CAL1CBL5",
+  "30": "BEIDOUB1B2",
+  "31": "GALE1E5B",
+  "32": "BEIDOUB1B3",
+  "33": "BEIDOUB3",
+  "34": "BEIDOUB1B2B3",
+  "35": "GALE1E5AE5BALTBOCE6",
+  "36": "GPSL1L2PL2CL5L1C",
+  "37": "QZSSL1CAL1CBL2CL5L1C",
+  "38": "QZSSL1CAL1CBL2CL5L1CL6",
+  "39": "GLOL1L3",
+  "40": "GLOL3",
+  "41": "GLOL1L2PL2CL3",
+  "42": "GPSL1L2PL2CL1C",
+  "43": "QZSSL1CL1CBL2CL1C",
+  "44": "NAVICL5",
+  "45": "BEIDOUB1C",
+  "46": "BEIDOUB1B1C",
+  "47": "BEIDOUB1B1CB2B3",
+  "48": "BEIDOUB1B1CB2",
+  "49": "BEIDOUB1B2IB2B",
+  "50": "BEIDOUB1B2B",
+  "51": "BEIDOUB1B1CB2IB2B",
+  "52": "BEIDOUB1B1CB2IB2BB3",
+  "53": "BEIDOUB1B1CB2B",
+  "54": "BEIDOUB1B2IB2BB3",
+  "55": "BEIDOUB1B2B2B",
+  "56": "BEIDOUB1B1CB2B2B",
+  "57": "BEIDOUB1B1CB2B2BB3",
+  "105": "GALE1E5AE5BALTBOCSX",
+  "107": "GALE1E5AE5BALTBOCSXE6"
+ },
+ "chanConfigListSignalType": {
+  "0": "GPSL1",
+  "1": "GPSL1L2",
+  "4": "SBASL1",
+  "5": "GPSL5",
+  "6": "GPSL1L2C",
+  "7": "GPSL1L2AUTO",
+  "8": "GLOL1L2",
+  "9": "LBAND",
+  "10": "GLOL1",
+  "11": "GALE1",
+  "12": "GALE5A",
+  "13": "GALE5B",
+  "14": "GALALTBOC",
+  "15": "BEIDOUB1",
+  "16": "GPSL1L2PL2C",
+  "17": "GPSL1L5",
+  "18": "SBASL1L5",
+  "19": "GPSL1L2PL2CL5",
+  "20": "GPSL1L2PL5",
+  "21": "GALE1E5AE5B",
+  "22": "GALE1E5AE5BALTBOC",
+  "23": "GALE1E5A",
+  "24": "GLOL1L2C",
+  "25": "GLOL1L2PL2C",
+  "26": "QZSSL1CA",
+  "27": "QZSSL1CAL2C",
+  "28": "QZSSL1CAL2CL5",
+  "29": "QZSSL1CAL5",
+  "30": "BEIDOUB1B2",
+  "31": "GALE1E5B",
+  "32": "BEIDOUB1B3",
+  "33": "BEIDOUB3",
+  "34": "BEIDOUB1B2B3",
+  "35": "GALE1E5AE5BALTBOCE6",
+  "36": "GPSL1L2PL2CL5L1C",
+  "37": "QZSSL1CAL2CL5L1C",
+  "38": "QZSSL1CAL2CL5L1CL6",
+  "39": "GLOL1L3",
+  "40": "GLOL3",
+  "41": "GLOL1L2PL2CL3",
+  "42": "GPSL1L2PL2CL1C",
+  "43": "QZSSL1CAL2CL1C",
+  "44": "NAVICL5",
+  "45": "BEIDOUB1C",
+  "46": "BEIDOUB1B1C",
+  "47": "BEIDOUB1B1CB2B3",
+  "48": "BEIDOUB1B1CB2",
+  "49": "BEIDOUB1B2IB2B",
+  "50": "BEIDOUB1B2B",
+  "51": "BEIDOUB1B1CB2IB2B",
+  "52": "BEIDOUB1B1CB2IB2BB3",
+  "53": "BEIDOUB1B1CB2B",
+  "54": "BEIDOUB1B2IB2BB3",
+  "55": "BEIDOUB1B2B2B",
+  "56": "BEIDOUB1B1CB2B2B",
+  "57": "BEIDOUB1B1CB2B2BB3",
+  "105": "GALE1E5AE5BALTBOCSX",
+  "107": "GALE1E5AE5BALTBOCSXE6"
+ },
+ "updatedSignalTypesMap": {
+  "GPS": {
+   "GPSL1": "L1",
+   "GPSL1L2": "L1,L2",
+   "GPSL1L2C": "L1,L2",
+   "GPSL1L2AUTO": "L1,L2",
+   "GPSL1L2PL2C": "L1,L2",
+   "GPSL1L2PL2CL1C": "L1,L2",
+   "GPSL5": "L5",
+   "GPSL1L5": "L1,L5",
+   "GPSL1L2PL2CL5": "L1,L2,L5",
+   "GPSL1L2PL5": "L1,L2,L5",
+   "GPSL1L2PL2CL5L1C": "L1,L2,L5"
+  },
+  "GLO": {
+   "GLOL1L2": "L1,L2",
+   "GLOL1L2C": "L1,L2",
+   "GLOL1L2PL2C": "L1,L2",
+   "GLOL1L2PL2CL3": "L1,L2,L3",
+   "GLOL1": "L1",
+   "GLOL1L3": "L1"
+  },
+  "GAL": {
+   "GALE1": "E1",
+   "GALE5A": "E5A",
+   "GALE5B": "E5B",
+   "GALALTBOC": "ALTBOC",
+   "GALE1E5AE5B": "E1,E5A,E5B",
+   "GALE1E5AE5BALTBOC": "E1,E5A,E5B,ALTBOC",
+   "GALE1E5AE5BALTBOCE6": "E1,E5A,E5B,ALTBOC,E6",
+   "GALE1E5A": "E1,E5A",
+   "GALE1E5B": "E1,E5B",
+   "GALE1E5AE5BALTBOCSX": "E1,E5A,E5B,ALTBOCSX",
+   "GALE1E5AE5BALTBOCSXE6": "E1,E5A,E5B,ALTBOCSX,E6"
+  },
+  "BEIDOU": {
+   "BEIDOUB1C": "B1",
+   "BEIDOUB1B1C": "B1",
+   "BEIDOUB1": "B1",
+   "BEIDOUB3": "B3",
+   "BEIDOUB1B3": "B1,B3",
+   "BEIDOUB1B1CB2B3": "B1,B2,B3",
+   "BEIDOUB1B1CB2": "B1,B2",
+   "BEIDOUB1B2": "B1,B2",
+   "BEIDOUB1B2B3": "B1,B2,B3",
+   "BEIDOUB1B2IB2B": "B1,B2,B2B",
+   "BEIDOUB1B2B": "B1,B2B",
+   "BEIDOUB1B1CB2IB2B": "B1,B2,B2B",
+   "BEIDOUB1B1CB2IB2BB3": "B1,B2,B2B,B3",
+   "BEIDOUB1B1CB2B": "B1,B2B",
+   "BEIDOUB1B2IB2BB3": "B1,B2,B2B,B3",
+   "BEIDOUB1B2B2B": "B1,B2,B2B",
+   "BEIDOUB1B1CB2B2B": "B1,B1C,B2,B2B",
+   "BEIDOUB1B1CB2B2BB3": "B1,B1C,B2,B2B,B3"
+  },
+  "QZSS": {
+   "QZSSL1CAL1CB": "L1",
+   "QZSSL1CAL1CBL2C": "L1,L2",
+   "QZSSL1CAL1CBL2CL5": "L1,L2,L5",
+   "QZSSL1CAL1CBL2CL5L1C": "L1,L2,L5",
+   "QZSSL1CAL1CBL5": "L1,L5",
+   "QZSSL1CAL1CBL2CL5L1CL6": "L1,L2,L5,L6",
+   "QZSSL1CAL1CBL2CL1C": "L1,L2"
+  },
+  "LBAND": {
+   "LBAND": "LBAND"
+  },
+  "NAVIC": {
+   "NAVICL5": "L5"
+  },
+  "SBAS": {
+   "SBASL1": "L1",
+   "SBASL1L5": "L1,L5"
+  }
+ },
+ "signalTypesMap": {
+  "GPS": {
+   "GPSL1": "L1",
+   "GPSL1L2": "L1,L2",
+   "GPSL1L2C": "L1,L2",
+   "GPSL1L2AUTO": "L1,L2",
+   "GPSL1L2PL2C": "L1,L2",
+   "GPSL1L2PL2CL1C": "L1,L2",
+   "GPSL5": "L5",
+   "GPSL1L5": "L1,L5",
+   "GPSL1L2PL2CL5": "L1,L2,L5",
+   "GPSL1L2PL5": "L1,L2,L5",
+   "GPSL1L2PL2CL5L1C": "L1,L2,L5"
+  },
+  "GLO": {
+   "GLOL1L2": "L1,L2",
+   "GLOL1L2C": "L1,L2",
+   "GLOL1L2PL2C": "L1,L2",
+   "GLOL1L2PL2CL3": "L1,L2,L3",
+   "GLOL1": "L1",
+   "GLOL1L3": "L1"
+  },
+  "GAL": {
+   "GALE1": "E1",
+   "GALE5A": "E5A",
+   "GALE5B": "E5B",
+   "GALALTBOC": "ALTBOC",
+   "GALE1E5AE5B": "E1,E5A,E5B",
+   "GALE1E5AE5BALTBOC": "E1,E5A,E5B,ALTBOC",
+   "GALE1E5AE5BALTBOCE6": "E1,E5A,E5B,ALTBOC,E6",
+   "GALE1E5A": "E1,E5A",
+   "GALE1E5B": "E1,E5B",
+   "GALE1E5AE5BALTBOCSX": "E1,E5A,E5B,ALTBOCSX",
+   "GALE1E5AE5BALTBOCSXE6": "E1,E5A,E5B,ALTBOCSX,E6"
+  },
+  "BEIDOU": {
+   "BEIDOUB1C": "B1",
+   "BEIDOUB1B1C": "B1",
+   "BEIDOUB1": "B1",
+   "BEIDOUB3": "B3",
+   "BEIDOUB1B3": "B1,B3",
+   "BEIDOUB1B1CB2B3": "B1,B2,B3",
+   "BEIDOUB1B1CB2": "B1,B2",
+   "BEIDOUB1B2": "B1,B2",
+   "BEIDOUB1B2B3": "B1,B2,B3",
+   "BEIDOUB1B2IB2B": "B1,B2,B2B",
+   "BEIDOUB1B2B": "B1,B2B",
+   "BEIDOUB1B1CB2IB2B": "B1,B2,B2B",
+   "BEIDOUB1B1CB2IB2BB3": "B1,B2,B2B,B3",
+   "BEIDOUB1B1CB2B": "B1,B2B",
+   "BEIDOUB1B2IB2BB3": "B1,B2,B2B,B3",
+   "BEIDOUB1B2B2B": "B1,B2,B2B",
+   "BEIDOUB1B1CB2B2B": "B1,B1C,B2,B2B",
+   "BEIDOUB1B1CB2B2BB3": "B1,B1C,B2,B2B,B3"
+  },
+  "QZSS": {
+   "QZSSL1CA": "L1",
+   "QZSSL1CAL2C": "L1,L2",
+   "QZSSL1CAL2CL1C": "L1,L2",
+   "QZSSL1CAL2CL5": "L1,L2,L5",
+   "QZSSL1CAL2CL5L1C": "L1,L2,L5",
+   "QZSSL1CAL5": "L1,L5",
+   "QZSSL1CAL2CL5L1CL6": "L1,L2,L5,L6"
+  },
+  "LBAND": {
+   "LBAND": "LBAND"
+  },
+  "NAVIC": {
+   "NAVICL5": "L5"
+  },
+  "SBAS": {
+   "SBASL1": "L1",
+   "SBASL1L5": "L1,L5"
+  }
+ },
+ "ConstellationWithBands": {
+  "GPSL1": "GPS L1",
+  "GPSL2": "GPS L2",
+  "GLONASSL1": "GLONASS L1",
+  "GLONASSL2": "GLONASS L2",
+  "GPSL5": "GPS L5",
+  "LBAND": "LBAND",
+  "GALILEOE1": "GALILEO E1",
+  "GALILEOE5A": "GALILEO E5A",
+  "GALILEOE5B": "GALILEO E5B",
+  "GALILEOALTBOC": "GALILEO ALTBOC",
+  "BEIDOUB1": "BEIDOU B1",
+  "BEIDOUB2": "BEIDOU B2",
+  "QZSSL1": "QZSS L1",
+  "QZSSL2": "QZSS L2",
+  "QZSSL5": "QZSS L5",
+  "QZSSL6": "QZSS L6",
+  "GALILEOE6": "GALILEO E6",
+  "BEIDOUB3": "BEIDOU B3",
+  "GLONASSL3": "GLONASS L3",
+  "NAVICL5": "NAVIC L5",
+  "BEIDOUB1C": "BEIDOU B1C",
+  "BEIDOUB2A": "BEIDOU B2A",
+  "BEIDOUB2B": "BEIDOU B2B"
+ },
+ "activeFiltersAliasName": {
+  "BEIDOU": "BDS",
+  "GALILEO": "GAL",
+  "GLONASS": "GLO",
+  "QZSS": "QZSS",
+  "GPS": "GPS",
+  "LBAND": "LBANDLBAND",
+  "NAVIC": "NAVIC"
+ },
+ "constellationLabelsYValues": {
+  "3": [
+   "0.96",
+   "0.51",
+   "0.04"
+  ],
+  "4": [
+   "0.98",
+   "0.64",
+   "0.30",
+   "0.015"
+  ],
+  "5": [
+   "0.96",
+   "0.755",
+   "0.51",
+   "0.255",
+   "0.03"
+  ],
+  "6": [
+   "0.98",
+   "0.81",
+   "0.59",
+   "0.41",
+   "0.19",
+   "0.015"
+  ],
+  "7": [
+   "0.98",
+   "0.83",
+   "0.70",
+   "0.5",
+   "0.35",
+   "0.15",
+   "0.02"
+  ],
+  "8": [
+   "0.98",
+   "0.86",
+   "0.73",
+   "0.55",
+   "0.41",
+   "0.24",
+   "0.11",
+   "0.01"
+  ]
+ },
+ "bandFrequencies": {
+  "GPS": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L2",
+    "start": 1215,
+    "end": 1240
+   },
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   }
+  ],
+  "GAL": [
+   {
+    "band": "E1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "E5A",
+    "start": 1163,
+    "end": 1188
+   },
+   {
+    "band": "E5B",
+    "start": 1194,
+    "end": 1219
+   },
+   {
+    "band": "ALTBOC",
+    "start": 1141,
+    "end": 1241
+   },
+   {
+    "band": "E6",
+    "start": 1265,
+    "end": 1290
+   }
+  ],
+  "GLO": [
+   {
+    "band": "L1",
+    "start": 1589,
+    "end": 1614
+   },
+   {
+    "band": "L2",
+    "start": 1233,
+    "end": 1258
+   },
+   {
+    "band": "L3",
+    "start": 1141,
+    "end": 1241
+   }
+  ],
+  "BEIDOU": [
+   {
+    "band": "B1",
+    "start": 1548,
+    "end": 1573
+   },
+   {
+    "band": "B1C",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "B2",
+    "start": 1194,
+    "end": 1219
+   },
+   {
+    "band": "B2B",
+    "start": 1194,
+    "end": 1219
+   },
+   {
+    "band": "B3",
+    "start": 1255,
+    "end": 1280
+   },
+   {
+    "band": "B2A",
+    "start": 1163,
+    "end": 1188
+   }
+  ],
+  "QZSS": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L2",
+    "start": 1215,
+    "end": 1240
+   },
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   },
+   {
+    "band": "L6",
+    "start": 1265,
+    "end": 1290
+   }
+  ],
+  "NAVIC": [
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   }
+  ],
+  "SBAS": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L5",
+    "start": 1164,
+    "end": 1188
+   }
+  ],
+  "LBAND": [
+   {
+    "band": "LBAND",
+    "start": 1539,
+    "end": 1559
+   }
+  ]
+ },
+ "rangeFrequencies": {
+  "GPS": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L2",
+    "start": 1215,
+    "end": 1240
+   },
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   }
+  ],
+  "GLO": [
+   {
+    "band": "L1",
+    "start": 1589,
+    "end": 1614
+   },
+   {
+    "band": "L2",
+    "start": 1233,
+    "end": 1258
+   },
+   {
+    "band": "L5",
+    "start": 1141,
+    "end": 1241
+   }
+  ],
+  "GAL": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   },
+   {
+    "band": "L2",
+    "start": 1265,
+    "end": 1290
+   }
+  ],
+  "BEIDOU": [
+   {
+    "band": "L1",
+    "start": 1548,
+    "end": 1573
+   },
+   {
+    "band": "L5",
+    "start": 1194,
+    "end": 1219
+   },
+   {
+    "band": "L2",
+    "start": 1255,
+    "end": 1280
+   }
+  ],
+  "QZSS": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L2",
+    "start": 1215,
+    "end": 1240
+   },
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   },
+   {
+    "band": "L6",
+    "start": 1265,
+    "end": 1290
+   }
+  ],
+  "NAVIC": [
+   {
+    "band": "L5",
+    "start": 1163,
+    "end": 1188
+   }
+  ],
+  "SBAS": [
+   {
+    "band": "L1",
+    "start": 1562,
+    "end": 1587
+   },
+   {
+    "band": "L5",
+    "start": 1164,
+    "end": 1188
+   }
+  ],
+  "LBAND": [
+   {
+    "band": "LBAND",
+    "start": 1527,
+    "end": 1552
+   }
+  ]
+ },
+ "wideBandFrequencies": {
+  "L1": {
+   "start": 1531,
+   "end": 1631
+  },
+  "L2": {
+   "start": 1202,
+   "end": 1302
+  },
+  "L5": {
+   "start": 1141,
+   "end": 1241
+  },
+  "LBAND": {
+   "start": 1510,
+   "end": 1560
+  }
+ },
+ "encoderPriorityList": {
+  "0": [
+   0,
+   4,
+   8
+  ],
+  "1": [
+   1,
+   5,
+   9
+  ],
+  "2": [
+   10,
+   6,
+   2
+  ],
+  "3": [
+   7
+  ]
+ },
+ "signalBands": {
+  "L5": [
+   "L5",
+   "L3",
+   "E5A",
+   "E5B",
+   "ALTBOC",
+   "B2A"
+  ],
+  "L2": [
+   "L2",
+   "L6",
+   "E6",
+   "B2",
+   "B2B",
+   "B3"
+  ],
+  "LBAND": [
+   "LBAND"
+  ],
+  "L1": [
+   "L1",
+   "E1",
+   "B1",
+   "B1C"
+  ]
+ },
+ "CommonRFPathInfo": {
+  "L1": [
+   [
+    "GPSL1",
+    "GALILEOE1",
+    "QZSSL1",
+    "BEIDOUB1C"
+   ]
+  ],
+  "L2": [
+   [
+    "GPSL2",
+    "QZSSL2"
+   ],
+   [
+    "BEIDOUB2",
+    "BEIDOUB2B",
+    "GALILEOE5B"
+   ]
+  ],
+  "L5": [
+   [
+    "GPSL5",
+    "GALILEOE5A",
+    "QZSSL5",
+    "NAVICL5",
+    "BEIDOUB2A"
+   ],
+   [
+    "BEIDOUB2",
+    "BEIDOUB2B",
+    "GALILEOE5B"
+   ]
+  ],
+  "E6": [
+   [
+    "GALILEOE6",
+    "QZSSL6"
+   ]
+  ],
+  "L3": [],
+  "LBand": []
+ },
+ "constellationsNameAlias": {
+  "BEIDOU": "BDS",
+  "GLONASS": "GLO",
+  "GALILEO": "GAL"
+ },
+ "bandsForSubplots": [
+  [
+   "L5",
+   "L2"
+  ],
+  [
+   "L1"
+  ]
+ ],
+ "sortOrderForConstellations": [
+  "GPS",
+  "GLO",
+  "GAL",
+  "BDS",
+  "QZSS",
+  "NAVIC",
+  "LBAND",
+  "SBAS"
+ ],
+ "sortOrderForBands": [
+  "GPS",
+  "GLO",
+  "GAL",
+  "BEIDOU",
+  "QZSS",
+  "NAVIC",
+  "LBAND",
+  "SBAS"
+ ],
+ "BandRanges": [
+  {
+   "clickRange": [
+    1141,
+    1202
+   ],
+   "bandPair": "L2",
+   "annotationRef": 1191,
+   "shapePath": "M 1141 -120 L 1141 -40 L 1241 -40 L 1195 -110 Z",
+   "xaxisRef": "x",
+   "band": "L5",
+   "label": "L5",
+   "range": [
+    1166,
+    1187
+   ]
+  },
+  {
+   "clickRange": [
+    1202,
+    1302
+   ],
+   "bandPair": "L5",
+   "annotationRef": 1252,
+   "shapePath": "M 1202 -120 L 1255 -40 L 1302 -40 L 1302 -110 Z",
+   "xaxisRef": "x",
+   "band": "L2",
+   "label": "L2",
+   "range": [
+    1217,
+    1238
+   ]
+  },
+  {
+   "clickRange": [
+    1515,
+    1532
+   ],
+   "bandPair": "L1",
+   "annotationRef": 1525,
+   "shapePath": "M 1515 -120 L 1515 -40 L 1565 -40 L 1525 -110 Z",
+   "xaxisRef": "x",
+   "band": "LBAND",
+   "label": "L-BAND",
+   "range": [
+    1539,
+    1559
+   ]
+  },
+  {
+   "clickRange": [
+    1532,
+    1631
+   ],
+   "bandPair": "LBAND",
+   "annotationRef": 1581,
+   "shapePath": "M 1531 -120 L 1580 -40 L 1631 -40 L 1631 -110 Z",
+   "xaxisRef": "x",
+   "band": "L1",
+   "label": "L1",
+   "range": [
+    1565,
+    1586
+   ]
+  }
+ ],
+ "correctionPSRDIFFLogs": {
+  "RTCA": {
+   "RTCAREF": {
+    "MessageId": 11,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCA1": {
+    "MessageId": 10,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "RTCM": {
+   "RTCM1": {
+    "MessageId": 107,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM31": {
+    "MessageId": 864,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM3": {
+    "MessageId": 117,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   }
+  }
+ },
+ "correctionLogs": {
+  "RTCMV3": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1004": {
+    "MessageId": 770,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1012": {
+    "MessageId": 891,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "RTCA": {
+   "RTCAREF": {
+    "MessageId": 11,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCAOBS2": {
+    "MessageId": 805,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "CMR": {
+   "CMRREF": {
+    "MessageId": 105,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "CMROBS": {
+    "MessageId": 103,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "CMRGLOOBS": {
+    "MessageId": 882,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "RTCM": {
+   "RTCM3": {
+    "MessageId": 117,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM22": {
+    "MessageId": 118,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM23": {
+    "MessageId": 665,
+    "triggerType": "ONTIME",
+    "TriggerValue": 60
+   },
+   "RTCM24": {
+    "MessageId": 667,
+    "triggerType": "ONTIME",
+    "TriggerValue": 60
+   },
+   "RTCM1819": {
+    "MessageId": 260,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "NOVATELX": {
+   "NOVATELXOBS": {
+    "MessageId": 1618,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM12": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1071": {
+    "MessageId": 1472,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1081": {
+    "MessageId": 1479,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1091": {
+    "MessageId": 1486,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1111": {
+    "MessageId": 1648,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1121": {
+    "MessageId": 1592,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1072": {
+    "MessageId": 1473,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1082": {
+    "MessageId": 1480,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1092": {
+    "MessageId": 1487,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1112": {
+    "MessageId": 1649,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1122": {
+    "MessageId": 1593,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM2": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1072": {
+    "MessageId": 1473,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1082": {
+    "MessageId": 1480,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1092": {
+    "MessageId": 1487,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1112": {
+    "MessageId": 1649,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1122": {
+    "MessageId": 1593,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM3": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1073": {
+    "MessageId": 1474,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1083": {
+    "MessageId": 1481,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1093": {
+    "MessageId": 1488,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1113": {
+    "MessageId": 1650,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1123": {
+    "MessageId": 1594,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM4": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1074": {
+    "MessageId": 1475,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1084": {
+    "MessageId": 1482,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1094": {
+    "MessageId": 1489,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1114": {
+    "MessageId": 1651,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1124": {
+    "MessageId": 1595,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM5": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1075": {
+    "MessageId": 1476,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1085": {
+    "MessageId": 1483,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1095": {
+    "MessageId": 1490,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1115": {
+    "MessageId": 1652,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1125": {
+    "MessageId": 1596,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM6": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1076": {
+    "MessageId": 1477,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1086": {
+    "MessageId": 1484,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1096": {
+    "MessageId": 1491,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1116": {
+    "MessageId": 1653,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1126": {
+    "MessageId": 1597,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  },
+  "MSM7": {
+   "RTCM1006": {
+    "MessageId": 768,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10
+   },
+   "RTCM1230": {
+    "MessageId": 1655,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1008": {
+    "MessageId": 854,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1033": {
+    "MessageId": 1097,
+    "triggerType": "ONTIME",
+    "TriggerValue": 10,
+    "Offset": 2
+   },
+   "RTCM1077": {
+    "MessageId": 1478,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1087": {
+    "MessageId": 1485,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1097": {
+    "MessageId": 1492,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1117": {
+    "MessageId": 1654,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   },
+   "RTCM1127": {
+    "MessageId": 1598,
+    "triggerType": "ONTIME",
+    "TriggerValue": 1
+   }
+  }
+ },
+ "correctionLogsPSRDIFFIds": {
+  "RTCA": [
+   11,
+   10
+  ],
+  "RTCM": [
+   107,
+   864,
+   117
+  ]
+ },
+ "correctionLogsIds": {
+  "RTCMV3": [
+   768,
+   854,
+   1097,
+   770,
+   891
+  ],
+  "MSM12": [
+   768,
+   1655,
+   854,
+   1097,
+   1472,
+   1479,
+   1486,
+   1648,
+   1592,
+   1473,
+   1480,
+   1487,
+   1649,
+   1593
+  ],
+  "MSM2": [
+   768,
+   1655,
+   854,
+   1097,
+   1473,
+   1480,
+   1487,
+   1649,
+   1593
+  ],
+  "MSM3": [
+   768,
+   1655,
+   854,
+   1097,
+   1474,
+   1481,
+   1488,
+   1650,
+   1594
+  ],
+  "MSM4": [
+   768,
+   1655,
+   854,
+   1097,
+   1475,
+   1482,
+   1489,
+   1651,
+   1595
+  ],
+  "MSM5": [
+   768,
+   1655,
+   854,
+   1097,
+   1476,
+   1483,
+   1490,
+   1652,
+   1596
+  ],
+  "MSM6": [
+   768,
+   1655,
+   854,
+   1097,
+   1477,
+   1484,
+   1491,
+   1653,
+   1597
+  ],
+  "MSM7": [
+   768,
+   1655,
+   854,
+   1097,
+   1478,
+   1485,
+   1492,
+   1654,
+   1598
+  ],
+  "RTCA": [
+   11,
+   805
+  ],
+  "CMR": [
+   105,
+   103,
+   882
+  ],
+  "RTCM": [
+   117,
+   118,
+   665,
+   667,
+   260
+  ],
+  "NOVATELX": [
+   1618
+  ]
+ },
+ "currentOperatingMode": {
+  "Transmit": "TRANSMIT_BASE",
+  "Receive": "RECEIVE_ROVER",
+  "Standalone": "SINGLE_POINT"
+ },
+ "rxStatusPortsMap": {
+  "aux1Stats": {
+   "7": "NCOM3",
+   "8": "NCOM2",
+   "9": "NCOM1",
+   "10": "ICOM3",
+   "11": "ICOM2",
+   "12": "ICOM1",
+   "21": "USB3",
+   "22": "USB2",
+   "23": "USB1"
+  },
+  "aux2Stats": {
+   "4": "ICOM7",
+   "5": "ICOM6",
+   "6": "ICOM5",
+   "7": "ICOM4",
+   "20": "COM3",
+   "21": "COM2",
+   "22": "COM1",
+   "28": "COM5",
+   "29": "COM4"
+  }
+ },
+ "playbackStatesEnum": {
+  "PLAY": 0,
+  "PAUSE": 1
+ },
+ "itkFrequencyType": {
+  "0": "GPSL1",
+  "1": "GPSL2",
+  "2": "GLONASSL1",
+  "3": "GLONASSL2",
+  "4": "Reserved",
+  "5": "GPSL5",
+  "6": "LBAND",
+  "7": "GALILEOE1",
+  "8": "GALILEOE5A",
+  "9": "GALILEOE5B",
+  "10": "GALILEOALTBOC",
+  "11": "BEIDOUB1",
+  "12": "BEIDOUB2",
+  "13": "QZSSL1",
+  "14": "QZSSL2",
+  "15": "QZSSL5",
+  "16": "QZSSL6",
+  "17": "GALILEOE6",
+  "18": "BEIDOUB3",
+  "19": "GLONASSL3",
+  "20": "NAVICL5",
+  "21": "BEIDOUB1C",
+  "22": "BEIDOUB2A",
+  "23": "BEIDOUB2B"
+ },
+ "itkProgFiltMode": {
+  "0": "NOTCHFILTER",
+  "1": "BANDPASSFILTER",
+  "2": "NONE"
+ },
+ "itkDDCFilterType": {
+  "0": "PASSTHROUGH",
+  "1": "CIC1",
+  "3": "CIC2",
+  "4": "CIC3",
+  "5": "HALFBAND"
+ },
+ "itkFilterSwitch": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "itkProgFiltId": {
+  "0": "PF0",
+  "1": "PF1"
+ },
+ "dualAntennaAlignSwitch": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "ipStatusInterface": {
+  "2": "ETHA",
+  "10": "WIFI",
+  "11": "WIFICLIENT"
+ },
+ "wifiAlignAutomationoption": {
+  "0": "DISABLE",
+  "1": "ENABLE"
+ },
+ "nmeaTalkeroption": {
+  "0": "GP",
+  "1": "AUTO"
+ },
+ "nmeaBeiDouTalkeroption": {
+  "0": "GB",
+  "1": "BD"
+ },
+ "nmeaFormatFields": {
+  "0": "GGA_LATITUDE",
+  "1": "GGA_LONGITUDE",
+  "2": "GGA_ALTITUDE",
+  "3": "GGA_UNDULATION",
+  "10": "GGALONG_LATITUDE",
+  "11": "GGALONG_LONGITUDE",
+  "12": "GGALONG_ALTITUDE",
+  "13": "GGALONG_UNDULATION"
+ },
+ "ipConfigMode": {
+  "1": "DHCP",
+  "2": "STATIC"
+ },
+ "spanStatusStringMap": {
+  "INS_ALIGNING": "INS Aligning",
+  "INS_SOLUTION_FREE": "INS Solution Free",
+  "INS_ALIGNMENT_COMPLETE": "INS Alignment Complete",
+  "DETERMINING_ORIENTATION": "Determining Orientation",
+  "WAITING_INITIALPOS": "Waiting for Initial Pos",
+  "WAITING_AZIMUTH": "Waiting For Azimuth",
+  "INITIALIZING_BIASES": "Initializing Biases",
+  "MOTION_DETECT": "Motion Detect",
+  "INS_HIGH_VARIANCE": "High INS Variance",
+  "INS_INACTIVE": "INS Inactive",
+  "INS_SOLUTION_GOOD": "INS Solution Good"
+ },
+ "softloadStatusType": {
+  "1": "NOT_STARTED",
+  "2": "READY_FOR_SETUP",
+  "3": "READY_FOR_DATA",
+  "4": "DATA_VERIFIED",
+  "5": "WRITING_FLASH",
+  "6": "WROTE_FLASH",
+  "7": "WROTE_AUTHCODE",
+  "8": "COMPLETE",
+  "9": "VERIFYING_DATA",
+  "10": "COPIED_SIGNATURE_AUTH",
+  "11": "WROTE_TRANSACTION_TABLE",
+  "16": "ERROR",
+  "17": "RESET_ERROR",
+  "18": "BAD_SRECORD",
+  "19": "BAD_PLATFORM",
+  "20": "BAD_MODULE",
+  "21": "BAD_AUTHCODE",
+  "22": "NOT_READY_FOR_SETUP",
+  "23": "NO_MODULE",
+  "24": "NO_PLATFORM",
+  "25": "NOT_READY_FOR_DATA",
+  "26": "MODULE_MISMATCH",
+  "27": "OUT_OF_MEMORY",
+  "28": "DATA_OVERLAP",
+  "29": "BAD_IMAGE_CRC",
+  "30": "IMAGE_OVERSIZE",
+  "31": "AUTHCODE_WRITE_ERROR",
+  "32": "BAD_FLASH_ERASE",
+  "33": "BAD_FLASH_WRITE",
+  "34": "TIMEOUT",
+  "35": "INCOMPATIBLE_FLASH"
+ },
+ "rsStatusEventWordEnum": {
+  "0": "ERROR",
+  "1": "STATUS",
+  "2": "AUX1",
+  "3": "AUX2",
+  "4": "AUX3",
+  "5": "AUX4"
+ },
+ "rsStatusEventTypeEnum": {
+  "0": "CLEAR",
+  "1": "SET"
+ },
+ "nmeaTalkerIds": [
+  "GP",
+  "GA",
+  "IN",
+  "GB",
+  "BD",
+  "GI",
+  "GL",
+  "GN",
+  "GQ"
+ ],
+ "updatedSignalTypeDesc": {
+  "GPSL1": "L1CA",
+  "GPSL1L2": "L1CA,L2PC",
+  "SBASL1": "L1CA",
+  "GPSL5": "L5",
+  "GPSL1L2C": "L1CA,L2CM",
+  "GPSL1L2AUTO": "L1CA,L2PC,L2CM",
+  "GLOL1L2": "L1CA,L2P",
+  "LBAND": "L-Band",
+  "GLOL1": "L1CA",
+  "GALE1": "E1C",
+  "GALE5A": "E5AQ",
+  "GALE5B": "E5BQ",
+  "GALALTBOC": "ALTBOCQ",
+  "BEIDOUB1": "B1I",
+  "GPSL1L2PL2C": "L1CA,L2PC,L2CM",
+  "GPSL1L5": "L1CA,L5Q",
+  "SBASL1L5": "L1CA,L5I",
+  "GPSL1L2PL2CL5": "L1CA,L2PC,L2CM,L5Q",
+  "GPSL1L2PL5": "L1CA,L2PC,L5Q",
+  "GALE1E5AE5B": "E1C,E5AQ,E5BQ",
+  "GALE1E5AE5BALTBOC": "E1C,E5AQ,E5BQ,ALTBOCQ",
+  "GALE1E5A": "E1C,E5AQ",
+  "GLOL1L2C": "L1CA,L2CA",
+  "GLOL1L2PL2C": "L1CA,L2P,L2CA",
+  "QZSSL1CAL1CB": "L1CA,L1CB",
+  "QZSSL1CAL1CBL2C": "L1CA,L1CB,L2CM",
+  "QZSSL1CAL1CBL2CL5": "L1CA,L1CB,L2CM,L5Q",
+  "QZSSL1CAL1CBL5": "L1CA,L1CB,L5Q",
+  "GALE1E5B": "E1C,E5BQ",
+  "BEIDOUB1B3": "B1I,B3I",
+  "BEIDOUB3": "B3I",
+  "GALE1E5AE5BALTBOCE6": "E1C,E5AQ,E5BQ,ALTBOCQ,E6",
+  "GPSL1L2PL2CL5L1C": "L1CA,L2PC,L2CM,L5Q,L1CP",
+  "QZSSL1CAL1CBL2CL5L1C": "L1CA,L1CB,L2CM,L5Q,L1CP",
+  "QZSSL1CAL1CBL2CL5L1CL6": "L1CA,L1CB,L2CM,L5Q,L1CP,L6P,L6D",
+  "GLOL1L3": "L1CA,L3Q",
+  "GLOL3": "L3Q",
+  "GLOL1L2PL2CL3": "L1CA,L2P,L2CA,L3Q",
+  "GPSL1L2PL2CL1C": "L1CA,L2PC,L2CM,L1CP",
+  "QZSSL1CAL1CBL2CL1C": "L1CA,L1CB,L2CM,L1CP",
+  "NAVICL5": "L5",
+  "BEIDOUB1C": "B1C",
+  "BEIDOUB1B1C": "B1I,B1C",
+  "BEIDOUB1B2IB2B": "B1I,B2I,B2b",
+  "BEIDOUB1B2B": "B1I,B2b",
+  "BEIDOUB1B1CB2IB2B": "B1I,B1C,B2I,B2b",
+  "BEIDOUB1B1CB2IB2BB3": "B1I,B1C,B2I,B2b,B3I",
+  "BEIDOUB1B1CB2B": "B1I,B1C,B2b",
+  "BEIDOUB1B2IB2BB3": "B1I,B2I,B2b,B3I",
+  "BEIDOUB1B2B2B": "B1I,B2I/B2a,B2b",
+  "BEIDOUB1B1CB2B2B": "B1I,B1C,B2I/B2a,B2b",
+  "BEIDOUB1B1CB2B2BB3": "B1I,B1C,B2I/B2a,B2b,B3I",
+  "BEIDOUB1B2B2BB3": "B1I,B2I/B2a,B2b,B3I",
+  "BEIDOUB1B2": "B1I,B2I/B2a",
+  "BEIDOUB1B2B3": "B1I,B2I/B2a,B3I",
+  "BEIDOUB1B1CB2B3": "B1I,B1C,B2I/B2a,B3I",
+  "BEIDOUB1B1CB2": "B1I,B1C,B2I/B2a",
+  "GALE1E5AE5BALTBOCSX": "E1C,E5AQ,E5BQ,ALTBOCIQ",
+  "GALE1E5AE5BALTBOCSXE6": "E1C,E5AQ,E5BQ,ALTBOCIQ,E6"
+ },
+ "signalTypeDesc": {
+  "GPSL1": "L1CA",
+  "GPSL1L2": "L1CA,L2PC",
+  "SBASL1": "L1CA",
+  "GPSL5": "L5",
+  "GPSL1L2C": "L1CA,L2CM",
+  "GPSL1L2AUTO": "L1CA,L2PC,L2CM",
+  "GLOL1L2": "L1CA,L2P",
+  "LBAND": "L-Band",
+  "GLOL1": "L1CA",
+  "GALE1": "E1C",
+  "GALE5A": "E5AQ",
+  "GALE5B": "E5BQ",
+  "GALALTBOC": "ALTBOCQ",
+  "BEIDOUB1": "B1I",
+  "GPSL1L2PL2C": "L1CA,L2PC,L2CM",
+  "GPSL1L5": "L1CA,L5Q",
+  "SBASL1L5": "L1CA,L5I",
+  "GPSL1L2PL2CL5": "L1CA,L2PC,L2CM,L5Q",
+  "GPSL1L2PL5": "L1CA,L2PC,L5Q",
+  "GALE1E5AE5B": "E1C,E5AQ,E5BQ",
+  "GALE1E5AE5BALTBOC": "E1C,E5AQ,E5BQ,ALTBOCQ",
+  "GALE1E5A": "E1C,E5AQ",
+  "GLOL1L2C": "L1CA,L2CA",
+  "GLOL1L2PL2C": "L1CA,L2P,L2CA",
+  "QZSSL1CA": "L1CA",
+  "QZSSL1CAL2C": "L1CA,L2CM",
+  "QZSSL1CAL2CL5": "L1CA,L2CM,L5Q",
+  "QZSSL1CAL5": "L1CA,L5Q",
+  "GALE1E5B": "E1C,E5BQ",
+  "BEIDOUB1B3": "B1I,B3I",
+  "BEIDOUB3": "B3I",
+  "GALE1E5AE5BALTBOCE6": "E1C,E5AQ,E5BQ,ALTBOCQ,E6",
+  "GPSL1L2PL2CL5L1C": "L1CA,L2PC,L2CM,L5Q,L1CP",
+  "QZSSL1CAL2CL5L1C": "L1CA,L2CM,L5Q,L1CP",
+  "QZSSL1CAL2CL5L1CL6": "L1CA,L2CM,L5Q,L1CP,L6P,L6D",
+  "GLOL1L3": "L1CA,L3Q",
+  "GLOL3": "L3Q",
+  "GLOL1L2PL2CL3": "L1CA,L2P,L2CA,L3Q",
+  "GPSL1L2PL2CL1C": "L1CA,L2PC,L2CM,L1CP",
+  "QZSSL1CAL2CL1C": "L1CA,L2CM,L1CP",
+  "NAVICL5": "L5",
+  "BEIDOUB1C": "B1C",
+  "BEIDOUB1B1C": "B1I,B1C",
+  "BEIDOUB1B2IB2B": "B1I,B2I,B2b",
+  "BEIDOUB1B2B": "B1I,B2b",
+  "BEIDOUB1B1CB2IB2B": "B1I,B1C,B2I,B2b",
+  "BEIDOUB1B1CB2IB2BB3": "B1I,B1C,B2I,B2b,B3I",
+  "BEIDOUB1B1CB2B": "B1I,B1C,B2b",
+  "BEIDOUB1B2IB2BB3": "B1I,B2I,B2b,B3I",
+  "BEIDOUB1B2B2B": "B1I,B2I/B2a,B2b",
+  "BEIDOUB1B1CB2B2B": "B1I,B1C,B2I/B2a,B2b",
+  "BEIDOUB1B1CB2B2BB3": "B1I,B1C,B2I/B2a,B2b,B3I",
+  "BEIDOUB1B2B2BB3": "B1I,B2I/B2a,B2b,B3I",
+  "BEIDOUB1B2": "B1I,B2I/B2a",
+  "BEIDOUB1B2B3": "B1I,B2I/B2a,B3I",
+  "BEIDOUB1B1CB2B3": "B1I,B1C,B2I/B2a,B3I",
+  "BEIDOUB1B1CB2": "B1I,B1C,B2I/B2a",
+  "GALE1E5AE5BALTBOCSX": "E1C,E5AQ,E5BQ,ALTBOCIQ",
+  "GALE1E5AE5BALTBOCSXE6": "E1C,E5AQ,E5BQ,ALTBOCIQ,E6"
+ },
+ "trackstatSingalEnums": {
+  "GPS": {
+   "0": "L1CA",
+   "5": "L2P",
+   "9": "L2PCL",
+   "14": "L5Q",
+   "16": "L1CP",
+   "17": "L2CM"
+  },
+  "GLONASS": {
+   "0": "L1CA",
+   "1": "L2CA",
+   "5": "L2P",
+   "6": "L3Q"
+  },
+  "GALILEO": {
+   "2": "E1C",
+   "6": "E6B",
+   "7": "E6C",
+   "12": "E5AQ",
+   "17": "E5BQ",
+   "20": "ALTBOCQ",
+   "22": "ALTBOCIQ"
+  },
+  "QZSS": {
+   "0": "L1CA",
+   "14": "L5Q",
+   "16": "L1CP",
+   "17": "L2CM",
+   "24": "L1CB",
+   "27": "L6P",
+   "28": "L6D"
+  },
+  "SBAS": {
+   "0": "L1CA",
+   "6": "L5I"
+  },
+  "BEIDOU": {
+   "0": "B1I",
+   "1": "B2I",
+   "2": "B3I",
+   "4": "B1I",
+   "5": "B2I",
+   "6": "B3I",
+   "7": "B1C",
+   "9": "B2a",
+   "11": "B2B"
+  },
+  "OTHER": {
+   "19": "L-Band"
+  },
+  "LBAND": {
+   "19": "L-Band"
+  },
+  "NAVIC": {
+   "0": "L5SPS"
+  }
+ },
+ "satelliteNameFromTrackerID": {
+  "GP": "GPS",
+  "GA": "GALILEO",
+  "BD": "BEIDOU"
+ },
+ "GIIImessageIdConstants": {
+  "agcInfoMessageId": 4096,
+  "satPosMessageId": 4106,
+  "versionMessageId": 4108,
+  "ethstatusMessageId": 4101
+ },
+ "giiiConstellationWiseSingalEnums": {
+  "GPS": {
+   "0": "L1CA",
+   "1": "L2P(Y)",
+   "2": "L1C",
+   "3": "L2C",
+   "4": "L5",
+   "5": "L1CA SBAS",
+   "6": "L5 SBAS",
+   "14": "L1CA SBAS at L2 frequency",
+   "15": "L5 SBAS at L2 frequency"
+  },
+  "GALILEO": {
+   "0": "E1",
+   "2": "E5A"
+  },
+  "QZSS": {
+   "0": "L1CA",
+   "1": "L2P(Y)",
+   "2": "L1C",
+   "3": "L2C",
+   "4": "L5",
+   "14": "L1SA",
+   "15": "L1SB",
+   "16": "L5S",
+   "17": "L5SI",
+   "18": "L5SQ"
+  },
+  "SBAS": {
+   "5": "L1 C/A SBAS",
+   "6": "L5 SBAS",
+   "14": "L1 C/A SBAS at L2 frequency",
+   "15": "L5 SBAS at L2 frequency"
+  },
+  "NAVIC": {
+   "7": "L5",
+   "8": "S"
+  }
+ },
+ "giiitrackstatConstellationMap": {
+  "0": "GPS",
+  "2": "GALILEO",
+  "4": "QZSS"
+ },
+ "CNoValues": {
+  "0": 36,
+  "1": 39
+ },
+ "bsrValues": {
+  "0": 94,
+  "1": 98,
+  "2": 100
+ },
+ "dargValues": {
+  "0": 5
+ },
+ "SIDValues": {
+  "0": "SID08",
+  "1": "SID09"
+ },
+ "UnknownData": {
+  "OK_RESPONSE": "<OK",
+  "ERROR_RESPONSE": "<ERROR",
+  "ICOM_RESPONSE_REGEX": {}
+ }
+}

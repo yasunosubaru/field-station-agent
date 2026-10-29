@@ -1,0 +1,33 @@
+{
+ "solutionStatus": {
+  "rxcommandsb": "ontime,1",
+  "timesolutionb": "ontime,1"
+ },
+ "deviceInfo": {
+  "cardstatusb": "ontime,1",
+  "versionb": "ontime,1",
+  "ethstatusb": "ontime,1"
+ },
+ "deviceDetails": {
+  "versionb": "ontime,1",
+  "ethstatusb": "ontime,1"
+ },
+ "satelliteView": {
+  "satposb": "ontime,1",
+  "measurementdatab": "ontime,1"
+ },
+ "agcStatus": {
+  "agcinfob": "ontime,1"
+ },
+ "satelliteTracking": {
+  "rxcommandsb": "ontime,1",
+  "satposb": "ontime,1",
+  "measurementdatab": "ontime,1"
+ },
+ "ragindicators": {
+  "rxcommandsb": "ontime,1",
+  "timesolutionb": "ontime,1",
+  "cardstatusb": "ontime,1",
+  "agcinfob": "ontime,1"
+ }
+}

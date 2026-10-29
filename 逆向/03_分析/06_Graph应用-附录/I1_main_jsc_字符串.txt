@@ -1,0 +1,599 @@
+456	"X.DFT
+514	,6t.d2
+533	,:t.d2
+752	$* :0*
+898	__dirname
+912	Pcze)"
+922	require
+942	electron
+998	electronDevtoolsInstaller
+1054	winston
+1106	child_process
+1134	Database
+1154	dotenv__namespace
+1186	fs__namespace$1
+1214	appDetails
+1238	CHANNELS
+1258	SYSTEM_EVENTS
+1286	CONFIG_MODULE_PATHS
+1318	DB_NAMES
+1370	LogLevel
+1390	logger
+1410	handleSingleInstance
+1442	configOpsHandlers
+1474	NAS_THEME
+1498	nonTimestampGraphs
+1530	fileOpsHandlers
+1558	graphingChildWorkerScript
+1598	graphingProcess
+1626	messageHandler
+1654	platform
+1674	NODE_NAME
+1698	createGraphingProcess
+1723	 Pf6H[ 
+1734	getGraphingProcess
+1766	killGraphingProcess
+1798	copyNodeFilesForGraphing
+1834	appSettings$1
+1862	loadAppSettings
+1890	getAppSettings
+1918	graphingOpsHandlers
+1950	pathOpsHandlers
+1978	createDatabaseHandle
+2026	postionsHandler
+2070	eventsHandler
+2098	clipboardHandlers
+2146	dataPreviewHandler
+2178	BrowserWindow
+2222	browserWindowHandlers
+2258	registerNASNoncoreApp
+2310	decimationCount
+2338	chartOpsHandlers
+2366	mainWindow
+2390	createWindow
+2812	_interopNamespaceDefault`
+3143	evalmachine.<anonymous>
+3620	Pd^F/Q
+3630	filterLevel
+4060	,7\2D6$6 6 6(6(
+4575	customTimestampFormat
+4775	timestamp
+5199	requestSingleInstanceLock
+5255	process
+5325	SECOND_INSTANCE
+5467	getAllWindows
+5495	isMinimized
+5519	restore
+5590	handler ALH : SECOND_INSTANCE 
+5868	config
+5904	NODE_ENV
+5924	development
+5968	.env.development
+5996	production
+6037	.env.production
+6065	ipcMain
+6085	handle
+6107	APP_IS
+6279	Platform
+6300	isPackaged
+6410	handler ALH : APP_IS 
+6670	GET_PLATFORM
+6875	TMP_FOLDER
+6962	tmpdir
+7657	CONFIG
+7677	LOAD_CONFIG_MODULE
+7882	configure
+7924	GetAccessKeyId
+7954	GetDevMapSecretAccessKey
+7991	GetMapSecretAccessKey
+8028	GetSecretAccessKey
+8119	handler COH : LOAD_CONFIG_MODULE 
+9276	userStoreSettings
+9308	nasTheme
+9328	userStoreJSON
+9356	validatePath
+9380	copyFolderFromAsar
+9696	recursive
+9721	readdir
+9757	withFileTypes
+9803	isDirectory
+9827	readFile
+9847	writeFile
+10507	getPath
+10527	userData
+10554	userSettings.json
+10586	dirname
+10595	$Pgft&
+10606	NovAtelApplicationSuite
+10642	light-theme
+10668	access
+10767	parseError
+10809	handler FOH : nasSettings 
+10873	readError
+10959	dismissedUpdate
+10988	timeFormat
+11028	csatVersion
+11053	maximiseC
+11074	lastOpened
+11100	recents
+11147	projectDirectory
+11176	filePath
+11197	documents
+11309	fileOpsHandlers invalid file path
+11531	GET_NAS_THEME
+11745	GET_PATH
+11961	SELECT_EXPORT_FOLDER_DIALOG
+12196	getFocusedWindow
+12282	extensions
+12393	dialog
+12413	showSaveDialog
+12462	Select a folder to save exported files
+12514	buttonLabel
+12538	Select Folder
+12566	defaultPath
+12591	properties
+12624	filters
+12658	canceled
+12728	handler FOH : SELECT_EXPORT_FOLDER_DIALOG 
+13239	OPEN_EXPORT_DESTINATION
+13459	openPath
+13526	handler FOH : OPEN_EXPORT_DESTINATION 
+13891	OPEN_DIALOG
+14084	showOpenDialog
+14151	openFile
+14212	GPS / Log / Batch Files
+14308	binary Files
+14349	BINARY
+14386	ASCII Files
+14464	All Files
+14520	filePaths
+14591	handler FOH : OPEN_DIALOG 
+14997	OPEN_DIALOG_FILTER
+15294	handler FOH : OPEN_DIALOG_FILTER 
+15671	SELECT_FOLDER_DIALOG
+15910	openDirectory
+16010	handler FOH : SELECT_FOLDER_DIALOG 
+16411	SAVE_DIALOG
+16645	Enter Project File
+16739	Project File
+16858	handler FOH : SAVE_DIALOG 
+17482	\.(png|jpg|jpeg|gif|bmp|webp)$
+17539	base64
+17598	 PfVXuM
+17609	handler FOH : READ 
+18011	READ_DIR
+18199	(PhjEE
+18210	Error reading directory: 
+18250	Directory read failed
+18543	WRITE_BUFFER
+18729	Buffer
+18749	isBuffer
+18827	handler FOH : WRITE_BUFFER 
+19442	File saved successfully
+19525	handler FOH : WRITE E
+19911	DELETE
+20063	unlink
+20083	File deleted successfully
+20170	handler FOH : DELETE 
+20464	RENAME
+20626	oldPath
+20646	newPath
+20671	rename
+20691	File renamed successfully
+20778	handler FOH : RENAME 
+21324	birthTime
+21374	isFile
+21396	birthtime
+21477	handler FOH : INFO 
+21928	APP_PATH
+22018	getAppPath
+22170	EXISTS
+22376	Path exists
+22436	$Pg"V~?
+22447	handler FOH : EXISTS 
+22486	Unknown error occurred
+22871	COPYFOLDER
+23245	copied
+23312	handler FOH : COPYFILE 
+24088	CREATE_DIR
+24276	Directory created successfully
+24367	handler FOH : CREATE_DIR 
+24685	DELETE_DIR
+24890	Directory deleted successfully
+24981	handler FOH : DELETE_DIR 
+25021	Directory delete failed
+25334	DIR_EXISTS
+25404	383l'4
+25778	GET_USER_SETTINGS
+26035	handler FOH : GET_USER_SETTINGS 
+26432	SAVE_USER_SETTINGS
+26630	Settings saved successfully
+26717	handler FOH : SAVE_USER_SETTINGS 
+27067	SAVE_NAS_USER_SETTINGS
+27357	handler FOH : SAVE_NAS_USER_SETTINGS 
+27784	LOG_MESSAGE
+27990	success
+28041	PeF bO
+28051	Unknown error
+28359	COPY_FILE
+28557	copyFile
+28624	handler FOH : COPY_FILE 
+31048	graphing_hidden.cjs
+31082	writeFileSync
+31151	execPath
+31205	PbJ(uf
+31273	NATIVE_MODULE_PATH
+31463	service GPS : GraphingMessageHandler 
+31958	service GPS : CreateGraphingError 
+33075	resources
+33099	native_modules
+33138	copyFileSync
+33514	("'2oK
+33617	appSettings.json
+33647	existsSync
+33671	mkdirSync
+33717	readFileSync
+33807	Failed to load or create app settings: 
+34565	mainWindow2
+34641	REQUEST
+34821	webContents
+34865	RESPONSEm
+35403	OPEN_EXTERNAL
+35542	openExternal
+35613	handler GOH : OPEN_EXTERNAL y0
+35853	GET_APP_SETTINGS
+36758	handler POH : JOIN 
+37015	BASENAME
+37159	basename
+37225	handler POH : BASENAME 
+37481	DIRNAME
+37674	handler POH : DIRNAME 
+37930	USERPATH
+38140	handler POH : USERPATH 
+38600	handler POH : APP_PATH 
+38996	extname
+39062	handler POH : EXTENSION E~@
+39808	readonlyC
+39829	fileMustExist
+39858	aes128cbc
+39882	pragma
+39902	cipher = '
+39929	key = '
+39949	query_only = ON
+40325	posDBTypeCast
+40376	timeStamp, CAST(timeStamp AS REAL) AS Time, 
+40421	        latitude, CAST(latitude AS REAL) AS latitude, 
+40476	        longitude, CAST(longitude AS REAL) AS longitude,
+40533	        height, CAST(height AS REAL) AS height,
+40581	        Position_Type, Position_Type AS positionType
+40674	GET_POSITIONS
+40907	POSITIONS
+40921	Pd*|Ys
+40931	folderPath
+40984	tableName
+41009	SELECT 
+41033	        FROM 
+41060	prepare
+41132	Failed to get chart data: 
+41663	GET_TIME_BASED_POSITIONS
+41944	        ORDER BY ABS(timestamp - ?) ASC
+41984	        LIMIT 1
+42017	specificTimeEntry
+42606	GET_TABLE_ROW_COUNT
+42868	SELECT COUNT(*) AS row_count FROM 
+42922	row_count
+43471	GET_DISTINCT_COLUMN_VALUES
+43744	chartArgs
+43812	SELECT DISTINCT 
+43840	colName
+43860	 FROM 
+45013	GET_EVENTS
+45222	EVENTS
+45269	SELECT * FROM 
+45737	GET_CROPPED_EVENTS
+45847	D>h>|3
+45968	startTime
+45992	endTime
+46039	 WHERE timestamp >= 
+46071	 AND (timestamp <= 
+46103	 OR timestamp IS NULL)
+46941	CLIPBOARD
+46965	COPY_TO_CLIPBOARD
+47064	clipboard
+47088	writeText
+47228	 PfnRd&
+47239	READ_FROM_CLIPBOARD
+47341	readTextg
+47781	GET_LOG_SPACING
+48018	SPACING
+48084	spacingCategoryMapping
+48303	 WHERE messagename IN (
+48901	GET_SPACING
+49261	x6H+0!
+49342	WHEN messagename = '
+49374	' THEN '
+49892	        SELECT 
+49908	            start, 
+49928	            end,
+49945	            CASE 
+49975	 END AS category,
+49993	            messagename
+50017	        FROM 
+50044	        WHERE messagename IN (
+50090	        
+51043	PDF_EXPORT
+51067	PRINT_TO_PDF
+51298	Pc"Jq#
+51308	height
+51333	loadFile
+51356	executeJavaScript
+51392	        (async () => {
+51415	          if (window.__reportChartsReady) {
+51459	            await window.__reportChartsReady;
+51505	          } else {
+51524	            await new Promise((resolve) => {
+51569	              if (document.readyState === 'complete') {
+51625	                resolve(true);
+51656	              } else {
+51679	                window.addEventListener('load', () => resolve(true), { once: true });
+51765	              }
+51781	            });
+51798	            await new Promise((resolve) => {
+51843	              requestAnimationFrame(() => {
+51887	                requestAnimationFrame(() => resolve(true));
+51947	              });
+51965	            });
+51981	          }
+51994	          return true;
+52017	        })();
+52031	      
+52051	printToPDF
+52091	printBackground
+52120	displayHeaderFooter
+52153	marginsType
+52182	preferCSSPageSize
+52215	headerTemplate
+52245	footerTemplate
+52275	<div style="width:100%; padding:0 40px; font-size:10px; text-align:right;">
+52351	  <span class="pageNumber"></span> / <span class="totalPages"></span>
+52421	</div>
+53170	appPath
+53190	pathExists
+53214	copyFiles
+53238	readAppDetails
+53911	regNonCoreApp-Failed to copy file 
+54715	regNonCoreApp-Source directory not found:
+54835	regNonCoreApp-Error copying nonCoreAppData files:
+55203	copyNoncoreFolder
+55516	regNonCoreApp-Failed to read or parse JSON at 
+56136	AppDetails.json
+56199	Version
+56226	APPIMAGE
+56253	package.json
+56316	version
+56391	<Pm2q&F.
+56402	regNonCoreApp-Failed to write AppDetails.json:
+56918	updateAppDetails`
+57055	nonCoreAppData
+57099	NASnoncorelinks
+57129	appName
+57719	GET_CHART_DATA
+58023	dbFilename
+58106	 order by 
+58144	          SELECT *
+58163	          FROM 
+58192	          WHERE rowid % 
+58236	          ORDER BY 
+58268	        
+59015	GET_DB_COLUMN_NAMES
+59248	PRAGMA table_info(
+59891	GET_DB_COLUMN_DATA
+60304	Pcf;BW
+60350	timestamp >= 
+60378	 AND timestamp <= 
+60435	 WHERE 
+60461	colCount
+60499	            SELECT 
+60531	            FROM 
+60563	            WHERE 
+60595	              AND rowid IN (
+60624	                SELECT rowid
+60653	                FROM 
+60687	                WHERE rowid % (SELECT 
+60747	              ) ORDER BY timestamp;
+60783	          
+60994	              SELECT 
+61030	              FROM 
+61050	$PgZ[6n
+61062	              WHERE 
+61098	              ORDER BY timestamp
+61131	            
+62963	isQuitting
+63037	registerNAS
+63070	getPrimaryDisplay
+63102	workAreaSize
+63168	icon.ico
+63231	autoHideMenuBar
+63283	webPreferences
+63310	Ta333333
+63363	preload
+63384	sandbox
+63405	devToolsC
+63426	webSecurity
+63451	backgroundThrottlingD
+63484	../preload/preload.js
+63532	ready-to-show
+63668	removeMenu
+63710	setApplicationMenu
+64043	preventDefault
+64227	before-quit
+64344	isDestroyed
+64371	file:persistence-on-app-close
+64610	persist-state-complete
+65043	setWindowOpenHandler
+65186	action
+65365	ELECTRON_RENDERER_URL
+65401	loadURL
+65424	../renderer/index.html
+65460	openDevTools
+66704	REDUX_DEVTOOLS
+66732	REACT_DEVELOPER_TOOLS
+66826	CommandOrControl+R
+66858	CommandOrControl+Shift+I
+66970	globalShortcut
+67278	installExtension
+67374	APP_USER_MODEL_ID
+67406	com.default.electron
+67438	electronApp
+67462	setAppUserModelId
+67496	protocol
+67516	registerFileProtocol
+67548	localfile
+67657	localfile://E
+67879	browser-window-created
+67982	optimizer
+68006	watchWindowShortcutsh
+68171	shell:openExternal
+68533	activate
+69881	darwin
+70159	unregisterAll
+70389	window-blur
+70934	@electron-toolkit/utils
+70970	electron-devtools-installer
+71010	dotenv
+71036	fs/promises
+71062	better-sqlite3-multiple-ciphers
+71193	load-config-module
+71247	file:read
+71274	file:write
+71301	file:delete
+71328	file:rename
+71355	file:exists
+71382	file:info
+71409	file:read-dir
+71440	dialog:openFile
+71471	dialog:openFileFilter
+71510	dialog:saveFile
+71541	file:createDir
+71572	file:deleteDir
+71603	file:dir-exists
+71634	file:get-user-settings
+71662	$Pg6E84
+71673	file:save-user-settings
+71712	file:save-nas-user-settings
+71755	file:copyfolder
+71786	app:path
+71809	get-path
+71832	get-NAS-theme
+71863	log-message
+71879	 PfV2!M
+71890	file:write-buffer
+71925	dialog:openDirectory
+71960	dialog:exportDirectory
+71999	dialogue:openExportDirectory
+72042	file:copyfile
+72094	graphing:request
+72125	graphing:kill-process
+72164	graphing:child-response
+72203	graphing:open-external
+72231	(PhVE-
+72242	graphing:get-app-settings
+72304	path:app-path
+72335	path:join
+72362	path:basename
+72393	path:dirname
+72420	path:userpath
+72451	path:ext
+72495	app:get-chart-data
+72530	app:get-db-column-names
+72569	app:get-db-column-data
+72627	app:is
+72647	QUIT_APP
+72667	app:quit
+72690	app:get-platform
+72721	app:get-tmp
+72769	app:get-positions
+72804	app:get-time-based-positions
+72847	app:get-distinct-column-values
+72894	app:get-table-row-count
+72933	app:get-spacing
+72964	app:get-log-spacing
+72999	app:get-events
+73030	app:get-cropped-events
+73090	clipboard:copy-to-clipboard
+73133	clipboard:read-from-clipboard
+73188	(Ph~p/
+73199	browser-window:print-to-pdf
+73277	second-instance
+73330	LPq*O 
+73341	../../resources/native_modules/windows/configurationfile.node
+73420	../../resources/native_modules/linux/configurationfile.node
+73511	position.db
+73538	events.db
+73562	EVENTS_V2
+73586	event_v2.db
+73613	logginginterval.db
+73652	2.11.0
+73678	VITE_ENABLE_LOGGING
+73713	ELECTRON_LOG_LEVEL
+73767	appData
+73787	setPath
+73855	error.log
+73879	warn.log
+73930	Version: (\d+\.\d+\.\d+)
+73969	rmSync
+74059	Version: 
+74139	Failed to write version to log files:
+74191	createLogger
+74233	silent
+74263	transports
+74293	combine
+74334	printf
+74409	filename
+74509	dark-theme
+74567	insupdate
+74591	rxstatus
+74614	const nativePath = process.env.NATIVE_MODULE_PATH;
+74665	const Edie = require(nativePath);
+74699	const enocder_obj = new Edie.TabFileReader_api();
+74750	process.on('message', (fileList_obj) => {
+74792	  try {
+74800	    if (Object.values(fileList_obj)[0].hasOwnProperty('name')) {
+74865	      const methodName = Object.values(fileList_obj)[0].name;
+74927	      if (typeof enocder_obj[methodName] === 'function') {
+74986	        enocder_obj[methodName](Object.values(fileList_obj)[0], (jsonobj) => {
+75065	          if (process.send) {
+75095	            process.send(jsonobj);
+75130	          }
+75142	        });
+75154	      } else {
+75169	        const errMsg = `Method ${methodName} does not exist on enocder_obj`;
+75246	        if (process.send) {
+75274	          process.send({ error: errMsg });
+75317	        }
+75327	      }
+75335	    } else {
+75348	      enocder_obj.filevalidation(fileList_obj, (jsonobj) => {
+75410	        if (process.send) {
+75438	          process.send(jsonobj);
+75471	        }
+75481	      });
+75497	  } catch (e) {
+75513	    if (process.send) {
+75537	       process.send({ error: `Invalid JSON received: ${err}` });
+75635	windows
+75655	graph-node-wrapper.node
+75712	Landing
+75748	recentActivity
+75777	Decimation
+75814	commandLine
+75838	appendSwitch
+75862	disable-renderer-backgrounding
+75906	disable-backgrounding-occluded-windows
+75958	enable-unsafe-webgpu
+75979	 Pfb+ZV
+75990	ignore-gpu-blocklist
+76022	whenReady
+76067	window-all-closed
+76102	will-quit
+76129	browser-window-blur

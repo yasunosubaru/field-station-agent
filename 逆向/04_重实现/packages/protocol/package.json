@@ -1,0 +1,18 @@
+{
+  "name": "@nas-reimpl/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NovAtel Application Suite 2.11.0 协议层重实现：CRC32、SBF 成帧、ASCII 命令、二进制 LOG/UNLOG、字段解码、GPS 时间",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./data/*": "./data/*"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

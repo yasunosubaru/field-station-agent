@@ -1,0 +1,83 @@
+{
+  "_source": "01_解包/Graph/out/renderer/assets/index-B86bHcCD.js:738 @1328196..@1330400",
+  "_purpose": "轨迹按 NovAtel position type（BESTPOS.posType 的整数值）着色；同一张表同时用于地图图例、事件标记与报表",
+
+  "POSITIONTYPE_GROUPS": {
+    "NO_SOLUTION": [0],
+    "FIXED_POS": [1, 2],
+    "NA": [8],
+    "SINGLE_POINT": [16],
+    "DGNSS": [17],
+    "SBAS": [18],
+    "PROPAGATED": [19],
+    "RTK_FLOAT": [32, 34],
+    "RTK_FIXED": [48, 49, 50],
+    "INS_SBAS": [52],
+    "INS_SP": [53],
+    "INS_DGNSS": [54],
+    "INS_RTK_FLOAT": [55],
+    "INS_RTK_FIXED": [56],
+    "INS_EXT_CONSTRAINED": [67],
+    "PPP_CONVERGING": [68],
+    "PPP_FIXED": [69],
+    "OPERATIONAL": [70],
+    "WARNING": [71],
+    "OUT_OF_BOUNDS": [72],
+    "INS_PPP_CONVERGING": [73],
+    "INS_PPP_FIXED": [74],
+    "PPP_BASIC_CONVERGING": [77],
+    "PPP_BASIC_CONVERGED": [78],
+    "INS_PPP_BASIC_CONVERGING": [79],
+    "INS_PPP_BASIC": [80],
+    "INS": [65535],
+    "RESERVED": [3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 51, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66]
+  },
+
+  "POSITION_TYPE_INFO": {
+    "NO_SOLUTION":                  { "normal": "#8E44AD", "masked": "#8E44AD33", "legend": "No Solution" },
+    "FIXED_POS":                    { "normal": "#2980B9", "masked": "#2980B933", "legend": "Fixed Position" },
+    "NA":                           { "normal": "#787878", "masked": "#78787833", "legend": "N/A" },
+    "SINGLE_POINT":                 { "normal": "#3C4AE7", "masked": "#3C4AE733", "legend": "Single Point" },
+    "DGNSS":                        { "normal": "#C88C32", "masked": "#C88C3233", "legend": "DGNSS" },
+    "SBAS":                         { "normal": "#B47828", "masked": "#B4782833", "legend": "SBAS" },
+    "PROPAGATED":                   { "normal": "#5A3282", "masked": "#5A328233", "legend": "Propagated" },
+    "RTK_FLOAT":                    { "normal": "#E67E22", "masked": "#E67E2233", "legend": "RTK Float" },
+    "RTK_FIXED":                    { "normal": "#2980B9", "masked": "#2980B933", "legend": "RTK Fixed" },
+    "INS_SBAS":                     { "normal": "#962864", "masked": "#96286440", "legend": "INS-SBAS" },
+    "INS_SP":                       { "normal": "#146E14", "masked": "#146E1440", "legend": "INS-SP" },
+    "INS_DGNSS":                    { "normal": "#783C00", "masked": "#783C0040", "legend": "INS-DGNSS" },
+    "INS_RTK_FLOAT":                { "normal": "#640078", "masked": "#64007840", "legend": "INS-RTK (Float)" },
+    "INS_RTK_FIXED":                { "normal": "#005A78", "masked": "#005A7840", "legend": "INS-RTK (Fixed)" },
+    "INS_EXT_CONSTRAINED":          { "normal": "#780028", "masked": "#78002840", "legend": "INS (External PVAS)" },
+    "INS_PPP_CONVERGING":           { "normal": "#501482", "masked": "#50148240", "legend": "INS-PPP (Converging)" },
+    "INS_PPP_FIXED":                { "normal": "#004B3C", "masked": "#004B3C40", "legend": "INS-PPP (Fixed)" },
+    "INS_PPP_BASIC_CONVERGING":     { "normal": "#6E1E00", "masked": "#6E1E0040", "legend": "INS-PPP Basic (Converging)" },
+    "INS_PPP_BASIC":                { "normal": "#1E1E5A", "masked": "#1E1E5A40", "legend": "INS-PPP Basic (Converged)" },
+    "PPP_CONVERGING":               { "normal": "#27AE60", "masked": "#27AE6033", "legend": "PPP (Converging)" },
+    "PPP_FIXED":                    { "normal": "#165A35", "masked": "#165A3533", "legend": "PPP Fixed" },
+    "PPP_BASIC_CONVERGING":         { "normal": "#FF00FF", "masked": "#FF00FF33", "legend": "PPP Basic (Converging)" },
+    "PPP_BASIC_CONVERGED":          { "normal": "#800080", "masked": "#80008033", "legend": "PPP Basic (Converged)" },
+    "OPERATIONAL":                  { "normal": "#5A288C", "masked": "#5A288C33", "legend": "Operational" },
+    "WARNING":                      { "normal": "#FF07AC", "masked": "#FF07AC33", "legend": "Warning" },
+    "OUT_OF_BOUNDS":                { "normal": "#E90E0E", "masked": "#E90E0E33", "legend": "Out of Bounds" },
+    "INS":                          { "normal": "#910EE9", "masked": "#910EE933", "legend": "INS" },
+    "RESERVED":                     { "normal": "#000000", "masked": "#00000033", "legend": "Reserved" }
+  },
+
+  "CROPPED_POSITION_COLOR": { "normal": "#747474", "legend": "Cropped Section" },
+
+  "_quirks": [
+    "FIXED_POS 与 RTK_FIXED 用了同一个颜色 #2980B9 —— 图例里会出现两个同名同色的 'Fixed Position' / 'RTK Fixed' 条目，复现时必须照抄（否则截图比对不过）",
+    "NO_SOLUTION 的 masked 后缀是 33（20% 不透明），INS_* 系列是 40（25% 不透明），两套后缀不一致"
+  ],
+
+  "interference_blob": {
+    "_source": "@13650900 附近 decodeInterferenceBlob",
+    "record_size_bytes": 5,
+    "layout": [
+      { "field": "freq", "type": "float32", "endian": "little", "unit": "MHz（推断：图例文案 'Interference is being detected at' + 'Mhz'）" },
+      { "field": "flag", "type": "uint8", "meaning": "1 = 该频点超过阈值（上色），0 = 未超" }
+    ],
+    "worked_example": "字节 00 00 48 42 01 → float32LE = 50.0 MHz，flag=1 → 该频点标红"
+  }
+}

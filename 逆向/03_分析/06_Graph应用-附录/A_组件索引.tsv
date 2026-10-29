@@ -1,0 +1,82 @@
+component	definition_offset	line
+CustomButton	384972	74
+Tooltip	1454591	1245
+CustomDialog	536482	577
+InputText		
+CustomInputField	612897	615
+ProgressBar		
+InputTextarea		
+CustomTextArea	638856	725
+Welcome	644289	725
+ProjectInfo	639729	725
+FileUpload	615574	615
+FileValidation	625125	714
+ErrorBanner	385867	74
+GraphingInfo	386743	74
+ProjectWizard	1342317	738
+RecentActivity	599900	614
+AddFlagFooter	1423811	1153
+AddFlag	1426986	1153
+ColorPicker		
+FlagItem	1451713	1245
+EmptyState	1457940	1245
+Sidebar		
+TrashControls	1416624	1147
+Divider		
+CustomToastMessage	1458822	1245
+CompassButton	13648180	1294
+MapControls	13649122	1294
+Attribution	13642243	1294
+LuciadMap	13650389	1294
+MapLegend	13671995	1309
+MapEventInfo	13666614	1309
+SplitDateTimeInput		
+InputSwitch		
+CustomSwitch	13712239	1309
+Dropdown	13800702	1456
+CustomDropdown	13800696	1456
+ShowCurrent	13713355	1309
+ShowSpeedDropdown	13801384	1456
+ShowEventsSwitch	13712740	1309
+CropTimeline	13694971	1309
+Popup	13829092	1456
+FlagsList	13821924	1456
+EventsList	13830007	1456
+TimelineFlagsInfo	13839509	1456
+TimelineTrack		
+TimelineControls	13813113	1456
+Spinner	13849972	1456
+OverviewHeader	1461998	1245
+OverviewMap	13679136	1309
+FlagsPanel	1459946	1245
+Timeline	13694975	1309
+EChartsReact		
+DraggableCore		
+GridItem	16111722	1981
+GridLayout	16122903	1981
+ComposedComponent		
+ResponsiveGridLayout		
+ResponsiveGridWrapper	16147209	1981
+ChartControls	16018920	1977
+GeoMapChart	15713064	1538
+LineChart	15702610	1531
+GraphLabels	15716915	1538
+Checkbox	16182110	1982
+CustomCheckbox	16182104	1982
+GOSTab	16210318	2355
+ProjectInformation	16164766	1981
+TrackingMeasurement	16168238	1981
+PVTChartsPanel	16157328	1981
+HACharts	16159647	1981
+ReceiverStatusCharts	16204516	2355
+TabView		
+TabPanel		
+ChartZoomControls	16208602	2355
+ExportModal	16197631	2355
+Menu	16238058	2385
+CustomFloatingMenu	16219919	2355
+SettingsMenu	16238050	2385
+AppHeader	16246025	2385
+Landing	1349866	738
+Overview	13850452	1456
+FileProcess	16210749	2355

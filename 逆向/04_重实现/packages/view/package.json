@@ -1,0 +1,21 @@
+{
+  "name": "@nas-reimpl/view",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NovAtel Application Suite 2.11.0 Manage 视图层重实现：页签、瓦片系统（Packery 等价布局）、连接流程、节流、语言与 updateView 契约",
+  "main": "src/manage.ts",
+  "exports": {
+    ".": "./src/manage.ts",
+    "./config": "./src/config/index.ts",
+    "./minidom": "./src/minidom.ts",
+    "./status": "./src/status/index.ts",
+    "./src/*": "./src/*"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

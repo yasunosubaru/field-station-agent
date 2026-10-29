@@ -1,0 +1,38 @@
+class,method,args,returns,evidence
+Edie(模块),getreceivertype,"(inputstream, callback)","undefined；callback(JSON字符串) {BytesProcessed, InputStreamSize, RecevierType}",01_解包/app/controller/communication.js:223-239；实测 pimtpaddon.node
+Edie(模块),getedieversion,(),string（6 行文本：Name/Build date/Build time/Library version/Description + LOCAL）,实测 pimtpaddon.node（01_解包 JS 中无调用点）
+inputstream_api,constructor,() 或 (filePath: string),实例；传路径则绑定只读文件流（InputFileStream）,01_解包/app/view/deviceUpdate/lghn-deviceUpdate.js:549；实测
+inputstream_api,Append,"(buffer: Buffer, byteLength: number)",number = 实际追加字节数（等于 byteLength）,01_解包/app/controller/communication.js:222 与 :249；实测
+inputstream_api,GetLength,(),number = 流中剩余待解码字节数；readmessage 后为 0；文件流恒为 0,实测（JS 未调用）
+pimtpdecoder_api,constructor,(inputstream),PIMTP 解码器实例（构造时绑定流）,01_解包/app/controller/communication.js:296
+pimtpdecoder_api,readmessage,"(inputstream, callback)","undefined；每条消息一次 callback(JSON字符串)；本次调用结束再回调 {""EOS"":1}",01_解包/app/controller/communication.js:250-253；实测
+nmealogdecoder_api,constructor,(inputstream),NMEA 文本解码器实例,01_解包/app/controller/communication.js:297
+nmealogdecoder_api,readmessage,"(inputstream, callback)","undefined；每条 NMEA 句一次 callback(JSON字符串)；结束时 {""EOS"":1}",实测（JS 调用点同 communication.js:250-253）
+pimtpframer_api,constructor,"(inputstream, propertyObject)","实例；propertyObject = {PayLoadType, ComponentType, MessageType}",01_解包/app/controller/communication.js:690；01_解包/app/view/deviceRestart/deviceRestart.js:145
+pimtpframer_api,getpimtpframe,(callback),"undefined；同步 callback(JSON字符串) {Data:{ByteString, FrameSize, PayLoadType}}",01_解包/app/controller/communication.js:691-695；实测
+pimtpframer_api,setpimtpframeproperty,(propertyObject),undefined（实测）；改变后续帧的 PayLoadType/ComponentType/MessageType,"01_解包/app/view/deviceUpdate/lghn-deviceUpdate.js:566,583,618；实测（GET 帧 20B → BEGIN 帧 28B）"
+pimtpframer_api,uploaddone,(),boolean；文件流读完为 true（JS 用 != 1 比较仍正确）,"01_解包/app/view/deviceUpdate/lghn-deviceUpdate.js:567,592；实测返回 false/true"
+pimtpframer_api,getpimtplastframe,(),未组过帧时抛 Error('Error in native callback')；否则返回上一帧 JSON 字符串,实测
+pimtpframer_api,getresetframe,(callback),undefined；同步 callback(JSON字符串) 复位帧（44 字节，PayLoadType 1，hex 大写）,01_解包/app/view/deviceRestart/deviceRestart.js:147；01_解包/app/view/deviceUpdate/lghn-deviceUpdate.js:480；实测
+configure,constructor,(),Configuration 实例,01_解包/app/controller/serverConnectV2.js:22
+configurationfile,GetSecretAccessKey,(),string（硬编码 AWS secret）,实测 configurationfile.node
+configurationfile,GetAccessKeyId,(),string（硬编码 AWS access key id）,实测 configurationfile.node
+configurationfile,GetMapSecretAccessKey,(),string（Google Maps API key）,实测 configurationfile.node
+configurationfile,GetIPAPIAccesskey,(),string,实测 configurationfile.node
+configurationfile,GetDevMapSecretAccessKey,(),string（第二个 Google Maps key）,实测 configurationfile.node
+configurationfile,getTerraStarSubscriptionInfo,(),string（URL 模板，含 {psn}）,实测 configurationfile.node
+configurationfile,getTerraStarSubscriptionResend,(),string（URL 模板，含 {psn}）,实测 configurationfile.node
+configurationfile,generateBarrierToken,(),string（Azure AD token 端点 URL）,实测 configurationfile.node
+configurationfile,getcustomerNumber,(),string（UUABCDE）,实测 configurationfile.node
+configurationfile,getocpApimSubscriptionKey,(),string（GUID）,实测 configurationfile.node
+configurationfile,getocpApimSubscriptionSecondaryKey,(),string（GUID）,实测 configurationfile.node
+configurationfile,getgenBarrierTknContentTyp,(),string（application/x-www-form-urlencoded）,实测 configurationfile.node
+configurationfile,getgenBarrTknGranType,(),string（client_credentials）,实测 configurationfile.node
+configurationfile,getgenBarrTknClientID,(),string（GUID）,实测 configurationfile.node
+configurationfile,getgenBarrTknClientScrt,(),string（客户端密钥）,实测 configurationfile.node
+configurationfile,getUserName,(),string（nas.support@hexagon.com）,实测 configurationfile.node
+configurationfile,getBarrierTokenScope,(),string（https://hexagonapb2cnonprd.onmicrosoft.com/apidev/.default）,实测 configurationfile.node
+convertfileobject_api,constructor,(),Convert 用文件对象实例,01_解包/app/view/convert/edieConvertAPI.js:42
+convertfileobject_api,readmessage,"(fileObj, callback)","undefined；每文件一次 callback(JSON字符串) {Filename, Message:{...}}",01_解包/app/view/convert/edieConvertAPI.js:44-46；01_解包/app/view/convert/cli.js:405-410；实测
+convertfileobject_api,Convert,"(convertObj, callback)",undefined；每文件每格式一次 callback(JSON字符串)，含 Filename/Format/Percentage,01_解包/app/view/convert/edieConvertAPI.js:49-51；01_解包/app/view/convert/convert.js:3388
+RNX2CRX(外部进程),CLI,rnx2crx.exe [file] [-] [-f] [-e # epochs] [-s] [-d] [-h],退出码 0=成功 1=错误 2=警告；无输入文件名时用 stdin/stdout,01_解包/app/Edie/hatanaka/windows/rnx2crx.exe -h（ver.4.0.8）；调用模板见 edie-node-wrappers.node 的 UTF-16 常量

@@ -1,0 +1,84 @@
+{
+ "messageIds": {
+  "43": {
+   "Name": "RANGE",
+   "Category": "Measurement Data"
+  },
+  "570": {
+   "Name": "RAWGPSSUBFRAMEWP",
+   "Category": "Satellite Data"
+  },
+  "571": {
+   "Name": "RAWWAASFRAMEWP",
+   "Category": "Satellite Data"
+  },
+  "632": {
+   "Name": "ALLSQMI",
+   "Category": "Measurement Data"
+  },
+  "633": {
+   "Name": "ALLSQMQ",
+   "Category": "Measurement Data"
+  },
+  "4096": {
+   "Name": "AGCINFO",
+   "Category": "Receiver Status"
+  },
+  "4097": {
+   "Name": "ALMANAC",
+   "Category": "Satellite Data"
+  },
+  "4098": {
+   "Name": "CARDSTATUS",
+   "Category": "Receiver Status"
+  },
+  "4099": {
+   "Name": "CORRDATA",
+   "Category": "Measurement Data"
+  },
+  "4100": {
+   "Name": "CORRLOCATION",
+   "Category": "Measurement Data"
+  },
+  "4101": {
+   "Name": "ETHSTATUS",
+   "Category": "Receiver Status"
+  },
+  "4102": {
+   "Name": "FACTORYDATA",
+   "Category": "Receiver Status"
+  },
+  "4103": {
+   "Name": "MEASUREMENTDATA",
+   "Category": "Measurement Data"
+  },
+  "4104": {
+   "Name": "RAWFRAMEDATA",
+   "Category": "Satellite Data"
+  },
+  "4105": {
+   "Name": "RXCOMMANDS",
+   "Category": "Receiver Status"
+  },
+  "4106": {
+   "Name": "SATPOS",
+   "Category": "Satellite Data"
+  },
+  "4107": {
+   "Name": "TIMESOLUTION",
+   "Category": "Measurement Data"
+  },
+  "4108": {
+   "Name": "VERSION",
+   "Category": "Receiver Status"
+  },
+  "4109": {
+   "Name": "EXCEPTIONDATA",
+   "Category": "Receiver Status"
+  },
+  "4110": {
+   "Name": "SOFTLOADSTATUS",
+   "Category": "Receiver Status"
+  }
+ }
+}

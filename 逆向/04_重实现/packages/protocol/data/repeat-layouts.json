@@ -1,0 +1,1395 @@
+{
+ "5": {
+  "name": "LOGLIST",
+  "countField": "noOfLogs",
+  "blockStart": 4,
+  "blockSize": 36,
+  "fields": {
+   "port": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "NO_PORTS": 0,
+     "COM1_ALL": 1,
+     "COM2_ALL": 2,
+     "COM3_ALL": 3,
+     "THISPOST_ALL": 6,
+     "FILE_ALL": 7,
+     "ALL_PORTS": 8,
+     "XCOM1_ALL": 9,
+     "XCOM2_ALL": 10,
+     "USB1_ALL": 13,
+     "USB2_ALL": 14,
+     "USB3_ALL": 15,
+     "AUX_ALL": 16,
+     "XCOM3_ALL": 17,
+     "COM4_ALL": 19,
+     "ETH1_ALL": 20,
+     "IMU_ALL": 21,
+     "ICOM1_ALL": 23,
+     "ICOM2_ALL": 24,
+     "ICOM3_ALL": 25,
+     "NCOM1_ALL": 26,
+     "NCOM2_ALL": 27,
+     "NCOM3_ALL": 28,
+     "WCOM1_ALL": 30,
+     "COM1": 32,
+     "COM1_28": 60,
+     "COM1_29": 61,
+     "COM1_30": 62,
+     "COM2": 64,
+     "COM2_28": 92,
+     "COM2_29": 93,
+     "COM2_30": 94,
+     "COM3": 96,
+     "COM3_1": 97,
+     "COM3_28": 124,
+     "COM3_29": 125,
+     "COM3_30": 126,
+     "THISPORT": 192,
+     "THISPORT_28": 220,
+     "THISPORT_29": 221,
+     "THISPORT_30": 222,
+     "FILE": 224,
+     "XCOM1": 416,
+     "XCOM2": 672,
+     "USB1": 1440,
+     "USB1_28": 1468,
+     "USB1_29": 1469,
+     "USB1_30": 1470,
+     "USB2": 1696,
+     "USB2_28": 1724,
+     "USB2_29": 1725,
+     "USB2_30": 1726,
+     "USB3": 1952,
+     "USB3_28": 1980,
+     "USB3_29": 1981,
+     "USB3_30": 1982,
+     "XCOM3": 2464,
+     "COM4": 2976,
+     "ICOM1": 4000,
+     "ICOM1_28": 4028,
+     "ICOM1_29": 4029,
+     "ICOM1_30": 4030,
+     "ICOM2": 4256,
+     "ICOM2_28": 4284,
+     "ICOM2_29": 4285,
+     "ICOM2_30": 4286,
+     "ICOM3": 4512,
+     "ICOM3_28": 4540,
+     "ICOM3_29": 4541,
+     "ICOM3_30": 4542,
+     "NCOM1": 4768,
+     "NCOM2": 5024,
+     "NCOM3": 5280,
+     "ICOM4": 5536,
+     "ICOM4_28": 5564,
+     "ICOM4_29": 5565,
+     "ICOM4_30": 5566,
+     "WCOM1": 5792,
+     "WCOM1_30": 5822,
+     "COM5": 6048,
+     "COM6": 6304,
+     "BT1": 6560,
+     "BT1_29": 6589,
+     "BT1_30": 6590,
+     "COM7": 6816,
+     "COM8": 7072,
+     "COM9": 7328,
+     "COM10": 7584,
+     "CCOM1": 7840,
+     "CCOM2": 8096,
+     "CCOM3": 8352,
+     "CCOM4": 8608,
+     "CCOM5": 8864,
+     "CCOM6": 9120,
+     "CCOM7": 9376,
+     "ICOM5": 9888,
+     "ICOM5_28": 9916,
+     "ICOM5_29": 9917,
+     "ICOM5_30": 9918,
+     "ICOM6": 10144,
+     "ICOM6_28": 10172,
+     "ICOM6_29": 10173,
+     "ICOM6_30": 10174,
+     "ICOM7": 10400,
+     "ICOM7_28": 10428,
+     "ICOM7_29": 10429,
+     "ICOM7_30": 10430
+    }
+   },
+   "message": {
+    "type": "SHORT",
+    "offset": 4
+   },
+   "messageType": {
+    "type": "UCHAR",
+    "offset": 6
+   },
+   "reserved": {
+    "type": "UCHAR",
+    "offset": 7
+   },
+   "trigger": {
+    "type": "ENUM",
+    "offset": 8,
+    "enum": {
+     "ONNEW": 0,
+     "ONCHANGED": 1,
+     "ONTIME": 2,
+     "ONNEXT": 3,
+     "ONCE": 4,
+     "ONMARK": 5,
+     "ONALL": 6
+    }
+   },
+   "period": {
+    "type": "DOUBLE",
+    "offset": 12
+   },
+   "offset": {
+    "type": "DOUBLE",
+    "offset": 20
+   },
+   "hold": {
+    "type": "ENUM",
+    "offset": 28
+   }
+  }
+ },
+ "37": {
+  "name": "VERSION",
+  "countField": "noOfComponents",
+  "blockStart": 4,
+  "blockSize": 108,
+  "fields": {
+   "type": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "UNKNOWN": 0,
+     "GPSCARD": 1,
+     "CONTROLLER": 2,
+     "ENCLOSURE": 3,
+     "IMUCARD": 7,
+     "USERINFO": 8,
+     "OEM6FPGA": 12,
+     "GPSCARD2": 13,
+     "WIFI": 15,
+     "RADIO": 18,
+     "WWW_CONTENT": 19,
+     "Regulatory": 20,
+     "OEM7FPGA": 21,
+     "APPLICATION": 22,
+     "Package": 23,
+     "DEFAULT_CONFIG": 25,
+     "WHEELSENSOR": 26,
+     "EMBEDDED_AUTH": 27,
+     "DB_HEIGHTMODEL": 981073920,
+     "DB_WWWISO": 981073928,
+     "DB_LUA_SCRIPTS": 981073930
+    }
+   },
+   "model": {
+    "type": "STRING_16",
+    "offset": 4
+   },
+   "PSN": {
+    "type": "STRING_16",
+    "offset": 20
+   },
+   "hardwareVersion": {
+    "type": "STRING_16",
+    "offset": 36
+   },
+   "softwareVersion": {
+    "type": "STRING_16",
+    "offset": 52
+   },
+   "bootVersion": {
+    "type": "STRING_16",
+    "offset": 68
+   },
+   "compileDate": {
+    "type": "STRING_12",
+    "offset": 84
+   },
+   "compileTime": {
+    "type": "STRING_12",
+    "offset": 96
+   }
+  }
+ },
+ "72": {
+  "name": "PORTSTATS",
+  "countField": "noOfPorts",
+  "blockStart": 4,
+  "blockSize": 40,
+  "fields": {
+   "port": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "ALL": 8,
+     "BT1": 33,
+     "CCOM1": 38,
+     "CCOM2": 39,
+     "CCOM3": 40,
+     "CCOM4": 41,
+     "CCOM5": 42,
+     "CCOM6": 43,
+     "COM1": 1,
+     "COM2": 2,
+     "COM3": 3,
+     "COM4": 19,
+     "COM5": 31,
+     "COM6": 32,
+     "COM7": 34,
+     "COM8": 35,
+     "COM9": 36,
+     "COM10": 37,
+     "ETH1": 20,
+     "FILE": 7,
+     "ICOM1": 23,
+     "ICOM2": 24,
+     "ICOM3": 25,
+     "ICOM4": 29,
+     "ICOM5": 46,
+     "ICOM6": 47,
+     "ICOM7": 48,
+     "IMU": 21,
+     "NCOM1": 26,
+     "NCOM2": 27,
+     "NCOM3": 28,
+     "NOPORT": 0,
+     "SCOM1": 49,
+     "SCOM2": 50,
+     "SCOM3": 51,
+     "SCOM4": 52,
+     "THISPORT": 6,
+     "USB1": 13,
+     "USB2": 14,
+     "USB3": 15,
+     "WCOM1": 30
+    }
+   },
+   "rxChars": {
+    "type": "ULONG32",
+    "offset": 4
+   },
+   "txChars": {
+    "type": "ULONG32",
+    "offset": 8
+   },
+   "accRxChars": {
+    "type": "ULONG32",
+    "offset": 12
+   },
+   "droppedRxChars": {
+    "type": "ULONG32",
+    "offset": 16
+   },
+   "interrupts": {
+    "type": "ULONG32",
+    "offset": 20
+   },
+   "breaks": {
+    "type": "ULONG32",
+    "offset": 24
+   },
+   "parErr": {
+    "type": "ULONG32",
+    "offset": 28
+   },
+   "frameErr": {
+    "type": "ULONG32",
+    "offset": 32
+   },
+   "rxOverruns": {
+    "type": "ULONG32",
+    "offset": 36
+   }
+  }
+ },
+ "83": {
+  "name": "TRACKSTAT",
+  "countField": "numberOfChannels",
+  "blockStart": 16,
+  "blockSize": 40,
+  "fields": {
+   "PRN": {
+    "type": "SHORT",
+    "offset": 0
+   },
+   "glonassFrequency": {
+    "type": "SHORT",
+    "offset": 2
+   },
+   "channelTrackingStatus": {
+    "type": "ULONG32",
+    "offset": 4
+   },
+   "pseudoRange": {
+    "type": "DOUBLE",
+    "offset": 8
+   },
+   "doppler": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "carrierNoiseRatio": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "lockTime": {
+    "type": "FLOAT",
+    "offset": 24
+   },
+   "pseudoRangeResidual": {
+    "type": "FLOAT",
+    "offset": 28
+   },
+   "reject": {
+    "type": "ENUM",
+    "offset": 32
+   },
+   "pseudoRangeWeight": {
+    "type": "FLOAT",
+    "offset": 36
+   }
+  }
+ },
+ "206": {
+  "name": "VALIDMODELS",
+  "countField": "noOfModels",
+  "blockStart": 4,
+  "blockSize": 16,
+  "custom": "validModels",
+  "fields": {}
+ },
+ "691": {
+  "name": "GGAQUALITY",
+  "countField": "noOfEntries",
+  "blockStart": 4,
+  "blockSize": 8,
+  "fields": {
+   "posType": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "NONE": 0,
+     "FIXEDPOS": 1,
+     "FIXEDHEIGHT": 2,
+     "FLOATCONV": 4,
+     "WIDELANE": 5,
+     "NARROWLANE": 6,
+     "DOPPLER_VELOCITY": 8,
+     "SINGLE": 16,
+     "PSRDIFF": 17,
+     "WAAS": 18,
+     "PROPAGATED": 19,
+     "L1_FLOAT": 32,
+     "IONOFREE_FLOAT": 33,
+     "NARROW_FLOAT": 34,
+     "L1_INT": 48,
+     "WIDE_INT": 49,
+     "NARROW_INT": 50,
+     "RTK_DIRECT_INS": 51,
+     "INS_SBAS": 52,
+     "INS_PSRSP": 53,
+     "INS_PSRDIFF": 54,
+     "INS_RTKFLOAT": 55,
+     "INS_RTKFIXED": 56,
+     "PPP_CONVERGING": 68,
+     "PPP": 69,
+     "OPERATIONAL": 70,
+     "WARNING": 71,
+     "OUT_OF_BOUNDS": 72,
+     "INS_PPP_CONVERGING": 73,
+     "INS_PPP": 74,
+     "PPP_BASIC_CONVERGING": 77,
+     "PPP_BASIC": 78,
+     "INS_PPP_BASIC_CONVERGING": 79,
+     "INS_PPP_BASIC": 80
+    }
+   },
+   "quality": {
+    "type": "ULONG32",
+    "offset": 4
+   }
+  }
+ },
+ "963": {
+  "name": "HWMONITOR",
+  "countField": "noOfMeasurements",
+  "blockStart": 4,
+  "blockSize": 8,
+  "headerFields": [
+   "noOfMeasurements"
+  ],
+  "fields": {
+   "reading": {
+    "type": "FLOAT",
+    "offset": 0
+   },
+   "status": {
+    "type": "ULONG32",
+    "offset": 4
+   }
+  }
+ },
+ "1043": {
+  "name": "SATVIS2",
+  "countField": "numberOfSatellites",
+  "blockStart": 16,
+  "blockSize": 40,
+  "fields": {
+   "satelliteId": {
+    "type": "ENUM",
+    "offset": 0
+   },
+   "satelliteIdTemp": {
+    "type": "UINT_16",
+    "offset": 0
+   },
+   "health": {
+    "type": "ENUM",
+    "offset": 4
+   },
+   "elevation": {
+    "type": "DOUBLE",
+    "offset": 8
+   },
+   "azimuth": {
+    "type": "DOUBLE",
+    "offset": 16
+   },
+   "trueDoppler": {
+    "type": "DOUBLE",
+    "offset": 24
+   },
+   "apparentDoppler": {
+    "type": "DOUBLE",
+    "offset": 32
+   }
+  }
+ },
+ "1148": {
+  "name": "CHANCONFIGLIST",
+  "countField": "numChans",
+  "blockStart": 16,
+  "blockSize": 4,
+  "fields": {
+   "signalType": {
+    "type": "ULONG32",
+    "offset": 0
+   }
+  }
+ },
+ "1194": {
+  "name": "BESTSATS",
+  "countField": "entries",
+  "blockStart": 4,
+  "blockSize": 16,
+  "fields": {
+   "system": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "GPS": 0,
+     "GLONASS": 1,
+     "SBAS": 2,
+     "GALILEO": 5,
+     "BEIDOU": 6,
+     "QZSS": 7,
+     "NAVIC": 9
+    }
+   },
+   "satelliteID": {
+    "type": "ENUM",
+    "offset": 4
+   },
+   "satelliteIDTemp": {
+    "type": "UINT_16",
+    "offset": 4
+   },
+   "status": {
+    "type": "ENUM",
+    "offset": 8
+   }
+  }
+ },
+ "1201": {
+  "name": "LBANDTRACKSTAT",
+  "countField": "noOfEntries",
+  "blockStart": 4,
+  "blockSize": 60,
+  "fields": {
+   "name": {
+    "type": "STRING_8",
+    "offset": 0
+   },
+   "frequency": {
+    "type": "ULONG32",
+    "offset": 8
+   },
+   "baud_rate": {
+    "type": "SHORT",
+    "offset": 12
+   },
+   "id": {
+    "type": "SHORT",
+    "offset": 14
+   },
+   "status": {
+    "type": "SHORT",
+    "offset": 16
+   },
+   "reserved": {
+    "type": "SHORT",
+    "offset": 18
+   },
+   "doppler": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "C/No": {
+    "type": "FLOAT",
+    "offset": 24
+   },
+   "phaseStdDev": {
+    "type": "FLOAT",
+    "offset": 28
+   },
+   "lockTime": {
+    "type": "FLOAT",
+    "offset": 32
+   },
+   "uniqueWordBits": {
+    "type": "ULONG32",
+    "offset": 36
+   },
+   "badUniqueWordBits": {
+    "type": "ULONG32",
+    "offset": 40
+   },
+   "badUniqueWords": {
+    "type": "ULONG32",
+    "offset": 44
+   },
+   "viterbiSymbols": {
+    "type": "ULONG32",
+    "offset": 48
+   },
+   "correctedViterbi": {
+    "type": "ULONG32",
+    "offset": 52
+   },
+   "biterrorRate": {
+    "type": "FLOAT",
+    "offset": 56
+   }
+  }
+ },
+ "1329": {
+  "name": "MODELFEATURES",
+  "countField": "noOfFeatures",
+  "blockStart": 4,
+  "blockSize": 8,
+  "fields": {
+   "featureStatus": {
+    "type": "ENUM",
+    "offset": 0
+   },
+   "featureType": {
+    "type": "ENUM",
+    "offset": 4
+   }
+  }
+ },
+ "1348": {
+  "name": "AUTHCODES",
+  "countField": "noOfAuthCodes",
+  "blockStart": 8,
+  "blockSize": 8,
+  "custom": "authCodes",
+  "fields": {}
+ },
+ "1718": {
+  "name": "LBANDBEAMTABLE",
+  "countField": "noOfEntries",
+  "blockStart": 4,
+  "blockSize": 32,
+  "fields": {
+   "name": {
+    "type": "ustringvariable",
+    "offset": 0
+   },
+   "reserved": {
+    "type": "ustringvariable",
+    "offset": 8
+   },
+   "frequency": {
+    "type": "ULONG32",
+    "offset": 16
+   },
+   "baud": {
+    "type": "ULONG32",
+    "offset": 20
+   },
+   "logitude": {
+    "type": "FLOAT",
+    "offset": 24
+   },
+   "access": {
+    "type": "ULONG32",
+    "offset": 28
+   }
+  }
+ },
+ "1945": {
+  "name": "INSCONFIG",
+  "countField": "noOfTranslations",
+  "blockStart": 64,
+  "blockSize": 36,
+  "custom": "insConfig",
+  "fields": {}
+ },
+ "1968": {
+  "name": "ITPSDFINAL",
+  "countField": "noofSamples",
+  "blockStart": 16,
+  "blockSize": 2,
+  "headerFields": [
+   "status",
+   "frequencyStart",
+   "stepSize",
+   "noofSamples"
+  ],
+  "fields": {
+   "sample": {
+    "type": "SHORT",
+    "offset": 0,
+    "scale": 0.00390625,
+    "note": "逐样本 2 字节步进；输出 sample = v/256 − 200，frequency = frequencyStart + i×stepSize/1e6"
+   }
+  }
+ },
+ "1991": {
+  "name": "ITFILTTABLE",
+  "countField": "noOfRecords",
+  "blockStart": 4,
+  "blockSize": 32,
+  "custom": "itFilterTable",
+  "fields": {}
+ },
+ "2022": {
+  "name": "ITBANDPASSBANK",
+  "countField": "noOfFilterBanks",
+  "blockStart": 4,
+  "blockSize": 24,
+  "fields": {
+   "frequencyType": {
+    "type": "ENUM",
+    "offset": 0
+   },
+   "minLowerFrequencyCutOff": {
+    "type": "FLOAT",
+    "offset": 4
+   },
+   "maxLowerFrequencyCutOff": {
+    "type": "FLOAT",
+    "offset": 8
+   },
+   "minUpperFrequencyCutOff": {
+    "type": "FLOAT",
+    "offset": 12
+   },
+   "maxUpperFrequencyCutOff": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "frequencyStep": {
+    "type": "FLOAT",
+    "offset": 20
+   }
+  }
+ },
+ "2023": {
+  "name": "ITPROGFILTBANK",
+  "countField": "noOfFrequencies",
+  "blockStart": 4,
+  "blockSize": 8,
+  "custom": "itProgFilterBank",
+  "fields": {}
+ },
+ "2063": {
+  "name": "ITPSDDETECT",
+  "countField": "noofSamples",
+  "blockStart": 16,
+  "blockSize": 2,
+  "headerFields": [
+   "status",
+   "frequencyStart",
+   "stepSize",
+   "noofSamples"
+  ],
+  "fields": {
+   "sample": {
+    "type": "SHORT",
+    "offset": 0,
+    "scale": 0.00390625,
+    "note": "逐样本 2 字节步进；输出 sample = v/256 − 200，frequency = frequencyStart + i×stepSize/1e6"
+   }
+  }
+ },
+ "2065": {
+  "name": "ITDETECTSTATUS",
+  "countField": "noOfEntries",
+  "blockStart": 4,
+  "blockSize": 36,
+  "fields": {
+   "rfPath": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "L1": 2,
+     "L2": 3,
+     "L5": 5
+    }
+   },
+   "detectionType": {
+    "type": "ENUM",
+    "offset": 4,
+    "enum": {
+     "SPECTRALANALYSIS": 0,
+     "STATISTICALANALYSIS": 1
+    }
+   },
+   "centerFrequency": {
+    "type": "FLOAT",
+    "offset": 8
+   },
+   "bandwidth": {
+    "type": "FLOAT",
+    "offset": 12
+   },
+   "power": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "estimatedPower": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "reserved1": {
+    "type": "ULONG32",
+    "offset": 24
+   },
+   "reserved2": {
+    "type": "ULONG32",
+    "offset": 28
+   },
+   "reserved3": {
+    "type": "ULONG32",
+    "offset": 32
+   }
+  }
+ },
+ "2075": {
+  "name": "VERIPOSDECODERSTATUS",
+  "countField": "noOfEntries",
+  "blockStart": 4,
+  "blockSize": 24,
+  "fields": {
+   "name": {
+    "type": "STRING_8",
+    "offset": 0
+   },
+   "syncState": {
+    "type": "ENUM",
+    "offset": 8
+   },
+   "channelStatus": {
+    "type": "ULONG32",
+    "offset": 12
+   },
+   "comPort": {
+    "type": "ENUM",
+    "offset": 16,
+    "enum": {
+     "NOPORT": 0,
+     "COM1": 1,
+     "COM2": 2,
+     "COM3": 3,
+     "ACK": 4,
+     "UNKNOWN": 5,
+     "THISPORT": 6,
+     "FILE": 7,
+     "ALL": 8,
+     "XCOM1": 9,
+     "XCOM2": 10,
+     "USB1": 13,
+     "USB2": 14,
+     "USB3": 15,
+     "AUX": 16,
+     "XCOM3": 17,
+     "COM4": 19,
+     "ETH1": 20,
+     "IMU": 21,
+     "ICOM1": 23,
+     "ICOM2": 24,
+     "ICOM3": 25,
+     "NCOM1": 26,
+     "NCOM2": 27,
+     "NCOM3": 28,
+     "ICOM4": 29,
+     "WCOM1": 30,
+     "COM5": 31,
+     "COM6": 32,
+     "BT1": 33,
+     "COM7": 34,
+     "COM8": 35,
+     "COM9": 36,
+     "COM10": 37,
+     "CCOM1": 38,
+     "CCOM2": 39,
+     "CCOM3": 40,
+     "CCOM4": 41,
+     "CCOM5": 42,
+     "CCOM6": 43,
+     "CCOM7": 44,
+     "CCOM8": 45,
+     "ICOM5": 46,
+     "ICOM6": 47,
+     "ICOM7": 48
+    }
+   },
+   "decoderSyncStatus": {
+    "type": "SHORT",
+    "offset": 20
+   },
+   "decoderChannel": {
+    "type": "SHORT",
+    "offset": 22
+   }
+  }
+ },
+ "2137": {
+  "name": "FILESYSTEMCAPACITY",
+  "countField": "noOfDevices",
+  "blockStart": 4,
+  "blockSize": 20,
+  "fields": {
+   "massStorageDevice": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "SD": 0,
+     "USBSTICK": 1,
+     "RAMDRIVE": 2,
+     "DEFAULT_NO_STORAGE": 3,
+     "INTERNAL_FLASH": 4
+    }
+   },
+   "totalStorage": {
+    "type": "ULONG64",
+    "offset": 4
+   },
+   "usedStorage": {
+    "type": "ULONG64",
+    "offset": 12
+   }
+  }
+ },
+ "2364": {
+  "name": "SKCALIBRATESTATUS",
+  "countField": "noOfEntries",
+  "blockStart": 12,
+  "blockSize": 20,
+  "headerFields": [
+   "mode",
+   "result",
+   "noOfEntries"
+  ],
+  "fields": {
+   "signalType": {
+    "type": "ENUM",
+    "offset": 0
+   },
+   "spoofingCalibrationMode": {
+    "type": "ENUM",
+    "offset": 4
+   },
+   "frontEndMode": {
+    "type": "ENUM",
+    "offset": 8
+   },
+   "calibrationResult": {
+    "type": "ENUM",
+    "offset": 12
+   },
+   "timeStamp": {
+    "type": "ULONG32",
+    "offset": 16
+   }
+  }
+ },
+ "4096": {
+  "name": "AGCINFO",
+  "countField": "noOfEntries",
+  "blockStart": 4,
+  "blockSize": 80,
+  "fields": {
+   "statusWord": {
+    "type": "ULONG32",
+    "offset": 0
+   },
+   "pulseWidth": {
+    "type": "ULONG32",
+    "offset": 8
+   },
+   "modulus": {
+    "type": "ULONG32",
+    "offset": 12
+   },
+   "bin1": {
+    "type": "DOUBLE",
+    "offset": 16
+   },
+   "bin2": {
+    "type": "DOUBLE",
+    "offset": 24
+   },
+   "bin3": {
+    "type": "DOUBLE",
+    "offset": 32
+   },
+   "bin4": {
+    "type": "DOUBLE",
+    "offset": 40
+   },
+   "bin5": {
+    "type": "DOUBLE",
+    "offset": 48
+   },
+   "bin6": {
+    "type": "DOUBLE",
+    "offset": 56
+   },
+   "noiseFloor": {
+    "type": "DOUBLE",
+    "offset": 64
+   },
+   "pulsesBlankedPercent": {
+    "type": "FLOAT",
+    "offset": 72
+   },
+   "dcOffset": {
+    "type": "INT_32",
+    "offset": 76
+   }
+  }
+ },
+ "4098": {
+  "name": "CARDSTATUS",
+  "countField": "cardsCount",
+  "blockStart": 20,
+  "blockSize": 60,
+  "headerFields": [
+   "state",
+   "mode",
+   "attenSetting",
+   "hours",
+   "DSPCErrorSignal",
+   "cardsCount"
+  ],
+  "fields": {
+   "component": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "UNKNOWN": 0,
+     "IOMASTER": 1,
+     "DSPC": 2,
+     "RFCC": 3,
+     "RFDC": 4
+    }
+   },
+   "slotId": {
+    "type": "SHORT",
+    "offset": 4
+   },
+   "moduleId": {
+    "type": "SHORT",
+    "offset": 6
+   },
+   "idleTime": {
+    "type": "FLOAT",
+    "offset": 8
+   },
+   "value_1": {
+    "type": "FLOAT",
+    "offset": 12
+   },
+   "value_2": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "value_3": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "value_4": {
+    "type": "FLOAT",
+    "offset": 24
+   },
+   "value_5": {
+    "type": "FLOAT",
+    "offset": 28
+   },
+   "value_6": {
+    "type": "FLOAT",
+    "offset": 32
+   },
+   "value_7": {
+    "type": "FLOAT",
+    "offset": 36
+   },
+   "value_8": {
+    "type": "FLOAT",
+    "offset": 40
+   },
+   "value_9": {
+    "type": "FLOAT",
+    "offset": 44
+   },
+   "value_10": {
+    "type": "ULONG32",
+    "offset": 48,
+    "note": "注意：schema 偏移 20..76 而块步进为 60 字节，相邻卡记录会重叠读取，按手册应为卡内 0..56"
+   },
+   "warningWord": {
+    "type": "ULONG32",
+    "offset": 52,
+    "note": "同上重叠问题"
+   },
+   "errorWord": {
+    "type": "ULONG32",
+    "offset": 56,
+    "note": "同上重叠问题"
+   }
+  }
+ },
+ "4101": {
+  "name": "ETHSTATUS",
+  "countField": "noOfRecords",
+  "blockStart": 4,
+  "blockSize": 232,
+  "fields": {
+   "type": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "ETHA": 0,
+     "ETHB": 1
+    }
+   },
+   "mac": {
+    "type": "STRING_18",
+    "offset": 4
+   },
+   "reserved": {
+    "type": "SHORT",
+    "offset": 22
+   },
+   "details": {
+    "type": "ENUM",
+    "offset": 24
+   }
+  }
+ },
+ "4103": {
+  "name": "MEASUREMENTDATA",
+  "countField": "count",
+  "blockStart": 4,
+  "blockSize": 64,
+  "fields": {
+   "PRN": {
+    "type": "SHORT",
+    "offset": 0
+   },
+   "svChan": {
+    "type": "SHORT",
+    "offset": 2,
+    "note": "同块"
+   },
+   "sigChan": {
+    "type": "SHORT",
+    "offset": 4,
+    "note": "同块"
+   },
+   "HWChan": {
+    "type": "SHORT",
+    "offset": 6,
+    "note": "同块"
+   },
+   "trackType": {
+    "type": "ULONG32",
+    "offset": 8,
+    "note": "同块"
+   },
+   "PSR": {
+    "type": "DOUBLE",
+    "offset": 12,
+    "note": "同块"
+   },
+   "PSRstd": {
+    "type": "FLOAT",
+    "offset": 20,
+    "note": "同块"
+   },
+   "ADR": {
+    "type": "DOUBLE",
+    "offset": 24,
+    "note": "同块"
+   },
+   "AdrStd": {
+    "type": "FLOAT",
+    "offset": 32,
+    "note": "同块"
+   },
+   "dopp": {
+    "type": "FLOAT",
+    "offset": 36,
+    "note": "同块"
+   },
+   "CNO": {
+    "type": "FLOAT",
+    "offset": 40,
+    "note": "同块"
+   },
+   "lockTime": {
+    "type": "DOUBLE",
+    "offset": 52,
+    "note": "同块（48-55 未使用）"
+   },
+   "channelStatus": {
+    "type": "ULONG32",
+    "offset": 60,
+    "note": "同块"
+   }
+  }
+ },
+ "4106": {
+  "name": "SATPOS",
+  "countField": "numberOfSatellites",
+  "blockStart": 16,
+  "blockSize": 40,
+  "fields": {
+   "prn": {
+    "type": "SHORT",
+    "offset": 0
+   },
+   "PRN": {
+    "type": "SHORT",
+    "offset": 0
+   },
+   "ephemValidity": {
+    "type": "SHORT",
+    "offset": 4
+   },
+   "almValidity": {
+    "type": "SHORT",
+    "offset": 6
+   },
+   "AlmValidity": {
+    "type": "SHORT",
+    "offset": 6
+   },
+   "EphemHealth": {
+    "type": "ULONG32",
+    "offset": 8
+   },
+   "ephHealth": {
+    "type": "ULONG32",
+    "offset": 8
+   },
+   "ephElevation": {
+    "type": "FLOAT",
+    "offset": 12
+   },
+   "EphemElevation": {
+    "type": "FLOAT",
+    "offset": 12
+   },
+   "ephAzimuth": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "EphemAzimuth": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "ephDop": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "EphemDop": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "almHealth": {
+    "type": "ULONG32",
+    "offset": 24
+   },
+   "AlmHealth": {
+    "type": "ULONG32",
+    "offset": 24
+   },
+   "almElevation": {
+    "type": "FLOAT",
+    "offset": 28
+   },
+   "AlmElevation": {
+    "type": "FLOAT",
+    "offset": 28
+   },
+   "almAzimuth": {
+    "type": "FLOAT",
+    "offset": 32
+   },
+   "AlmAzimuth": {
+    "type": "FLOAT",
+    "offset": 32
+   },
+   "almDop": {
+    "type": "FLOAT",
+    "offset": 36
+   }
+  }
+ },
+ "4107": {
+  "name": "TIMESOLUTION",
+  "countField": "channelCount",
+  "blockStart": 36,
+  "blockSize": 52,
+  "fields": {
+   "svChan": {
+    "type": "SHORT",
+    "offset": 0
+   },
+   "sigChan": {
+    "type": "SHORT",
+    "offset": 2
+   },
+   "PRN": {
+    "type": "SHORT",
+    "offset": 4
+   },
+   "TRAIMStatus": {
+    "type": "ULONG32",
+    "offset": 8
+   },
+   "residual": {
+    "type": "FLOAT",
+    "offset": 12
+   },
+   "svclockOffset": {
+    "type": "FLOAT",
+    "offset": 16
+   },
+   "ionoCorr": {
+    "type": "FLOAT",
+    "offset": 20
+   },
+   "tropoCorr": {
+    "type": "FLOAT",
+    "offset": 24
+   },
+   "svPosX": {
+    "type": "DOUBLE",
+    "offset": 28
+   },
+   "svPosY": {
+    "type": "DOUBLE",
+    "offset": 36
+   },
+   "svPosZ": {
+    "type": "DOUBLE",
+    "offset": 44
+   }
+  }
+ },
+ "4108": {
+  "name": "VERSION",
+  "countField": "noOfComponents",
+  "blockStart": 4,
+  "blockSize": 232,
+  "fields": {
+   "type": {
+    "type": "ENUM",
+    "offset": 0,
+    "enum": {
+     "UNKNOWN": 0,
+     "IOMASTER": 1,
+     "DSPC": 2,
+     "RFCC": 3,
+     "RFDC": 4
+    }
+   },
+   "slotId": {
+    "type": "SHORT",
+    "offset": 4
+   },
+   "moduleId": {
+    "type": "SHORT",
+    "offset": 6
+   },
+   "psn": {
+    "type": "STRING_16",
+    "offset": 8
+   },
+   "hwVersion": {
+    "type": "STRING_16",
+    "offset": 24
+   },
+   "swVersion": {
+    "type": "STRING_16",
+    "offset": 40
+   },
+   "pbcVersion": {
+    "type": "STRING_16",
+    "offset": 56
+   },
+   "sbcVersion": {
+    "type": "STRING_16",
+    "offset": 72
+   },
+   "fpgaVersion": {
+    "type": "STRING_16",
+    "offset": 88
+   },
+   "compDate": {
+    "type": "STRING_12",
+    "offset": 104
+   },
+   "compTime": {
+    "type": "STRING_12",
+    "offset": 116
+   },
+   "fwInfoTag": {
+    "type": "STRING_16",
+    "offset": 128
+   },
+   "pbcInfoTag": {
+    "type": "STRING_12",
+    "offset": 192
+   },
+   "sbcInfoTag": {
+    "type": "STRING_12",
+    "offset": 212
+   }
+  }
+ }
+}

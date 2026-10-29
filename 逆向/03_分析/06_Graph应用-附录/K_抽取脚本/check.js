@@ -1,0 +1,11 @@
+const fs = require('fs');
+const t = fs.readFileSync(process.argv[2], 'utf8');
+const lines = t.split('\n');
+let fences = 0;
+for (const l of lines) if (l.trimStart().startsWith('```')) fences++;
+const rn = (t.match(/- `R\d+`/g) || []).length;
+console.log('lines', lines.length, 'chars', t.length);
+console.log('fences', fences, 'balanced', fences % 2 === 0);
+console.log('R items', rn);
+const heads = lines.filter(l => /^## /.test(l));
+console.log(heads.join('\n'));

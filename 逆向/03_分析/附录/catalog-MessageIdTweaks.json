@@ -1,0 +1,540 @@
+{
+ "messagePeriods": {
+  "963": {
+   "Name": "HWMONITOR",
+   "Period": "10"
+  },
+  "1043": {
+   "Name": "SATVIS2",
+   "Period": "10"
+  },
+  "1172": {
+   "Name": "RTKDOP2",
+   "Period": "10"
+  }
+ },
+ "messageTriggers": {
+  "26": {
+   "Name": "CLOCKSTEERING",
+   "Trigger": "ONTIME"
+  },
+  "1067": {
+   "Name": "MARK1PVA",
+   "Trigger": "ONNEW"
+  },
+  "1068": {
+   "Name": "MARK2PVA",
+   "Trigger": "ONNEW"
+  },
+  "1118": {
+   "Name": "MARK3PVA",
+   "Trigger": "ONNEW"
+  },
+  "1119": {
+   "Name": "MARK4PVA",
+   "Trigger": "ONNEW"
+  },
+  "1968": {
+   "Name": "ITPSDFINAL",
+   "Trigger": "ONNEW"
+  },
+  "2063": {
+   "Name": "ITPSDDETECT",
+   "Trigger": "ONNEW"
+  },
+  "2240": {
+   "Name": "LUAOUTPUT",
+   "Trigger": "ONNEW"
+  }
+ },
+ "dualAntennaMsgs": {
+  "43": {
+   "Name": "RANGE_1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "83": {
+   "Name": "TRACKSTAT_1",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "140": {
+   "Name": "RANGECMP_1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1273": {
+   "Name": "RANGECMP2_1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1734": {
+   "Name": "RANGECMP3_1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "2050": {
+   "Name": "RANGECMP4_1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "2537": {
+   "Name": "RANGECMP5_1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  }
+ },
+ "messageIds": {
+  "26": {
+   "Name": "CLOCKSTEERING",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "195": {
+   "Name": "RXHWLEVELS",
+   "Type": "POLLED",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "215": {
+   "Name": "RTKDATA",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "270": {
+   "Name": "SATXYZ",
+   "Type": "STATIC",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "287": {
+   "Name": "RAWWAASFRAME",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "290": {
+   "Name": "WAAS0",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "291": {
+   "Name": "WAAS1",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "292": {
+   "Name": "WAAS10",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "294": {
+   "Name": "WAAS17",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "295": {
+   "Name": "WAAS18",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "296": {
+   "Name": "WAAS2",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "297": {
+   "Name": "WAAS24",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "298": {
+   "Name": "WAAS25",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "299": {
+   "Name": "WAAS26",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "300": {
+   "Name": "WAAS27",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "301": {
+   "Name": "WAAS3",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "302": {
+   "Name": "WAAS4",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "303": {
+   "Name": "WAAS5",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "305": {
+   "Name": "WAAS7",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "306": {
+   "Name": "WAAS9",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "313": {
+   "Name": "WAASCORR",
+   "Type": "SYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "378": {
+   "Name": "INSBIASES",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "495": {
+   "Name": "OMNIHPPOS",
+   "Type": "SYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "622": {
+   "Name": "TIMEDWHEELDATA",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "696": {
+   "Name": "WAAS32",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "697": {
+   "Name": "WAAS33",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "698": {
+   "Name": "WAAS34",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "699": {
+   "Name": "WAAS35",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "700": {
+   "Name": "WAAS45",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "758": {
+   "Name": "INSRB",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "860": {
+   "Name": "OMNIVIS",
+   "Type": "SYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "963": {
+   "Name": "HWMONITOR",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1043": {
+   "Name": "SATVIS2",
+   "Type": "SYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1079": {
+   "Name": "SIGNALCONFIGURATION",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1114": {
+   "Name": "GALECUTOFF",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1133": {
+   "Name": "HEADINGEXTIN",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1173": {
+   "Name": "SBASFAST",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1182": {
+   "Name": "SBASMASK",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1192": {
+   "Name": "GRIDIONO",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1193": {
+   "Name": "GPGSTDATA",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1197": {
+   "Name": "OMNIHPSATS",
+   "Type": "SYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1230": {
+   "Name": "GPRMCDATA",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1349": {
+   "Name": "GENERATEALIGNCORRECTIONS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1426": {
+   "Name": "CORRECTIONSTATS",
+   "Type": "POLLED",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1500": {
+   "Name": "GPSCNAVEPHEM",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1501": {
+   "Name": "GPSRAWCNAVEPHEM",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1502": {
+   "Name": "GPSCNAVMIDIALM",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1503": {
+   "Name": "GPSRAWCNAVMIDIALM",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1504": {
+   "Name": "GPSCNAVREDUCEDALM",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1505": {
+   "Name": "GPSRAWCNAVREDUCEDALM",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1507": {
+   "Name": "GPSCNAVGROUPDELAY",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1511": {
+   "Name": "GPSRAWCNAVMESSAGE",
+   "Type": "COLLECTION",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1533": {
+   "Name": "GPSNAVCDC",
+   "Type": "COLLECTION",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1534": {
+   "Name": "GPSNAVEDC",
+   "Type": "COLLECTION",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1748": {
+   "Name": "EM3000",
+   "Type": "SYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1819": {
+   "Name": "CELLULARIPSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1869": {
+   "Name": "GPGNS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1876": {
+   "Name": "CORRECTIONSQUALITY",
+   "Type": "SYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "1951": {
+   "Name": "SAVEDSURVEYPOSITIONS",
+   "Type": "STATIC",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "2018": {
+   "Name": "SRTKSUBSCRIPTIONS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2060": {
+   "Name": "SAFEMODESTATUS",
+   "Type": "STATIC",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "2074": {
+   "Name": "TERRASTARBEAMSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2310": {
+   "Name": "TILTSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2358": {
+   "Name": "SKDETECTCONFIG",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2361": {
+   "Name": "SKPOWERSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2362": {
+   "Name": "SKPRNSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2364": {
+   "Name": "SKCALIBRATESTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2366": {
+   "Name": "SKCALIBRATE",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "2368": {
+   "Name": "SKCOMPLETECALIBRATESTATUS",
+   "Type": "ASYNCH",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "8203": {
+   "Name": "MM2TSTATUS",
+   "Type": "ASYNC",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "8207": {
+   "Name": "P400STATUS",
+   "Type": "ASYNC",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "8208": {
+   "Name": "P400INFO",
+   "Type": "ASYNC",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "8215": {
+   "Name": "P400SETTINGS",
+   "Type": "ASYNC",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  },
+  "8217": {
+   "Name": "MM2TSETTINGS",
+   "Type": "POLLED",
+   "Category": "Hidden",
+   "CorrectionType": "NOVATEL"
+  }
+ }
+}

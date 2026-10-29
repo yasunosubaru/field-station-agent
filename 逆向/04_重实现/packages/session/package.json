@@ -1,0 +1,17 @@
+{
+  "name": "@nas-reimpl/session",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "无界面的接收机会话层：传输、成帧、日志分派、心跳、命令下发",
+  "main": "src/session.ts",
+  "exports": {
+    ".": "./src/session.ts"
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

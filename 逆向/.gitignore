@@ -1,0 +1,20 @@
+# 逆向工作区的例外说明
+#
+# `03_分析/`、`04_重实现/`、`tools/`、`README.md`、`00_来源/` 里的自产证据（哈希基线、
+# asar 清单）是本仓库自己的产出，入库。
+#
+# 下面这些**不入库**：要么是第三方的商业二进制/文档原文（本仓库公开、且没有 LICENSE，
+# 默认保留所有权利，引入第三方必须先过合规），要么超过 GitHub 单文件 100 MB 硬限制。
+#
+#   01_解包/        解包后的 NovAtel Application Suite（260 MB，含 150 MB 的
+#                   Graph_Setup.exe、pimtpaddon.node、edie-node-wrappers.node 等
+#                   厂商二进制）。可用 tools/asar_extract.js 从本机安装目录重建。
+#   02_证据/        REA 静态分析产物（163 MB 单文件 rea-app-analysis.json，超过
+#                   GitHub 100 MB 限制且属工具中间产物）。可用 rea CLI 重建。
+#   00_来源/手册文本/  厂商手册的文本抽取（版权归 NovAtel）。原始 PDF 在
+#                   `NovAtel/00_手册/`，按需重新抽取即可。
+#
+# 重建方式见 逆向/README.md「快速开始」。
+01_解包/
+02_证据/
+00_来源/手册文本/

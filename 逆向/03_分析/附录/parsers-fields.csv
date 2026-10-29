@@ -1,0 +1,881 @@
+﻿msgId,msgName,field,type,offset,scaleFactor,enumTable,notes
+3,INTERFACEMODE,port,ENUM,0,1,NovatelIdConstants.commandsAndEnums.interfacemode.port,原始 UINT_32 枚举
+3,INTERFACEMODE,rxType,ENUM,4,1,NovatelIdConstants.commandsAndEnums.interfacemode.rxtype,原始 UINT_32 枚举
+3,INTERFACEMODE,txType,ENUM,8,1,NovatelIdConstants.commandsAndEnums.interfacemode.txtype,原始 UINT_32 枚举
+3,INTERFACEMODE,responses,ENUM,12,1,NovatelIdConstants.commandsAndEnums.interfacemode.responses,原始 UINT_32 枚举
+5,LOGLIST,noOfLogs,ULONG32,0,1,,
+5,LOGLIST,port,ENUM,4,1,NovatelIdConstants.portsMap,所在重复块 system，每项 32 字节；原始 UINT_32 枚举
+5,LOGLIST,message,SHORT,8,1,,所在重复块 system，每项 32 字节
+5,LOGLIST,messageType,UCHAR,10,1,,所在重复块 system，每项 32 字节
+5,LOGLIST,reserved,UCHAR,11,1,,所在重复块 system，每项 32 字节
+5,LOGLIST,trigger,ENUM,12,1,NovatelIdConstants.LogTriggerEnum,所在重复块 system，每项 32 字节；原始 UINT_32 枚举
+5,LOGLIST,period,DOUBLE,16,1,,所在重复块 system，每项 32 字节
+5,LOGLIST,offset,DOUBLE,24,1,,所在重复块 system，每项 32 字节
+5,LOGLIST,hold,ENUM,32,1,,所在重复块 system，每项 32 字节；原始 UINT_32 枚举
+37,VERSION,noOfComponents,ULONG32,0,1,,
+37,VERSION,type,ENUM,4,1,NovatelIdConstants.componentType,所在重复块 system，每项 108 字节；原始 UINT_32 枚举
+37,VERSION,model,STRING_16,8,1,,所在重复块 system，每项 108 字节
+37,VERSION,PSN,STRING_16,24,1,,所在重复块 system，每项 108 字节
+37,VERSION,hardwareVersion,STRING_16,40,1,,所在重复块 system，每项 108 字节
+37,VERSION,softwareVersion,STRING_16,56,1,,所在重复块 system，每项 108 字节
+37,VERSION,bootVersion,STRING_16,72,1,,所在重复块 system，每项 108 字节
+37,VERSION,compileDate,STRING_12,88,1,,所在重复块 system，每项 108 字节
+37,VERSION,compileTime,STRING_12,100,1,,所在重复块 system，每项 108 字节
+42,BESTPOS,solutionStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,原始 UINT_32 枚举
+42,BESTPOS,positionType,ENUM,4,1,NovatelIdConstants.positionType,原始 UINT_32 枚举
+42,BESTPOS,sentenceTerminator,HEX,4,1,,偏移 4：疑似写错：偏移 4 与 positionType 重叠；dummyJSON 未请求该字段，实际不会输出
+42,BESTPOS,latitude,DOUBLE,8,1,,
+42,BESTPOS,idleTime,HEX,12,0.5,,绝对偏移（headerOffset=0）；换算 v/2
+42,BESTPOS,longitude,DOUBLE,16,1,,
+42,BESTPOS,height,DOUBLE,24,1,,
+42,BESTPOS,undulation,FLOAT,32,1,,
+42,BESTPOS,datumId,ENUM,36,1,NovatelIdConstants.datumId,原始 UINT_32 枚举
+42,BESTPOS,latitudeDeviation,FLOAT,40,1,,
+42,BESTPOS,longitudeDeviation,FLOAT,44,1,,
+42,BESTPOS,heightDeviation,FLOAT,48,1,,
+42,BESTPOS,stationId,STRING_4,52,1,,
+42,BESTPOS,differentialAge,FLOAT,56,1,,
+42,BESTPOS,solutionAge,FLOAT,60,1,,
+42,BESTPOS,satellitesTracked,UCHAR,64,1,,
+42,BESTPOS,satellitesUsed,UCHAR,65,1,,
+42,BESTPOS,satellitesUsedInL1,UCHAR,66,1,,
+42,BESTPOS,satellitesWithMultiFreqCount,UCHAR,67,1,,
+42,BESTPOS,extendedSolutionStatus,HEX,69,1,,
+42,BESTPOS,signalMaskGalBds,HEX,70,1,,
+42,BESTPOS,signalMaskGpsGlo,HEX,71,1,,
+42,BESTPOS,CRC,HEX,72,1,,
+50,ECUTOFF,angle,FLOAT,0,1,,
+72,PORTSTATS,noOfPorts,ULONG32,0,1,,
+72,PORTSTATS,port,ENUM,4,1,NovatelIdConstants.commandsAndEnums.interfacemode.port,所在重复块 system，每项 40 字节；原始 UINT_32 枚举
+72,PORTSTATS,rxChars,ULONG32,8,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,txChars,ULONG32,12,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,accRxChars,ULONG32,16,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,droppedRxChars,ULONG32,20,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,interrupts,ULONG32,24,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,breaks,ULONG32,28,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,parErr,ULONG32,32,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,frameErr,ULONG32,36,1,,所在重复块 system，每项 40 字节
+72,PORTSTATS,rxOverruns,ULONG32,40,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,solutionStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,所在重复块 sats；原始 UINT_32 枚举
+83,TRACKSTAT,positionType,ENUM,4,1,NovatelIdConstants.positionType,所在重复块 sats；原始 UINT_32 枚举
+83,TRACKSTAT,cutoff,FLOAT,8,1,,所在重复块 sats
+83,TRACKSTAT,numberOfChannels,ULONG32,12,1,,所在重复块 sats
+83,TRACKSTAT,PRN,SHORT,16,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,glonassFrequency,SHORT,18,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,channelTrackingStatus,ULONG32,20,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,pseudoRange,DOUBLE,24,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,doppler,FLOAT,32,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,carrierNoiseRatio,FLOAT,36,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,lockTime,FLOAT,40,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,pseudoRangeResidual,FLOAT,44,1,,所在重复块 system，每项 40 字节
+83,TRACKSTAT,reject,ENUM,48,1,,所在重复块 system，每项 40 字节；原始 UINT_32 枚举
+83,TRACKSTAT,pseudoRangeWeight,FLOAT,52,1,,所在重复块 system，每项 40 字节
+93,RXSTATUS,time,DATE,-1,1,,非 payload：jarvisInterface.getLogTimeStamp（header 14/16）
+93,RXSTATUS,rxerror,UINT_32,0,1,,headerOffset=28 起，直接 getUint32；未做枚举映射
+93,RXSTATUS,noofstats,UINT_32,4,1,,→ 输出 noOfStats
+93,RXSTATUS,rxstatus,UINT_32,8,1,,按位取 2/3/9/15/17 bit 输出 rxstatus2bit 等
+93,RXSTATUS,aux1status,UINT_32,24,1,NovatelIdConstants.rxStatusPortsMap.aux1Stats,按位映射到端口（portsRxData）
+93,RXSTATUS,aux2status,UINT_32,40,1,NovatelIdConstants.rxStatusPortsMap.aux2Stats,按位映射到端口（portsRxData）
+93,RXSTATUS,aux3status,UINT_32,56,1,,取 bit25 → aux3status25bit
+93,RXSTATUS,aux4status,UINT_32,72,1,,取低 2 bit → aux4statusBit
+94,RXSTATUSEVENT,word,ENUM,0,1,NovatelIdConstants.rsStatusEventWordEnum,原始 UINT_32 枚举
+94,RXSTATUSEVENT,bitPosition,ULONG32,4,1,,
+94,RXSTATUSEVENT,event,ENUM,8,1,NovatelIdConstants.rsStatusEventTypeEnum,原始 UINT_32 枚举
+94,RXSTATUSEVENT,description,ustringvariable,12,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+99,BESTVEL,horSpeed,DOUBLE,16,1,,
+99,BESTVEL,trkGround,DOUBLE,24,1,,
+101,TIME,clockStatus,ENUM,0,1,,原始 UINT_32 枚举
+101,TIME,offset,DOUBLE,4,1,,
+101,TIME,offsetStd,DOUBLE,12,1,,
+101,TIME,utcOffset,DOUBLE,20,1,,
+101,TIME,utcYear,ULONG32,28,1,,
+101,TIME,utcMonth,UCHAR,32,1,,
+101,TIME,utcDay,UCHAR,33,1,,
+101,TIME,utcHour,UCHAR,34,1,,
+101,TIME,utcMin,UCHAR,35,1,,
+101,TIME,utcMS,ULONG32,36,1,,
+101,TIME,utcStatus,ENUM,40,1,,原始 UINT_32 枚举
+172,AVEPOS,latitude,DOUBLE,0,1,,
+172,AVEPOS,longitude,DOUBLE,8,1,,
+172,AVEPOS,height,DOUBLE,16,1,,
+172,AVEPOS,latitudeDeviation,FLOAT,24,1,,
+172,AVEPOS,longitudeDeviation,FLOAT,28,1,,
+172,AVEPOS,heightDeviation,FLOAT,32,1,,
+172,AVEPOS,posaveStatus,ENUM,36,1,NovatelIdConstants.posaveStatus,原始 UINT_32 枚举
+172,AVEPOS,avetime,ULONG32,40,1,,
+172,AVEPOS,noOfSamples,ULONG32,44,1,,
+173,POSAVE,state,ENUM,0,1,,原始 UINT_32 枚举
+173,POSAVE,posavetime,FLOAT,4,1,,
+173,POSAVE,accuracy,FLOAT,8,1,,
+173,POSAVE,maxvstd,FLOAT,12,1,,
+174,PSRDOP,gdop,FLOAT,0,1,,
+174,PSRDOP,pdop,FLOAT,4,1,,
+174,PSRDOP,hdop,FLOAT,8,1,,
+174,PSRDOP,htdop,FLOAT,12,1,,
+174,PSRDOP,tdop,FLOAT,16,1,,
+174,PSRDOP,cutoff,FLOAT,20,1,,
+174,PSRDOP,prnCount,ULONG16,24,1,,
+174,PSRDOP,prnList,ULONG16,28,1,,
+181,MARKPOS,solutionStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,原始 UINT_32 枚举
+181,MARKPOS,positionType,ENUM,4,1,NovatelIdConstants.positionType,原始 UINT_32 枚举
+181,MARKPOS,sentenceTerminator,HEX,4,1,,
+181,MARKPOS,latitude,DOUBLE,8,1,,
+181,MARKPOS,idleTime,HEX,12,1,,
+181,MARKPOS,longitude,DOUBLE,16,1,,
+181,MARKPOS,height,DOUBLE,24,1,,
+181,MARKPOS,undulation,FLOAT,32,1,,
+181,MARKPOS,datumId,ENUM,36,1,NovatelIdConstants.datumId,原始 UINT_32 枚举
+181,MARKPOS,latitudeDeviation,FLOAT,40,1,,
+181,MARKPOS,longitudeDeviation,FLOAT,44,1,,
+181,MARKPOS,heightDeviation,FLOAT,48,1,,
+181,MARKPOS,stationId,FLOAT,52,1,,
+181,MARKPOS,differentialAge,FLOAT,56,1,,
+181,MARKPOS,solutionAge,FLOAT,60,1,,
+181,MARKPOS,satellitesTracked,UCHAR,64,1,,
+181,MARKPOS,satellitesUsedInsolution,UCHAR,65,1,,
+181,MARKPOS,satellitesUsedInL1,UCHAR,66,1,,
+181,MARKPOS,satellitesWithMultiFreqCount,UCHAR,67,1,,
+181,MARKPOS,extendedSolutionStatus,HEX,69,1,,
+181,MARKPOS,signalMaskGalBds,HEX,70,1,,
+181,MARKPOS,signalMaskGpsGlo,HEX,71,1,,
+181,MARKPOS,CRC,HEX,72,1,,
+206,VALIDMODELS,expday,ULONG32,-1,1,,所在重复块 system，变长；实际偏移 = headerOffset + 8
+206,VALIDMODELS,expmonth,ULONG32,-1,1,,所在重复块 system，变长；实际偏移 = headerOffset + 8
+206,VALIDMODELS,expyear,ULONG32,-1,1,,所在重复块 system，变长；实际偏移 = headerOffset + 8（代码对 model 以外的字段一律 +8）
+206,VALIDMODELS,model,ustringvariable,-1,1,,"所在重复块 system，变长；变长串；读完后 headerOffset = model.offset + 8，其余字段相对 +8；变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+206,VALIDMODELS,noOfModels,ULONG32,0,1,,
+379,INSCOMMAND,switch,ENUM,0,1,NovatelIdConstants.insCommandSwitchEnum,原始 UINT_32 枚举
+383,SETIMUTOANTOFFSET,xOffset,DOUBLE,0,1,,
+383,SETIMUTOANTOFFSET,yOffset,DOUBLE,8,1,,
+383,SETIMUTOANTOFFSET,zOffset,DOUBLE,16,1,,
+383,SETIMUTOANTOFFSET,xOffsetSD,DOUBLE,24,1,,
+383,SETIMUTOANTOFFSET,yOffsetSD,DOUBLE,32,1,,
+383,SETIMUTOANTOFFSET,zOffsetSD,DOUBLE,40,1,,
+507,INSPVA,week,ULONG32,0,1,,
+507,INSPVA,seconds,DOUBLE,4,1,,
+507,INSPVA,latitude,DOUBLE,8,1,,
+507,INSPVA,longitude,DOUBLE,16,1,,
+507,INSPVA,height,DOUBLE,24,1,,
+507,INSPVA,northVelocity,DOUBLE,36,1,,
+507,INSPVA,eastVelocity,DOUBLE,44,1,,
+507,INSPVA,upVelocity,DOUBLE,52,1,,
+507,INSPVA,roll,DOUBLE,60,1,,
+507,INSPVA,pitch,DOUBLE,68,1,,
+507,INSPVA,azimuth,DOUBLE,76,1,,
+507,INSPVA,status,ENUM,84,1,NovatelIdConstants.inspvaStatusEnum,原始 UINT_32 枚举
+567,SETIMUORIENTATION,switch,ENUM,0,1,NovatelIdConstants.imuOrientationEnum,原始 UINT_32 枚举
+613,PPSCONTROL,switch,ENUM,0,1,NovatelIdConstants.PPSControlStatus,原始 UINT_32 枚举
+613,PPSCONTROL,polarity,ENUM,4,1,NovatelIdConstants.PolarityPluseStatus,原始 UINT_32 枚举
+613,PPSCONTROL,period,DOUBLE,8,1,,
+613,PPSCONTROL,pulsewidth,ULONG32,16,1,,
+615,MARK2POS,solutionStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,原始 UINT_32 枚举
+615,MARK2POS,positionType,ENUM,4,1,NovatelIdConstants.positionType,原始 UINT_32 枚举
+615,MARK2POS,sentenceTerminator,HEX,4,1,,
+615,MARK2POS,latitude,DOUBLE,8,1,,
+615,MARK2POS,idleTime,HEX,12,1,,
+615,MARK2POS,longitude,DOUBLE,16,1,,
+615,MARK2POS,height,DOUBLE,24,1,,
+615,MARK2POS,undulation,FLOAT,32,1,,
+615,MARK2POS,datumId,ENUM,36,1,NovatelIdConstants.datumId,原始 UINT_32 枚举
+615,MARK2POS,latitudeDeviation,FLOAT,40,1,,
+615,MARK2POS,longitudeDeviation,FLOAT,44,1,,
+615,MARK2POS,heightDeviation,FLOAT,48,1,,
+615,MARK2POS,stationId,FLOAT,52,1,,
+615,MARK2POS,differentialAge,FLOAT,56,1,,
+615,MARK2POS,solutionAge,FLOAT,60,1,,
+615,MARK2POS,satellitesTracked,UCHAR,64,1,,
+615,MARK2POS,satellitesUsedInsolution,UCHAR,65,1,,
+615,MARK2POS,satellitesUsedInL1,UCHAR,66,1,,
+615,MARK2POS,satellitesWithMultiFreqCount,UCHAR,67,1,,
+615,MARK2POS,extendedSolutionStatus,HEX,69,1,,
+615,MARK2POS,signalMaskGalBds,HEX,70,1,,
+615,MARK2POS,signalMaskGpsGlo,HEX,71,1,,
+615,MARK2POS,CRC,HEX,72,1,,
+642,VEHICLEBODYROTATION,xAngle,DOUBLE,0,1,,
+642,VEHICLEBODYROTATION,yAngle,DOUBLE,8,1,,
+642,VEHICLEBODYROTATION,zAngle,DOUBLE,16,1,,
+642,VEHICLEBODYROTATION,xAngleSD,DOUBLE,24,1,,
+642,VEHICLEBODYROTATION,yAngleSD,DOUBLE,32,1,,
+642,VEHICLEBODYROTATION,zAngleSD,DOUBLE,40,1,,
+652,SBASCONTROL,switch,ENUM,0,1,,原始 UINT_32 枚举
+652,SBASCONTROL,system,ENUM,4,1,NovatelIdConstants.commandsAndEnums.sbascontrol.system,原始 UINT_32 枚举
+652,SBASCONTROL,prn,ULONG32,8,1,,
+652,SBASCONTROL,testMode,ENUM,12,1,NovatelIdConstants.commandsAndEnums.sbascontrol.testmode,原始 UINT_32 枚举
+676,SETINSOFFSET,xOffset,DOUBLE,0,1,,
+676,SETINSOFFSET,yOffset,DOUBLE,8,1,,
+676,SETINSOFFSET,zOffset,DOUBLE,16,1,,
+691,GGAQUALITY,noOfEntries,ULONG32,0,1,,
+691,GGAQUALITY,posType,ENUM,4,1,NovatelIdConstants.positionType,所在重复块 system；原始 UINT_32 枚举
+691,GGAQUALITY,quality,ULONG32,8,1,,所在重复块 system
+735,GLOECUTOFF,angle,FLOAT,0,1,,
+858,RTKANTENNA,posref,ENUM,0,1,NovatelIdConstants.rtkantennaPosref,原始 UINT_32 枚举
+858,RTKANTENNA,pcv,ENUM,4,1,NovatelIdConstants.rtkAntennaPCV,原始 UINT_32 枚举
+861,NMEATALKER,option,ENUM,0,1,NovatelIdConstants.nmeaTalkeroption,原始 UINT_32 枚举
+963,HWMONITOR,<readingType>,ENUM,-1,1,NovatelIdConstants.HwMonitorStatusReadingType[(status>>8)&0xff],不是 payload 字段：用 status 高字节查表决定输出键名（temperature/antennaVoltage/...）；OEMSTAR 走索引 k
+963,HWMONITOR,noOfMeasurements,ULONG32,0,1,,headerOffset=28；随后按 8 字节步进循环
+963,HWMONITOR,reading,FLOAT,4,1,,所在重复块 system，每项 8 字节
+963,HWMONITOR,status,ULONG32,8,1,,所在重复块 system；bit0-7 = 阈值(输出为 <readingType>Bound)，bit8-15 = 读数类型索引
+963,HWMONITOR,idleTime,HEX,12,0.5,,绝对偏移 12（headerOffset 传 0）；换算 100 − v/2
+1043,SATVIS2,satelliteSystem,ENUM,0,1,,所在重复块 sats；原始 UINT_32 枚举
+1043,SATVIS2,satVisibility,ENUM,4,1,,所在重复块 sats；原始 UINT_32 枚举
+1043,SATVIS2,almanacFlag,ENUM,8,1,,所在重复块 sats；原始 UINT_32 枚举
+1043,SATVIS2,numberOfSatellites,ULONG32,12,1,,所在重复块 sats
+1043,SATVIS2,satelliteId,ENUM,16,1,,所在重复块 system，每项 40 字节；原始 UINT_32 枚举
+1043,SATVIS2,satelliteIdTemp,UINT_16,16,1,,所在重复块 system，每项 40 字节
+1043,SATVIS2,health,ENUM,20,1,,所在重复块 system，每项 40 字节；原始 UINT_32 枚举
+1043,SATVIS2,elevation,DOUBLE,24,1,,所在重复块 system，每项 40 字节
+1043,SATVIS2,azimuth,DOUBLE,32,1,,所在重复块 system，每项 40 字节
+1043,SATVIS2,trueDoppler,DOUBLE,40,1,,所在重复块 system，每项 40 字节
+1043,SATVIS2,apparentDoppler,DOUBLE,48,1,,所在重复块 system，每项 40 字节
+1067,MARK1PVA,week,ULONG32,0,1,,
+1067,MARK1PVA,seconds,DOUBLE,4,1,,
+1067,MARK1PVA,latitude,DOUBLE,12,1,,
+1067,MARK1PVA,longitude,DOUBLE,20,1,,
+1067,MARK1PVA,height,DOUBLE,24,1,,
+1067,MARK1PVA,northVelocity,DOUBLE,36,1,,
+1067,MARK1PVA,eastVelocity,DOUBLE,44,1,,
+1067,MARK1PVA,upVelocity,DOUBLE,52,1,,
+1067,MARK1PVA,roll,DOUBLE,60,1,,
+1067,MARK1PVA,pitch,DOUBLE,68,1,,
+1067,MARK1PVA,azimuth,DOUBLE,76,1,,
+1067,MARK1PVA,status,ENUM,84,1,NovatelIdConstants.inspvaStatusEnum,原始 UINT_32 枚举
+1068,MARK2PVA,week,ULONG32,0,1,,
+1068,MARK2PVA,seconds,DOUBLE,4,1,,
+1068,MARK2PVA,latitude,DOUBLE,12,1,,
+1068,MARK2PVA,longitude,DOUBLE,20,1,,
+1068,MARK2PVA,height,DOUBLE,24,1,,
+1068,MARK2PVA,northVelocity,DOUBLE,36,1,,
+1068,MARK2PVA,eastVelocity,DOUBLE,44,1,,
+1068,MARK2PVA,upVelocity,DOUBLE,52,1,,
+1068,MARK2PVA,roll,DOUBLE,60,1,,
+1068,MARK2PVA,pitch,DOUBLE,68,1,,
+1068,MARK2PVA,azimuth,DOUBLE,76,1,,
+1068,MARK2PVA,status,ENUM,84,1,NovatelIdConstants.inspvaStatusEnum,原始 UINT_32 枚举
+1071,APPLYVEHICLEBODYROTATION,switch,ENUM,0,1,NovatelIdConstants.applyVBREnum,原始 UINT_32 枚举
+1082,HEADINGOFFSET,headingoffsetindeg,FLOAT,0,1,,
+1082,HEADINGOFFSET,pitchoffsetindeg,FLOAT,4,1,,
+1114,GALECUTOFF,angle,FLOAT,0,1,,
+1118,MARK3PVA,week,ULONG32,0,1,,
+1118,MARK3PVA,seconds,DOUBLE,4,1,,
+1118,MARK3PVA,latitude,DOUBLE,12,1,,
+1118,MARK3PVA,longitude,DOUBLE,20,1,,
+1118,MARK3PVA,height,DOUBLE,24,1,,
+1118,MARK3PVA,northVelocity,DOUBLE,36,1,,
+1118,MARK3PVA,eastVelocity,DOUBLE,44,1,,
+1118,MARK3PVA,upVelocity,DOUBLE,52,1,,
+1118,MARK3PVA,roll,DOUBLE,60,1,,
+1118,MARK3PVA,pitch,DOUBLE,68,1,,
+1118,MARK3PVA,azimuth,DOUBLE,76,1,,
+1118,MARK3PVA,status,ENUM,84,1,NovatelIdConstants.inspvaStatusEnum,原始 UINT_32 枚举
+1119,MARK4PVA,week,ULONG32,0,1,,
+1119,MARK4PVA,seconds,DOUBLE,4,1,,
+1119,MARK4PVA,latitude,DOUBLE,12,1,,
+1119,MARK4PVA,longitude,DOUBLE,20,1,,
+1119,MARK4PVA,height,DOUBLE,24,1,,
+1119,MARK4PVA,northVelocity,DOUBLE,36,1,,
+1119,MARK4PVA,eastVelocity,DOUBLE,44,1,,
+1119,MARK4PVA,upVelocity,DOUBLE,52,1,,
+1119,MARK4PVA,roll,DOUBLE,60,1,,
+1119,MARK4PVA,pitch,DOUBLE,68,1,,
+1119,MARK4PVA,azimuth,DOUBLE,76,1,,
+1119,MARK4PVA,status,ENUM,84,1,NovatelIdConstants.inspvaStatusEnum,原始 UINT_32 枚举
+1146,LOGFILESTATUS,fileName,ustring,-1,1,,自 headerOffset+4 读至 \0
+1146,LOGFILESTATUS,fileSize,UINT_32,-1,1,,偏移 = (128 − 文件名长度) + 文件名结束位置
+1146,LOGFILESTATUS,fileStatusEnum,UINT_32,0,1,NovatelIdConstants.FileSystemStatusConstants,headerOffset+0
+1148,CHANCONFIGLIST,setInUse,ULONG32,0,1,,
+1148,CHANCONFIGLIST,numOfChanConfig,ULONG32,4,1,,
+1148,CHANCONFIGLIST,numOfSignalTypes,ULONG32,8,1,,所在重复块 signals
+1148,CHANCONFIGLIST,numChans,ULONG32,12,1,,所在重复块 signals.chans；偏移 12：每条 8 字节信号记录内的通道数
+1148,CHANCONFIGLIST,signalType,ULONG32,16,1,,所在重复块 signals.chans；偏移 16：信号类型表；signalType 查 chanConfigListSignalType 或 updatedChanConfigListSignalType，未命中则丢弃该条；每组信号类型后再 +4
+1194,BESTSATS,entries,ULONG32,0,1,,所在重复块 sats
+1194,BESTSATS,system,ENUM,4,1,NovatelIdConstants.satvisConstellationMap,所在重复块 system，每项 16 字节；原始 UINT_32 枚举
+1194,BESTSATS,satelliteID,ENUM,8,1,,所在重复块 system，每项 16 字节；原始 UINT_32 枚举
+1194,BESTSATS,satelliteIDTemp,UINT_16,8,1,,所在重复块 system，每项 16 字节
+1194,BESTSATS,status,ENUM,12,1,,所在重复块 system，每项 16 字节；原始 UINT_32 枚举
+1194,BESTSATS,SignalMask,HEX,16,1,,所在重复块 system，每项 16 字节
+1201,LBANDTRACKSTAT,noOfEntries,ULONG32,0,1,,
+1201,LBANDTRACKSTAT,name,STRING_8,4,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,frequency,ULONG32,12,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,baud_rate ,SHORT,16,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,id,SHORT,18,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,status,SHORT,20,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,reserved,SHORT,22,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,doppler,FLOAT,24,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,C/No,FLOAT,28,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,phaseStdDev,FLOAT,32,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,lockTime,FLOAT,36,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,uniqueWordBits,ULONG32,40,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,badUniqueWordBits,ULONG32,44,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,badUniqueWords,ULONG32,48,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,viterbiSymbols,ULONG32,52,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,correctedViterbi,ULONG32,56,1,,所在重复块 system，每项 60 字节
+1201,LBANDTRACKSTAT,biterrorRate,FLOAT,60,1,,所在重复块 system，每项 60 字节
+1205,SETIMUTOANTOFFSET2,xOffset,DOUBLE,0,1,,
+1205,SETIMUTOANTOFFSET2,yOffset,DOUBLE,8,1,,
+1205,SETIMUTOANTOFFSET2,zOffset,DOUBLE,16,1,,
+1205,SETIMUTOANTOFFSET2,xOffsetSD,DOUBLE,24,1,,
+1205,SETIMUTOANTOFFSET2,yOffsetSD,DOUBLE,32,1,,
+1205,SETIMUTOANTOFFSET2,zOffsetSD,DOUBLE,40,1,,
+1235,SOFTLOADSTATUS,status,ENUM,0,1,NovatelIdConstants.softloadStatusType,原始 UINT_32 枚举
+1243,IPCONFIG,gateway,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1243,IPCONFIG,interface,ENUM,0,1,,原始 UINT_32 枚举
+1243,IPCONFIG,netmask,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1243,IPCONFIG,mode,ENUM,4,1,NovatelIdConstants.ipConfigMode,原始 UINT_32 枚举
+1243,IPCONFIG,ipAddress,ustringvariable,8,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1244,DNSCONFIG,dnsserver,ENUM,0,1,,原始 UINT_32 枚举
+1244,DNSCONFIG,ipAddress,ustringvariable,4,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1246,SERIALCONFIG,port,ENUM,0,1,NovatelIdConstants.serialPortEnum,原始 UINT_32 枚举
+1246,SERIALCONFIG,baud,ULONG32,4,1,,
+1246,SERIALCONFIG,parity,ENUM,8,1,NovatelIdConstants.ParityEnums,原始 UINT_32 枚举
+1246,SERIALCONFIG,databits,ULONG32,12,1,,
+1246,SERIALCONFIG,stopbits,ULONG32,16,1,,
+1246,SERIALCONFIG,handshake,ENUM,20,1,NovatelIdConstants.SerialConfigHandShakeEnums,原始 UINT_32 枚举
+1246,SERIALCONFIG,break,ENUM,24,1,NovatelIdConstants.CommonOnOFFEnums,原始 UINT_32 枚举
+1248,ICOMCONFIG,port,ENUM,0,1,NovatelIdConstants.CommunicationPortIdentifiers,原始 UINT_32 枚举
+1248,ICOMCONFIG,protocol,ENUM,4,1,NovatelIdConstants.ProtocolEnums,原始 UINT_32 枚举
+1248,ICOMCONFIG,endPoint,ustringvariable,8,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1248,ICOMCONFIG,bindInterface,ENUM,88,1,,原始 UINT_32 枚举
+1249,NTRIPCONFIG,bindInterface,ENUM,0,1,,原始 UINT_32 枚举
+1249,NTRIPCONFIG,mountpoint,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1249,NTRIPCONFIG,password,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1249,NTRIPCONFIG,port,ENUM,0,1,NovatelIdConstants.commandsAndEnums.ntripconfig.port,原始 UINT_32 枚举
+1249,NTRIPCONFIG,userName,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1249,NTRIPCONFIG,type,ENUM,4,1,NovatelIdConstants.commandsAndEnums.ntripconfig.type,原始 UINT_32 枚举
+1249,NTRIPCONFIG,protocol,ENUM,8,1,NovatelIdConstants.commandsAndEnums.ntripconfig.protocol,原始 UINT_32 枚举
+1249,NTRIPCONFIG,endpoint,ustringvariable,12,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1260,GENERATERTKCORRECTIONS,mode,ENUM,0,1,NovatelIdConstants.commandsAndEnums.generatertk.mode,原始 UINT_32 枚举
+1260,GENERATERTKCORRECTIONS,port,ENUM,4,1,NovatelIdConstants.commandsAndEnums.generatertk.port,原始 UINT_32 枚举
+1289,IPSTATUS,gateway,ustringvariable,-1,1,,空串时跳过 4 字节
+1289,IPSTATUS,ipAddress,ustringvariable,-1,1,,空串时跳过 4 字节
+1289,IPSTATUS,netmask,ustringvariable,-1,1,,空串时跳过 4 字节
+1289,IPSTATUS,IpRec,UINT_32,0,1,NovatelIdConstants.ipStatusInterface,随后逐接口循环；mode 为枚举文本后作为对象键
+1296,GENERATEDIFFCORRECTIONS,mode,ENUM,0,1,NovatelIdConstants.commandsAndEnums.generatediff.mode,原始 UINT_32 枚举
+1296,GENERATEDIFFCORRECTIONS,port,ENUM,4,1,NovatelIdConstants.commandsAndEnums.generatertk.port,原始 UINT_32 枚举
+1323,ALIGNAUTOMATION,option,ENUM,0,1,NovatelIdConstants.wifiAlignAutomationoption,原始 UINT_32 枚举
+1323,ALIGNAUTOMATION,comport,ENUM,4,1,NovatelIdConstants.CommunicationPortIdentifiers,原始 UINT_32 枚举
+1323,ALIGNAUTOMATION,baudrate,ULONG32,8,1,,
+1323,ALIGNAUTOMATION,datarate,ULONG32,12,1,,
+1323,ALIGNAUTOMATION,headingextboption,ENUM,16,1,,原始 UINT_32 枚举
+1323,ALIGNAUTOMATION,interfacemode,ENUM,20,1,,原始 UINT_32 枚举
+1329,MODELFEATURES,noOfFeatures,ULONG16,0,1,,
+1329,MODELFEATURES,featureStatus,ENUM,4,1,,所在重复块 system，每项 8 字节；原始 UINT_32 枚举
+1329,MODELFEATURES,featureType,ENUM,8,1,,所在重复块 system，每项 8 字节；原始 UINT_32 枚举
+1335,HEADING2,solStatus,ENUM,0,1,,原始 UINT_32 枚举
+1335,HEADING2,posType,ENUM,4,1,,原始 UINT_32 枚举
+1335,HEADING2,length,FLOAT,8,1,,
+1335,HEADING2,heading,FLOAT,12,1,,
+1335,HEADING2,pitch,FLOAT,16,1,,
+1335,HEADING2,hdgStdDev,FLOAT,24,1,,
+1335,HEADING2,ptchStdDev,FLOAT,28,1,,
+1335,HEADING2,roverStnID,DOUBLE,32,1,,偏移 32：类型写为 DOUBLE 但偏移 32，与 masterStnID(36) 仅隔 4 字节，读数重叠，疑为结构定义错误
+1335,HEADING2,masterStnID,DOUBLE,36,1,,偏移 36：与 roverStnID 重叠 4 字节
+1335,HEADING2,noOfSats,UCHAR,40,1,,
+1335,HEADING2,noOfSolSats,UCHAR,41,1,,
+1335,HEADING2,noOfObs,UCHAR,42,1,,
+1335,HEADING2,noOfMulti,UCHAR,43,1,,
+1335,HEADING2,solSource,UCHAR,44,1,,
+1335,HEADING2,extSolStat,UCHAR,45,1,,
+1335,HEADING2,galAndBeiDouSigMask,UCHAR,46,1,,
+1335,HEADING2,gpsAndGloSigMask,UCHAR,47,1,,
+1344,SOURCETABLE,entryData,ustring,-1,1,,之后读到 \0（不补齐）
+1344,SOURCETABLE,reserved,UINT_32,-1,1,,紧随 endPoint 对齐后的 4 字节
+1344,SOURCETABLE,reserved1,UINT_32,-1,1,,reserved 之后 4 字节
+1344,SOURCETABLE,endPoint,ustring,0,1,,自 headerOffset 起读到 \0，再按 4 字节对齐补齐（长度%4==0 时补 4）
+1348,AUTHCODES,noOfAuthCodes,ULONG32,4,1,,
+1348,AUTHCODES,authCodeType,ENUM,8,1,,所在重复块 authCodeRecord，变长；原始 UINT_32 枚举
+1348,AUTHCODES,authCodeValidity,ULONG32,12,1,,所在重复块 authCodeRecord，变长
+1348,AUTHCODES,authCodeString,ustringvariable,16,1,,"所在重复块 authCodeRecord，变长；变长串；下一条记录起点 = 本字段 offset − 8；变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1350,QZSSECUTOFF,angle,FLOAT,0,1,,
+1415,BASEANTENNAPCO,frequency,ENUM,0,1,NovatelIdConstants.baseAntennaPCOFrequency,原始 UINT_32 枚举
+1415,BASEANTENNAPCO,northOffset,DOUBLE,4,1,,输出前四舍五入到 2 位小数；换算 toFixed(2)
+1415,BASEANTENNAPCO,eastOffset,DOUBLE,12,1,,输出前四舍五入到 2 位小数；换算 toFixed(2)
+1415,BASEANTENNAPCO,upOffset,DOUBLE,20,1,,输出前四舍五入到 2 位小数；换算 toFixed(2)
+1417,THISANTENNAPCO,frequency,ENUM,0,1,NovatelIdConstants.thisAntennaPCOFrequency,原始 UINT_32 枚举
+1417,THISANTENNAPCO,northOffset,DOUBLE,4,1,,输出前四舍五入到 2 位小数；换算 toFixed(2)
+1417,THISANTENNAPCO,eastOffset,DOUBLE,12,1,,输出前四舍五入到 2 位小数；换算 toFixed(2)
+1417,THISANTENNAPCO,upOffset,DOUBLE,20,1,,输出前四舍五入到 2 位小数；换算 toFixed(2)
+1419,BASEANTENNATYPE,antennaType,ENUM,0,1,NovatelIdConstants.antennaTypeStatus,原始 UINT_32 枚举
+1419,BASEANTENNATYPE,radomeType,ENUM,4,1,,原始 UINT_32 枚举
+1420,THISANTENNATYPE,antennaType,ENUM,0,1,NovatelIdConstants.antennaTypeStatus,原始 UINT_32 枚举
+1420,THISANTENNATYPE,radomeType,ENUM,4,1,,原始 UINT_32 枚举
+1428,CONNECTIMU,IMUPort,ENUM,0,1,NovatelIdConstants.serialPortEnum,原始 UINT_32 枚举
+1428,CONNECTIMU,IMUType,ENUM,4,1,NovatelIdConstants.imuTypeEnum,原始 UINT_32 枚举
+1459,INSPOSX,INS_Status,ENUM,0,1,NovatelIdConstants.inspvaStatusEnum,偏移 0：实现缺陷：用 logResponseData.solutionStatus（不存在）查 inspvaStatusEnum，结果恒为 undefined；原始 UINT_32 枚举
+1459,INSPOSX,positionType,ENUM,4,1,NovatelIdConstants.positionType,偏移 4：查 positionType 表；原始 UINT_32 枚举
+1459,INSPOSX,latitude,DOUBLE,8,1,,
+1459,INSPOSX,longitude,DOUBLE,16,1,,
+1459,INSPOSX,height,DOUBLE,24,1,,
+1459,INSPOSX,undulation,FLOAT,32,1,,
+1459,INSPOSX,latitudeDeviation,FLOAT,36,1,,
+1459,INSPOSX,longitudeDeviation,FLOAT,40,1,,
+1459,INSPOSX,heightDeviation,FLOAT,44,1,,
+1459,INSPOSX,extendedSolution,HEX,48,1,,
+1459,INSPOSX,timeSinceUpdate,SHORT,52,1,,
+1465,INSPVAX,alignment,DERIVED,-1,1,NovatelIdConstants.inspvaxAlignment,取 extendedSolution 的 bit3-5
+1465,INSPVAX,converged,DERIVED,-1,1,NovatelIdConstants.insvpaxConvergedFlag,取 extendedSolution 的 bit25
+1465,INSPVAX,status,ENUM,0,1,NovatelIdConstants.inspvaStatusEnum,原始 UINT_32 枚举
+1465,INSPVAX,posType,ENUM,4,1,NovatelIdConstants.positionType,原始 UINT_32 枚举
+1465,INSPVAX,latitude,DOUBLE,8,1,,
+1465,INSPVAX,longitude,DOUBLE,16,1,,
+1465,INSPVAX,height,DOUBLE,24,1,,
+1465,INSPVAX,undulation,FLOAT,32,1,,
+1465,INSPVAX,northVelocity,DOUBLE,36,1,,
+1465,INSPVAX,eastVelocity,DOUBLE,44,1,,
+1465,INSPVAX,upVelocity,DOUBLE,52,1,,
+1465,INSPVAX,roll,DOUBLE,60,1,,
+1465,INSPVAX,pitch,DOUBLE,68,1,,
+1465,INSPVAX,azimuth,DOUBLE,76,1,,
+1465,INSPVAX,latDev,FLOAT,84,1,,
+1465,INSPVAX,longDev,FLOAT,88,1,,
+1465,INSPVAX,heightDev,FLOAT,92,1,,
+1465,INSPVAX,northVelDev,FLOAT,96,1,,
+1465,INSPVAX,eastVelDev,FLOAT,100,1,,
+1465,INSPVAX,upVelDev,FLOAT,104,1,,
+1465,INSPVAX,rollDev,FLOAT,108,1,,
+1465,INSPVAX,pitchDev,FLOAT,112,1,,
+1465,INSPVAX,azimuthDev,FLOAT,116,1,,
+1465,INSPVAX,extendedSolution,ULONG32,120,1,,
+1575,IPSERVICE,ipService,ENUM,0,1,NovatelIdConstants.ipServiceEnum,原始 UINT_32 枚举
+1575,IPSERVICE,switch,ENUM,4,1,NovatelIdConstants.SwitchEnum,原始 UINT_32 枚举
+1582,BDSECUTOFF,angle,FLOAT,0,1,,
+1718,LBANDBEAMTABLE,noOfEntries,ULONG32,0,1,,
+1718,LBANDBEAMTABLE,name,ustringvariable,4,1,,"所在重复块 system；变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1718,LBANDBEAMTABLE,reserved,ustringvariable,12,1,,"所在重复块 system；变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1718,LBANDBEAMTABLE,frequency,ULONG32,20,1,,所在重复块 system
+1718,LBANDBEAMTABLE,baud,ULONG32,24,1,,所在重复块 system
+1718,LBANDBEAMTABLE,logitude,FLOAT,28,1,,所在重复块 system
+1718,LBANDBEAMTABLE,access,ULONG32,32,1,,所在重复块 system
+1719,TERRASTARINFO,pac,STRING_16,0,1,,
+1719,TERRASTARINFO,subscriptionType,ENUM,16,1,NovatelIdConstants.commandsAndEnums.terrastarinfo.subscriptionType,原始 UINT_32 枚举
+1719,TERRASTARINFO,subscriptionService,UINT_16,20,1,,
+1719,TERRASTARINFO,serviceEndDay,ULONG32,24,1,,
+1719,TERRASTARINFO,serviceEndYear,ULONG32,28,1,,
+1719,TERRASTARINFO,reserved,ULONG32,32,1,,
+1719,TERRASTARINFO,regionRestriction,ENUM,36,1,NovatelIdConstants.commandsAndEnums.terrastarinfo.regionRestriction,原始 UINT_32 枚举
+1719,TERRASTARINFO,centerPointLatitude,FLOAT,40,1,,
+1719,TERRASTARINFO,centerPointLongitude,FLOAT,44,1,,
+1719,TERRASTARINFO,radius,ULONG32,48,1,,
+1728,VERIPOSINFO,serialnumber,ULONG32,0,1,,
+1728,VERIPOSINFO,mode,ENUM,4,1,NovatelIdConstants.veriposInfoModeEnum,原始 UINT_32 枚举
+1728,VERIPOSINFO,details,HEX,8,1,,
+1728,VERIPOSINFO,servicecode,UCHAR,12,1,,
+1729,TERRASTARSTATUS,access,ENUM,0,1,,原始 UINT_32 枚举
+1729,TERRASTARSTATUS,syncState,ENUM,4,1,,原始 UINT_32 枚举
+1733,ASSIGNLBANDBEAM,option,ENUM,0,1,,原始 UINT_32 枚举
+1733,ASSIGNLBANDBEAM,name,ustringvariable,4,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+1733,ASSIGNLBANDBEAM,frequency,ULONG32,12,1,,
+1733,ASSIGNLBANDBEAM,baudRate,ULONG32,16,1,,
+1733,ASSIGNLBANDBEAM,dopplerWindow,ULONG32,20,1,,
+1735,ELEVATIONCUTOFF,constellation,ENUM,0,1,NovatelIdConstants.ConstellationIdConstantsForElevation,原始 UINT_32 枚举
+1735,ELEVATIONCUTOFF,angle,FLOAT,4,1,,
+1738,MARK3POS,solutionStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,原始 UINT_32 枚举
+1738,MARK3POS,positionType,ENUM,4,1,NovatelIdConstants.positionType,原始 UINT_32 枚举
+1738,MARK3POS,sentenceTerminator,HEX,4,1,,
+1738,MARK3POS,latitude,DOUBLE,8,1,,
+1738,MARK3POS,idleTime,HEX,12,1,,
+1738,MARK3POS,longitude,DOUBLE,16,1,,
+1738,MARK3POS,height,DOUBLE,24,1,,
+1738,MARK3POS,undulation,FLOAT,32,1,,
+1738,MARK3POS,datumId,ENUM,36,1,NovatelIdConstants.datumId,原始 UINT_32 枚举
+1738,MARK3POS,latitudeDeviation,FLOAT,40,1,,
+1738,MARK3POS,longitudeDeviation,FLOAT,44,1,,
+1738,MARK3POS,heightDeviation,FLOAT,48,1,,
+1738,MARK3POS,stationId,FLOAT,52,1,,
+1738,MARK3POS,differentialAge,FLOAT,56,1,,
+1738,MARK3POS,solutionAge,FLOAT,60,1,,
+1738,MARK3POS,satellitesTracked,UCHAR,64,1,,
+1738,MARK3POS,satellitesUsedInsolution,UCHAR,65,1,,
+1738,MARK3POS,satellitesUsedInL1,UCHAR,66,1,,
+1738,MARK3POS,satellitesWithMultiFreqCount,UCHAR,67,1,,
+1738,MARK3POS,extendedSolutionStatus,HEX,69,1,,
+1738,MARK3POS,signalMaskGalBds,HEX,70,1,,
+1738,MARK3POS,signalMaskGpsGlo,HEX,71,1,,
+1738,MARK3POS,CRC,HEX,72,1,,
+1739,MARK4POS,solutionStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,原始 UINT_32 枚举
+1739,MARK4POS,positionType,ENUM,4,1,NovatelIdConstants.positionType,原始 UINT_32 枚举
+1739,MARK4POS,sentenceTerminator,HEX,4,1,,
+1739,MARK4POS,latitude,DOUBLE,8,1,,
+1739,MARK4POS,idleTime,HEX,12,1,,
+1739,MARK4POS,longitude,DOUBLE,16,1,,
+1739,MARK4POS,height,DOUBLE,24,1,,
+1739,MARK4POS,undulation,FLOAT,32,1,,
+1739,MARK4POS,datumId,ENUM,36,1,NovatelIdConstants.datumId,原始 UINT_32 枚举
+1739,MARK4POS,latitudeDeviation,FLOAT,40,1,,
+1739,MARK4POS,longitudeDeviation,FLOAT,44,1,,
+1739,MARK4POS,heightDeviation,FLOAT,48,1,,
+1739,MARK4POS,stationId,FLOAT,52,1,,
+1739,MARK4POS,differentialAge,FLOAT,56,1,,
+1739,MARK4POS,solutionAge,FLOAT,60,1,,
+1739,MARK4POS,satellitesTracked,UCHAR,64,1,,
+1739,MARK4POS,satellitesUsedInsolution,UCHAR,65,1,,
+1739,MARK4POS,satellitesUsedInL1,UCHAR,66,1,,
+1739,MARK4POS,satellitesWithMultiFreqCount,UCHAR,67,1,,
+1739,MARK4POS,extendedSolutionStatus,HEX,69,1,,
+1739,MARK4POS,signalMaskGalBds,HEX,70,1,,
+1739,MARK4POS,signalMaskGpsGlo,HEX,71,1,,
+1739,MARK4POS,CRC,HEX,72,1,,
+1761,DUALANTENNAALIGN,switch,ENUM,0,1,NovatelIdConstants.dualAntennaAlignSwitch,原始 UINT_32 枚举
+1761,DUALANTENNAALIGN,obsrate,ULONG32,4,1,,
+1761,DUALANTENNAALIGN,posrate,ULONG32,8,1,,
+1795,AUTOSURVEY,control,ENUM,0,1,,原始 UINT_32 枚举
+1795,AUTOSURVEY,time,ULONG32,4,1,,
+1795,AUTOSURVEY,accuracy,FLOAT,8,1,,
+1795,AUTOSURVEY,tolerance,FLOAT,12,1,,
+1795,AUTOSURVEY,save_nvm,ENUM,16,1,,原始 UINT_32 枚举
+1861,NMEAFORMAT,field,ENUM,0,1,,原始 UINT_32 枚举
+1861,NMEAFORMAT,format,STRING_8,4,1,,
+1920,SETINSTRANSLATION,insTranslation,ENUM,0,1,NovatelIdConstants.insTranslationEnum,原始 UINT_32 枚举
+1920,SETINSTRANSLATION,xTranslation,FLOAT,4,1,,
+1920,SETINSTRANSLATION,yTranslation,FLOAT,8,1,,
+1920,SETINSTRANSLATION,zTranslation,FLOAT,12,1,,
+1920,SETINSTRANSLATION,xTranslationSD,FLOAT,16,1,,
+1920,SETINSTRANSLATION,yTranslationSD,FLOAT,20,1,,
+1920,SETINSTRANSLATION,zTranslationSD,FLOAT,24,1,,
+1920,SETINSTRANSLATION,inputFrame,ENUM,28,1,,原始 UINT_32 枚举
+1921,SETINSROTATION,rotationalOffset,ENUM,0,1,NovatelIdConstants.insRotationEnum,原始 UINT_32 枚举
+1921,SETINSROTATION,xRotation,FLOAT,4,1,,
+1921,SETINSROTATION,yRotation,FLOAT,8,1,,
+1921,SETINSROTATION,zRotation,FLOAT,12,1,,
+1921,SETINSROTATION,xRotationSD,FLOAT,16,1,,
+1921,SETINSROTATION,yRotationSD,FLOAT,20,1,,
+1921,SETINSROTATION,zRotationSD,FLOAT,24,1,,
+1945,INSCONFIG,noOfRotations,ULONG32,-1,1,,偏移 = 64 + 36×noOfTranslations（动态），schema 中的 88 仅在 noOfTranslations=0 时成立
+1945,INSCONFIG,rotationEntries,OBJECT,-1,1,NovatelIdConstants.insRotationEnum,以 rotationalOffset 文本为键组装旋转记录
+1945,INSCONFIG,transalationEntries,OBJECT,-1,1,NovatelIdConstants.insTranslationEnum,以 insTranslation 文本为键组装平移记录
+1945,INSCONFIG,IMUType,ENUM,0,1,,原始 UINT_32 枚举
+1945,INSCONFIG,insTranslation,ENUM,0,1,NovatelIdConstants.insTranslationEnum,所在重复块 translationSystem；偏移 0：偏移 = 64 + 36×i（i 为第 i 条平移记录），schema 中的 0 是记录内相对偏移；原始 UINT_32 枚举
+1945,INSCONFIG,rotationalOffset,ENUM,0,1,NovatelIdConstants.insRotationEnum,所在重复块 rotationSystem；偏移 0：记录内相对偏移；记录基址 = 64 + 36×noOfTranslations + 4 + 36×i；原始 UINT_32 枚举
+1945,INSCONFIG,frame,ENUM,4,1,,所在重复块 rotationSystem；原始 UINT_32 枚举
+1945,INSCONFIG,inputFrame,ENUM,4,1,,所在重复块 translationSystem；原始 UINT_32 枚举
+1945,INSCONFIG,mapping,UCHAR,4,1,,
+1945,INSCONFIG,initAlignmentVelocity,UCHAR,5,1,,
+1945,INSCONFIG,heaveWindow,SHORT,6,1,,
+1945,INSCONFIG,profile,ENUM,8,1,,原始 UINT_32 枚举
+1945,INSCONFIG,xRotation,FLOAT,8,1,,所在重复块 rotationSystem
+1945,INSCONFIG,xTranslation,FLOAT,8,1,,所在重复块 translationSystem
+1945,INSCONFIG,enabledUpdates,HEX,12,1,,
+1945,INSCONFIG,yRotation,FLOAT,12,1,,所在重复块 rotationSystem
+1945,INSCONFIG,yTranslation,FLOAT,12,1,,所在重复块 translationSystem
+1945,INSCONFIG,alignmentMode,ENUM,16,1,,原始 UINT_32 枚举
+1945,INSCONFIG,zRotation,FLOAT,16,1,,所在重复块 rotationSystem
+1945,INSCONFIG,zTranslation,FLOAT,16,1,,所在重复块 translationSystem
+1945,INSCONFIG,relativeInsOutputFrame,ENUM,20,1,,原始 UINT_32 枚举
+1945,INSCONFIG,xRotationSD,FLOAT,20,1,,所在重复块 rotationSystem
+1945,INSCONFIG,xTranslationSD,FLOAT,20,1,,所在重复块 translationSystem
+1945,INSCONFIG,relativeInsOutputDir,HEX,24,1,,
+1945,INSCONFIG,yRotationSD,FLOAT,24,1,,所在重复块 rotationSystem
+1945,INSCONFIG,yTranslationSD,FLOAT,24,1,,所在重复块 translationSystem
+1945,INSCONFIG,insReceiverStatus,HEX,28,1,,
+1945,INSCONFIG,zRotationSD,FLOAT,28,1,,所在重复块 rotationSystem
+1945,INSCONFIG,zTranslationSD,FLOAT,28,1,,所在重复块 translationSystem
+1945,INSCONFIG,insSeedEnabled,UCHAR,32,1,,
+1945,INSCONFIG,rotationSource,ENUM,32,1,,所在重复块 rotationSystem；原始 UINT_32 枚举
+1945,INSCONFIG,translationSource,ENUM,32,1,,所在重复块 translationSystem；原始 UINT_32 枚举
+1945,INSCONFIG,insSeedValidation,UCHAR,33,1,,
+1945,INSCONFIG,noOfTranslations,ULONG32,60,1,,headerOffset+60
+1965,SETIMUEVENT,IMUdirection,ENUM,0,1,NovatelIdConstants.setIMUeventDirectionEnum,原始 UINT_32 枚举
+1965,SETIMUEVENT,event,ENUM,4,1,NovatelIdConstants.setIMUeventEnum,原始 UINT_32 枚举
+1967,ITSPECTRALANALYSIS,mode,ENUM,0,1,NovatelIdConstants.commandsAndEnums.itspectralanalysis.mode,原始 UINT_32 枚举
+1967,ITSPECTRALANALYSIS,frequency,ENUM,4,1,NovatelIdConstants.commandsAndEnums.itspectralanalysis.frequency,原始 UINT_32 枚举
+1967,ITSPECTRALANALYSIS,updatePeriod,ULONG32,8,1,,
+1967,ITSPECTRALANALYSIS,fftSize,ENUM,12,1,NovatelIdConstants.commandsAndEnums.itspectralanalysis.fftSize,原始 UINT_32 枚举
+1967,ITSPECTRALANALYSIS,timeAvg,ULONG32,16,1,,
+1967,ITSPECTRALANALYSIS,subCarrierAvg,ULONG32,20,1,,
+1968,ITPSDFINAL,status,ULONG32,0,1,,headerOffset=28 处的 UINT_32 状态字（schema 未含，代码单独 getData）
+1968,ITPSDFINAL,frequencyStart,FLOAT,4,1,,所在重复块 sats
+1968,ITPSDFINAL,stepSize,FLOAT,8,1,,所在重复块 sats；原始值按 Hz 存，除以 1e6 换成 MHz 用于刻度；换算 v/1e6（仅用于频率刻度）
+1968,ITPSDFINAL,noofSamples,ULONG32,12,1,,所在重复块 sats
+1968,ITPSDFINAL,sample,SHORT,16,0.00390625,,逐样本 2 字节步进；输出 sample = v/256 − 200，frequency = frequencyStart + i×stepSize/1e6
+1991,ITFILTTABLE,noOfRecords,ULONG32,0,1,,
+1991,ITFILTTABLE,frequencyType,ENUM,4,1,NovatelIdConstants.itkFrequencyType,所在重复块 filterRecord；原始 UINT_32 枚举
+1991,ITFILTTABLE,encoderId,ULONG32,8,1,,所在重复块 filterRecord
+1991,ITFILTTABLE,ddcFilterType,ENUM,12,1,NovatelIdConstants.itkDDCFilterType,所在重复块 filterRecord；原始 UINT_32 枚举
+1991,ITFILTTABLE,statusWord,ULONG32,16,1,,所在重复块 filterRecord
+1991,ITFILTTABLE,globalSwitch,ENUM,20,1,NovatelIdConstants.itkFilterSwitch,所在重复块 filterRecord；原始 UINT_32 枚举
+1991,ITFILTTABLE,globalLowerCutOffFrequency,FLOAT,24,1,,所在重复块 filterRecord
+1991,ITFILTTABLE,globalUpperCutOffFrequency,FLOAT,28,1,,所在重复块 filterRecord
+1991,ITFILTTABLE,noOfProgFilters,ULONG32,32,1,,所在重复块 filterRecord
+1991,ITFILTTABLE,switch,ENUM,36,1,NovatelIdConstants.itkFilterSwitch,所在重复块 filterRecord.progFilters；原始 UINT_32 枚举
+1991,ITFILTTABLE,progFilterId,ENUM,40,1,NovatelIdConstants.itkProgFiltId,所在重复块 filterRecord.progFilters；原始 UINT_32 枚举
+1991,ITFILTTABLE,mode,ENUM,44,1,NovatelIdConstants.itkProgFiltMode,所在重复块 filterRecord.progFilters；原始 UINT_32 枚举
+1991,ITFILTTABLE,lowerCutOffFrequency,FLOAT,48,1,,所在重复块 filterRecord.progFilters
+1991,ITFILTTABLE,upperCutOffFrequency,FLOAT,52,1,,所在重复块 filterRecord.progFilters
+1991,ITFILTTABLE,notchWidth,FLOAT,56,1,,所在重复块 filterRecord.progFilters
+2022,ITBANDPASSBANK,noOfFilterBanks,ULONG32,0,1,,
+2022,ITBANDPASSBANK,frequencyType,ENUM,4,1,,所在重复块 bank，每项 24 字节；原始 UINT_32 枚举
+2022,ITBANDPASSBANK,minLowerFrequencyCutOff,FLOAT,8,1,,所在重复块 bank，每项 24 字节
+2022,ITBANDPASSBANK,maxLowerFrequencyCutOff,FLOAT,12,1,,所在重复块 bank，每项 24 字节
+2022,ITBANDPASSBANK,minUpperFrequencyCutOff,FLOAT,16,1,,所在重复块 bank，每项 24 字节
+2022,ITBANDPASSBANK,maxUpperFrequencyCutOff,FLOAT,20,1,,所在重复块 bank，每项 24 字节
+2022,ITBANDPASSBANK,frequencyStep,FLOAT,24,1,,所在重复块 bank，每项 24 字节
+2023,ITPROGFILTBANK,noOfFrequencies,ULONG32,0,1,,
+2023,ITPROGFILTBANK,frequencyType,ENUM,4,1,NovatelIdConstants.itkFrequencyType,所在重复块 frequency；偏移 4：每个频点组结束后 headerOffset 再 +8；原始 UINT_32 枚举
+2023,ITPROGFILTBANK,noOfBanks,ULONG32,8,1,,所在重复块 frequency
+2023,ITPROGFILTBANK,progFiltMode,ENUM,12,1,NovatelIdConstants.itkProgFiltMode,所在重复块 frequency.bank；原始 UINT_32 枚举
+2023,ITPROGFILTBANK,minLowerFrequencyCutOff,FLOAT,16,1,,所在重复块 frequency.bank
+2023,ITPROGFILTBANK,maxLowerFrequencyCutOff,FLOAT,20,1,,所在重复块 frequency.bank
+2023,ITPROGFILTBANK,minUpperFrequencyCutOff,FLOAT,24,1,,所在重复块 frequency.bank
+2023,ITPROGFILTBANK,maxUpperFrequencyCutOff,FLOAT,28,1,,所在重复块 frequency.bank
+2023,ITPROGFILTBANK,frequencyStep,FLOAT,32,1,,所在重复块 frequency.bank
+2023,ITPROGFILTBANK,notchWidth,FLOAT,36,1,,所在重复块 frequency.bank
+2039,ITFRONTENDMODE,frequencyBand,ENUM,0,1,NovatelIdConstants.commandsAndEnums.itfrontendmode.frequencyBand,原始 UINT_32 枚举
+2039,ITFRONTENDMODE,mode,ENUM,4,1,NovatelIdConstants.commandsAndEnums.itfrontendmode.mode,原始 UINT_32 枚举
+2063,ITPSDDETECT,status,ULONG32,0,1,,headerOffset=28 处的 UINT_32 状态字；另输出 band = status.toString(16)
+2063,ITPSDDETECT,frequencyStart,FLOAT,4,1,,所在重复块 sats
+2063,ITPSDDETECT,stepSize,FLOAT,8,1,,所在重复块 sats；原始值按 Hz 存，除以 1e6 换成 MHz 用于刻度；换算 v/1e6（仅用于频率刻度）
+2063,ITPSDDETECT,noofSamples,ULONG32,12,1,,所在重复块 sats
+2063,ITPSDDETECT,sample,SHORT,16,0.00390625,,逐样本 2 字节步进；输出 sample = v/256 − 200，frequency = frequencyStart + i×stepSize/1e6
+2065,ITDETECTSTATUS,noOfEntries,ULONG32,0,1,,
+2065,ITDETECTSTATUS,rfPath,ENUM,4,1,NovatelIdConstants.ITDetectStatusRFPath,所在重复块 system，每项 36 字节；原始 UINT_32 枚举
+2065,ITDETECTSTATUS,detectionType,ENUM,8,1,NovatelIdConstants.ITDetectStatusType,所在重复块 system，每项 36 字节；原始 UINT_32 枚举
+2065,ITDETECTSTATUS,centerFrequency,FLOAT,12,1,,所在重复块 system，每项 36 字节
+2065,ITDETECTSTATUS,bandwidth,FLOAT,16,1,,所在重复块 system，每项 36 字节
+2065,ITDETECTSTATUS,power,FLOAT,20,1,,所在重复块 system，每项 36 字节
+2065,ITDETECTSTATUS,estimatedPower,FLOAT,24,1,,所在重复块 system，每项 36 字节
+2065,ITDETECTSTATUS,reserved1,ULONG32,28,1,,所在重复块 system，每项 36 字节
+2065,ITDETECTSTATUS,reserved2,ULONG32,32,1,,所在重复块 system，每项 36 字节
+2065,ITDETECTSTATUS,reserved3,ULONG32,36,1,,所在重复块 system，每项 36 字节
+2075,VERIPOSDECODERSTATUS,noOfEntries,ULONG32,0,1,,
+2075,VERIPOSDECODERSTATUS,name,STRING_8,4,1,,所在重复块 system，每项 24 字节
+2075,VERIPOSDECODERSTATUS,syncState,ENUM,12,1,,所在重复块 system，每项 24 字节；原始 UINT_32 枚举
+2075,VERIPOSDECODERSTATUS,channelStatus,ULONG32,16,1,,所在重复块 system，每项 24 字节
+2075,VERIPOSDECODERSTATUS,comPort,ENUM,20,1,NovatelIdConstants.CommunicationPortIdentifiers,所在重复块 system，每项 24 字节；原始 UINT_32 枚举
+2075,VERIPOSDECODERSTATUS,decoderSyncStatus,SHORT,24,1,,所在重复块 system，每项 24 字节
+2075,VERIPOSDECODERSTATUS,decoderChannel,SHORT,26,1,,所在重复块 system，每项 24 字节
+2091,WIFIAPCHANNEL,channel,ULONG32,0,1,,
+2093,WIFIAPSETTINGS,band,ENUM,0,1,,原始 UINT_32 枚举
+2093,WIFIAPSETTINGS,passkey,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2093,WIFIAPSETTINGS,SSID,ustringvariable,0,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2093,WIFIAPSETTINGS,security_protocol,ENUM,4,1,,原始 UINT_32 枚举
+2093,WIFIAPSETTINGS,encryption,ENUM,8,1,,原始 UINT_32 枚举
+2093,WIFIAPSETTINGS,region,ENUM,12,1,,原始 UINT_32 枚举
+2093,WIFIAPSETTINGS,channel,UINT_32,16,1,,
+2093,WIFIAPSETTINGS,BSSID,ustringvariable,20,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2100,FILELIST,massStorageDevice,ENUM,0,1,NovatelIdConstants.MassStorageDeviceEnum,原始 UINT_32 枚举
+2100,FILELIST,fileType,ENUM,4,1,NovatelIdConstants.FileSystemEntryTypeEnum,原始 UINT_32 枚举
+2100,FILELIST,fileSize,ULONG32,8,1,,
+2100,FILELIST,changeDate,ULONG32,12,1,,
+2100,FILELIST,changeTime,ULONG32,16,1,,
+2100,FILELIST,fileName,ustringvariable,20,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2101,FILETRANSFERSTATUS,fileTransferStatus,ENUM,0,1,NovatelIdConstants.FileTransferStatusEnum,原始 UINT_32 枚举
+2101,FILETRANSFERSTATUS,totalTransferred,ULONG32,4,1,,
+2101,FILETRANSFERSTATUS,totalTransferSize,ULONG32,8,1,,
+2101,FILETRANSFERSTATUS,fileName,ustringvariable,12,1,,"变长串；其结束位置决定 errorMsg 起点；变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2101,FILETRANSFERSTATUS,errorMsg,ustringvariable,16,1,,"偏移 = 12 + getNextOffesetBasedonLength(fileName 长度)，即文件名后的 4 字节对齐位；变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2104,FILESYSTEMSTATUS,massStorageDevice,ENUM,0,1,NovatelIdConstants.MassStorageDeviceEnum,原始 UINT_32 枚举
+2104,FILESYSTEMSTATUS,massStorageStatus,ENUM,4,1,NovatelIdConstants.FileSystemStatusConstants,原始 UINT_32 枚举
+2104,FILESYSTEMSTATUS,totalCapacity,ULONG32,8,1,,
+2104,FILESYSTEMSTATUS,errorMsg,ustringvariable,12,1,,"变长串，返回 {value, offset}，offset 为 4 字节对齐后的下一个字段起点"
+2127,FILESTATUS,fileName,ustring,-1,1,,自 headerOffset+8 读至 \0
+2127,FILESTATUS,fileSize,UINT_32,-1,1,,偏移 = (128 − 文件名长度) + 文件名结束位置
+2127,FILESTATUS,fileStatusEnum,UINT_32,4,1,NovatelIdConstants.FileSystemStatusConstants,headerOffset+4（与 1146 差 4 字节）
+2133,FILEROTATECONFIG,maxFileTime,SHORT,0,1,,
+2133,FILEROTATECONFIG,maxFileSize,SHORT,2,1,,
+2133,FILEROTATECONFIG,diskFullAction,ENUM,4,1,NovatelIdConstants.diskActionEnum,原始 UINT_32 枚举
+2134,NAVICECUTOFF,angle,FLOAT,0,1,,
+2137,FILESYSTEMCAPACITY,noOfDevices,ULONG32,0,1,,
+2137,FILESYSTEMCAPACITY,massStorageDevice,ENUM,4,1,NovatelIdConstants.MassStorageDeviceEnum,所在重复块 system，每项 20 字节；原始 UINT_32 枚举
+2137,FILESYSTEMCAPACITY,totalStorage,ULONG64,8,1,,所在重复块 system，每项 20 字节
+2137,FILESYSTEMCAPACITY,usedStorage,ULONG64,16,1,,所在重复块 system，每项 20 字节
+2143,ITDETECTCONFIG,rfpath,ENUM,0,1,NovatelIdConstants.itdetectconfigRFPath,原始 UINT_32 枚举
+2144,WIFIMODE,mode,ENUM,0,1,NovatelIdConstants.WifiModeEnum,原始 UINT_32 枚举
+2159,OCEANIXINFO,pac,STRING_16,0,1,,
+2159,OCEANIXINFO,subscriptionType,ENUM,16,1,NovatelIdConstants.OceanixInfoSubscriptionType,原始 UINT_32 枚举
+2159,OCEANIXINFO,subscriptionService,UINT_16,20,1,,
+2159,OCEANIXINFO,serviceEndDay,ULONG32,24,1,,
+2159,OCEANIXINFO,serviceEndYear,ULONG32,28,1,,
+2160,OCEANIXSTATUS,access,ENUM,0,1,,原始 UINT_32 枚举
+2160,OCEANIXSTATUS,syncState,ENUM,4,1,,原始 UINT_32 枚举
+2160,OCEANIXSTATUS,regionRestrictionStatus,ENUM,8,1,,原始 UINT_32 枚举
+2204,SATELDETECT,port,ENUM,0,1,NovatelIdConstants.satelDetectPortEnum,原始 UINT_32 枚举
+2205,SATELSTATUS,state,ENUM,0,1,NovatelIdConstants.satelStatusStateEnum,原始 UINT_32 枚举
+2205,SATELSTATUS,error,UINT_32,4,1,NovatelIdConstants.satelStatusErrorEnum,
+2207,WIFISTATUS,apbssid,ustringvariable,-1,1,,
+2207,WIFISTATUS,apchannel,UINT_32,-1,1,,
+2207,WIFISTATUS,aprssi,INT_32,-1,1,,
+2207,WIFISTATUS,bssid,ustringvariable,-1,1,,客户端串
+2207,WIFISTATUS,numOfClients,UINT_32,-1,1,,>0 时才读 bssid
+2207,WIFISTATUS,security,UINT_32,-1,1,NovatelIdConstants.WifiApSettingsWifiSecurityTypeEnum,
+2207,WIFISTATUS,status,UINT_32,0,1,NovatelIdConstants.wifiStatusEnum,
+2207,WIFISTATUS,apssid,ustringvariable,4,1,,
+2210,WIFINETLIST,bssid,ustringvariable,-1,1,,channel 之后
+2210,WIFINETLIST,channel,UINT_32,-1,1,,rssi 之后
+2210,WIFINETLIST,rssi,INT_32,-1,1,,ssid 之后
+2210,WIFINETLIST,security,UINT_32,-1,1,NovatelIdConstants.WifiApSettingsWifiSecurityTypeEnum,bssid 之后
+2210,WIFINETLIST,ssid,ustringvariable,-1,1,,变长串，输出以其值作为对象键
+2210,WIFINETLIST,numNetworks,UINT_32,0,1,,随后逐网络循环
+2214,WIFIALIGNAUTOMATION,option,ENUM,0,1,NovatelIdConstants.wifiAlignAutomationoption,原始 UINT_32 枚举
+2214,WIFIALIGNAUTOMATION,master_network,ULONG32,4,1,,
+2214,WIFIALIGNAUTOMATION,corrections_port,ENUM,8,1,,原始 UINT_32 枚举
+2214,WIFIALIGNAUTOMATION,datarate,ULONG32,12,1,,
+2214,WIFIALIGNAUTOMATION,headingextbopion,ENUM,16,1,,原始 UINT_32 枚举
+2214,WIFIALIGNAUTOMATION,interfacemode,ENUM,20,1,,原始 UINT_32 枚举
+2215,SATEL4CONFIG,radioBehavior,ENUM,0,1,,原始 UINT_32 枚举
+2215,SATEL4CONFIG,txPower,UINT_32,4,1,,
+2215,SATEL4CONFIG,frequency,UINT_32,8,1,,
+2215,SATEL4CONFIG,compatibilityMode,UINT_32,12,1,NovatelIdConstants.satel4ConfigCompatibilityEnum,
+2215,SATEL4CONFIG,baseType,ENUM,16,1,,原始 UINT_32 枚举
+2216,SATEL4INFO,protocol,ENUM,0,1,,原始 UINT_32 枚举
+2216,SATEL4INFO,freqTx,UINT_32,4,1,,
+2216,SATEL4INFO,freqRx,UINT_32,8,1,,
+2216,SATEL4INFO,spacing,UINT_32,12,1,,
+2216,SATEL4INFO,txPwr,UINT_32,16,1,,
+2216,SATEL4INFO,fec,ENUM,20,1,,原始 UINT_32 枚举
+2220,SATEL9INFO,modemMode,ENUM,0,1,,原始 UINT_32 枚举
+2220,SATEL9INFO,leicaChannel,INT_32,4,1,,
+2220,SATEL9INFO,novChannel,INT_32,8,1,,
+2220,SATEL9INFO,freqKey,UINT_32,12,1,,
+2220,SATEL9INFO,nid,UINT_32,16,1,,
+2220,SATEL9INFO,minPktSize,UINT_32,20,1,,
+2220,SATEL9INFO,maxPktSize,UINT_32,24,1,,
+2220,SATEL9INFO,retryTimeOut,UINT_32,28,1,,
+2220,SATEL9INFO,subnet,UINT_32,32,1,,
+2220,SATEL9INFO,repeaters,UINT_32,36,1,,
+2220,SATEL9INFO,masterPacketRepeat,UINT_32,40,1,,
+2220,SATEL9INFO,txPower,UINT_32,44,1,,
+2220,SATEL9INFO,hopTableOver,UINT_32,48,1,,
+2220,SATEL9INFO,freqZone,STRING_16,52,1,,
+2258,NMEABEIDOUTALKER,option,ENUM,0,1,NovatelIdConstants.nmeaBeiDouTalkeroption,原始 UINT_32 枚举
+2358,SKDETECTCONFIG,mode,ENUM,0,1,NovatelIdConstants.skDetectModeEnum,无符号枚举；原始 UINT_32 枚举
+2364,SKCALIBRATESTATUS,mode,ENUM,0,1,NovatelIdConstants.skCalibrateStatusModeEnum,原始 UINT_32 枚举
+2364,SKCALIBRATESTATUS,result,ENUM,0,1,,与 mode 共用偏移 0（读两次，schema 均写 0）
+2364,SKCALIBRATESTATUS,noOfEntries,ULONG32,8,1,,
+2364,SKCALIBRATESTATUS,signalType,ENUM,12,1,,所在重复块 signals，每项 20 字节；原始 UINT_32 枚举
+2364,SKCALIBRATESTATUS,spoofingCalibrationMode,ENUM,16,1,,所在重复块 signals，每项 20 字节；原始 UINT_32 枚举
+2364,SKCALIBRATESTATUS,frontEndMode,ENUM,20,1,,所在重复块 signals，每项 20 字节；原始 UINT_32 枚举
+2364,SKCALIBRATESTATUS,calibrationResult,ENUM,24,1,,所在重复块 signals，每项 20 字节；原始 UINT_32 枚举
+2364,SKCALIBRATESTATUS,timeStamp,ULONG32,28,1,,所在重复块 signals，每项 20 字节
+4096,AGCINFO,activeFlag,DERIVED,-1,1,NovatelIdConstants.eGIIIActiveFlagEnum,statusWord bit24
+4096,AGCINFO,ADCRange,DERIVED,-1,1,NovatelIdConstants.eAGCRange,statusWord bit18-20
+4096,AGCINFO,AGCCollaboration,DERIVED,-1,1,NovatelIdConstants.eAGCCalibrated,statusWord bit21-22
+4096,AGCINFO,binCountOverflow,DERIVED,-1,1,NovatelIdConstants.eBitCountOverflow,statusWord bit14
+4096,AGCINFO,binsEmpty,DERIVED,-1,1,NovatelIdConstants.eBitsEmpty,statusWord bit11
+4096,AGCINFO,binSkew,DERIVED,-1,1,NovatelIdConstants.eGIIIBinSkew,statusWord bit23
+4096,AGCINFO,binsNotFull,DERIVED,-1,1,NovatelIdConstants.eBitsNotFull,statusWord bit12
+4096,AGCINFO,cardId,DERIVED,-1,1,NovatelIdConstants.GIIIAGCCardIdEnum,statusWord bit28-31
+4096,AGCINFO,noiseFloorCalMethod,DERIVED,-1,1,NovatelIdConstants.eNoiseFloorCal,statusWord bit15-17
+4096,AGCINFO,railGain,DERIVED,-1,1,NovatelIdConstants.eRailedGain,statusWord bit13
+4096,AGCINFO,rfType,DERIVED,-1,1,NovatelIdConstants.eGIIIAgcRfEnum,statusWord bit25-27
+4096,AGCINFO,noOfEntries,ULONG32,0,1,,
+4096,AGCINFO,statusWord,ULONG32,4,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,pulseWidth,ULONG32,12,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,modulus,ULONG32,16,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,bin1,DOUBLE,20,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,bin2,DOUBLE,28,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,bin3,DOUBLE,36,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,bin4,DOUBLE,44,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,bin5,DOUBLE,52,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,bin6,DOUBLE,60,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,noiseFloor,DOUBLE,68,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,pulsesBlankedPercent,FLOAT,76,1,,所在重复块 agcWord，每项 88 字节
+4096,AGCINFO,dcOffset,INT_32,80,1,,所在重复块 agcWord，每项 88 字节
+4098,CARDSTATUS,cardsData,OBJECT[],-1,1,NovatelIdConstants.giiiComponentTypeEnums,由 system 块按 cardsCount 循环组装
+4098,CARDSTATUS,fansData,OBJECT[],-1,1,,cardsCount 之后 4 字节为 fansCount，再按 4 字节/风扇循环
+4098,CARDSTATUS,fansCount,ULONG32,0,1,,偏移 0：实际位置在 cardsData 各卡记录之后（headerOffset 已推进）；schema 偏移 0 只是占位
+4098,CARDSTATUS,state,SHORT,0,1,NovatelIdConstants.giiiOperatingState,
+4098,CARDSTATUS,mode,SHORT,2,1,NovatelIdConstants.giiiOperatingMode,
+4098,CARDSTATUS,attenSetting,ULONG32,4,1,,
+4098,CARDSTATUS,fanSpeed,SHORT,4,1,,偏移 4：实际位置 = fansCount 处 +4；fanFailed 同样从该基址 +6，两者共 4 字节/风扇
+4098,CARDSTATUS,fanFailed,SHORT,6,1,,偏移 6：实际位置 = fansCount 处 +6（未加 fanSpeed 的 4 字节，与 fanSpeed 重叠，属实现缺陷）
+4098,CARDSTATUS,hours,ULONG32,8,1,,
+4098,CARDSTATUS,DSPCErrorSignal,ULONG32,12,1,,
+4098,CARDSTATUS,cardsCount,ULONG32,16,1,,
+4098,CARDSTATUS,component,ENUM,20,1,NovatelIdConstants.giiiComponentTypeEnums,所在重复块 system；原始 UINT_32 枚举
+4098,CARDSTATUS,slotId,SHORT,24,1,,所在重复块 system
+4098,CARDSTATUS,moduleId,SHORT,26,1,,所在重复块 system
+4098,CARDSTATUS,idleTime,FLOAT,28,1,,所在重复块 system；所在重复块 system 每张卡 60 字节；idleTime 为占空比百分数取反；换算 100 − v
+4098,CARDSTATUS,value_1,FLOAT,32,1,,所在重复块 system
+4098,CARDSTATUS,value_2,FLOAT,36,1,,所在重复块 system
+4098,CARDSTATUS,value_3,FLOAT,40,1,,所在重复块 system
+4098,CARDSTATUS,value_4,FLOAT,44,1,,所在重复块 system
+4098,CARDSTATUS,value_5,FLOAT,48,1,,所在重复块 system
+4098,CARDSTATUS,value_6,FLOAT,52,1,,所在重复块 system
+4098,CARDSTATUS,value_7,FLOAT,56,1,,所在重复块 system
+4098,CARDSTATUS,value_8,FLOAT,60,1,,所在重复块 system
+4098,CARDSTATUS,value_9,FLOAT,64,1,,所在重复块 system
+4098,CARDSTATUS,value_10,ULONG32,68,1,,注意：schema 偏移 20..76 而块步进为 60 字节，相邻卡记录会重叠读取，按手册应为卡内 0..56
+4098,CARDSTATUS,warningWord,ULONG32,72,1,,同上重叠问题
+4098,CARDSTATUS,errorWord,ULONG32,76,1,,同上重叠问题
+4101,ETHSTATUS,noOfRecords,ULONG32,0,1,,
+4101,ETHSTATUS,type,ENUM,4,1,NovatelIdConstants.GIIIEthernetInterface,所在重复块 system，每项 232 字节；原始 UINT_32 枚举
+4101,ETHSTATUS,mac,STRING_18,8,1,,所在重复块 system，每项 232 字节
+4101,ETHSTATUS,reserved,SHORT,26,1,,所在重复块 system，每项 232 字节
+4101,ETHSTATUS,details,ENUM,28,1,,所在重复块 system，每项 232 字节；原始 UINT_32 枚举
+4103,MEASUREMENTDATA,rejectcode,DERIVED,-1,1,,"由 channelStatus 的 bit24-31 得到（get_slicedbytes(…,24,32)）"
+4103,MEASUREMENTDATA,count,ULONG32,0,1,,headerOffset=28
+4103,MEASUREMENTDATA,PRN,SHORT,4,1,,所在重复块 system，每项 64 字节
+4103,MEASUREMENTDATA,svChan,SHORT,6,1,,同块
+4103,MEASUREMENTDATA,sigChan,SHORT,8,1,,同块
+4103,MEASUREMENTDATA,HWChan,SHORT,10,1,,同块
+4103,MEASUREMENTDATA,trackType,ULONG32,12,1,,同块
+4103,MEASUREMENTDATA,PSR,DOUBLE,16,1,,同块
+4103,MEASUREMENTDATA,PSRstd,FLOAT,24,1,,同块
+4103,MEASUREMENTDATA,ADR,DOUBLE,28,1,,同块
+4103,MEASUREMENTDATA,AdrStd,FLOAT,36,1,,同块
+4103,MEASUREMENTDATA,dopp,FLOAT,40,1,,同块
+4103,MEASUREMENTDATA,CNO,FLOAT,44,1,,同块
+4103,MEASUREMENTDATA,lockTime,DOUBLE,56,1,,同块（48-55 未使用）
+4103,MEASUREMENTDATA,channelStatus,ULONG32,64,1,,同块
+4105,RXCOMMANDS,count,ULONG32,0,1,,headerOffset=28
+4105,RXCOMMANDS,command,ustringvariable,4,1,,循环 count 次；每次 headerOffset += 值长度+1（不做 4 字节对齐）
+4106,SATPOS,satelliteSystem,ENUM,0,1,,所在重复块 sats；原始 UINT_32 枚举
+4106,SATPOS,satSystem,ENUM,0,1,NovatelIdConstants.giiiSatPosSystem,原始 UINT_32 枚举；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,satVis,UINT_32,4,1,,死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,satVisibility,INT_32,4,1,,所在重复块 sats
+4106,SATPOS,almanacFlag,INT_32,8,1,,所在重复块 sats
+4106,SATPOS,compAlm,UINT_32,8,1,,死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,count,ULONG32,12,1,,死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,numberOfSatellites,ULONG32,12,1,,所在重复块 sats
+4106,SATPOS,prn,SHORT,16,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,PRN,SHORT,16,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,ephemValidity,SHORT,20,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,almValidity,SHORT,22,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,AlmValidity,SHORT,22,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,EphemHealth,ULONG32,24,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,ephHealth,ULONG32,24,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,ephElevation,FLOAT,28,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,EphemElevation,FLOAT,28,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,ephAzimuth,FLOAT,32,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,EphemAzimuth,FLOAT,32,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,ephDop,FLOAT,36,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,EphemDop,FLOAT,36,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,almHealth,ULONG32,40,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,AlmHealth,ULONG32,40,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,almElevation,FLOAT,44,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,AlmElevation,FLOAT,44,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,almAzimuth,FLOAT,48,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,AlmAzimuth,FLOAT,48,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4106,SATPOS,almDop,FLOAT,52,1,,所在重复块 system，每项 40 字节
+4106,SATPOS,AlmDop,FLOAT,52,1,,所在重复块 system；死代码：同一 switch 中 4106 已由 satPosMessageId(GIIIsatPosJSON) 先声明，此 case 不可达
+4107,TIMESOLUTION,clockModel,UINT_16,0,1,NovatelIdConstants.giiiTimeSolutionClockModel,
+4107,TIMESOLUTION,signalType,UINT_16,2,1,NovatelIdConstants.giiiSignalTypeEnums,"查表未命中时输出 ""--"""
+4107,TIMESOLUTION,clockOffset,DOUBLE,4,1,,
+4107,TIMESOLUTION,offsetStd,DOUBLE,12,1,,
+4107,TIMESOLUTION,clockDrift,DOUBLE,20,1,,输出前 Number(v).toFixed(20)
+4107,TIMESOLUTION,channelCount,ULONG32,32,1,,
+4107,TIMESOLUTION,svChan,SHORT,36,1,,所在重复块 system
+4107,TIMESOLUTION,sigChan,SHORT,38,1,,所在重复块 system
+4107,TIMESOLUTION,PRN,SHORT,40,1,,所在重复块 system
+4107,TIMESOLUTION,TRAIMStatus,ULONG32,44,1,,所在重复块 system
+4107,TIMESOLUTION,residual,FLOAT,48,1,,所在重复块 system
+4107,TIMESOLUTION,svclockOffset,FLOAT,52,1,,所在重复块 system
+4107,TIMESOLUTION,ionoCorr,FLOAT,56,1,,所在重复块 system
+4107,TIMESOLUTION,tropoCorr,FLOAT,60,1,,所在重复块 system
+4107,TIMESOLUTION,svPosX,DOUBLE,64,1,,所在重复块 system
+4107,TIMESOLUTION,svPosY,DOUBLE,72,1,,所在重复块 system
+4107,TIMESOLUTION,svPosZ,DOUBLE,80,1,,所在重复块 system
+4108,VERSION,noOfComponents,ULONG32,0,1,,
+4108,VERSION,type,ENUM,4,1,NovatelIdConstants.GIIIComponentType,所在重复块 system，每项 232 字节；原始 UINT_32 枚举
+4108,VERSION,slotId,SHORT,8,1,,所在重复块 system，每项 232 字节
+4108,VERSION,moduleId,SHORT,10,1,,所在重复块 system，每项 232 字节
+4108,VERSION,psn,STRING_16,12,1,,所在重复块 system，每项 232 字节
+4108,VERSION,hwVersion,STRING_16,28,1,,所在重复块 system，每项 232 字节
+4108,VERSION,swVersion,STRING_16,44,1,,所在重复块 system，每项 232 字节
+4108,VERSION,pbcVersion,STRING_16,60,1,,所在重复块 system，每项 232 字节
+4108,VERSION,sbcVersion,STRING_16,76,1,,所在重复块 system，每项 232 字节
+4108,VERSION,fpgaVersion,STRING_16,92,1,,所在重复块 system，每项 232 字节
+4108,VERSION,compDate,STRING_12,108,1,,所在重复块 system，每项 232 字节
+4108,VERSION,compTime,STRING_12,120,1,,所在重复块 system，每项 232 字节
+4108,VERSION,fwInfoTag,STRING_16,132,1,,所在重复块 system，每项 232 字节
+4108,VERSION,pbcInfoTag,STRING_12,196,1,,所在重复块 system，每项 232 字节
+4108,VERSION,sbcInfoTag,STRING_12,216,1,,所在重复块 system，每项 232 字节

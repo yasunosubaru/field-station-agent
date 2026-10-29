@@ -1,0 +1,91 @@
+﻿feature,receiverGeneration,condition,sourceFile:line
+readReceiverProperties,OEM6/OEM7/SMART2/OEMSTAR,VERSION 日志驱动的总装配；按 getReceiverGeneration 分流：OEMSTAR 走 decodeOEMStarGpsCard，其余按 model 字符串（data[0].model）逐字符解码,01_解包/app/model/featuresList.js:7
+setDefaultRxProperties,全部,回放且没有 VERSION 日志时使用：constellations 取 ConstellationIdConstants 全部值、positionmodes=[SBAS]、align/span/wifiAP/storage/logging/dualCard 全 true,01_解包/app/model/featuresList.js:352
+setDefaultGIIIProperties,GIII,"GIII 默认：type=""GIII""、giiiPortType=""data""、giiiDataPortState=""Operational""",01_解包/app/model/featuresList.js:345
+copyTabProp,全部,复制 tab 的 features/hardwareVersions/GIII/imuCardDetails/NovatelIdConstants.hardwareVersion 到新 tab,01_解包/app/model/featuresList.js:135
+isFeaturesListReady,全部,tabFeatures 是否已含该 tab（VERSION 是否已解析过）,01_解包/app/model/featuresList.js:1364
+getReceiverGeneration,全部,"getIsGIII 为真返回 ""GIII""，否则返回 hardwareVersions[tab].versionGeneration",01_解包/app/model/featuresList.js:954
+decodeVersionGeneration,全部,CompleteHardwareVersion 以 OEM6 开头→OEM6，OEM7 或 PIM7500→OEM7，M6X→OEMSTAR，否则 Unsupported；若 enclosure 以 SMART2 开头强制覆盖为 SMART2,01_解包/app/model/featuresList.js:1007
+getMarketHwVersion,全部,用 ENCLOSURE 的 PSN 第 2-4 位查 PP7/PP7D/SM7/SPNCPT7/SPNCPT7D/PP6 列表决定机型名；命中 wifiSupportedPSNList 时置 wifiHotspot/wifiClient=true,01_解包/app/model/featuresList.js:1029
+getcomponent,全部,"在 VERSION 组件数组里按 type 名线性查找；找不到返回 {type:""NONE"", model:""NONE""}",01_解包/app/model/featuresList.js:428
+decodeOEM7Constellation,OEM7/SMART2,"model[0]：G/GPS、D/GPS+GLO、W/GPS+GAL、P/GPS+BDS、T/GPS+GLO+GAL、C/GPS+GLO+BDS、F/四系统(+NAVIC 若 model[1]==""F"")、B/BDS、A/GLO+BDS、E/GAL、L/GLO+GAL、R/GLO、M/GPS+BDS+GAL(+NAVIC 若 model[1]==""F"")、J/GPS+NAVIC；QZSS 恒在集合内",01_解包/app/model/featuresList.js:466
+decodeOEMStarGpsCard,OEMSTAR,型号以 LX 开头时用 model[2..] 的字母集（G 加 GLONASS、B RTK Tx、D DGPS Tx、K RTK Rx、L PPP、V 5Hz、T 10Hz、F 20Hz、A API）；否则给 GPS-only + RTK Rx,01_解包/app/model/featuresList.js:201
+decodeGIIIType,GIII,IOMASTER 的 swVersion 第 2 个字符：W=WAAS G-III、I=IRIMS、Q=QZSS、G=Galileo、K=KASS、E=EGNOS RIMS V3、U=KUS,01_解包/app/model/featuresList.js:182
+decodeGIIIConstellationSupported,GIII,"按 decodeGIIIType 结果查表得到星座 id 数组：WAAS G-III/GIII/Galileo/EGNOS RIMS V3=[0,2,3]、IRIMS=[6]、QZSS=[0,5]、KASS/KUS=[0,2]",01_解包/app/model/featuresList.js:150
+getGIIISupportedConstellations,GIII,未初始化时先写入默认 GIIIFeatures 再算星座表,01_解包/app/model/featuresList.js:166
+getConstellationsSupported,全部,返回 tabFeatures[tab].constellations（ConstellationIdConstants 数值数组）,01_解包/app/model/featuresList.js:856
+decodeOEM7PositionModes,OEM7/SMART2,"model[3]：L→[PSRDIFF_ROVER,PPP](corrections=model[4]==""B"" 时加 PSRDIFF_BASE)、P→[PSRDIFF_ROVER,PPP,NTRIP_CLIENT](+B 时 PSRDIFF_BASE,NTRIP_SERVER)、R→[PPP,RTK_ROVER](+B 时 RTK_BASE,NTRIP_SERVER)、N→[NONE]",01_解包/app/model/featuresList.js:665
+decodeOEM6PositionModes,OEM6,"model[3]：R→[PSRDIFF_BASE,PSRDIFF_ROVER,RTK_BASE,RTK_ROVER]、K/X→[RTK_ROVER]、W→[RTK_BASE,RTK_ROVER]、B→[PSRDIFF_BASE,RTK_BASE]、T→[PSRDIFF_BASE]、M→[RTK_BASE,RTK_ROVER]；另 model[4]==""P"" 时追加 PPP",01_解包/app/model/featuresList.js:708
+decodePositionModeData,OEM6 以外,MODELFEAUTRES 逐条：featureType/featureStatus 均为 AUTHORIZED 时 RTK_TX→RTK_BASE、DGPS_TX→PSRDIFF_BASE、RTK_FLOAT/RTK_FIXED→RTK_ROVER、PPP/LOW_END_POSITIONING→PPP；空则 [NONE],01_解包/app/model/featuresList.js:1122
+decodeOEM7RTKPositioning,OEM7/SMART2,"model[3]：R→[RTK Fixed,RTK Float,RTK Tx,DGPS Tx,DGPS Rx]、B→[RTK Tx,DGPS Tx,DGPS Rx]、T→[DGPS Tx,DGPS Rx]",01_解包/app/model/featuresList.js:553
+decodeOEM6RTKPositioning,OEM6,"model[3]：R/K/X/W/M 组合 RTK Rx/Fixed/Float/Tx、B→[RTK Tx,DGPS Tx]、T→[DGPS Tx]，Y/Z 为空",01_解包/app/model/featuresList.js:574
+decodeOEM7RoverCorrectionSupport,OEM7/SMART2,"model[3]：R 或 X→""RTK""，L 或 P→""PSRDIFF""，其它→""NONE""",01_解包/app/model/featuresList.js:542
+decodeRTKBaseSupport,OEM6 与其它,"OEM6：model[3]∈{R,B,T}→rtkTxSupported=true；其它：MODELFEAUTRES 有 AUTHORIZED 的 RTK_TX",01_解包/app/model/featuresList.js:1203
+decodeNTRIPSupport,OEM6 以外,MODELFEAUTRES 中存在 featureStatus=AUTHORIZED 且 featureType=NTRIP,01_解包/app/model/featuresList.js:1191
+getPositionModesSupported,全部,返回 tabFeatures[tab].positionmodes（GenricPositioModes 枚举数组）,01_解包/app/model/featuresList.js:861
+getRTKPositions,全部,返回 rtkPositioning 文本数组,01_解包/app/model/featuresList.js:917
+getRoverCorrectionSupported,全部,"返回 ""RTK""/""PSRDIFF""/""NONE""",01_解包/app/model/featuresList.js:921
+getIsRTKTxSupported,全部,返回 rtkTxSupported 布尔,01_解包/app/model/featuresList.js:1227
+getIsDGPSTxSupported,全部,返回 dgpsTxSupported 布尔,01_解包/app/model/featuresList.js:1234
+getIsNTRIPSupported,全部,返回 ntripSupported 布尔,01_解包/app/model/featuresList.js:1230
+decodeOEM7OutputRate,OEM7/SMART2,model[6]：1→1Hz、5→5Hz、X→10Hz、T→20Hz、F→50Hz、C→100Hz、0→1Hz、N→0Hz,01_解包/app/model/featuresList.js:633
+decodeOEM6OutputRate,OEM6,model[6]：1/5/X/T/F/C/0 对应 1/5/10/20/50/100/0 Hz（无 N）,01_解包/app/model/featuresList.js:649
+decodePosMsrRate,OEM6 以外,MODELFEAUTRES 的 MAX_MSR_RATE / MAX_POS_RATE 取 featureStatus 文本（1Hz..100Hz）映射为可选周期数组,01_解包/app/model/featuresList.js:1148
+getOutputRate,全部,"返回 ouputRate 文本（如 ""10 Hz""）",01_解包/app/model/featuresList.js:924
+getMsrOutputRate,全部,返回 msroutputrate 周期数组,01_解包/app/model/featuresList.js:928
+getPosOutputRate,全部,返回 posoutputrate 周期数组,01_解包/app/model/featuresList.js:932
+decodeOEM7Span,OEM7/SMART2,"model[9]∈{S,P,K,R} 且 model[10] 为大于 0 的数字时返回该数字（grade），否则 -1",01_解包/app/model/featuresList.js:758
+decodeOEM6Span,OEM6,"model[9]∈{S,W} 且 model[10] 为大于 0 的数字时返回该数字，否则 -1",01_解包/app/model/featuresList.js:750
+decodeOEM7Align,OEM7/SMART2,model[4] 为 Y 或 Z,01_解包/app/model/featuresList.js:819
+decodeOEM6Align,OEM6,"model[3]∈{Y,Z,W,X}",01_解包/app/model/featuresList.js:827
+decodeSMART2Align,SMART2,model[4] 为 Y 或 Z,01_解包/app/model/featuresList.js:835
+getSPANSupported,全部,返回 span（>0 为 SPAN grade，-1 表示无）,01_解包/app/model/featuresList.js:870
+getSpanGrade,全部,返回 spanGrade（model[10] 单字符）,01_解包/app/model/featuresList.js:448
+getSpanLogs,OEM7/OEM6,按代次返回 SPAN 相关日志 id 列表；OEM6 额外含 1429/1430；未知代次返回 [],01_解包/app/model/featuresList.js:1298
+isAlignSupported,全部,返回 align 布尔,01_解包/app/model/featuresList.js:866
+decodeDualAntennaSupport,OEM7,"hardwareVersion 前 4 字符为 OEM7、model[2]==""D""，且 hardwareVersion[6]==""D"" 或 hardwareVersion 以 OEM7720 开头",01_解包/app/model/featuresList.js:380
+decodeOEM6DualAntennaSupport,OEM6,hardwareVersion 前 4 字符为 OEM6 且以 OEM617D 开头，model[3] 为 Z 或 Y,01_解包/app/model/featuresList.js:392
+decodeOEM6DualCardSupport,OEM6,VERSION 组件中存在 GPSCARD2,01_解包/app/model/featuresList.js:372
+getIsDualAntennaSupported,全部,返回 dualAntennaSupport（可选链，未定义时为 undefined）,01_解包/app/model/featuresList.js:936
+getIsDualCardSupported,全部,返回 dualCard 布尔,01_解包/app/model/featuresList.js:1237
+decodeEthernetSupport,全部,gethardwareVersion 为 PwrPak7/PwrPak7D/SMART7→true；enclosure 以 SMART2 开头→false；GPSCARD 硬件版本以 OEM719/OEM7500/PIM7500 开头→false；其余 true,01_解包/app/model/featuresList.js:410
+isEthernetSupported / getIsethernetSupport,全部,两个出口返回同一 ethernetSupport 字段,01_解包/app/model/featuresList.js:909
+isSPIPortSupported,全部,GPSCARD 硬件版本以 OEM729/OEM718D/OEM6 开头或 ENCLOSURE 型号含 CPT7 时为 false，否则 true,01_解包/app/model/featuresList.js:982
+getIsSPIPortSupported,全部,返回 imuCardDetails[tab].isSPISupported,01_解包/app/model/featuresList.js:993
+setLoggingComponent,全部,硬件版本为 PwrPak7/PwrPak7D(且 enclosurePSN 不含 MYD)/ProPak6/ProPak6D/SPANCPT7/SPANCPT7D 或以 OEM638 开头时支持文件记录,01_解包/app/model/featuresList.js:996
+getLoggingComponent,全部,返回 logging 布尔,01_解包/app/model/featuresList.js:1004
+setIsFileSupported,全部,ENCLOSURE PSN 第 2-4 位命中 NovatelIdConstants.fileSupportedList,01_解包/app/model/featuresList.js:1089
+getFileSupported,全部,返回 isFileSupported,01_解包/app/model/featuresList.js:452
+isStorageSupported / isWiFiClientSupported / isWiFiHotspotSupported,全部,分别返回 storage / wifiClient / wifiHotspot 布尔（wifi 两项由 getMarketHwVersion 依据 wifiSupportedPSNList 写入）,01_解包/app/model/featuresList.js:913
+decodeOEM7InterferenceSupport,OEM7/SMART2,"model[8]∈{E,N,F}",01_解包/app/model/featuresList.js:767
+decodeOEM7InterferenceMitigationSupport,OEM7/SMART2,"model[8]∈{E,F}",01_解包/app/model/featuresList.js:810
+getITKSupported,全部,返回 itkSupport 布尔,01_解包/app/model/featuresList.js:874
+getITKMitigationSupported,全部,返回 itkMitigationSupport 布尔,01_解包/app/model/featuresList.js:893
+decodeSpoofingSupport,OEM7 系,"代次字符串以 ""7"" 结尾且 minorSWVersion 前两位 ≥8，且 model[8]∈{E,F}",01_解包/app/model/featuresList.js:775
+getSpoofingSupported,全部,返回 spoofingSupport 布尔,01_解包/app/model/featuresList.js:878
+decodeFirmwareSupport,OEM7 系,major=7 且 minor≥8 且 (sub≥10 或 sub==3)，或 major=7 且 minor>8,01_解包/app/model/featuresList.js:786
+getFirmwareSupported,全部,返回 firmwareSupport 布尔,01_解包/app/model/featuresList.js:882
+isFirmwareSupported,OEM7 系,固件版本字符串 major>7，或 major=7 且 minor>10，或 major=7 且 minor=10 且 sub≥1；fw 为空时 false,01_解包/app/model/featuresList.js:1323
+decodeincreasedLogLimitSupported,OEM7 系,major 为 7 且 minor≥9,01_解包/app/model/featuresList.js:801
+getIncreasedLogLimitSupport,全部,返回 increasedLogLimitSupported 布尔,01_解包/app/model/featuresList.js:889
+gritFirmwareCheck,全部,固件 major<7 或 minor<7 时返回 true（表示固件不合格）,01_解包/app/model/featuresList.js:1310
+isOEM6AutosurveySupported,OEM6,代次为 OEM6 且 minorSWVersion<730 时不支持，否则支持,01_解包/app/model/featuresList.js:458
+checkMinReqVersion,全部,把 major + minor 拼成整数（parseInt）用于版本比较,01_解包/app/model/featuresList.js:971
+getFirmwareVersion / setFirmwareVersion,全部,读写 tabFeatures[tab].firmwareVersion（VERSION 的 softwareVersion 原文）,01_解包/app/model/featuresList.js:886
+isTerrastarSupported,OEM6 与其它,"hardwareVersion 以 OEM6 开头时看 model[4]==""P""；否则要求非 OEM718D 且 positionmodes 含 PPP",01_解包/app/model/featuresList.js:1097
+IsDGNSSSupported,全部,gpscardModel[3] 为 L 或 P,01_解包/app/model/featuresList.js:1114
+isOEM7Supported,全部,tileData.model 命中 OEM729/719/718D/PWRPAK7/7600/SMART7/7500/CPT7/SMART2/OEM2500/MarinePak7 或前缀匹配 PWRPAK7/OEM7/SMART7/SMART2/OEM2500,01_解包/app/model/featuresList.js:1340
+getMarinePakSupported,全部,"luaSoftwareVersion 以 ""MP7_"" 开头",01_解包/app/model/featuresList.js:1357
+decodeRadioFeatureSupport,OEM6 以外,"MODELFEAUTRES 里 featureStatus==""RADIO_TX""（实现实际比较的是 status 字段，见 §9）且 model[11] 或 model[9] 为 X",01_解包/app/model/featuresList.js:1175
+getIsRadioTxSupported,全部,返回 radioTxSupported,01_解包/app/model/featuresList.js:1188
+getRadioType / getRadioComponent,全部,读 VERSION 中 RADIO 组件的 model；getRadioComponent 会写回 tabFeatures,01_解包/app/model/featuresList.js:844
+getIMUCardDetails,全部,返回 VERSION 中 IMUCARD 的 model,01_解包/app/model/featuresList.js:852
+getAPISupported,OEMSTAR,返回 API 布尔（仅 OEMStar 分支会置 true）,01_解包/app/model/featuresList.js:897
+getIsLongHorn / setIsLongHorn / setLonghornGNSSPSN,全部,仅非 linux 平台生效的 LongHorn GNSS 标记与 PSN 覆盖,01_解包/app/model/featuresList.js:1244
+getModel / getGPSCardPSN / getEnclosurePSN,全部,分别返回 gpscardModel / GPSCARD 的 PSN / ENCLOSURE 的 PSN,01_解包/app/model/featuresList.js:1240
+gethardwareVersion / getCompletehardwareVersion / getEnclosurehardwareVersion / getOEMhardwareVersion,全部,分别返回市场机型名 / VERSION 原始 hardwareVersion / enclosure 型号 / GPSCARD hardwareVersion,01_解包/app/model/featuresList.js:942
+getIsGIII / setIsGIII,GIII,tab 是否被标记为 G-III 接收机,01_解包/app/model/featuresList.js:1250
+readGIIIReceiverProperties,GIII,由 GIII VERSION(4108) 驱动：decodeGIIIType + decodeGIIIConstellationSupported,01_解包/app/model/featuresList.js:142
+getGIIIRxType / getGIIIRxData / getGIIIPSN / setGIIIPSN,GIII,读写 GIII 型号名、原始 VERSION 数组、PSN,01_解包/app/model/featuresList.js:173
+setGIIIPortType / getGIIIPortType / setGIIIPortName / getGIIIPortName / setDataPortState / getDataPortState,GIII,G-III 数据口类型/名称/状态（CARDSTATUS 通过 setDataPortState 写入工作状态）,01_解包/app/model/featuresList.js:1272
+setRadioPort / getRadioPort,全部,保存无线电所在端口名,01_解包/app/model/featuresList.js:1351

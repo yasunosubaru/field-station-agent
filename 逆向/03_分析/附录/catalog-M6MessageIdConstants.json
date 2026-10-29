@@ -1,0 +1,3832 @@
+{
+ "messageIds": {
+  "1": {
+   "Name": "LOG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "3": {
+   "Name": "INTERFACEMODE",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "4": {
+   "Name": "COM",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "5": {
+   "Name": "LOGLIST",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "7": {
+   "Name": "GPSEPHEM",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "8": {
+   "Name": "IONUTC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "10": {
+   "Name": "RTCA1",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCA"
+  },
+  "11": {
+   "Name": "RTCAREF",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCA"
+  },
+  "15": {
+   "Name": "CLOCKADJUST",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "16": {
+   "Name": "CLOCKMODEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "17": {
+   "Name": "CRESET",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "18": {
+   "Name": "RESET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "19": {
+   "Name": "SAVECONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "20": {
+   "Name": "FRESET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "22": {
+   "Name": "MODEL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "25": {
+   "Name": "RAWGPSSUBFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "26": {
+   "Name": "CLOCKSTEERING",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "27": {
+   "Name": "ASSIGN",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "28": {
+   "Name": "ASSIGNALL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "29": {
+   "Name": "UNASSIGN",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "30": {
+   "Name": "UNASSIGNALL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "36": {
+   "Name": "UNLOG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "37": {
+   "Name": "VERSION",
+   "Type": "STATIC",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "38": {
+   "Name": "UNLOGALL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "41": {
+   "Name": "RAWEPHEM",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "42": {
+   "Name": "BESTPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "43": {
+   "Name": "RANGE",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "44": {
+   "Name": "FIX",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "47": {
+   "Name": "PSRPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "48": {
+   "Name": "SATVIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "49": {
+   "Name": "AUTH",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "50": {
+   "Name": "ECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "52": {
+   "Name": "BATTERY",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "53": {
+   "Name": "DEL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "54": {
+   "Name": "GROUP",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "55": {
+   "Name": "GROUPANTSN",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "56": {
+   "Name": "GROUPECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "57": {
+   "Name": "GROUPMODE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "58": {
+   "Name": "GROUPFIXPOS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "59": {
+   "Name": "GROUPSITENAME",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "60": {
+   "Name": "METS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "61": {
+   "Name": "GROUPSITENUMBER",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "62": {
+   "Name": "GROUPSATLIMIT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "63": {
+   "Name": "GROUPPOSAVE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "64": {
+   "Name": "GROUPLOG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "65": {
+   "Name": "GROUPANTTYPE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "66": {
+   "Name": "GROUPANTHEIGHT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "70": {
+   "Name": "CLOCKTYPE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "72": {
+   "Name": "PORTSTATS",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "73": {
+   "Name": "ALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "74": {
+   "Name": "RAWALM",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "78": {
+   "Name": "USERDATUM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "83": {
+   "Name": "TRACKSTAT",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "87": {
+   "Name": "RTCARXSTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "RTCA"
+  },
+  "88": {
+   "Name": "RTCATXSTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "RTCA"
+  },
+  "89": {
+   "Name": "RTCMRXSTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "RTCM"
+  },
+  "90": {
+   "Name": "RTCMTXSTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "RTCM"
+  },
+  "91": {
+   "Name": "RTKELEVMASK",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "92": {
+   "Name": "RTKSVENTRIES",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "93": {
+   "Name": "RXSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "94": {
+   "Name": "RXSTATUSEVENT",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "95": {
+   "Name": "STATUSCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "96": {
+   "Name": "MATCHEDPOS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "97": {
+   "Name": "RTKCOMMAND",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "98": {
+   "Name": "ANTENNAPOWER",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "99": {
+   "Name": "BESTVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "100": {
+   "Name": "PSRVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "101": {
+   "Name": "TIME",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "102": {
+   "Name": "SETAPPROXTIME",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "103": {
+   "Name": "CMROBS",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "CMR"
+  },
+  "105": {
+   "Name": "CMRREF",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "CMR"
+  },
+  "107": {
+   "Name": "RTCM1",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "116": {
+   "Name": "RTCM59",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "117": {
+   "Name": "RTCM3",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "118": {
+   "Name": "RTCM22",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "127": {
+   "Name": "DGPSTIMEOUT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "128": {
+   "Name": "RXCONFIG",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "129": {
+   "Name": "RTCM16",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "131": {
+   "Name": "SETRTCM16",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "137": {
+   "Name": "LOCKOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "138": {
+   "Name": "UNLOCKOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "139": {
+   "Name": "UNLOCKOUTALL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "140": {
+   "Name": "RANGECMP",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "141": {
+   "Name": "RTKPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "142": {
+   "Name": "DGPSEPHEMDELAY",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "143": {
+   "Name": "DGPSRXID",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "144": {
+   "Name": "DGPSTXID",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "145": {
+   "Name": "DEBUGPDC",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "149": {
+   "Name": "GROUPUSE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "157": {
+   "Name": "LOGFILE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "160": {
+   "Name": "DATUM",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "161": {
+   "Name": "NAVIGATE",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "162": {
+   "Name": "SETNAV",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "172": {
+   "Name": "AVEPOS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "173": {
+   "Name": "POSAVE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "174": {
+   "Name": "PSRDOP",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "175": {
+   "Name": "REFSTATION",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "177": {
+   "Name": "SEND",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "178": {
+   "Name": "SENDHEX",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "179": {
+   "Name": "RTCMHEALTH",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "RTCM"
+  },
+  "180": {
+   "Name": "MAGVAR",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "181": {
+   "Name": "MARKPOS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "182": {
+   "Name": "RTKBASELINE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "183": {
+   "Name": "RTKDYNAMICS",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "184": {
+   "Name": "RTKSOLUTION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "189": {
+   "Name": "PDC_ENABLE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "197": {
+   "Name": "NVMRESTORE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "206": {
+   "Name": "VALIDMODELS",
+   "Type": "STATIC",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "214": {
+   "Name": "UNDULATION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "215": {
+   "Name": "RTKDATA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "216": {
+   "Name": "RTKVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "217": {
+   "Name": "GPALM",
+   "Type": "ASYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "218": {
+   "Name": "GPGGA",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "219": {
+   "Name": "GPGLL",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "220": {
+   "Name": "GPGRS",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "221": {
+   "Name": "GPGSA",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "222": {
+   "Name": "GPGST",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "223": {
+   "Name": "GPGSV",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "224": {
+   "Name": "GPRMB",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "225": {
+   "Name": "GPRMC",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "226": {
+   "Name": "GPVTG",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "227": {
+   "Name": "GPZDA",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "230": {
+   "Name": "EXTERNALCLOCK",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "231": {
+   "Name": "MARKTIME",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "232": {
+   "Name": "FREQUENCYOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "233": {
+   "Name": "PASSCOM1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "234": {
+   "Name": "PASSCOM2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "235": {
+   "Name": "PASSCOM3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "241": {
+   "Name": "BESTXYZ",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "242": {
+   "Name": "MATCHEDXYZ",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "243": {
+   "Name": "PSRXYZ",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "244": {
+   "Name": "RTKXYZ",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "258": {
+   "Name": "DYNAMICS",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "259": {
+   "Name": "GPGGARTK",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "260": {
+   "Name": "RTCM1819",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "263": {
+   "Name": "INSATT",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "264": {
+   "Name": "INSCOV",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "265": {
+   "Name": "INSPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "266": {
+   "Name": "INSSPD",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "267": {
+   "Name": "INSVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "268": {
+   "Name": "RAWIMU",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "271": {
+   "Name": "GROUPDGPSTXID",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "275": {
+   "Name": "RTCM9",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "280": {
+   "Name": "RTKBASELINETHRESHOLD",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "282": {
+   "Name": "RTCM16T",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "310": {
+   "Name": "CMRDESC",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "CMR"
+  },
+  "315": {
+   "Name": "PING",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "316": {
+   "Name": "PINGSETUP",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "317": {
+   "Name": "COMCONFIG",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "319": {
+   "Name": "INSATTS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "320": {
+   "Name": "INSCOVS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "321": {
+   "Name": "INSPOSS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "322": {
+   "Name": "INSPOSSYNC",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "323": {
+   "Name": "INSSPDS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "324": {
+   "Name": "INSVELS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "325": {
+   "Name": "RAWIMUS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "328": {
+   "Name": "SINBANDWIDTH",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "329": {
+   "Name": "SINTECCALIBRATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "374": {
+   "Name": "RTCM2021",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "377": {
+   "Name": "SETAPPROXPOS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "379": {
+   "Name": "INSCOMMAND",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "380": {
+   "Name": "INSINITRTK",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "381": {
+   "Name": "INSLIGHTS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "382": {
+   "Name": "INSZUPT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "383": {
+   "Name": "SETIMUTOANTOFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "405": {
+   "Name": "PASSXCOM1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "406": {
+   "Name": "PASSXCOM2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "407": {
+   "Name": "RAWGPSWORD",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "413": {
+   "Name": "APPLICATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "423": {
+   "Name": "BESTGPSPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "424": {
+   "Name": "PDPFILTER",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "429": {
+   "Name": "ADJUST1PPS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "430": {
+   "Name": "CLOCKCALIBRATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "431": {
+   "Name": "COMCONTROL",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "440": {
+   "Name": "IBDEBUG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "441": {
+   "Name": "RAWOMNIFRAME",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "457": {
+   "Name": "RAWOMNIPACKET",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "469": {
+   "Name": "PDPPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "470": {
+   "Name": "PDPVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "471": {
+   "Name": "PDPXYZ",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "475": {
+   "Name": "SOFTLOADCOMMIT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "476": {
+   "Name": "SOFTLOADRESET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "477": {
+   "Name": "SOFTLOADSREC",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "492": {
+   "Name": "TIMESYNC",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "493": {
+   "Name": "PSRDIFFSOURCE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "494": {
+   "Name": "RTKSOURCE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "495": {
+   "Name": "OMNIHPPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "504": {
+   "Name": "WHEELVELOCITY",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "506": {
+   "Name": "BESTGPSVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "507": {
+   "Name": "INSPVA",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "508": {
+   "Name": "INSPVAS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "509": {
+   "Name": "OMNIINFO",
+   "Type": "RESPONSE",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "510": {
+   "Name": "OMNISTAT",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "511": {
+   "Name": "METDATA",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "512": {
+   "Name": "METTYPE",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "513": {
+   "Name": "RAWIMUSUMS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "520": {
+   "Name": "APPLICATIONSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "521": {
+   "Name": "GPGGALONG",
+   "Type": "SYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "567": {
+   "Name": "SETIMUORIENTATION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "569": {
+   "Name": "SETIMUTYPE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "591": {
+   "Name": "SETHEALTH",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "592": {
+   "Name": "SETALMHEALTH",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "593": {
+   "Name": "SETEPHEMHEALTH",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "596": {
+   "Name": "CLOCKOFFSET",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "601": {
+   "Name": "PASSTOPASSMODE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "602": {
+   "Name": "INSHOTSTART",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "607": {
+   "Name": "PASSUSB1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "608": {
+   "Name": "PASSUSB2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "609": {
+   "Name": "PASSUSB3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "612": {
+   "Name": "POSTIMEOUT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "613": {
+   "Name": "PPSCONTROL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "614": {
+   "Name": "MARKCONTROL",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "615": {
+   "Name": "MARK2POS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "616": {
+   "Name": "MARK2TIME",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "622": {
+   "Name": "TIMEDWHEELDATA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "631": {
+   "Name": "RANGEGPSL1",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "639": {
+   "Name": "INSPHASEUPDATE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "640": {
+   "Name": "INSPSRUPDATE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "641": {
+   "Name": "RVBCALIBRATE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "642": {
+   "Name": "VEHICLEBODYROTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "646": {
+   "Name": "WHEELSIZE",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "647": {
+   "Name": "INSWHEELUPDATE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "649": {
+   "Name": "INTEGRITYCHECKING",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "652": {
+   "Name": "SBASCONTROL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "665": {
+   "Name": "RTCM23",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "667": {
+   "Name": "RTCM24",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "672": {
+   "Name": "IMUCARDSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "673": {
+   "Name": "IMUCARDVERSION",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "674": {
+   "Name": "BESTLEVERARM",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "675": {
+   "Name": "LEVERARMCALIBRATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "676": {
+   "Name": "SETINSOFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "677": {
+   "Name": "SOLVEDLEVERARM",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "686": {
+   "Name": "BSLNXYZ",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "687": {
+   "Name": "SETDIFFCODEBIASES",
+   "Type": "COLLECTION",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "690": {
+   "Name": "PASSAUX",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "691": {
+   "Name": "GGAQUALITY",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "710": {
+   "Name": "SETPASSCOMTO",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "711": {
+   "Name": "SETIONOTYPE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "716": {
+   "Name": "RAWVISIONDATA",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "717": {
+   "Name": "CMRPLUS",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "CMR"
+  },
+  "718": {
+   "Name": "GLOALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "719": {
+   "Name": "GLOCLOCK",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "720": {
+   "Name": "GLORAWALM",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "721": {
+   "Name": "GLORAWFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "722": {
+   "Name": "GLORAWSTRING",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "723": {
+   "Name": "GLOEPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "726": {
+   "Name": "BESTUTM",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "729": {
+   "Name": "ASSIGNLBAND",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "730": {
+   "Name": "LBANDINFO",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "731": {
+   "Name": "LBANDSTAT",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "732": {
+   "Name": "RAWLBANDFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "735": {
+   "Name": "GLOECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "747": {
+   "Name": "RAWNAVMSGDATA",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "748": {
+   "Name": "SETDATE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "749": {
+   "Name": "UTMZONE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "756": {
+   "Name": "INSUTM",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "757": {
+   "Name": "INSUPDATE",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "758": {
+   "Name": "INSRB",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "759": {
+   "Name": "VISIONREFFUNC",
+   "Type": "COLLECTION",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "760": {
+   "Name": "VISIONSOL",
+   "Type": "POLLED",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "761": {
+   "Name": "FIXPOSDATUM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "763": {
+   "Name": "MOVINGBASESTATION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "768": {
+   "Name": "RTCM1006",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "770": {
+   "Name": "RTCM1004",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "772": {
+   "Name": "RTCM1001",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "774": {
+   "Name": "RTCM1002",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "776": {
+   "Name": "RTCM1003",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "779": {
+   "Name": "COMVOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "780": {
+   "Name": "HPSTATICINIT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "782": {
+   "Name": "HPSEED",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "783": {
+   "Name": "USEREXPDATUM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "792": {
+   "Name": "GLORAWEPHEM",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "795": {
+   "Name": "PASSXCOM3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "796": {
+   "Name": "FORCEGPSL2CODE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "805": {
+   "Name": "RTCAOBS2",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCA"
+  },
+  "808": {
+   "Name": "RTCADATA2OBS",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCA"
+  },
+  "811": {
+   "Name": "VISION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "812": {
+   "Name": "CORRIMUDATA",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "813": {
+   "Name": "CORRIMUDATAS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "816": {
+   "Name": "VISIONREFLIST",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "820": {
+   "Name": "LBANDIF",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "825": {
+   "Name": "CMRSTATIONINFO",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "CMR"
+  },
+  "839": {
+   "Name": "SETBESTPOSCRITERIA",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "841": {
+   "Name": "ANTENNAMODEL",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "844": {
+   "Name": "RTKQUALITYLEVEL",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "847": {
+   "Name": "SETWHEELPARAMETERS",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "849": {
+   "Name": "CNOUPDATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "851": {
+   "Name": "WAASTIMEOUT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "854": {
+   "Name": "RTCM1008",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "858": {
+   "Name": "RTKANTENNA",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "859": {
+   "Name": "GLMLA",
+   "Type": "ASYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "860": {
+   "Name": "OMNIVIS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "861": {
+   "Name": "NMEATALKER",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "862": {
+   "Name": "SETINITATTITUDE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "863": {
+   "Name": "SETINITAZIMUTH",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "870": {
+   "Name": "BASEANTENNAMODEL",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "871": {
+   "Name": "LOCKOUTSYSTEM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "880": {
+   "Name": "SETRTCM36",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "881": {
+   "Name": "PSRTIME",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "882": {
+   "Name": "CMRGLOOBS",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "CMR"
+  },
+  "891": {
+   "Name": "RTCM1012",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "908": {
+   "Name": "UNLOCKOUTSYSTEM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "910": {
+   "Name": "RTKTIMEOUT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "913": {
+   "Name": "DIFFCODEBIASCONTROL",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "947": {
+   "Name": "LOCALIZEDCORRECTIONDATUM",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "948": {
+   "Name": "LOCALIZEDCORRECTIONUSERDATUM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "949": {
+   "Name": "LOCALIZEDCORRECTIONUSEREXPDATUM",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "951": {
+   "Name": "RTKNETWORK",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "952": {
+   "Name": "RTKDOP",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "957": {
+   "Name": "RTCMOMNI1",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "RTCM"
+  },
+  "962": {
+   "Name": "TUNNELESCAPE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "963": {
+   "Name": "HWMONITOR",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "970": {
+   "Name": "PDPMODE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "971": {
+   "Name": "HEADING",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "973": {
+   "Name": "RAWSBASFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "974": {
+   "Name": "RAWGLOFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "975": {
+   "Name": "RAWGLOSTRING",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "976": {
+   "Name": "SBAS0",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "977": {
+   "Name": "SBAS1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "978": {
+   "Name": "SBAS10",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "980": {
+   "Name": "SBAS17",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "981": {
+   "Name": "SBAS18",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "982": {
+   "Name": "SBAS2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "983": {
+   "Name": "SBAS24",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "984": {
+   "Name": "SBAS25",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "985": {
+   "Name": "SBAS26",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "986": {
+   "Name": "SBAS27",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "987": {
+   "Name": "SBAS3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "988": {
+   "Name": "SBAS32",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "989": {
+   "Name": "SBAS33",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "990": {
+   "Name": "SBAS34",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "991": {
+   "Name": "SBAS35",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "992": {
+   "Name": "SBAS4",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "993": {
+   "Name": "SBAS45",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "994": {
+   "Name": "SBAS5",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "996": {
+   "Name": "SBAS7",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "997": {
+   "Name": "SBAS9",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "998": {
+   "Name": "SBASCORR",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1000": {
+   "Name": "SBASECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1001": {
+   "Name": "SBASTIMEOUT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1011": {
+   "Name": "DLLTIMECONST",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1043": {
+   "Name": "SATVIS2",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1045": {
+   "Name": "GPHDT",
+   "Type": "ASYNCH",
+   "Category": "NMEA",
+   "CorrectionType": "NMEA"
+  },
+  "1051": {
+   "Name": "MASTERPOS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1052": {
+   "Name": "ROVERPOS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1062": {
+   "Name": "HDTOUTTHRESHOLD",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1066": {
+   "Name": "RAWCNAVFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1067": {
+   "Name": "MARK1PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1068": {
+   "Name": "MARK2PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1069": {
+   "Name": "SETMARK1OFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1070": {
+   "Name": "SETMARK2OFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1071": {
+   "Name": "APPLYVEHICLEBODYROTATION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1075": {
+   "Name": "MARK3TIME",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1076": {
+   "Name": "MARK4TIME",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1082": {
+   "Name": "HEADINGOFFSET",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1090": {
+   "Name": "SUPERAG",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1091": {
+   "Name": "SETCANNAME",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1093": {
+   "Name": "MARK1COUNT",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1094": {
+   "Name": "MARK2COUNT",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1095": {
+   "Name": "MARK3COUNT",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1096": {
+   "Name": "MARK4COUNT",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1097": {
+   "Name": "RTCM1033",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "RTCM"
+  },
+  "1114": {
+   "Name": "GALECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1116": {
+   "Name": "SETMARK3OFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1117": {
+   "Name": "SETMARK4OFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1118": {
+   "Name": "MARK3PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1119": {
+   "Name": "MARK4PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1120": {
+   "Name": "GALALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1121": {
+   "Name": "GALCLOCK",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1122": {
+   "Name": "GALEPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1127": {
+   "Name": "GALIONO",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1132": {
+   "Name": "HEADINGEXT",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1133": {
+   "Name": "HEADINGEXTIN",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1146": {
+   "Name": "LOGFILESTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1148": {
+   "Name": "CHANCONFIGLIST",
+   "Type": "STATIC",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1149": {
+   "Name": "SELECTCHANCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1150": {
+   "Name": "SETUTCLEAPSECONDS",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1162": {
+   "Name": "PSRSATS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1163": {
+   "Name": "PSRDOP2",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1170": {
+   "Name": "CLOCKMODEL2",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1172": {
+   "Name": "RTKDOP2",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1174": {
+   "Name": "RTKSATS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1176": {
+   "Name": "MATCHEDSATS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1177": {
+   "Name": "PASHR",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1184": {
+   "Name": "HEADINGUPDATE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1191": {
+   "Name": "RAWLBANDCOMDATA",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1194": {
+   "Name": "BESTSATS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1197": {
+   "Name": "OMNIHPSATS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1199": {
+   "Name": "OMNIUSEGLONASS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1200": {
+   "Name": "ASSIGNLBAND2",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1201": {
+   "Name": "LBANDTRACKSTAT",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1204": {
+   "Name": "EXTHDGOFFSET",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1205": {
+   "Name": "SETIMUTOANTOFFSET2",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1209": {
+   "Name": "PASSETH1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1210": {
+   "Name": "PASSETH2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1211": {
+   "Name": "PASSETH3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1214": {
+   "Name": "ALIGNMENTMODE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1215": {
+   "Name": "IONOCONDITION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1216": {
+   "Name": "SETRTCMRXVERSION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1217": {
+   "Name": "FORCEGLOL2CODE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1218": {
+   "Name": "SOFTLOADDATA",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1219": {
+   "Name": "SOFTLOADSETUP",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1223": {
+   "Name": "COMPENSATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1224": {
+   "Name": "COMPENSATIONCONTROL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1225": {
+   "Name": "GPGGAPRECISION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1230": {
+   "Name": "GPRMCDATA",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1234": {
+   "Name": "PDPSATS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1235": {
+   "Name": "SOFTLOADSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1237": {
+   "Name": "SETTIMEBASE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1243": {
+   "Name": "IPCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1244": {
+   "Name": "DNSCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1245": {
+   "Name": "ETHCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1246": {
+   "Name": "SERIALCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1247": {
+   "Name": "ECHO",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1248": {
+   "Name": "ICOMCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1249": {
+   "Name": "NTRIPCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1250": {
+   "Name": "PASSICOM1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1251": {
+   "Name": "PASSICOM2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1252": {
+   "Name": "PASSICOM3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1253": {
+   "Name": "PASSNCOM1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1254": {
+   "Name": "PASSNCOM2",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1255": {
+   "Name": "PASSNCOM3",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1256": {
+   "Name": "BESTLEVERARM2",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1257": {
+   "Name": "TAGNEXTMARK",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1258": {
+   "Name": "TAGGEDMARK1PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1259": {
+   "Name": "TAGGEDMARK2PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1260": {
+   "Name": "GENERATERTKCORRECTIONS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1270": {
+   "Name": "IMUTOANTOFFSETS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1273": {
+   "Name": "RANGECMP2",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1285": {
+   "Name": "RAIMMODE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1286": {
+   "Name": "RAIMSTATUS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1288": {
+   "Name": "ETHSTATUS",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1289": {
+   "Name": "IPSTATUS",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1293": {
+   "Name": "INSZUPTCONTROL",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1295": {
+   "Name": "SETIMUSPECS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1296": {
+   "Name": "GENERATEDIFFCORRECTIONS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1302": {
+   "Name": "SOFTLOADFILE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1305": {
+   "Name": "IMURATEPVAS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1309": {
+   "Name": "GALINAVEPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1310": {
+   "Name": "GALFNAVEPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1312": {
+   "Name": "SETIMUPROTOCOL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1314": {
+   "Name": "ALIGNBSLNXYZ",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1315": {
+   "Name": "ALIGNBSLNENU",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1316": {
+   "Name": "HEADINGSATS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1317": {
+   "Name": "INPUTGIMBALANGLE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1318": {
+   "Name": "SETGIMBALORIENTATION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1319": {
+   "Name": "GIMBALSPANROTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1320": {
+   "Name": "VARIABLELEVERARM",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1321": {
+   "Name": "GIMBALLEDPVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1322": {
+   "Name": "SETRTCMTXVERSION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1323": {
+   "Name": "ALIGNAUTOMATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1324": {
+   "Name": "PDPVELOCITYOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1325": {
+   "Name": "REFSTATIONINFO",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1326": {
+   "Name": "TRACKSV",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1327": {
+   "Name": "TAGGEDMARK3PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1328": {
+   "Name": "TAGGEDMARK4PVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1329": {
+   "Name": "MODELFEATURES",
+   "Type": "STATIC",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1330": {
+   "Name": "QZSSRAWSUBFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1331": {
+   "Name": "QZSSRAWEPHEM",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1332": {
+   "Name": "ALIGNDOP",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1333": {
+   "Name": "SETUPSENSOR",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1335": {
+   "Name": "HEADING2",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1336": {
+   "Name": "QZSSEPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1337": {
+   "Name": "TIMEDEVENTPULSE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1342": {
+   "Name": "PASSTHROUGH",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1343": {
+   "Name": "NTRIPSOURCETABLE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1344": {
+   "Name": "SOURCETABLE",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1345": {
+   "Name": "QZSSRAWALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1346": {
+   "Name": "QZSSALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1347": {
+   "Name": "QZSSIONUTC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1348": {
+   "Name": "AUTHCODES",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1350": {
+   "Name": "QZSSECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1352": {
+   "Name": "SETIMUTOGIMBALOFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1355": {
+   "Name": "DOSCMD",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1356": {
+   "Name": "DUALANTENNAPORTCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1362": {
+   "Name": "IMURATECORRIMUS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1363": {
+   "Name": "ASYNCHINSLOGGING",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1374": {
+   "Name": "SETBASERECEIVERTYPE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1382": {
+   "Name": "HEAVE",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1383": {
+   "Name": "SETHEAVEWINDOW",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1384": {
+   "Name": "PASSCOM4",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1388": {
+   "Name": "ISMTECCALIBRATION",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1392": {
+   "Name": "ISMBANDWIDTH",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1397": {
+   "Name": "SETALIGNMENTVEL",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1398": {
+   "Name": "ISMSIGNALCONTROL",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1401": {
+   "Name": "SETIMUTOEXTANTOFFSET",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1405": {
+   "Name": "ISMCALIBRATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1406": {
+   "Name": "ISMCALIBRATIONSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1411": {
+   "Name": "PROFILE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1412": {
+   "Name": "PROFILEINFO",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1413": {
+   "Name": "GALFNAVRAWPAGE",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1414": {
+   "Name": "GALINAVRAWWORD",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1415": {
+   "Name": "BASEANTENNAPCO",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1416": {
+   "Name": "BASEANTENNAPCV",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1417": {
+   "Name": "THISANTENNAPCO",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1418": {
+   "Name": "THISANTENNAPCV",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1419": {
+   "Name": "BASEANTENNATYPE",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1420": {
+   "Name": "THISANTENNATYPE",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1421": {
+   "Name": "THISANTENNAIN",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1425": {
+   "Name": "SBASALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1427": {
+   "Name": "HEAVEFILTER",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1428": {
+   "Name": "CONNECTIMU",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1429": {
+   "Name": "BESTGNSSPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1430": {
+   "Name": "BESTGNSSVEL",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1444": {
+   "Name": "SERIALPROTOCOL",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1445": {
+   "Name": "RTKSOURCETIMEOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1446": {
+   "Name": "RELINSPVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1448": {
+   "Name": "INSTHRESHOLDS",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1449": {
+   "Name": "PSRDIFFSOURCETIMEOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1450": {
+   "Name": "PSRDIFFTIMEOUT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1451": {
+   "Name": "SATXYZ2",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1456": {
+   "Name": "TSS1",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1457": {
+   "Name": "INSATTX",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1458": {
+   "Name": "INSVELX",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1459": {
+   "Name": "INSPOSX",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1461": {
+   "Name": "RAWIMUX",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1462": {
+   "Name": "RAWIMUSX",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1463": {
+   "Name": "EXTERNALPVAS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1465": {
+   "Name": "INSPVAX",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1498": {
+   "Name": "LEDCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1500": {
+   "Name": "GPSCNAVEPHEM",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1501": {
+   "Name": "GPSRAWCNAVEPHEM",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1502": {
+   "Name": "GPSCNAVMIDIALM",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1503": {
+   "Name": "GPSRAWCNAVMIDIALM",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1504": {
+   "Name": "GPSCNAVREDUCEDALM",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1505": {
+   "Name": "GPSRAWCNAVREDUCEDALM",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1506": {
+   "Name": "GPSCNAVIONO",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1507": {
+   "Name": "GPSCNAVGROUPDELAY",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1508": {
+   "Name": "GPSCNAVUTC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1509": {
+   "Name": "GPSCNAVEOP",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1510": {
+   "Name": "GPSCNAVGGTO",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1511": {
+   "Name": "GPSRAWCNAVMESSAGE",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1514": {
+   "Name": "CELLINFO",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1516": {
+   "Name": "CELLSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1530": {
+   "Name": "QZSSRAWCNAVMESSAGE",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1531": {
+   "Name": "MODULEPOWER",
+   "Type": "COLLECTION",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1533": {
+   "Name": "GPSNAVCDC",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1534": {
+   "Name": "GPSNAVEDC",
+   "Type": "COLLECTION",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1535": {
+   "Name": "ENCLOSUREWHEELSENSOR",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1536": {
+   "Name": "ENCLOSURECOMSELECT",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1538": {
+   "Name": "PPPPOS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1541": {
+   "Name": "PPPSATS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1544": {
+   "Name": "PPPSEED",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1546": {
+   "Name": "PPPDOP2",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1551": {
+   "Name": "PPPDYNAMICS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1560": {
+   "Name": "PPPTIMEOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1566": {
+   "Name": "PPPCONVERGEDCRITERIA",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1574": {
+   "Name": "NMEAVERSION",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1576": {
+   "Name": "PASSCOM5",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1577": {
+   "Name": "PASSCOM6",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1578": {
+   "Name": "PASSBT1",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1579": {
+   "Name": "SETADMINPASSWORD",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1582": {
+   "Name": "BDSECUTOFF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1584": {
+   "Name": "BDSALMANAC",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1590": {
+   "Name": "BDSIONO",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1607": {
+   "Name": "BDSCLOCK",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1608": {
+   "Name": "BLUETOOTHSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1609": {
+   "Name": "BLUETOOTHCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1613": {
+   "Name": "WIFICLISTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1615": {
+   "Name": "WIFICLICONTROL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1616": {
+   "Name": "WIFICLISCANRESULTS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1617": {
+   "Name": "WIFICONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1618": {
+   "Name": "NOVATELXOBS",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATELX"
+  },
+  "1624": {
+   "Name": "DEBUGDATA",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1636": {
+   "Name": "EVENTOUTCONTROL",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1637": {
+   "Name": "EVENTINCONTROL",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1639": {
+   "Name": "DUALANTENNAPOWER",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1660": {
+   "Name": "DUALCARDCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1663": {
+   "Name": "IOCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1665": {
+   "Name": "WIFIAPCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1666": {
+   "Name": "WIFIAPSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1669": {
+   "Name": "IPSTATS",
+   "Type": "POLLED",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1671": {
+   "Name": "LOGIN",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1672": {
+   "Name": "LOGOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1674": {
+   "Name": "AIRPLANEMODE",
+   "Type": "ASYNCH",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1678": {
+   "Name": "BESTVELTYPE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1679": {
+   "Name": "SAVEETHERNETDATA",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1683": {
+   "Name": "CELLULARCONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1684": {
+   "Name": "CELLULARCONTROL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1685": {
+   "Name": "CELLULARSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1686": {
+   "Name": "CELLULARINFO",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1688": {
+   "Name": "SETPREFERREDNETIF",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1690": {
+   "Name": "BLUETOOTHDISCOVERABILITY",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1695": {
+   "Name": "BDSRAWNAVSUBFRAME",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1696": {
+   "Name": "BDSEPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "1698": {
+   "Name": "HEADINGRATE",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1701": {
+   "Name": "PASSCOM7",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1702": {
+   "Name": "PASSCOM8",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1703": {
+   "Name": "PASSCOM9",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1704": {
+   "Name": "PASSCOM10",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1707": {
+   "Name": "PPPSOURCE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1708": {
+   "Name": "SYNCHEAVE",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1709": {
+   "Name": "DELAYEDHEAVE",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1710": {
+   "Name": "DHCPCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1718": {
+   "Name": "LBANDBEAMTABLE",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1719": {
+   "Name": "TERRASTARINFO",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1722": {
+   "Name": "SETWHEELSOURCE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1728": {
+   "Name": "VERIPOSINFO",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1729": {
+   "Name": "TERRASTARSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1730": {
+   "Name": "VERIPOSSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1733": {
+   "Name": "ASSIGNLBANDBEAM",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1734": {
+   "Name": "RANGECMP3",
+   "Type": "SYNCH",
+   "Category": "Measurement",
+   "CorrectionType": "NOVATEL"
+  },
+  "1735": {
+   "Name": "ELEVATIONCUTOFF",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1738": {
+   "Name": "MARK3POS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1739": {
+   "Name": "MARK4POS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1740": {
+   "Name": "PPSCONTROL2",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1745": {
+   "Name": "IMUCONFIGURATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1748": {
+   "Name": "EM3000",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1749": {
+   "Name": "TERRASTARPAYG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1760": {
+   "Name": "GLIDEINITIALIZATIONPERIOD",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1761": {
+   "Name": "DUALANTENNAALIGN",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1763": {
+   "Name": "RELINSAUTOMATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1767": {
+   "Name": "SETIMUPORTPROTOCOL",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1775": {
+   "Name": "SETRELINSOUTPUTFRAME",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1778": {
+   "Name": "IMURATEPVA",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1795": {
+   "Name": "AUTOSURVEY",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1796": {
+   "Name": "SETINSROTATION",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1797": {
+   "Name": "RELINSCONFIG",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1798": {
+   "Name": "ALIGNSTATS",
+   "Type": "ASYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "1799": {
+   "Name": "SETRELIABILITYPARAMETERS",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1800": {
+   "Name": "SETMAXALIGNMENTTIME",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1816": {
+   "Name": "CANCONFIGRATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1817": {
+   "Name": "CELLULARACTIVATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1818": {
+   "Name": "CELLULARACTIVATESTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1819": {
+   "Name": "CELLULARIPSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1820": {
+   "Name": "NTRIPSTATUS",
+   "Type": "ASYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1821": {
+   "Name": "SETINSUPDATE",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1877": {
+   "Name": "RADARSTATUS",
+   "Type": "SYNCH",
+   "Category": "Others",
+   "CorrectionType": "NOVATEL"
+  },
+  "1949": {
+   "Name": "PPPBASICCONVERGEDCRITERIA",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1984": {
+   "Name": "STEADYLINECONFIG",
+   "Type": "COLLECTION_RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "1985": {
+   "Name": "RTKASSIST",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "2003": {
+   "Name": "RTKASSISTTIMEOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "2033": {
+   "Name": "REFERENCESTATIONTIMEOUT",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "2048": {
+   "Name": "RTKASSISTSTATUS",
+   "Type": "SYNCH",
+   "Category": "Position",
+   "CorrectionType": "NOVATEL"
+  },
+  "2070": {
+   "Name": "RTKINTEGERCRITERIA",
+   "Type": "RESPONSE",
+   "Category": "Command",
+   "CorrectionType": "NOVATEL"
+  },
+  "2371": {
+   "Name": "BDSBCNAV1EPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "2372": {
+   "Name": "BDSBCNAV2EPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  },
+  "2412": {
+   "Name": "BDSBCNAV3EPHEMERIS",
+   "Type": "ASYNCH",
+   "Category": "Navigation",
+   "CorrectionType": "NOVATEL"
+  }
+ }
+}

@@ -1,0 +1,9 @@
+# 源文件 SHA256 基线（安装目录，2026-10-29 采集）
+# 用途：任何重新解包/比对都必须与这些哈希一致
+# 格式：<sha256>  <bytes>  <path>
+
+6f14bbce4baa4e2125f19dcbd41dbea6867bfef64af75fb345a89ac99075a4b3  158193897  C:\Program Files\NovAtel Inc\NovAtel Application Suite\resources\app.asar
+801f210718be2d31332c97534067b67712c4065795c8526f921d33a0e0ff7001  198692546  C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\resources\app.asar
+c655be366ef8353afcf45d28a8981f9bf4251fcd9a54bb7ae67fb862df259c52  176837632  C:\Program Files\NovAtel Inc\NovAtel Application Suite\NovAtelApplicationSuite.exe
+4b5bac60f9d3b88d5a22d56636f1ea8762657e5a11c18bcecbfbce151d46f0de  223793664  C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe
+a0ef0605aafd7423a4b22db8e03b58eb0f05f277d1f5628cafc022520007c7fa  2280960  C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\resources\app.asar.unpacked\node_modules\better-sqlite3-multiple-ciphers\build\Release\better_sqlite3.node
