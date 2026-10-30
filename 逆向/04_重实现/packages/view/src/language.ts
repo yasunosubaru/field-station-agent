@@ -18,6 +18,31 @@
 
 import type { LanguageLayer, TabId, FeatureFlags } from './types.ts';
 import { DEFAULT_FEATURES } from './types.ts';
+import dictEn from './language/dict-en.ts';
+import dictCn from './language/dict-cn.ts';
+
+/**
+ * The two languages this reimplementation ships (`zh` + `en`). The dictionaries are generated from
+ * the shipped `view/languageSupport/{en,cn}.js` by `tools/gen_language_dicts.js` — 1679 / 1636 keys.
+ */
+export const BUILTIN_DICTIONARIES: Record<string, Record<string, string>> = { en: dictEn, cn: dictCn };
+
+/**
+ * `zh-CN` / `zh-Hans` / `Chinese` → `cn`. The shipped matcher compares `languageId.split('-')[0]`
+ * (`"zh"`) against `languageName.toLowerCase()` (`"chinese"`), so it silently fell back to English
+ * and the Chinese files were unreachable from the UI (`D7` in `00A §8`). This map is the fix; pass
+ * `languageAliases: false` to restore the shipped behaviour.
+ */
+export const BUILTIN_ALIASES: Record<string, string> = {
+  cn: 'cn',
+  zh: 'cn',
+  'zh-cn': 'cn',
+  'zh-hans': 'cn',
+  'zh-hant': 'cn',
+  chinese: 'cn',
+  en: 'en',
+  english: 'en',
+};
 
 /** R34 — the 20 `processLanguage` calls of `statusComponentsProcessLanguage` (`jarvisInterface.js:1375-1410`). */
 export const STATUS_LANGUAGE_COMPONENTS: readonly string[] = [
@@ -86,6 +111,12 @@ export interface LanguageLayerOptions {
   features?: (tab?: TabId) => FeatureFlags;
   /** `NovatelIdConstants.gritSupported && currentActiveApp == 'GRIT'`. */
   gritActive?: () => boolean;
+  /** Seed the built-in English dictionary at construction (default true). */
+  builtin?: boolean;
+  /** `zh-CN` → `cn` (default true; `false` restores the shipped R33 behaviour). */
+  languageAliases?: boolean;
+  /** Clear the dictionary before loading the next language (default true). */
+  replaceDictionary?: boolean;
 }
 
 export class Language implements LanguageLayer {
@@ -98,6 +129,7 @@ export class Language implements LanguageLayer {
 
   constructor(options: LanguageLayerOptions = {}) {
     this.options = options;
+    if (options.builtin !== false) this.dictionary = { ...dictEn };
   }
 
   /* ------------------------------------------------------------ dictionary */
@@ -164,7 +196,16 @@ export class Language implements LanguageLayer {
    * (so `zh-CN` resolves to `en`, because `Chinese` is registered as `cn`).
    */
   resolveLanguageId(languageId: string): string {
-    const wanted = String(languageId ?? '').split('-')[0].toLowerCase();
+    const raw = String(languageId ?? '').trim().toLowerCase();
+    const wanted = raw.split('-')[0];
+    // Fix for D7: the shipped matcher cannot reach `cn` from `zh-CN`. Disable with `languageAliases:false`.
+    if (this.options.languageAliases !== false) {
+      const alias = BUILTIN_ALIASES[raw] ?? BUILTIN_ALIASES[raw.split('-').slice(0, 2).join('-')] ?? BUILTIN_ALIASES[wanted];
+      if (alias) {
+        this.lastResolved = alias;
+        return alias;
+      }
+    }
     let key = 'en';
     for (const [id, entry] of this.languages) {
       if (entry.languageName.toLowerCase() === wanted) key = id;
@@ -305,7 +346,13 @@ export class Language implements LanguageLayer {
    * call is not a no-op.
    */
   applyUserLanguagePreference(languageId: string, _tab?: TabId): string[] {
-    this.languageId = this.resolveLanguageId(languageId);
+    const id = this.resolveLanguageId(languageId);
+    this.languageId = id;
+    // The shipped `addDict` accumulates, so switching en→cn→en leaves Chinese in place for keys the
+    // dictionary lacks. Clearing first is the documented fix (D7); `replaceDictionary:false` mirrors.
+    if (this.options.replaceDictionary !== false) this.clearDictionary();
+    const builtin = BUILTIN_DICTIONARIES[id];
+    if (builtin) this.loadDictionary(builtin, id);
     return this.processLanguage(_tab);
   }
 }

@@ -133,7 +133,7 @@ test('R41 replay is a no-op for a tab with nothing cached', () => {
 /* ------------------------------------------------------------------ language */
 
 test('R31 the dictionary is additive like jsIn.addDict, and clearDictionary is the fix', () => {
-  const lang = createLanguage();
+  const lang = createLanguage({ builtin: false });
   lang.loadDictionary({ A: 'first', B: 'only-in-first' }, 'en');
   assert.equal(lang.translate('A'), 'first');
   lang.loadDictionary({ A: 'second' }, 'de');
@@ -159,7 +159,7 @@ test('R33 language resolution matches languageName lowercased, and falls back to
   assert.equal(lang.resolveLanguageId('german-lang'), 'de');
   // ISO codes do NOT match: `de-DE` → 'de' != 'german' → the original silently falls back to en.
   assert.equal(lang.resolveLanguageId('de-DE'), 'en');
-  assert.equal(lang.resolveLanguageId('zh-CN'), 'en', 'Chinese is registered as cn, so zh-CN misses');
+  assert.equal(createLanguage({ languageAliases: false }).resolveLanguageId('zh-CN'), 'en', 'with the shipped matcher Chinese is registered as cn, so zh-CN misses');
   assert.equal(lang.resolveLanguageId('klingon'), 'en');
   assert.equal(lang.resolvedFilePath('German'), '../languageSupport/de.js');
 });
@@ -257,7 +257,7 @@ test('R32 applyUserLanguagePreference ignores the tab argument but still runs th
 test('R35/R37 markers are listed and applied only when the dictionary knows the key', () => {
   const doc = createDocument();
   doc.body.innerHTML = `<div>${htmlFragment('positionStatus')}</div>`;
-  const lang = createLanguage();
+  const lang = createLanguage({ builtin: false });
   const markers = lang.markers(doc);
   assert.ok(markers.includes('data-lang-positioning'));
   assert.ok(markers.includes('data-lang-operating-mode'));
