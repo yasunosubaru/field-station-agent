@@ -23,6 +23,7 @@ import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
 import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
 import { buildRinex21GloNav, buildRinex21Nav } from '../../protocol/src/rinex21-nav.ts';
 import { buildRinex3Obs, type Rinex3Version } from '../../protocol/src/rinex3.ts';
+import { buildRinex3EmptyNav, buildRinex3Nav, rinex3NavSystems, RINEX3_NAV_EXTENSIONS } from '../../protocol/src/rinex3-nav.ts';
 import { buildSummary, formatDirectory, formatExtension } from '../../protocol/src/summary.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 import { decodeEdie } from '../../protocol/src/edie.ts';
@@ -114,8 +115,16 @@ function main(): void {
     outputs.push({ name: `${base}.${yy}N`, data: buildRinex21Nav(accepted, tables, { builtAt: at }) });
     outputs.push({ name: `${base}.${yy}G`, data: buildRinex21GloNav({ builtAt: at }) });
   } else if (format.startsWith('RINEX30')) {
-    const version = `${format.slice(6, 7)}.${format.slice(7)}` as Rinex3Version;
+    // `RINEX301` -> `3.01`. The offsets are 5 and 6 (the `3` of `RINEX3` is at index 5); slicing from
+    // 6 would build `0.1`, which is not a version and used to slip through into the `.YYO` header.
+    const version = `${format.slice(5, 6)}.${format.slice(6)}` as Rinex3Version;
     outputs.push({ name: `${base}.${yy}O`, data: buildRinex3Obs(accepted, tables, version, { builtAt: at }) });
+    outputs.push({ name: `${base}.${yy}N`, data: buildRinex3Nav(accepted, tables, version, { builtAt: at }) });
+    // One header-only nav file per constellation the version supports (the set grows from 3.01 to
+    // 3.03); none of these captures carries a non-GPS ephemeris, so they are all bare headers.
+    for (const system of rinex3NavSystems(version)) {
+      outputs.push({ name: `${base}.${yy}${RINEX3_NAV_EXTENSIONS[system]}`, data: buildRinex3EmptyNav(system, version, { builtAt: at }) });
+    }
   } else {
     outputs.push({ name: `${base}.BINARY`, data: encodeBinaryCapture(accepted).bytes });
   }
