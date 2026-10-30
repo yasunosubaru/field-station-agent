@@ -1,0 +1,597 @@
+<?xml version = '1.0' encoding = 'utf-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+    <!--Project Information-->
+    <!--Project Name : broad-->
+    <!--Project Directory  : C:\Users\SunCh\AppData\Local\Temp\gs2\broad-->
+    <!--Data File Name   : broad.gps-->
+    <!--Start Time(gps) : 2442,467940.000-->
+    <!--End Time(gps) : 2442,468009.000-->
+    <!--Duration    : 00:01:09-->
+    <Document id="root_doc">
+        <Folder>
+            <name>broad</name>
+            <Style id="PathSINGLE">
+                <LineStyle>
+                    <color>ffe74a3c</color>
+                    <width>4</width>
+                </LineStyle>
+                <PolyStyle>
+                    <color>ffe74a3c</color>
+                </PolyStyle>
+            </Style>
+            <Style id="PointSINGLE">
+                <IconStyle>
+                    <color>ffe74a3c</color>
+                    <scale>0.75</scale>
+                    <Icon>
+                        <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+                    </Icon>
+                </IconStyle>
+                <BalloonStyle>
+                    <text><![CDATA[$[description]]]></text>
+                </BalloonStyle>
+            </Style>
+            <Folder id="SINGLE">
+                <name>SINGLE</name>
+                <Folder id="Points">
+                    <name>Points</name>
+                    <Folder id="Starting Points">
+                        <name>Started 2442,467950.000</name>
+                        <description>SINGLE</description>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467950.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.942</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.385, 3.413 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.942</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467951.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.909</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.385, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.909</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467952.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.931</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.384, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.931</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467953.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.922</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.384, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.922</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467954.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.919</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.385, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.919</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467955.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.907</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.385, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.907</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467956.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.919</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.385, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.919</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467957.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.920</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.385, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.920</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467958.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.921</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.384, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.921</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467959.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.925</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.925</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467960.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.922</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.922</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467961.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.918</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.410 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.918</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467962.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.909</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.909</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467963.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.913</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.913</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467964.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.920</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.920</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467965.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.909</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.909</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467966.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352805, 65.912</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352805,30.539966,65.912</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467967.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.880</p><p>&nbsp;</p><p>Std Dev: 1.160, 1.383, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.880</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467968.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.879</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.879</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467969.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.882</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.882</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467970.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.875</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.875</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467971.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.868</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.868</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467972.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.875</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.383, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.875</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467973.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.874</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.874</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467974.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.873</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.873</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467975.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.865</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.865</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467976.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.867</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.867</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467977.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.858</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.858</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467978.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.855</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.855</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467979.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.847</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.847</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467980.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.858</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.409 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.858</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467981.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539966, 114.352804, 65.855</p><p>&nbsp;</p><p>Std Dev: 1.161, 1.382, 3.408 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352804,30.539966,65.855</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467982.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.050</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.050</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467983.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.046</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.046</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467984.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.038</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.038</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467985.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.040</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.040</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467986.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.042</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.042</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467987.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.049</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.049</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467988.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.047</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.047</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467989.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.045</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.045</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467990.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.038</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.038</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467991.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.042</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.042</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467992.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.040</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.040</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467993.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.037</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.037</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467994.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.035</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.035</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467995.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.030</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.030</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467996.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.028</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.028</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467997.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.029</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.029</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467998.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.036</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.357, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.036</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,467999.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.041</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.041</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468000.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.033</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.033</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468001.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.024</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.024</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468002.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.024</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.024</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468003.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.021</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.387 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.021</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468004.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.033</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.387 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.033</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468005.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.031</p><p>&nbsp;</p><p>Std Dev: 1.158, 1.356, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.031</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468006.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.028</p><p>&nbsp;</p><p>Std Dev: 1.159, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.028</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468007.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.030</p><p>&nbsp;</p><p>Std Dev: 1.159, 1.357, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.030</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468008.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.054</p><p>&nbsp;</p><p>Std Dev: 1.159, 1.356, 3.388 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.054</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,468009.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539965, 114.352803, 66.044</p><p>&nbsp;</p><p>Std Dev: 1.159, 1.356, 3.389 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352803,30.539965,66.044</coordinates>
+                            </Point>
+                        </Placemark></Folder>
+                </Folder>
+                <Folder id="Paths">
+                    <name>Paths</name>
+                    <Placemark>
+                        <name>Started 2442,467950.000</name>
+                        <description>SINGLE</description>
+                        <styleUrl>#PathSINGLE</styleUrl>
+                        <LineString>
+                            <altitudeMode>clampToGround</altitudeMode>
+                            <coordinates>114.352805,30.539966,65.942 114.352805,30.539966,65.909 114.352805,30.539966,65.931 114.352805,30.539966,65.922 114.352805,30.539966,65.919 114.352805,30.539966,65.907 114.352805,30.539966,65.919 114.352805,30.539966,65.920 114.352805,30.539966,65.921 114.352805,30.539966,65.925 114.352805,30.539966,65.922 114.352805,30.539966,65.918 114.352805,30.539966,65.909 114.352805,30.539966,65.913 114.352805,30.539966,65.920 114.352805,30.539966,65.909 114.352805,30.539966,65.912 114.352804,30.539966,65.880 114.352804,30.539966,65.879 114.352804,30.539966,65.882 114.352804,30.539966,65.875 114.352804,30.539966,65.868 114.352804,30.539966,65.875 114.352804,30.539966,65.874 114.352804,30.539966,65.873 114.352804,30.539966,65.865 114.352804,30.539966,65.867 114.352804,30.539966,65.858 114.352804,30.539966,65.855 114.352804,30.539966,65.847 114.352804,30.539966,65.858 114.352804,30.539966,65.855 114.352803,30.539965,66.050 114.352803,30.539965,66.046 114.352803,30.539965,66.038 114.352803,30.539965,66.040 114.352803,30.539965,66.042 114.352803,30.539965,66.049 114.352803,30.539965,66.047 114.352803,30.539965,66.045 114.352803,30.539965,66.038 114.352803,30.539965,66.042 114.352803,30.539965,66.040 114.352803,30.539965,66.037 114.352803,30.539965,66.035 114.352803,30.539965,66.030 114.352803,30.539965,66.028 114.352803,30.539965,66.029 114.352803,30.539965,66.036 114.352803,30.539965,66.041 114.352803,30.539965,66.033 114.352803,30.539965,66.024 114.352803,30.539965,66.024 114.352803,30.539965,66.021 114.352803,30.539965,66.033 114.352803,30.539965,66.031 114.352803,30.539965,66.028 114.352803,30.539965,66.030 114.352803,30.539965,66.054 114.352803,30.539965,66.044 </coordinates>
+                        </LineString>
+                    </Placemark>
+                </Folder>
+            </Folder>
+        </Folder>
+    </Document>
+</kml>

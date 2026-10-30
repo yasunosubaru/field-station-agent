@@ -1,0 +1,14 @@
+﻿#Project Name:          broad
+#Project Directory:    C:\Users\SunCh\AppData\Local\Temp\gs2\broad
+#Data File Name:      broad.gps
+#Start Time(GPS):      2442,467940.000
+#End Time(GPS):       2442,468009.000
+#Duration:                   00:01:09
+name,start,end,value
+Antenna 1 Gain High,1477389562896.000000,1477389564995.000000,1
+Antenna 1 Gain High,1477389603896.000000,1477389604996.000000,1
+Ethernet Not Connected,1477389549994.000000,1477389604996.000000,1
+Jamming Detected,1477389552895.000000,1477389556995.000000,1
+Jamming Detected,1477389575910.000000,1477389582009.000000,1
+Jamming Detected,1477389583896.000000,1477389588995.000000,1
+RF Calibration Data Present,1477389549994.000000,1477389604996.000000,1
