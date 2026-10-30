@@ -1,0 +1,9 @@
+{
+  "name": "field-station-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "野外台站智能体 桌面外壳（Electron）：起本地 HTTP 服务并加载到窗口",
+  "main": "main.cjs",
+  "license": "MIT",
+  "author": "nas-reimpl"
+}

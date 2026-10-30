@@ -1,0 +1,20 @@
+{
+  "name": "@nas-reimpl/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "野外台站智能体 · 桌面启动器（纯脚本，双击即用）与 Electron 外壳（electron/ 独立 app）",
+  "main": "src/cli.ts",
+  "scripts": {
+    "start": "node src/cli.ts",
+    "gui": "Start-FieldStation-GUI.cmd",
+    "electron": "electron electron",
+    "test": "node --test --test-force-exit \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

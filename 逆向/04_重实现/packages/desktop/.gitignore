@@ -1,0 +1,4 @@
+# 只有 Electron 需要 node_modules（`npm i` 在联网机器上跑）；启动器本身零依赖。
+node_modules/
+package-lock.json
+*.log
