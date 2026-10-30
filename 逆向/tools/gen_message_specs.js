@@ -39,6 +39,34 @@ const csv = parseCsv(fs.readFileSync(path.join(appendix, 'parsers-fields.csv'), 
 const head = csv.shift();
 const idx = Object.fromEntries(head.map((h, i) => [h.trim(), i]));
 
+// Hand-curated layouts from the OEM7 Commands and Logs Reference Manual (§3.x). `logparsers.js` only
+// declares the fields the UI consumes, so its tables are incomplete; where the manual pins the full
+// layout, the rows in `manual-fields.csv` replace that message's fields entirely.
+const manualPath = path.join(appendix, 'manual-fields.csv');
+const manualOverrides = new Map();
+if (fs.existsSync(manualPath)) {
+  const manual = parseCsv(fs.readFileSync(manualPath, 'utf8').replace(/^\uFEFF/, ''));
+  const mhead = manual.shift();
+  const midx = Object.fromEntries(mhead.map((h, i) => [h.trim(), i]));
+  for (const row of manual) {
+    if (!row || row.length < 4) continue;
+    const msgId = row[midx['msgId']]?.trim();
+    if (!msgId) continue;
+    const list = manualOverrides.get(msgId) ?? [];
+    list.push(row);
+    manualOverrides.set(msgId, list);
+  }
+}
+
+// Replace those messages wholesale, then let the single parsing pass below handle both sources.
+if (manualOverrides.size) {
+  const overridden = new Set(manualOverrides.keys());
+  const kept = csv.filter((row) => !overridden.has((row[idx['msgId']] ?? '').trim()));
+  csv.length = 0;
+  csv.push(...kept);
+  for (const rows of manualOverrides.values()) for (const row of rows) csv.push(row);
+}
+
 const N = JSON.parse(fs.readFileSync(path.join(appendix, 'catalog-NovatelIdConstants.json'), 'utf8'));
 
 /** Resolve `NovatelIdConstants.a.b.c` against the dumped constants, inverting value->key where needed. */

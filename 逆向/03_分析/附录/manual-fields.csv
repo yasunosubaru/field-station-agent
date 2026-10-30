@@ -1,0 +1,9 @@
+msgId,msgName,field,type,offset,scaleFactor,enumTable,notes
+99,BESTVEL,solStatus,ENUM,0,1,NovatelIdConstants.solutionStatus,"manual §3.25；logparsers 只声明了 horSpeed/trkGround，这里按手册补全"
+99,BESTVEL,velType,ENUM,4,1,NovatelIdConstants.positionOrVelocityType,"manual §3.25 Table 96"
+99,BESTVEL,latency,FLOAT,8,1,,"manual §3.25：速度时间标签的延迟（s）"
+99,BESTVEL,age,FLOAT,12,1,,"manual §3.25：差分龄期（s）"
+99,BESTVEL,horSpeed,DOUBLE,16,1,,"manual §3.25"
+99,BESTVEL,trkGround,DOUBLE,24,1,,"manual §3.25"
+99,BESTVEL,vertSpeed,FLOAT,32,1,,"manual §3.25"
+99,BESTVEL,reserved,FLOAT,36,1,,"manual §3.25：保留字段，ASCII 打 0"
