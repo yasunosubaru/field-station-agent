@@ -1,0 +1,12 @@
+﻿#Project Name:          clean
+#Project Directory:    C:\Users\SunCh\AppData\Local\Temp\gs\clean
+#Data File Name:      clean.gps
+#Start Time(GPS):      2442,463097.350
+#End Time(GPS):       2442,463102.300
+#Duration:                   00:00:04
+timestamp (GPS week sec),Latitude SD,Longitude SD,Height SD
+2442  463098.000,1.343599,1.19761,2.639151
+2442  463099.000,1.343554,1.197549,2.639288
+2442  463100.000,1.343561,1.197606,2.639545
+2442  463101.000,1.343888,1.197795,2.640294
+2442  463102.000,1.343297,1.197371,2.639535

@@ -954,7 +954,36 @@ GOS\events.db       24 576 B   同上
 
 即**"16 图"是上限，实际出哪几张取决于日志里有哪些消息**——这一点直接影响重实现的图表注册方式
 （按 `PlotSummary` 动态建，而不是固定 16 个）。
-ectron 版本必须重新编译 |
+
+### 9.2 四种导出格式已落盘（2026-10-31）
+
+之前卡住的"点了 Export 没有文件"，根因是 **目的地对话框**：Export 面板确认后，主进程弹的是
+`showSaveDialog`（标题 `Select a folder to save exported files`），不处理就永远停在
+`Exporting (0%)`。Playwright 能在主进程里执行，把 `dialog.showOpenDialog/showSaveDialog` 换成
+桩函数即可，无需人工点。
+
+导出面板的开关（`input[type=checkbox]`，共 10 个）：
+
+| 索引 | 含义 | 默认 |
+|---:|---|---|
+| 0..4 | 要导出哪些图（Overview / PVT / Tracking & Measurements / Receiver Status） | 0 关，1–4 开 |
+| 5 | Project Information | 开 |
+| **6..9** | **HTML Report / PDF Report / KML / CSV (original data only)** | **全关** |
+
+目的地规则（实测）：返回路径 `<D>\<name>` 时
+
+```
+<D>\<name>.html            331 117 B   报告；旁边生成 html\scripts\echarts.min.js 与 html\icons\*
+<D>\<name>.pdf             348 419 B
+<D>\<name>.kml               5 728 B   Placemark 轨迹 + 项目信息注释
+<D>\csv\*.csv              13 个      每张图一份，头部 #Project Name / #Project Directory / #Data File Name / #Start Time(GPS) …
+```
+
+注意 CSV 目录是**基名的兄弟目录**（`<D>\csv`），不是 `<D>\<name>\csv`。
+
+产物已入库：`00_来源/samples/graph/export/`（含 `csv/` 13 份、`clean.html`、`clean.pdf`、`clean.kml`；
+`html/scripts` 与 `html/icons` 是随包资源，体积大且不是生成物，未入库）。
+驱动脚本：`tools/graph-export.cjs`（`GRAPH_GPF` / `GRAPH_OUT` / 可选 `GRAPH_EXE`）。
 
 ---
 

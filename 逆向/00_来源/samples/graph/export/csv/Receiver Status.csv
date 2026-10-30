@@ -1,0 +1,12 @@
+﻿#Project Name:          clean
+#Project Directory:    C:\Users\SunCh\AppData\Local\Temp\gs\clean
+#Data File Name:      clean.gps
+#Start Time(GPS):      2442,463097.350
+#End Time(GPS):       2442,463102.300
+#Duration:                   00:00:04
+name,start,end,value
+Antenna 1 Gain Anomaly,1477384700900.000000,1477384700900.000000,1
+Antenna 1 Gain High,1477384700896.000000,1477384700900.000000,1
+Ethernet Not Connected,1477384699995.000000,1477384700900.000000,1
+Jamming Detected,1477384700896.000000,1477384700900.000000,1
+RF Calibration Data Present,1477384699995.000000,1477384700900.000000,1

@@ -1,0 +1,102 @@
+<?xml version = '1.0' encoding = 'utf-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+    <!--Project Information-->
+    <!--Project Name : clean-->
+    <!--Project Directory  : C:\Users\SunCh\AppData\Local\Temp\gs\clean-->
+    <!--Data File Name   : clean.gps-->
+    <!--Start Time(gps) : 2442,463097.350-->
+    <!--End Time(gps) : 2442,463102.300-->
+    <!--Duration    : 00:00:04-->
+    <Document id="root_doc">
+        <Folder>
+            <name>clean</name>
+            <Style id="PathSINGLE">
+                <LineStyle>
+                    <color>ffe74a3c</color>
+                    <width>4</width>
+                </LineStyle>
+                <PolyStyle>
+                    <color>ffe74a3c</color>
+                </PolyStyle>
+            </Style>
+            <Style id="PointSINGLE">
+                <IconStyle>
+                    <color>ffe74a3c</color>
+                    <scale>0.75</scale>
+                    <Icon>
+                        <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+                    </Icon>
+                </IconStyle>
+                <BalloonStyle>
+                    <text><![CDATA[$[description]]]></text>
+                </BalloonStyle>
+            </Style>
+            <Folder id="SINGLE">
+                <name>SINGLE</name>
+                <Folder id="Points">
+                    <name>Points</name>
+                    <Folder id="Starting Points">
+                        <name>Started 2442,463098.000</name>
+                        <description>SINGLE</description>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,463098.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539975, 114.352811, 66.430</p><p>&nbsp;</p><p>Std Dev: 1.344, 1.198, 2.639 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352811,30.539975,66.430</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,463099.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539975, 114.352811, 66.421</p><p>&nbsp;</p><p>Std Dev: 1.344, 1.198, 2.639 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352811,30.539975,66.421</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,463100.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539975, 114.352811, 66.414</p><p>&nbsp;</p><p>Std Dev: 1.344, 1.198, 2.640 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352811,30.539975,66.414</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,463101.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539975, 114.352811, 66.408</p><p>&nbsp;</p><p>Std Dev: 1.344, 1.198, 2.640 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352811,30.539975,66.408</coordinates>
+                            </Point>
+                        </Placemark>
+                        <Placemark>
+                            <name> </name>
+                            <description><![CDATA[<p>GPS: 2442,463102.000</p><p>&nbsp;</p><p><font color="red">SINGLE</font></p><p>&nbsp;</p><p>30.539975, 114.352811, 66.415</p><p>&nbsp;</p><p>Std Dev: 1.343, 1.197, 2.640 M</p>]]></description>
+                            <styleUrl>#PointSINGLE</styleUrl>
+                            <Point>
+                                <altitudeMode>clampToGround</altitudeMode>
+                                <coordinates>114.352811,30.539975,66.415</coordinates>
+                            </Point>
+                        </Placemark></Folder>
+                </Folder>
+                <Folder id="Paths">
+                    <name>Paths</name>
+                    <Placemark>
+                        <name>Started 2442,463098.000</name>
+                        <description>SINGLE</description>
+                        <styleUrl>#PathSINGLE</styleUrl>
+                        <LineString>
+                            <altitudeMode>clampToGround</altitudeMode>
+                            <coordinates>114.352811,30.539975,66.430 114.352811,30.539975,66.421 114.352811,30.539975,66.414 114.352811,30.539975,66.408 114.352811,30.539975,66.415 </coordinates>
+                        </LineString>
+                    </Placemark>
+                </Folder>
+            </Folder>
+        </Folder>
+    </Document>
+</kml>

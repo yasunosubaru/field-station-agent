@@ -1,0 +1,8 @@
+﻿#Project Name:          clean
+#Project Directory:    C:\Users\SunCh\AppData\Local\Temp\gs\clean
+#Data File Name:      clean.gps
+#Start Time(GPS):      2442,463097.350
+#End Time(GPS):       2442,463102.300
+#Duration:                   00:00:04
+timestamp (GPS week sec),Temperature,Antenna Current,Internal Supply Voltage,Antenna Voltage,Digital Core Voltage,Supply Voltage,V 1.8,V 5.0,Peripheral Core Voltage,Secondary Temperature
+2442  463100.000,38.339443,0.052381,3.258852,5.122344,1.203907,3.258852,1.825397,5.149695,1.557998,39.682545

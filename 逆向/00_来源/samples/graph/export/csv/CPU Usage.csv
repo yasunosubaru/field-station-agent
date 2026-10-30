@@ -1,0 +1,12 @@
+﻿#Project Name:          clean
+#Project Directory:    C:\Users\SunCh\AppData\Local\Temp\gs\clean
+#Data File Name:      clean.gps
+#Start Time(GPS):      2442,463097.350
+#End Time(GPS):       2442,463102.300
+#Duration:                   00:00:04
+timestamp (GPS week sec),CPU Usage
+2442  463098.000,29.0
+2442  463099.000,28.0
+2442  463100.000,29.0
+2442  463101.000,29.0
+2442  463102.000,29.5
