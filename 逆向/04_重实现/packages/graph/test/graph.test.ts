@@ -16,8 +16,9 @@ import { fileURLToPath } from 'node:url';
 import { loadProject, chartTitles, chartMessages } from '../src/project.ts';
 import { loadCapture } from '../src/capture.ts';
 import { availableCsvCharts, exportCsv } from '../src/csv.ts';
+import { receiverStatusSpans } from '../src/receiver-status.ts';
 import { renderKml } from '../src/kml.ts';
-import { formatDuration, formatGpsColumn, formatTrimmed } from '../src/format.ts';
+import { formatDuration, formatFixedHalfEven, formatGpsColumn, formatTrimmed } from '../src/format.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SAMPLES = join(here, '..', '..', '..', '..', '00_来源', 'samples');
@@ -82,15 +83,29 @@ test('loadCapture decodes the capture with the shipped EDIE dictionary', () => {
   assert.equal(bestpos.length, 5);
 });
 
-test('exportCsv lists only the implemented charts PlotSummary asks for', () => {
+test('exportCsv lists every chart PlotSummary asks for', () => {
   const project = loadProject(GPF);
+  // Same set, in PlotSummary's order (the spec table groups BESTPOS / HWMONITOR / RXSTATUS / RANGE).
   assert.deepEqual(
-    availableCsvCharts(project).map((spec) => spec.title),
-    ['2D Trajectory', 'Height', 'Position Status', 'Position Type'],
+    availableCsvCharts(project).map((spec) => spec.title).sort(),
+    chartTitles(project.plotSummary).sort(),
   );
 });
 
-for (const name of ['2D Trajectory', 'Height', 'Position Status', 'Position Type']) {
+for (const name of [
+  '2D Trajectory',
+  'Height',
+  'Position SD',
+  'Position Status',
+  'Position Type',
+  'Solution Statistics',
+  'CPU Usage',
+  'HW Monitor Status',
+  'Receiver Status',
+  'GNSS Signal Strength',
+  'Satellites and Signals',
+  'Tracking Time',
+]) {
   test(`CSV ${name}.csv is byte-identical to the golden`, () => {
     const project = loadProject(GPF);
     const capture = loadCapture(CAPTURE);
@@ -132,4 +147,26 @@ test('formatters match the golden spellings', () => {
   // The one value in the goldens that proves trailing zeros are trimmed.
   assert.equal(formatTrimmed(1.1976104974746704, 6), '1.19761');
   assert.equal(formatTrimmed(30.539974892173998, 6), '30.539975');
+});
+
+test('formatFixedHalfEven rounds ties to even like printf %.6f', () => {
+  // float32 2471.9765625 is exactly …5625, the only tie in Tracking Time.csv.
+  const tie = new Float32Array([2471.9765625])[0];
+  assert.equal(formatFixedHalfEven(tie, 6), '2471.976562');
+  assert.equal(tie.toFixed(6), '2471.976563'); // what JS does instead
+  assert.equal(formatFixedHalfEven(38.33944320678711, 6), '38.339443');
+  assert.equal(formatFixedHalfEven(0.05238095670938492, 6), '0.052381');
+  assert.equal(formatFixedHalfEven(0, 6), '0.000000');
+});
+
+test('receiverStatusSpans reproduces the five golden spans', () => {
+  const project = loadProject(GPF);
+  const capture = loadCapture(CAPTURE);
+  assert.deepEqual(receiverStatusSpans(project, capture), [
+    { name: 'Antenna 1 Gain Anomaly', start: 1477384700900, end: 1477384700900 },
+    { name: 'Antenna 1 Gain High', start: 1477384700896, end: 1477384700900 },
+    { name: 'Ethernet Not Connected', start: 1477384699995, end: 1477384700900 },
+    { name: 'Jamming Detected', start: 1477384700896, end: 1477384700900 },
+    { name: 'RF Calibration Data Present', start: 1477384699995, end: 1477384700900 },
+  ]);
 });

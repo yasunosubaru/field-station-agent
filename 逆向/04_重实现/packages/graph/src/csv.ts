@@ -35,12 +35,19 @@ import {
   POSITION_TYPE,
   SOLUTION_STATUS,
   formatDuration,
+  formatFixedHalfEven,
   formatGpsColumn,
   formatGpsCommentTime,
   formatTrimmed,
 } from './format.ts';
 import type { GraphProject } from './project.ts';
 import { chartMessages, chartTitles } from './project.ts';
+import { renderReceiverStatus } from './receiver-status.ts';
+import {
+  gnssSignalStrengthColumns,
+  renderSatellitesAndSignals,
+  trackingTimeColumns,
+} from './range-charts.ts';
 
 /** How one CSV column is rendered. */
 export type ColumnFormat = 'trim6' | 'fixed6' | 'fixed1' | 'int' | 'text';
@@ -58,6 +65,13 @@ export interface ChartCsvSpec {
   /** Message that feeds the chart (`PlotSummary` guarantees it is present). */
   message: string;
   columns: CsvColumn[];
+  /**
+   * Charts whose column *set* is data-dependent build their columns per export instead of at module
+   * load (`HW Monitor Status` names one column per measurement the receiver actually reports).
+   */
+  buildColumns?: (project: GraphProject, capture: Capture) => CsvColumn[];
+  /** Charts that are not a timestamp series at all (`Receiver Status`) render themselves. */
+  render?: (project: GraphProject, capture: Capture) => Buffer;
 }
 
 /** The literal comment lines, with the value column exactly where the original puts it. */
@@ -75,7 +89,7 @@ function renderValue(format: ColumnFormat, value: string | number): string {
     case 'trim6':
       return formatTrimmed(Number(value), 6);
     case 'fixed6':
-      return Number(value).toFixed(6);
+      return formatFixedHalfEven(Number(value), 6);
     case 'fixed1':
       return Number(value).toFixed(1);
     case 'int':
@@ -109,11 +123,18 @@ export function chartRecords(project: GraphProject, capture: Capture, spec: Char
 
 /** Render one chart to the exact bytes Graph writes. */
 export function renderChartCsv(project: GraphProject, capture: Capture, spec: ChartCsvSpec): Buffer {
+  if (spec.render) {
+    const body = spec.render(project, capture).toString('utf8');
+    // A self-rendering chart still carries the same six comment lines and BOM.
+    const text = csvHeader(project) + body;
+    return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text, 'utf8')]);
+  }
+  const columns = spec.buildColumns ? spec.buildColumns(project, capture) : spec.columns;
   const rows = chartRecords(project, capture, spec);
-  const header = ['timestamp (GPS week sec)', ...spec.columns.map((column) => column.header)].join(',');
+  const header = ['timestamp (GPS week sec)', ...columns.map((column) => column.header)].join(',');
   const body = rows.map((record) => {
     const cells = [formatGpsColumn(record.gpsMs)];
-    for (const column of spec.columns) cells.push(renderValue(column.format, column.value(record)));
+    for (const column of columns) cells.push(renderValue(column.format, column.value(record)));
     return cells.join(',');
   });
   const text = csvHeader(project) + header + '\r\n' + body.map((line) => line + '\r\n').join('');
@@ -150,6 +171,79 @@ const bestposHeight: CsvColumn = {
   value: (record) => field(record, 'orthometric_height'),
 };
 
+/** `Position SD.csv` — three SD columns, six decimals **trimmed** (golden `1.19761`). */
+const POSITION_SD_COLUMNS: CsvColumn[] = [
+  { header: 'Latitude SD', format: 'trim6', value: (record) => field(record, 'latitude_std_dev') },
+  { header: 'Longitude SD', format: 'trim6', value: (record) => field(record, 'longitude_std_dev') },
+  { header: 'Height SD', format: 'trim6', value: (record) => field(record, 'height_std_dev') },
+];
+
+/**
+ * `Solution Statistics.csv` — same BESTPOS record, **opposite** trailing-zero rule: both ages are
+ * fixed six decimals (`0.000000` in the golden), the two counts are integers.
+ */
+const SOLUTION_STATISTICS_COLUMNS: CsvColumn[] = [
+  { header: 'Differential Lag', format: 'fixed6', value: (record) => field(record, 'diff_age') },
+  { header: 'Solution Age', format: 'fixed6', value: (record) => field(record, 'solution_age') },
+  { header: 'Satellites Tracked', format: 'int', value: (record) => field(record, 'num_svs') },
+  { header: 'Satellites Used In Solution', format: 'int', value: (record) => field(record, 'num_soln_svs') },
+];
+
+/**
+ * `CPU Usage.csv` — `(200 - idleTimeRaw) / 2`, one decimal.
+ *
+ * `idleTimeRaw` is byte 12 of the 28-byte SBF header (`packages/protocol/src/header.ts`), not a
+ * payload field. Golden: idle 142 → `29.0`, 144 → `28.0`, 141 → `29.5`.
+ */
+const CPU_USAGE_COLUMNS: CsvColumn[] = [
+  {
+    header: 'CPU Usage',
+    format: 'fixed1',
+    value: (record) => {
+      const header = record.frame.header;
+      if (header.kind !== 'long') throw new Error('CPU Usage needs a long SBF header');
+      return (200 - header.idleTimeRaw) / 2;
+    },
+  },
+];
+
+/**
+ * `HW Monitor Status` measurement id → column name, read out of the shipped
+ * `graph-node-wrapper.node` (`status >> 8`). The **column set and order** are not this table's
+ * order: Graph writes them in the order the measurements arrive in the record (golden is
+ * 1, 2, 6, 7, 8, 15, 17, 21, 23, 22).
+ */
+const HWMONITOR_NAMES: Record<number, string> = {
+  1: 'Temperature',
+  2: 'Antenna Current',
+  6: 'Internal Supply Voltage',
+  7: 'Antenna Voltage',
+  8: 'Digital Core Voltage',
+  15: 'Supply Voltage',
+  17: 'V 1.8',
+  21: 'V 5.0',
+  23: 'Peripheral Core Voltage',
+  22: 'Secondary Temperature',
+};
+
+/** Columns of `HW Monitor Status`, built from the first record's measurements (data-dependent). */
+function hwMonitorColumns(_project: GraphProject, capture: Capture): CsvColumn[] {
+  const [record] = capture.byName('HWMONITOR');
+  if (!record) return [];
+  const count = field(record, 'measurements.count');
+  const columns: CsvColumn[] = [];
+  for (let i = 0; i < count; i++) {
+    const status = field(record, `measurements[${i}].status`);
+    const id = status >> 8;
+    columns.push({
+      header: HWMONITOR_NAMES[id] ?? `Unknown ${id}`,
+      format: 'fixed6',
+      value: (r) => field(r, `measurements[${i}].value`),
+    });
+  }
+  return columns;
+}
+
 /**
  * The charts the CSV exporter can reproduce **byte-for-byte today**. Charts that exist in
  * `PlotSummary` but are missing here are silently skipped, exactly like Graph skips charts with no
@@ -160,6 +254,14 @@ export const CSV_CHARTS: ChartCsvSpec[] = [
   { title: 'Height', message: 'BESTPOS', columns: [bestposHeight] },
   { title: 'Position Status', message: 'BESTPOS', columns: [bestposSolutionType] },
   { title: 'Position Type', message: 'BESTPOS', columns: [bestposPositionType] },
+  { title: 'Position SD', message: 'BESTPOS', columns: POSITION_SD_COLUMNS },
+  { title: 'Solution Statistics', message: 'BESTPOS', columns: SOLUTION_STATISTICS_COLUMNS },
+  { title: 'CPU Usage', message: 'BESTPOS', columns: CPU_USAGE_COLUMNS },
+  { title: 'HW Monitor Status', message: 'HWMONITOR', columns: [], buildColumns: hwMonitorColumns },
+  { title: 'Receiver Status', message: 'RXSTATUS', columns: [], render: renderReceiverStatus },
+  { title: 'Tracking Time', message: 'RANGE', columns: [], buildColumns: trackingTimeColumns },
+  { title: 'GNSS Signal Strength', message: 'RANGE', columns: [], buildColumns: gnssSignalStrengthColumns },
+  { title: 'Satellites and Signals', message: 'RANGE', columns: [], render: renderSatellitesAndSignals },
 ];
 
 export function csvChartSpec(title: string): ChartCsvSpec | undefined {

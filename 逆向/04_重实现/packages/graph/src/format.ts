@@ -64,6 +64,48 @@ export function formatFixed(value: number, decimals = 6): string {
 }
 
 /**
+ * `printf("%.6f")` rounding: exact decimal expansion of the binary value, ties to **even**.
+ *
+ * JS `toFixed` rounds ties away from zero, which differs for a value like the `float32`
+ * `2471.9765625` (exactly `…5625`): C prints `2471.976562`, `toFixed` prints `2471.976563`. The
+ * golden `Tracking Time` / `GNSS Signal Strength` contain both tie cases, so the RANGE charts use
+ * this formatter (see `03_分析/06_Graph应用.md §11.6`).
+ */
+export function formatFixedHalfEven(value: number, decimals = 6): string {
+  if (!Number.isFinite(value)) return String(value);
+  const negative = value < 0;
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, Math.abs(value));
+  const bits = view.getBigUint64(0);
+  const exponent = Number((bits >> 52n) & 0x7ffn);
+  let mantissa: bigint;
+  let power: number;
+  if (exponent === 0) {
+    mantissa = bits & 0xfffffffffffffn;
+    power = -1074;
+  } else {
+    mantissa = (bits & 0xfffffffffffffn) | (1n << 52n);
+    power = exponent - 1075;
+  }
+  const scale = 10n ** BigInt(decimals);
+  let numerator = mantissa * scale;
+  let denominator = 1n;
+  if (power >= 0) numerator <<= BigInt(power);
+  else denominator = 1n << BigInt(-power);
+
+  let quotient = numerator / denominator;
+  const remainder = numerator % denominator;
+  const twiceRemainder = remainder * 2n;
+  if (twiceRemainder > denominator || (twiceRemainder === denominator && (quotient & 1n) === 1n)) quotient += 1n;
+
+  const digits = quotient.toString().padStart(decimals + 1, '0');
+  const integer = digits.slice(0, digits.length - decimals);
+  const fraction = digits.slice(digits.length - decimals);
+  const text = decimals > 0 ? `${integer}.${fraction}` : integer;
+  return negative && quotient !== 0n ? `-${text}` : text;
+}
+
+/**
  * BMI `solution_status` → the name Graph writes into `Position Status.csv`
  * (`01_解包/app/model/NovatelIdConstants.js` → `solutionStatus`).
  */

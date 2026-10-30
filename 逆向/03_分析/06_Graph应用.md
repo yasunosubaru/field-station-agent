@@ -1034,10 +1034,12 @@ GOS\events.db       24 576 B   同上
 | | `chartTitles(plotSummary)` | 按 `PlotSummary` **动态**列举图名（本工程 12 张）。判据是 R17 的字符串相等：键就是图标题，值是 `{日志名: 条数}`。`PVT.GNSS/INS` 与 `Tracking_Measurements.Primary` 是两层嵌套，函数递归到"叶子全是数字"那层为止 |
 | | `chartMessages(plotSummary, title)` | 某张图由哪些日志喂（如 `{BESTPOS:1}`），没有则空对象 |
 | `capture.ts` | `loadCapture(capturePath)` | 复用 `packages/protocol` 的 `SbfDeframer` + `decodeEdie`（**没有**重写协议解析），产出 `{name, messageId, week, milliseconds, gpsMs, values, byPath}`、`counts`、`byName()` |
-| `csv.ts` | `exportCsv(project, capture, {selectedPlots})` | 已实现的 4 张图 → `{fileName, bytes, buffer}`；`availableCsvCharts` 只返回 `PlotSummary` 认可且已实现的图 |
+| `csv.ts` | `exportCsv(project, capture, {selectedPlots})` | 12 张图全部 → `{fileName, bytes, buffer}`；`availableCsvCharts` 只返回 `PlotSummary` 认可且已实现的图（本工程 12/12） |
 | | `writeCsv(...)` | 写 `<out>/csv/<图名>.csv`（Graph 的目的地规则：**兄弟目录** `csv`） |
+| `receiver-status.ts` | `receiverStatusSpans` / `renderReceiverStatus` | `Receiver Status` 的"条件→区间"导出（不是时间序列，见 §11.3 末） |
+| `range-charts.ts` | `satelliteColumns` / `trackingTimeColumns` / `gnssSignalStrengthColumns` / `renderSatellitesAndSignals` | 三张 `RANGE` 图的列构造与信号命名（见 §11.3） |
 | `kml.ts` | `renderKml(project, capture)` / `writeKml(...)` | 生成 `<project>.kml` |
-| `format.ts` | `gpsWeekSeconds` / `formatGpsColumn` / `formatGpsCommentTime` / `formatDuration` / `formatTrimmed` / `SOLUTION_STATUS` / `POSITION_TYPE` | GPS 时间与数字格式；枚举表取自 `01_解包/app/model/NovatelIdConstants.js` |
+| `format.ts` | `gpsWeekSeconds` / `formatGpsColumn` / `formatGpsCommentTime` / `formatDuration` / `formatTrimmed` / `formatFixed` / `formatFixedHalfEven` / `SOLUTION_STATUS` / `POSITION_TYPE` | GPS 时间与数字格式；枚举表取自 `01_解包/app/model/NovatelIdConstants.js` |
 
 时间刻度以 Graph 自己的为准：**`gpsMs = week * 604800000 + msOfWeek`**（不减 18 s、不加 315 964 800 000）。
 证据：`.gpf` 的 `DataInfo.StartTime = 1477384697350` 正好等于 `2442 * 604800000 + 463097350`，
@@ -1089,6 +1091,44 @@ timestamp (GPS week sec),<列…>\r\n
 | `CPU Usage` CPU Usage | 1 位小数 | `29.0`/`28.0`/`29.5`；值 = `(200 − idleTimeRaw)/2`（BESTPOS 头 `idle=142 → 29.0`、`144 → 28.0`、`141 → 29.5`） |
 | `HW Monitor Status` 各列 | 6 位 | `38.339443`…；列名与列序 = `HWMONITOR` 里 measurement 的**出现顺序**，名字按 `status >> 8` 查表（1 Temperature / 2 Antenna Current / 6 Internal Supply Voltage / 7 Antenna Voltage / 8 Digital Core Voltage / 15 Supply Voltage / 17 V 1.8 / 21 V 5.0 / 23 Peripheral Core Voltage / 22 Secondary Temperature） |
 | `Receiver Status` start/end | 6 位定长 | `1477384700900.000000`；值是 GPS 毫秒刻度，不是 UTC |
+| `Tracking Time` 每列 | 6 位定长，**半数入偶** | `157.028076`；值 = `obs[].lock_time`（SBF RANGE 的 F4 秒计数） |
+| `GNSS Signal Strength` 每列 | 6 位定长，半数入偶 | 值 = `obs[].C_No`；`_Mean` = 同(星座,信号)所有卫星的算术平均 |
+| `Satellites and Signals` | 整数计数 | `Signals_X_Y`=该(星座,信号)出现次数、`Satellites_X`=该星座不同 PRN 数、`*_Total` |
+| `Receiver Status` | 整份表是"条件→区间" | `name,start,end,value`，**没有时间列**，见下 |
+
+**半数入偶（新发现，必须抄）**：`Fixed6` 不是 JS `toFixed`。`Tracking Time` 里 `2471.9765625`（float32 精确值）
+golden 写 `2471.976562`，JS `toFixed(6)` 会写 `2471.976563`；`GNSS Signal Strength` 里 `49.3515625` 同理。
+原版是 C `printf("%.6f")`：按二进制精确值展开、**ties-to-even**。`format.ts` 的 `formatFixedHalfEven`
+用 BigInt 精确实现，`csv.ts` 的 `fixed6` 走它。
+
+**`RANGE` 的 system / signal 切片**（三张图共用，已用 golden 60 列逐格反验）：
+
+```
+system = (c_status >> 16) & 7     // 0 GPS / 4 BEIDOU / 5 QZSS（本样本只出现这三种）
+signal = (c_status >> 21) & 0x1f  // 5 位"signal type"，按系统各自编号
+```
+
+`(system, signal)` → 列名前缀由 60 列 × 2 种数值（`lock_time` / `C_No`）逐格匹配得到，共 12 对：
+GPS `0=L1_CA, 16=L1_CP, 9=L2_PY, 17=L2_CM, 14=L5_Q`；BEIDOU `0=B1I_D1, 4=B1I_D2, 1=B2I_D1,
+2=B3I_D1, 6=B3I_D2`；QZSS `0=L1_CA, 16=L1_CP, 17=L2_CM, 14=L5_Q`。
+**注意**：这**不是** `graph-node-wrapper.node` 里那张 72 名字的平铺枚举（那张表里 GPS 的 9 是 `L2_CM`，
+而接收机把 `L2_PY` 报成 9）。72 名字表只用来定**列序**（见下）。
+
+**逐卫星列的排序规则（已解）**：`(system 升序, PRN 升序, 72 名字枚举里的位次升序)`。
+枚举位次：`GPS_L1_CA=0 … GPS_L1_CP=2 … GPS_L2_PY=8 … GPS_L2_CM=9`（`GPS_L5_Q` 在该表里没有字面量，
+按 L1<L2<L5 排在 L2 之后，正好与 golden 一致）。这条规则对每个 PRN 组都成立，60 列全对。
+
+**`Receiver Status` 的表结构**：
+
+```
+name,start,end,value\r\n
+Antenna 1 Gain Anomaly,1477384700900.000000,1477384700900.000000,1\r\n
+```
+
+- 没有 `timestamp (GPS week sec)` 列；区间两端是 GPS 毫秒（6 位定长），`value` 恒为 `1`。
+- 行按 `name` **字典序**排（golden 是纯字母序，既不是表序也不是出现序）。
+- `start` = 该条件变真的第一条 RXSTATUS；`end` = **最后一次观测到仍为真**的那条记录的时间
+  （不是 `DataInfo.EndTime`）。所以只在最后一条记录才成立的条件得到零长区间（`Antenna 1 Gain Anomaly`）。
 
 ### 11.4 KML 规格（逐字节）
 
@@ -1122,7 +1162,7 @@ node packages/cli/src/graph.ts --project …/clean.gpf --capture …/clean-9600.
      --out <tmp> --csv --kml --golden …/samples/graph/export
 ```
 
-实测（`samples/graph/export/` 为 golden）：
+实测（`samples/graph/export/` 为 golden）——**12 份 CSV + 1 份 KML 全部逐字节相同**：
 
 | 文件 | 字节 | 结果 |
 |---|---:|---|
@@ -1130,52 +1170,76 @@ node packages/cli/src/graph.ts --project …/clean.gpf --capture …/clean-9600.
 | `csv/Height.csv` | 425 | 逐字节相同 |
 | `csv/Position Status.csv` | 447 | 逐字节相同 |
 | `csv/Position Type.csv` | 417 | 逐字节相同（顺手做的，与上面三份同一套格式） |
+| `csv/Position SD.csv` | 537 | 逐字节相同 |
+| `csv/Solution Statistics.csv` | 565 | 逐字节相同 |
+| `csv/CPU Usage.csv` | 403 | 逐字节相同 |
+| `csv/HW Monitor Status.csv` | 550 | 逐字节相同 |
+| `csv/Receiver Status.csv` | 610 | 逐字节相同 |
+| `csv/Tracking Time.csv` | 73 985 | 逐字节相同 |
+| `csv/GNSS Signal Strength.csv` | 76 395 | 逐字节相同 |
+| `csv/Satellites and Signals.csv` | 6 473 | 逐字节相同 |
 | `clean.kml` | 5 728 | 逐字节相同 |
+
+`node --test` 一共 **21 个测试，21 pass**，其中 12 个是"每份 CSV 一份"的
+`assert.deepEqual(Buffer.from(ours), readFileSync(golden))`。
 
 ### 11.6 未完成 / 与原版的差异
 
-**没做的图（8 份 CSV）**——`samples/graph/export/csv/` 里其实一共 **12** 份（不是 13）：
-
-| 未做的 CSV | 卡在哪 |
-|---|---|
-| `Position SD.csv` | 格式已知（6 位去尾零），只是没接进 `CSV_CHARTS`——约 20 行代码就能补 |
-| `Solution Statistics.csv` | 同上（`diff_age`/`solution_age` 6 位定长 + 两个 `u8` 整数） |
-| `CPU Usage.csv` | 公式已反推（`(200 − idleTimeRaw)/2`、1 位小数），未接 |
-| `HW Monitor Status.csv` | 列名表已从 `graph-node-wrapper.node` 提取（见 §11.3 末行），未接 |
-| `Receiver Status.csv` | **位→名字表没解出来**（见下） |
-| `GNSS Signal Strength.csv` | 列 = (星座, 信号, PRN) + 每信号的 `_Mean`；**`_Mean` 列顺序没解出来**（见下） |
-| `Satellites and Signals.csv` | 每星座信号计数 + 卫星数 + 总计；**信号列顺序没解出来**（同上） |
-| `Tracking Time.csv` | 列结构与 `GNSS Signal Strength` 相同但无 `_Mean`；顺序问题同上 |
+**12/12 CSV 已完成**（`samples/graph/export/csv/` 里一共 12 份，不是 13）。每份都是逐字节相同，
+没有"接近"的文件。
 
 **明确不做的**：HTML 报告（`clean.html` 331 KB）、PDF（`clean.pdf` 348 KB）、地图渲染、
 `GOS/*.db`（SQLCipher，密钥 U1 未知）、Wizard / 时间轴 / flags。这些与原版的差距是"整块功能缺失"，
 不是精度差异。
 
-**已知不确定点（后续要先解决）**：
+**已解出来的两块难点**（上一轮遗留的 1、2 号问题）：
 
-1. **`Receiver Status` 的位→名字表未解**。`graph-node-wrapper.node` 里有一份 22 个名字的有序字符串表
-   （`Antenna 1 Gain Low/High/Anomaly`、`RF Calibration Data Present`、`GNSS Tracking Status (Bit 0/1)`、
-   `INS Not Converged`、`Ethernet Not Connected`、`Jamming Detected`、…、`Position Solution Invalid`），
-   但**哪个 (status word, bit) 对应哪个名字没有解出来**：本样本只触发 5 个名字，且 `RXSTATUS` 的 5 个
-   status word 中被置位的位是 `{14,15,16,23,25}`（word0）、`{4,5,31}`（word3）、`{18}`（word1），
-   与名字表下标不能直接对齐（`get_satsystem`/`get_satSignal` 那套位切片是 TRACKSTAT 的，不适用于 RXSTATUS）。
-   golden 只能确定 5 条 span 的**起止时间**（2 条全程、2 条从 463100.896 起、1 条 463100.900 零长）。
-2. **`GNSS Signal Strength` / `Satellites and Signals` 的列顺序不是排序出来的**。每卫星列确实是
-   `(星座 id 升序, PRN 升序, 信号枚举序)`——星座 id 与信号名取自 `graph-node-wrapper.node` 里的
-   `GPS_L1_CA…UNKNOWN_SIGNAL` 全局枚举，与 CSV 列名逐字一致；且 (c_status 位数) → (星座, 信号号)
-   的切片规则已用 golden 反验（`system = (w >> 16) & 7`、`signal = (w >> 21) & 0x1f`，
-   与 NAS 主程序 `basemodel.js` 的 `get_slicedbytes(chtr,13,16)` / `(6,11)` 等价）。
-   但 `_Mean` 列与 `Signals_*` 列的顺序既不按枚举、也不按出现顺序、也不按均值/计数排序
-   （GPS 是 `L1_CA, L2_PY, L2_CM, L1_CP, L5_Q`），近似 `unordered_map` 的迭代序。逐字节复刻需把这
-   14 + 18 个列序当数据表拟合，或反编译原生模块确认容器类型。
+1. **`Receiver Status` 的位→名字表**。22 个名字在 `graph-node-wrapper.node` 里有两份副本，
+   连续的一串字面量在 `@7300120..7300703`（另一份 `@7301312..7301903`，顺序不同、且把
+   `Error Flag` 拼成 `Error Falg`）。位定义按 OEM7 手册 Table 225 / 227 / 229 / 230 配对，
+   再用 golden 的 4 条 RXSTATUS 记录（`w1` 被置位的位只有 `{14,15,23,25}`、`w2` `{18}`、
+   `w4` `{4,5,31}`）逐条排除，得到 5 条唯一确定、且**互不冲突**的对应：
+
+   | 名字 | 条件 | 依据 |
+   |---|---|---|
+   | `Ethernet Not Connected` | AUX1 `word2` bit 18 | 表 227 "Ethernet not connected"，全程为 1 → span 从第一条记录起 |
+   | `RF Calibration Data Present` | AUX3 `word4` bit 31 | 表 230 "RF Calibration Data is present"，全程为 1 |
+   | `Jamming Detected` | `word1` bit 15 | 表 225 "Jammer Detected"，在 463100.896 那条首次置位 |
+   | `Antenna 1 Gain Anomaly` | AUX3 `word4` bits 4-5 == `11` | 表 231 状态 11 = Anomaly，只在 463100.900 出现 → 零长 span |
+   | `Antenna 1 Gain High` | `word1` bit 14 | **唯一剩余**的置位（463100.896 第二条起）与唯一剩余的 span 完全吻合；但手册把 bit 14 写作 "Antenna gain state out of range"，与名字措辞不一致，原版可能是旧版位定义。按观测采用，代码里已注明 |
+
+   仍然**没有**确定的是另外 7 个名字：`INS Not Converged`、`No INS Alignment`、`Poor ALIGN COM Link`、
+   `Poor RTK COM Link`、`Usable RTK Corrections Status (Bit 0/1)`、以及 `Antenna 1 Gain Low`
+   与 `Error Flag` 的具体位（前者只能确定走 AUX3 bits 4-5 == `01`，与本样本无冲突）。这些名字
+   在本样本的候选位上全为 0，**无法用 golden 判定**，因此代码里没有给它们硬猜位（留空即"永不触发"，
+   不影响本样本的逐字节）。
+
+2. **`RANGE` 三张图的列序**。逐卫星列已解出规则（`(system, PRN, 72 名字枚举位次)`，60 列全对，
+   见 §11.3）。**只有 `_Mean` 与 `Signals_*` 两组列序仍是"抄 golden 的表"**：
+   `range-charts.ts` 的 `MEAN_ORDER` / `SIGNALS_ORDER` 是观测到的顺序，不是推导出来的规则。
+   已排除的模型（都不成立，脚本试过）：枚举序、PRN 序、首次出现序、均值/计数排序、
+   FNV-1a(32/64) 与 libstdc++ `_Hash_bytes` 对「列名 / 信号后缀 / 5 位信号号 / 枚举位次」
+   取模 bucket 2..97 的两种 bucket 迭代约定（bucket 升序 + 桶内正序/逆序）。两组的顺序还互不相同
+   （GPS `_Mean` 是 `L1_CA,L2_PY,L2_CM,L1_CP,L5_Q`，`Signals_*` 是 `L2_PY,L1_CA,L1_CP,L2_CM,L5_Q`），
+   更像是两个不同键类型的 `unordered_map` 的迭代序。**风险**：遇到本样本没出现的星座/信号时会退化
+   （未知项按枚举位次排在末尾），列序不再保证与原版一致。
+
+**其它已知不确定点**：
+
 3. **`--time-format UTC` 未验证**：golden 只有 GPS 一版。原版标签会从 `#Start Time(GPS):` 变成 UTC 文案，
    具体文案未见；实现只接受 GPS 并在传 UTC 时显式告警。
 4. **逐列小数位是"观测结论"不是"机制结论"**：`Position SD` 去尾零、`Solution Statistics` 保尾零，
    同组同源却不同，推测原生侧按表/列各写了格式串。样本每列只覆盖一种取值，不能再细分。
+   新补的 6 位列（`Tracking Time` / `GNSS Signal Strength` / `Receiver Status`）都已确认是
+   **C `printf("%.6f")` 的 ties-to-even**，不是 JS `toFixed`（见 §11.3）。
 
-附带的两个可复用发现（已写进代码注释）：
+附带的三个可复用发现（已写进代码注释）：
 
 - `clean-9600.gps` 就是这套 golden 的输入（`270 864 B` = `DataInfo.FileSize`，`Messages` 逐项相等）。
-- `graph-node-wrapper.node` 里能直接抠出两张表：HW Monitor 的 10 个列名，和 78 个全局信号名
-  （`GPS_L1_CA` … `QZSS_L6_X`、`SBAS_*`、`NAVIC_*`、`LBAND_LBAND`、`UNKNOWN_SIGNAL`）——
-  后者正是 CSV 列名的命名依据，比猜 "GPS_L1_CA_2 是怎么拼出来的" 可靠得多。
+- `graph-node-wrapper.node` 里能直接抠出三张表：HW Monitor 的 10 个列名、22 个 `Receiver Status`
+  名字、72 个全局信号名（`GPS_L1_CA` … `QZSS_L6_X`、`SBAS_*`、`NAVIC_*`、`LBAND_LBAND`、
+  `UNKNOWN_SIGNAL`）。**72 名字表里没有 `GPS_L5_*`**，所以 `GPS_L5_Q` 这一列名一定是运行时拼出来的
+  （`QZSS_L5_Q` / `SBAS_L5_Q` 有字面量，GPS 的没有）——这也解释了为什么按枚举位次排序时
+  `GPS_L5_Q` 的位次要单独定。
+- `CPU Usage` 用的是 SBF **头第 12 字节** `idleTimeRaw`（`packages/protocol/src/header.ts` 早就解析了，
+  只是当时没人用）：`(200 − idle) / 2`。
