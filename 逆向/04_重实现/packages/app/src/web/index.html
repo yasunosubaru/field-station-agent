@@ -35,8 +35,17 @@
     min-height: 100vh;
   }
   .shell { max-width: 1180px; margin: 0 auto; padding: 22px 24px 56px; }
-  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; padding: 6px 0 18px; }
-  .brand { display: flex; align-items: center; gap: 13px; }
+  /* Chromium 80 (Electron 8) has no flex `gap` — it landed in Chromium 84 — and `@supports`
+     cannot tell the difference because `gap` itself exists as a grid shorthand since 66. So
+     every flex spacing below is written with margins, with the same numbers the `gap` had:
+     a non-wrapping row gets `margin-left` on all but the first item, a wrapping row gets a
+     right/bottom margin on every item and the container cancels the trailing row with a
+     negative bottom margin. Grid `gap` (Chromium 57) is left alone. */
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 6px 0 18px; margin: 0 0 -18px; }
+  .topbar > * { margin: 0 0 18px 0; }
+  .topbar > * + * { margin-left: 18px; }
+  .brand { display: flex; align-items: center; }
+  .brand > * + * { margin-left: 13px; }
   .mark {
     width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
     background: linear-gradient(150deg, #0f766e, #134e4a); color: #e9fbf8;
@@ -45,19 +54,25 @@
   }
   .brand h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: .2px; }
   .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
-  .status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .status { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
+  .status > * + * { margin-left: 8px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #b8c1cb; box-shadow: 0 0 0 3px rgba(184,193,203,.25); }
   .dot.ok { background: #12805c; box-shadow: 0 0 0 3px rgba(18,128,92,.18); }
   .dot.bad { background: var(--danger); box-shadow: 0 0 0 3px rgba(180,35,24,.16); }
 
-  .tabs { display: flex; gap: 4px; padding: 5px; background: #e7ecf1; border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
+  .tabs { display: flex; padding: 5px; background: #e7ecf1; border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
+  .tabs > * + * { margin-left: 4px; }
   .tabs button {
     appearance: none; border: 0; background: transparent; color: #45525f; cursor: pointer;
     padding: 8px 18px; border-radius: 8px; font: 600 13px/1.3 var(--sans); white-space: nowrap;
-    display: flex; align-items: baseline; gap: 7px;
+    display: flex; align-items: baseline;
   }
-  .tabs button span { font-weight: 400; font-size: 11px; color: var(--muted); }
+  .tabs button span { font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 7px; }
   .tabs button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 4px rgba(26,35,48,.10); }
+  /* Chromium 80 has no :focus-visible (Chromium 86). :focus carries the ring for keyboard
+     users there; the modern-only :focus:not(:focus-visible) drops it for pointer activation. */
+  .tabs button:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tabs button:focus:not(:focus-visible) { outline: none; }
   .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   main { margin-top: 18px; min-width: 0; }
@@ -67,13 +82,18 @@
   .panel[hidden] { display: none; }
 
   .card { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: 0 1px 2px rgba(26,35,48,.03); }
-  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-  .card-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
-  .card-head h3 { margin: 0; font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 0; }
+  .card-head > * { margin: 0 0 12px 0; }
+  .card-head > * + * { margin-left: 12px; }
+  .card-head h2 { margin: 0 0 12px 0; font-size: 15px; font-weight: 650; }
+  .card-head h3 { margin: 0 0 12px 0; font-size: 13px; font-weight: 650; display: flex; align-items: center; }
+  .card-head h3 > span { margin-left: 8px; }
   .hint, .muted { color: var(--muted); font-size: 12px; }
   .mono { font-family: var(--mono); }
 
-  .controls { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .controls { display: flex; align-items: flex-end; flex-wrap: wrap; margin-bottom: -10px; }
+  .controls > * { margin: 0 10px 10px 0; }
+  .controls > *:last-child { margin-right: 0; }
   .field { display: grid; gap: 5px; min-width: 210px; flex: 1 1 240px; }
   .field > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   select, input[type="search"], input[type="number"] {
@@ -83,9 +103,10 @@
   select:focus, input[type="search"]:focus, input[type="number"]:focus { outline: 2px solid rgba(15,118,110,.35); outline-offset: 0; border-color: var(--accent); }
   .btn {
     appearance: none; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px;
-    font: 600 13px var(--sans); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 7px;
+    font: 600 13px var(--sans); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center;
     background: #eef1f4; color: var(--ink);
   }
+  .btn > * + * { margin-left: 7px; }
   .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 2px 6px rgba(15,118,110,.22); }
   .btn.primary:hover { background: var(--accent-ink); }
   .btn.ghost { background: transparent; border-color: var(--line-strong); color: #45525f; }
@@ -97,14 +118,19 @@
   .notice.info { background: var(--accent-soft); border-color: #bfe3df; color: var(--accent-ink); }
   .notice.warn { background: var(--warn-soft); border-color: #f0d9ac; color: var(--warn); }
 
-  .result-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
-  .grid-meta { display: flex; gap: 22px; flex-wrap: wrap; }
+  .result-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: -14px; }
+  .result-top > * { margin: 0 0 14px 0; }
+  .result-top > * + * { margin-left: 14px; }
+  .grid-meta { display: flex; flex-wrap: wrap; margin-bottom: -22px; }
+  .grid-meta > * { margin: 0 22px 22px 0; }
+  .grid-meta > *:last-child { margin-right: 0; }
   .meta { display: grid; gap: 2px; min-width: 74px; }
   .meta b { font-size: 12px; font-weight: 600; color: var(--muted); }
   .meta span { font-size: 15px; font-weight: 600; }
   .meta span.small { font-size: 12px; font-weight: 500; }
 
-  .badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; background: #eef1f4; color: #45525f; }
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; background: #eef1f4; color: #45525f; }
+  .badge > * + * { margin-left: 5px; }
   .badge.ok { background: var(--accent-soft); color: var(--accent-ink); }
   .badge.warn { background: var(--warn-soft); color: var(--warn); }
   .badge.bad { background: var(--danger-soft); color: var(--danger); }
@@ -143,21 +169,29 @@
   .sample { display: block; font-family: var(--mono); font-size: 11px; color: #4a5866; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty-row td { color: var(--muted); text-align: center; padding: 26px 12px; }
 
-  .record-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .record-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 14px; }
+  .record-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+  .record-head > * + * { margin-left: 12px; }
+  .record-meta { display: flex; flex-wrap: wrap; margin: 12px 0 6px 0; }
+  .record-meta > * { margin: 0 8px 8px 0; }
+  .record-meta > *:last-child { margin-right: 0; }
   .chip { font-family: var(--mono); font-size: 11px; background: #f2f5f8; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; color: #3d4a57; }
   .chip b { font-family: var(--sans); font-weight: 600; color: var(--muted); margin-right: 5px; font-size: 10.5px; text-transform: uppercase; }
-  .pager { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-  .field-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .pager { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
+  .pager > * + * { margin-left: 8px; }
+  .field-tools { display: flex; align-items: center; margin-bottom: 8px; }
+  .field-tools > * + * { margin-left: 10px; }
   .field-tools input { max-width: 280px; }
   .fields { max-height: 380px; }
 
   .playback-wrap { display: grid; gap: 16px; }
-  .placeholder-note { display: flex; gap: 12px; align-items: flex-start; }
+  .placeholder-note { display: flex; align-items: flex-start; }
+  .placeholder-note > * + * { margin-left: 12px; }
   .stamp { flex: 0 0 auto; font: 700 10px/1 var(--mono); letter-spacing: .12em; color: var(--warn); background: var(--warn-soft); border: 1px solid #f0d9ac; border-radius: 6px; padding: 6px 8px; }
   .timeline-box { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 8px 6px 2px; }
   .timeline-box svg { width: 100%; height: auto; display: block; }
-  .transport { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .transport { display: flex; align-items: center; flex-wrap: wrap; margin-bottom: -8px; }
+  .transport > * { margin: 0 8px 8px 0; }
+  .transport > *:last-child { margin-right: 0; }
   .transport .btn { padding: 7px 12px; }
   .transport .clock { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
   .playback-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -165,6 +199,8 @@
   .fact b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 3px; }
 
   .range { width: 100%; display: block; margin: 10px 0 12px; height: 22px; appearance: none; background: transparent; }
+  .range:focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+  .range:focus:not(:focus-visible) { outline: none; }
   .range:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
   .range::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #e2e8ee; border: 1px solid var(--line-strong); }
   .range::-webkit-slider-thumb {
@@ -175,7 +211,9 @@
   .range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; cursor: pointer; }
   .range:disabled { opacity: .5; }
 
-  .field-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .field-chips { display: flex; flex-wrap: wrap; margin-bottom: -6px; }
+  .field-chips > * { margin: 0 6px 6px 0; }
+  .field-chips > *:last-child { margin-right: 0; }
   .field-chip { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); background: #f7f9fb; border-radius: 6px; padding: 3px 8px; color: #33404d; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .field-chip b { font-family: var(--sans); font-weight: 600; color: var(--muted); margin-right: 5px; font-size: 10.5px; }
 
@@ -183,7 +221,8 @@
   .chart-box svg { width: 100%; height: auto; display: block; }
   .series-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-right: 6px; }
 
-  footer { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
+  footer { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 14px; display: flex; justify-content: space-between; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
+  footer > * + * { margin-left: 12px; }
   footer code { font-family: var(--mono); background: #eef1f4; border-radius: 4px; padding: 1px 5px; }
 
   @media (max-width: 760px) {
