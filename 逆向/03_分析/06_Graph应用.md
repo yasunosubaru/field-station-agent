@@ -317,7 +317,7 @@ type PlotSummary = {
 
 | 方法 | 签名 | 返回值语义 | 副作用/异常 |
 |---|---|---|---|
-| `readFile` | `(path) => Promise<string>` | 文本内容；**图片会被转成 `data:image/…;base64,…`**（main 侧正则 `\.(png\|jpg\|jpeg\|gif\|bmp\|webp)$`） | 读失败返回错误串（不是 throw） |
+| `readFile` | `(path) => Promise<string>` | 文本内容；**图片会被转成 `data:image/…;base64,…`**（main 侧正则 `\.(png\|jpg\|jpeg\|gif\|bmp\|webp)`） | 读失败返回错误串（不是 throw） |
 | `writeFile` | `(path, content) => Promise<string>` | `"File saved successfully"` | 覆盖写 |
 | `writeAsBuffer` | `(path, base64OrBuffer) => Promise<string>` | 同上 | 用于二进制 |
 | `deleteFile` | `(path) => Promise<string>` | `"File deleted successfully"` | `unlink`；对目录也用它（`deleteFolderFiles`） |
@@ -1017,3 +1017,165 @@ GOS\events.db       24 576 B   同上
 | `J_Window_API.tsv` | renderer 里 72 个 `window.<ns>.<method>` 出现次数与首次偏移 |
 | `L_REA复核摘要.json` | REA 6.5.0 的统计/覆盖率/IPC 计数/native-addon 与 storage 节点（原始 175 MB 输出未入库） |
 | `K_抽取脚本/` | 上述全部产物的生成脚本（`node`，无第三方依赖） |
+
+---
+
+## 11. 重实现：`packages/graph`（数据层 + CSV/KML 导出，2026-10-30）
+
+> 落地位置：`04_重实现/packages/graph/`（新包）与 `04_重实现/packages/cli/src/graph.ts`（CLI）。
+> 判据不是"看起来一样"，而是 **`assert.deepEqual(Buffer, golden)`**：逐字节。
+> 规格来源就是 §9.2 落盘的 `00_来源/samples/graph/export/`；本节每个格式结论都能在那批文件里指出出处。
+
+### 11.1 数据层 API（`packages/graph/src`）
+
+| 模块 | 导出 | 作用 |
+|---|---|---|
+| `project.ts` | `loadProject(gpfPath)` | 读 `.gpf`（JSON）与同目录 `DataSummary.json`，按 R15 平铺合并（`updatedProjSummary` 优先）；给出 `projectDirectory` / `projectName` / `dataFileName` / `dataInfo` / `plotSummary` / `messages` |
+| | `chartTitles(plotSummary)` | 按 `PlotSummary` **动态**列举图名（本工程 12 张）。判据是 R17 的字符串相等：键就是图标题，值是 `{日志名: 条数}`。`PVT.GNSS/INS` 与 `Tracking_Measurements.Primary` 是两层嵌套，函数递归到"叶子全是数字"那层为止 |
+| | `chartMessages(plotSummary, title)` | 某张图由哪些日志喂（如 `{BESTPOS:1}`），没有则空对象 |
+| `capture.ts` | `loadCapture(capturePath)` | 复用 `packages/protocol` 的 `SbfDeframer` + `decodeEdie`（**没有**重写协议解析），产出 `{name, messageId, week, milliseconds, gpsMs, values, byPath}`、`counts`、`byName()` |
+| `csv.ts` | `exportCsv(project, capture, {selectedPlots})` | 已实现的 4 张图 → `{fileName, bytes, buffer}`；`availableCsvCharts` 只返回 `PlotSummary` 认可且已实现的图 |
+| | `writeCsv(...)` | 写 `<out>/csv/<图名>.csv`（Graph 的目的地规则：**兄弟目录** `csv`） |
+| `kml.ts` | `renderKml(project, capture)` / `writeKml(...)` | 生成 `<project>.kml` |
+| `format.ts` | `gpsWeekSeconds` / `formatGpsColumn` / `formatGpsCommentTime` / `formatDuration` / `formatTrimmed` / `SOLUTION_STATUS` / `POSITION_TYPE` | GPS 时间与数字格式；枚举表取自 `01_解包/app/model/NovatelIdConstants.js` |
+
+时间刻度以 Graph 自己的为准：**`gpsMs = week * 604800000 + msOfWeek`**（不减 18 s、不加 315 964 800 000）。
+证据：`.gpf` 的 `DataInfo.StartTime = 1477384697350` 正好等于 `2442 * 604800000 + 463097350`，
+而 CSV 注释头写的是 `2442,463097.350`；KML/CSV 里的 `1477384700900.000000` 也是同一刻度。
+
+日志对应关系照 §9.1 的表，没有自己推：`2D Trajectory` / `Height` / `Position SD` / `Position Status` /
+`Position Type` / `Solution Statistics` ← `BESTPOS`；`CPU Usage` / `HW Monitor Status` / `Receiver Status`
+← `BESTPOS` + `RANGE` + `HWMONITOR` + `RXSTATUS`；`GNSS Signal Strength` / `Satellites and Signals` /
+`Tracking Time` ← `RANGE`。
+
+### 11.2 复现用的那份日志
+
+`00_来源/samples/graph/` 只有工程与导出产物，**没有**输入日志。输入是
+`00_来源/samples/convert/clean-9600.gps`：`270 864 B`，与 `.gpf` 的 `DataInfo.FileSize` 和
+`Messages`（`RANGE 100 / BESTPOS 5 / RAWEPHEM 8 / RXSTATUS 4 / PORTSTATS 1 / HWMONITOR 1`）逐项吻合。
+CLI 用 `--capture` 指向它（`.gpf` 里记的是 `C:\Users\…\Temp\gs\clean.gps`，早已不存在）。
+
+### 11.3 CSV 规格（逐字节）
+
+```
+<UTF-8 BOM EF BB BF>#Project Name:          clean\r\n
+#Project Directory:    C:\Users\…\gs\clean\r\n
+#Data File Name:      clean.gps\r\n
+#Start Time(GPS):      2442,463097.350\r\n
+#End Time(GPS):       2442,463102.300\r\n
+#Duration:                   00:00:04\r\n
+timestamp (GPS week sec),<列…>\r\n
+<行>\r\n … （末行后仍有一个 CRLF）
+```
+
+- 六行注释的**值列是硬编码空格**凑出来的，不是 `padEnd`：值分别从第 24 / 24 / 22 / 23 / 22 / 29 列开始
+  （`#Data File Name:` 与 `#Start Time(GPS):` 标签长度不同，用统一宽度会错一格——第一版就是这么错的）。
+- 时间列 `2442  463097.350`：GPS 周 + **两个空格** + 秒（`toFixed(3)`）；注释头里是逗号 `2442,463097.350`。
+- 时长 `HH:MM:SS` 向下取整秒（`4950 ms` → `00:00:04`），超过一天写 `N Days HH:MM:SS`。
+- **取行窗口是 `StartTime ≤ t < EndTime`（右开）**。证据：最后一条 RANGE 的时间正好等于
+  `EndTime = 1477384702300`，它**不在** `GNSS Signal Strength` / `Tracking Time` 里（99 行而非 100 行）；
+  而最后一条 BESTPOS 是 `1477384702000`，在窗口内（5 行）。写成右闭就会多一行。
+- 小数位**不是全局统一**，逐列从 golden 反推（`csv.ts` 的 `ColumnFormat`）：
+
+| 图 / 列 | 格式 | 依据 |
+|---|---|---|
+| `2D Trajectory` Latitude/Longitude | 6 位、**去尾零** | `30.539975` / `114.352811` |
+| `Height` Height | 6 位、去尾零 | `66.429896`（BESTPOS `orthometric_height` = 66.429895708…） |
+| `Position SD` Latitude/Longitude/Height SD | 6 位、去尾零 | 关键证据：`2442  463098.000` 行经度 SD = 1.1976104974…，`%.6f` 应得 `1.197610`，golden 是 **`1.19761`**（全文件唯一能区分"去尾零"与"定长"的值） |
+| `Position Status` Solution_Type | 文本枚举 | `SOL_COMPUTED`（`solution_status=0`） |
+| `Position Type` Position_Type | 文本枚举 | `SINGLE`（`position_type=16`） |
+| `Solution Statistics` Differential Lag / Solution Age | 6 位、**保留尾零** | `0.000000` —— 与上一行同属 PVT 却规则相反，说明原版是**逐列**格式 |
+| `Solution Statistics` Satellites Tracked/Used | 整数 | `23`、`12` |
+| `CPU Usage` CPU Usage | 1 位小数 | `29.0`/`28.0`/`29.5`；值 = `(200 − idleTimeRaw)/2`（BESTPOS 头 `idle=142 → 29.0`、`144 → 28.0`、`141 → 29.5`） |
+| `HW Monitor Status` 各列 | 6 位 | `38.339443`…；列名与列序 = `HWMONITOR` 里 measurement 的**出现顺序**，名字按 `status >> 8` 查表（1 Temperature / 2 Antenna Current / 6 Internal Supply Voltage / 7 Antenna Voltage / 8 Digital Core Voltage / 15 Supply Voltage / 17 V 1.8 / 21 V 5.0 / 23 Peripheral Core Voltage / 22 Secondary Temperature） |
+| `Receiver Status` start/end | 6 位定长 | `1477384700900.000000`；值是 GPS 毫秒刻度，不是 UTC |
+
+### 11.4 KML 规格（逐字节）
+
+5 728 B、CRLF、无 BOM、`</kml>` 后仍有一个 CRLF。层级与顺序：
+
+```
+<?xml version = '1.0' encoding = 'utf-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+    <!--Project Information-->            ← 6 行注释，值列同样是硬编码空格
+    <Document id="root_doc"><Folder><name>clean</name>
+        <Style id="Path<TYPE>">    LineStyle(color, width 4) + PolyStyle(color)
+        <Style id="Point<TYPE>">   IconStyle(color, scale 0.75, placemark_circle.png) + BalloonStyle
+        <Folder id="<TYPE>"><name><TYPE></name>
+            <Folder id="Points"><name>Points</name>
+                <Folder id="Starting Points"><name>Started <GPS 时间></name><description><TYPE></description>
+                    每条定位一个 <Placemark>：气泡 = GPS 时间 / 类型（红字）/ "lat, lon, h" / "Std Dev: a, b, c M"
+            <Folder id="Paths"><name>Paths</name>  一条 LineString，坐标空格分隔、**末尾带一个空格**
+```
+
+- 坐标顺序 `lon,lat,height`；经纬 6 位、**高程 3 位且保留尾零**（`66.430`，与 CSV 的 6 位不同）。
+- 气泡里 `Std Dev: 1.344, 1.198, 2.639 M` 是 3 位定长（`1.1976105 → 1.198`）。
+- 颜色是 KML 的 `AABBGGRR`，由渲染层位置类型色（`#3C4AE7`，附录 D）反序而来：`#3C4AE7 → ffe74a3c`；
+  `SINGLE` 属 `SINGLE_POINT` 组。每个位置类型一组 `Style` + `Folder` + 一条 `Path`，按首次出现顺序排列。
+- 原版怪癖照抄：最后一个 `<Placemark>` 与 `</Folder>` 在**同一行**（`</Placemark></Folder>`）。
+
+### 11.5 验证（自己跑过）
+
+```
+node --test --test-force-exit "packages/graph/test/*.test.ts"     # 11 tests, 11 pass
+node packages/cli/src/graph.ts --project …/clean.gpf --capture …/clean-9600.gps \
+     --out <tmp> --csv --kml --golden …/samples/graph/export
+```
+
+实测（`samples/graph/export/` 为 golden）：
+
+| 文件 | 字节 | 结果 |
+|---|---:|---|
+| `csv/2D Trajectory.csv` | 492 | 逐字节相同 |
+| `csv/Height.csv` | 425 | 逐字节相同 |
+| `csv/Position Status.csv` | 447 | 逐字节相同 |
+| `csv/Position Type.csv` | 417 | 逐字节相同（顺手做的，与上面三份同一套格式） |
+| `clean.kml` | 5 728 | 逐字节相同 |
+
+### 11.6 未完成 / 与原版的差异
+
+**没做的图（8 份 CSV）**——`samples/graph/export/csv/` 里其实一共 **12** 份（不是 13）：
+
+| 未做的 CSV | 卡在哪 |
+|---|---|
+| `Position SD.csv` | 格式已知（6 位去尾零），只是没接进 `CSV_CHARTS`——约 20 行代码就能补 |
+| `Solution Statistics.csv` | 同上（`diff_age`/`solution_age` 6 位定长 + 两个 `u8` 整数） |
+| `CPU Usage.csv` | 公式已反推（`(200 − idleTimeRaw)/2`、1 位小数），未接 |
+| `HW Monitor Status.csv` | 列名表已从 `graph-node-wrapper.node` 提取（见 §11.3 末行），未接 |
+| `Receiver Status.csv` | **位→名字表没解出来**（见下） |
+| `GNSS Signal Strength.csv` | 列 = (星座, 信号, PRN) + 每信号的 `_Mean`；**`_Mean` 列顺序没解出来**（见下） |
+| `Satellites and Signals.csv` | 每星座信号计数 + 卫星数 + 总计；**信号列顺序没解出来**（同上） |
+| `Tracking Time.csv` | 列结构与 `GNSS Signal Strength` 相同但无 `_Mean`；顺序问题同上 |
+
+**明确不做的**：HTML 报告（`clean.html` 331 KB）、PDF（`clean.pdf` 348 KB）、地图渲染、
+`GOS/*.db`（SQLCipher，密钥 U1 未知）、Wizard / 时间轴 / flags。这些与原版的差距是"整块功能缺失"，
+不是精度差异。
+
+**已知不确定点（后续要先解决）**：
+
+1. **`Receiver Status` 的位→名字表未解**。`graph-node-wrapper.node` 里有一份 22 个名字的有序字符串表
+   （`Antenna 1 Gain Low/High/Anomaly`、`RF Calibration Data Present`、`GNSS Tracking Status (Bit 0/1)`、
+   `INS Not Converged`、`Ethernet Not Connected`、`Jamming Detected`、…、`Position Solution Invalid`），
+   但**哪个 (status word, bit) 对应哪个名字没有解出来**：本样本只触发 5 个名字，且 `RXSTATUS` 的 5 个
+   status word 中被置位的位是 `{14,15,16,23,25}`（word0）、`{4,5,31}`（word3）、`{18}`（word1），
+   与名字表下标不能直接对齐（`get_satsystem`/`get_satSignal` 那套位切片是 TRACKSTAT 的，不适用于 RXSTATUS）。
+   golden 只能确定 5 条 span 的**起止时间**（2 条全程、2 条从 463100.896 起、1 条 463100.900 零长）。
+2. **`GNSS Signal Strength` / `Satellites and Signals` 的列顺序不是排序出来的**。每卫星列确实是
+   `(星座 id 升序, PRN 升序, 信号枚举序)`——星座 id 与信号名取自 `graph-node-wrapper.node` 里的
+   `GPS_L1_CA…UNKNOWN_SIGNAL` 全局枚举，与 CSV 列名逐字一致；且 (c_status 位数) → (星座, 信号号)
+   的切片规则已用 golden 反验（`system = (w >> 16) & 7`、`signal = (w >> 21) & 0x1f`，
+   与 NAS 主程序 `basemodel.js` 的 `get_slicedbytes(chtr,13,16)` / `(6,11)` 等价）。
+   但 `_Mean` 列与 `Signals_*` 列的顺序既不按枚举、也不按出现顺序、也不按均值/计数排序
+   （GPS 是 `L1_CA, L2_PY, L2_CM, L1_CP, L5_Q`），近似 `unordered_map` 的迭代序。逐字节复刻需把这
+   14 + 18 个列序当数据表拟合，或反编译原生模块确认容器类型。
+3. **`--time-format UTC` 未验证**：golden 只有 GPS 一版。原版标签会从 `#Start Time(GPS):` 变成 UTC 文案，
+   具体文案未见；实现只接受 GPS 并在传 UTC 时显式告警。
+4. **逐列小数位是"观测结论"不是"机制结论"**：`Position SD` 去尾零、`Solution Statistics` 保尾零，
+   同组同源却不同，推测原生侧按表/列各写了格式串。样本每列只覆盖一种取值，不能再细分。
+
+附带的两个可复用发现（已写进代码注释）：
+
+- `clean-9600.gps` 就是这套 golden 的输入（`270 864 B` = `DataInfo.FileSize`，`Messages` 逐项相等）。
+- `graph-node-wrapper.node` 里能直接抠出两张表：HW Monitor 的 10 个列名，和 78 个全局信号名
+  （`GPS_L1_CA` … `QZSS_L6_X`、`SBAS_*`、`NAVIC_*`、`LBAND_LBAND`、`UNKNOWN_SIGNAL`）——
+  后者正是 CSV 列名的命名依据，比猜 "GPS_L1_CA_2 是怎么拼出来的" 可靠得多。

@@ -1,0 +1,18 @@
+{
+  "name": "@nas-reimpl/graph",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Graph 应用的数据层与导出层重实现：工程文件（.gpf）、日志采集、图表数据，以及逐字节可验证的 CSV / KML 导出",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*"
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}
