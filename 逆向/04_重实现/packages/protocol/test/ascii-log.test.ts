@@ -81,3 +81,18 @@ test('every line of the golden ASCII file is reproduced byte for byte', () => {
   assert.deepEqual(differences, [], 'byte-identical');
   assert.equal(golden.length, 1721);
 });
+
+test('a second capture (different rates and message mix) also round-trips byte for byte', () => {
+  const capture = join(samples, 'clean-9600.gps');
+  const goldenFile = join(samples, 'golden-ascii', 'clean-9600', 'Converted_On_20261030_T1710', 'ASCII', 'clean-9600.ASCII');
+  const golden = readFileSync(goldenFile, 'utf8').split(/\r?\n/).filter((line) => line.startsWith('#'));
+  const produced = [...new SbfDeframer({ crcMode: 'mirror' }).push(new Uint8Array(readFileSync(capture)))]
+    .filter((frame): frame is SbfFrame => frame.kind === 'sbf')
+    .map((frame) => {
+      const layout = tables.messages[String(frame.header.messageId)];
+      return layout ? encodeAsciiLog(frame, layout, tables) : '';
+    })
+    .filter((line) => line !== '');
+  assert.deepEqual(produced, golden, 'byte-identical');
+  assert.equal(produced.length, 119);
+});
