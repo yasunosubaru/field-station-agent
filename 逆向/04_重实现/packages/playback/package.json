@@ -1,0 +1,19 @@
+{
+  "name": "@nas-reimpl/playback",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "回放引擎：把一份抓包当时间线播放（纯逻辑，无真实时钟），并支持按时间范围导出原始 SBF / ASCII",
+  "main": "src/playback.ts",
+  "exports": {
+    ".": "./src/playback.ts",
+    "./timeline": "./src/timeline.ts",
+    "./export": "./src/export.ts"
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

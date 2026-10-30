@@ -748,3 +748,121 @@ GRIT 回放 tab 走 `gritJarvisInterface.checkGritConnectionReady`（`gritJarvis
 - **NovAtel Application Suite 用户手册 Playback 章节**（帮助文本内嵌在
   `01_解包/app/view/js/help.js:3975-3976,7570,9557-9562`）：对"replay 按钮 = 回到文件开头"
   与"rewind 按钮 = 后退 30 s"的描述与 R22/R41 的实现一致，可作为行为预期的交叉验证。
+
+---
+
+## 11. 重实现（`packages/playback`）
+
+只做**引擎**，不做 GUI。原版把文件 I/O、`Timer` 定时器、jQuery 控件与事件面板揉在
+`playback.js` 一个对象里；这里把它拆成"一次性建时间线 + 纯逻辑播放 + 范围导出"三件事，
+不依赖真实时钟，也不碰 DOM。
+
+| 文件 | 内容 |
+|---|---|
+| `packages/playback/src/timeline.ts` | `buildTimeline(capture)`：`SbfDeframer({crcMode:'mirror'})` 解帧 → 时间线 |
+| `packages/playback/src/playback.ts` | `PlaybackEngine`：播放控制、`tick`、事件、导出方法 |
+| `packages/playback/src/export.ts` | 范围选择、原始字节拼接、ASCII 输出 |
+| `packages/playback/test/playback.test.ts` | 13 条测试 |
+| `packages/cli/src/playback.ts` | `--info` / `--export` / `--export-ascii` |
+
+### 11.1 API
+
+```ts
+const engine = new PlaybackEngine({ clock?: () => number, speed?: 1 });
+engine.load(capture: Uint8Array): void;      // 解帧、丢弃 crcOk=false、建索引
+```
+
+| 成员 | 语义 |
+|---|---|
+| `duration` / `durationSeconds` | 时间线长度（ms / s） |
+| `frameCount` / `frames` | 被接受的帧数与数组（`TimedFrame[]`，文件顺序即时间顺序） |
+| `startTime` / `finishTime` | 首帧 / 末帧的**GPS 周内秒** |
+| `startWeek` / `finishWeek` | 首/末帧的 GPS 周（跨周时两者不同） |
+| `startAbsoluteMs` / `finishAbsoluteMs` | `week * 604800000 + ms` |
+| `state` | `'idle' \| 'playing' \| 'paused' \| 'ended'` |
+| `play()` / `pause()` | 开始/继续、暂停；`ended` 后 `play()` 从 0 重播 |
+| `seek(seconds)` | 钳到 `[0, duration]`；游标落到**第一条 `offset >= 目标`** 的帧 |
+| `speed` | `0.5 \| 1 \| 2 \| 4 \| 8`，其它值抛 `RangeError` |
+| `tick(deltaMs?)` | 推进时间线并返回本次吐出的帧；省略参数时用注入的 `clock`（首次只建基线） |
+| `currentTime` / `currentTimeMs` | 当前位置（s / ms） |
+| `on('frame' \| 'ended', handler)` | 返回取消订阅函数；`off(event, handler)` 等价 |
+| `info()` | `--info` 用：帧数、时长、周/周内秒、消息分布、丢弃统计 |
+| `range(from, to)` | 范围内的帧与字节数 |
+| `exportRange(from, to)` | 原始 SBF 字节（帧字节原样拼接，不重算 CRC） |
+| `exportAscii(from, to, tables, options?)` | ASCII 文本（`encodeAsciiLog` 直出，CRLF 分隔 + 结尾 CRLF） |
+
+`TimedFrame`：`{ index, frame: SbfFrame, messageId, week, milliseconds, absoluteMs, offsetMs }`；
+`frame` 事件：`{ index, frame, messageId, week, milliseconds, offsetMs, time }`。
+
+`tick()` 的语义与验收线一致：`speed = 4` 时 `tick(250)` 推进 `4 × 250 = 1000 ms`；
+一次 `tick` 只吐出 `offsetMs <= 新位置` 的帧，按 `offsetMs` 升序（流式，不整包回调）。
+`seek` 不改变播放状态，暂停态 `seek` 后 `tick` 只吐落点那一帧（对应原版 R25 的
+`sendOnlyOneEpoch`，但不需要专门的开关）。
+
+### 11.2 时间基准
+
+- 帧头 `+14` 周（u16 LE）、`+16` 周内毫秒（u32 LE），与 §5.1 一致；
+  绝对时间 `week * 604800000 + milliseconds`。**跨周自然成立**：周字段自己会加 1；
+  只有"毫秒回绕而周字段没跟"的坏头才补 `+604800000`（判据：比上一帧早超过半周）。
+- `offsetMs` 从**第一条被接受的帧**算起，且**单调不减**：时间戳回跳的记录（`clean-9600.gps`
+  里有 8 条 17.35 s 之前的 RAWEPHEM，见 §8 R44）不丢弃，而是钳到前一帧的 `offsetMs`，
+  与"同一时间戳的日志成组发出"（§6.2）等价。因此 `duration = 末帧 offsetMs`。
+- 不做 18 s UTC 修正（§8 R32）：时间线是相对量，没有 UTC 换算，也就没有原版
+  `getNearestLog` 少减 18000 的 seek 偏差（R37）。
+
+### 11.3 与原版 GUI 的差异
+
+| 原版 `controller/playback.js` | 本重实现 |
+|---|---|
+| `fs.open("r+")` + 819200 B 分块读（R9） | 调用方一次性传 `Uint8Array`，解帧交给 `protocol/framing.ts` |
+| 无时间索引，seek 每次线性扫描全文件（R12/R15） | `load()` 建一次索引，`seek` 二分 `lowerBound` |
+| **不校验 CRC**（R43），只丢 CRC 字段为 0 | `crcMode:'mirror'` 解帧后再丢 `crcOk=false`（更严格；`broad-clean.gps` 首条 RANGE 因此被丢） |
+| 时间戳回跳的记录被静默吞掉（R44） | 保留并钳到前一帧，时间线不倒退 |
+| `Timer` + `setTimeout` 真实定时，间隔 `Δt/speed − parseCost − 8`（R17/R18） | `tick(deltaMs)` 或注入 `clock`；`Δtimeline = deltaMs × speed` |
+| 倍速 1/2/5/10/20；20x 走按消息限流（R16/R19） | 0.5/1/2/4/8（本任务要求），无按消息限流 |
+| 进度条平滑 interval 伪造 `+500 ms`（R20/R21） | 无 |
+| 播放结束靠进度条到 100 加 `replay` 类（R39/R40） | `ended` 事件，只发一次 |
+| 片段按进度条像素比例找起止字节（R46） | `exportRange(from, to)` 按时间线秒数；两端**闭区间**，与"首条 ≥ 起点、末条同时间戳"一致 |
+| GRIT 片段前置两行 `HEADER - NAS GRIT FILE`（R47） | 不写 GRIT 头，只拼帧字节 |
+| GUI、事件面板、瀑布图、落地页 tile、语言表 | 不在引擎范围 |
+
+另有两处**刻意不同**的边角：
+
+1. 空文件、纯文本文件、全部 CRC 不匹配的文件都能 `load()` 成功，只是 `frameCount = 0`，
+   不像原版抛 `SELECT_VALID_FILE`（判断留给调用方，`info().stats` 里有丢弃计数）。
+2. 原版 `RxDetails` 只写一次、GIII 按 OEM 偏移取时间（R5/R36）；这里只有 SBF 长/短头
+   两种解析，短头（12 B）没有周以外的端口/序列号字段，时间仍取 `+6/+8`（`header.ts` 的
+   `ShortHeader`），不模仿 GIII 的错位读取。
+
+### 11.4 实测
+
+```powershell
+node --test --test-force-exit "packages/playback/test/*.test.ts"   # 13 pass / 0 fail
+node packages/cli/src/playback.ts 逆向/00_来源/samples/convert/clean-9600.gps --info
+```
+
+`--info`（`clean-9600.gps`）：
+
+```
+frames   : 119 (dropped 0 bad CRC, 0 text)
+start    : week 2442, 463097.350 s of week (2026-10-30 08:37:59 UTC)
+finish   : week 2442, 463102.300 s of week (2026-10-30 08:38:04 UTC)
+duration : 4.950 s (4950 ms)
+messages : 6 distinct
+            43  RANGE      x100
+            41  RAWEPHEM   x8
+            42  BESTPOS    x5
+            93  RXSTATUS   x4
+            72  PORTSTATS  x1
+           963  HWMONITOR  x1
+```
+
+`duration = 4950 ms` 是 20 Hz RANGE 从 463097.350 到 463102.300 的真实跨度（100 条 × 50 ms），
+与"约 5 s"一致；不等于 5000 是因为末帧到文件结束没有第 101 条。
+
+`--export out.bin --from 1.0 --to 2.5`：36 帧、83596 字节，与该区间原始帧字节之和逐字节相等
+（`exportRange` 不重算 CRC，回读后每帧 `crcField != 0` 且 `crcOk`）。同范围
+`--export-ascii` 36 行，与 `encodeAsciiLog` 对同一批帧直出的结果完全相同。
+
+`broad-clean.gps`：1721 帧（丢弃 1 条 CRC 不匹配的首帧 RANGE）、时长 69.000 s、12 种消息；
+因为首帧被丢，起点是随后的 467940.000 而不是 467920.650。
