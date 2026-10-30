@@ -1243,3 +1243,96 @@ node packages/cli/src/graph.ts --project …/clean.gpf --capture …/clean-9600.
   `GPS_L5_Q` 的位次要单独定。
 - `CPU Usage` 用的是 SBF **头第 12 字节** `idleTimeRaw`（`packages/protocol/src/header.ts` 早就解析了，
   只是当时没人用）：`(200 − idle) / 2`。
+
+## 12. HTML 报告（2026-10-30）
+
+落地：`04_重实现/packages/graph/src/html.ts`（新文件，本节唯一的实现）、`packages/cli/src/graph.ts --html`、
+`packages/graph/test/html.test.ts`（8 项）。入口也加进 `packages/graph/src/index.ts`。
+
+原版 `clean.html` 是 **331 117 B** 的 ECharts 页面（`export/scripts/echarts.min.js` + 12 个 `chart` div +
+图例复选框），像素级复刻是另一个量级。这里做的是**信息结构对齐 + 完全离线自包含**：
+
+```
+<!DOCTYPE html>
+<h1>clean Report</h1>
+Report Information   → Generated Date、Charts
+Project Information  → Project Name / Project Directory / Data File Name /
+                       Start Time (GPS) / End Time (GPS) / Duration
+Message Summary      → 只列被这张报告真正用到的日志（BESTPOS 5 / RANGE 100 / HWMONITOR 1 / RXSTATUS 4）
+<h2>PVT</h2>                       ← clean.html 的三个 chart-container-title
+  <article>  <h3>2D Trajectory</h3>  <svg>…</svg>  <ul class="legend">  <table>前 20 行</table>
+<h2>Tracking &amp; Measurements</h2> …
+<h2>Receiver Status</h2> …
+```
+
+### 12.1 API
+
+| 导出 | 作用 |
+|---|---|
+| `buildHtmlReport(project, charts, options)` | 纯函数，`charts: {title, csv}\[]`（CSV 字节或文本，BOM 可有可无）→ 完整 HTML 字符串 |
+| `writeHtmlReport(project, charts, outDir, options)` | 写 `<out>/<project>.html`（Graph 的 `clean.html` 目的地），返回 `{path, bytes}` |
+| `parseReportCsv(csv)` | 拆出六行注释（`label → value`）+ 表头 + 行，单元格保持原样 |
+| `DEFAULT_TABLE_ROWS` | 20，每个图表表格的行数上限 |
+
+`charts` 就是 `exportCsv()` 的产物换个形状（`{title: fileName.replace(/\.csv$/, ''), csv: buffer}`），所以
+**报告里的数字与被验收的 CSV 是同一份字节**：表头时间取自 `#Start Time(GPS):` 那六行（因此恒等于
+`csv/*.csv` 的注释，而不是重新 `formatGpsCommentTime` 一遍），表格单元格逐字复制，只有画图时才
+`Number()` 成坐标。`project` 只在没有 CSV 时兜底表头，并用来查 `PlotSummary` 的日志归属。
+
+### 12.2 绘图规则
+
+- **X 轴 = 行序**，刻度文字取第 0 列：时间序列是 `2442  463098.000`，`Receiver Status` 没有时间列，
+  刻度就是条件名（`Antenna 1 Gain Anomaly` …）。
+- **列数 ≤ 12 → 每列一个面板，各自量程**（`MAX_PANELS`）。这些列是不同量纲：纬度 30.54 vs 经度
+  114.35、温度 38.3 vs 1.8 V 电源轨。共用一个纵轴会把它们压成两条直线，正好糊掉图表要展示的波动。
+- **列数 > 12 → 共用一个纵轴**（`Tracking Time` 60 列 `lock_time`、`GNSS Signal Strength` 74 列
+  `C_No` + `_Mean`、`Satellites and Signals` 19 列计数）：同量纲，共用才可比，这也与原版 ECharts 一致。
+- 每列一条 `<polyline>`，**点数 = 该 CSV 的行数**；行数 ≤ 2 时另加 `<circle>`（单行图如
+  `HW Monitor Status` 否则什么都看不见）。
+- 共享纵轴时**恒定列不画**（会变成看不见的直线，只占图例），并在图例下写明 `constant columns not
+  plotted: value (= 1)`——不静默丢东西。面板模式保留恒定列：一片平直的面板本身就是"整段没变"的答案。
+- 非数值列（`Position Status` 的 `SOL_COMPUTED`、`Position Type` 的 `SINGLE`）按出现顺序编成序数，
+  面板右侧标类别名。
+
+### 12.3 自包含（离线可开）
+
+- 无 `<script>`、无 `<link>`、无 `src=` / `href=`，全文**不含 `http://` / `https://`**。
+  最容易漏的是内联 SVG 的 `xmlns="http://www.w3.org/2000/svg"`——HTML5 里的内联 `<svg>` 不需要它，
+  所以没写；测试直接把这条断言下来。
+- 表格只放前 20 行：`Tracking Time` 是 99 行 × 61 列（74 KB），整份塞进去既超预算也不可读。
+  单文件实测 **303 663 B**（原版 331 117 B），远低于 1.5 MB 上限。
+
+### 12.4 验证
+
+```
+node --test --test-force-exit "packages/graph/test/*.test.ts"        # 29 项 / 29 pass（新增 8 项）
+node packages/cli/src/graph.ts --project …/clean.gpf --capture …/clean-9600.gps \
+     --out <tmp> --csv --kml --html --golden …/samples/graph/export
+```
+
+CSV / KML 仍全部 `identical to golden`；HTML 不参与逐字节比对（结构等价，非拷贝等价）。实测：
+
+| 项 | 结果 |
+|---|---|
+| `clean.html` | 303 663 B（< 1.5 MB） |
+| 图表 | 12 个 `<article>`，标题全部来自 CSV 文件名 |
+| `<svg>` | 12 个（每图恰好 1 个） |
+| `<polyline>` | 179 条；首图 `2D Trajectory` 2 条、各 5 点（= 5 行） |
+| 表格 | 12 张；最多 21 行（表头 + 20 行） |
+| 浏览器（Playwright + Chromium，`file://`） | **0 console error、0 page error**，网络请求只有文件自身 |
+
+测试断言（`packages/graph/test/html.test.ts`）：完整文档且无任何 scheme / `<script>` / `src`、`href`；
+12 个标题与 3 个分节标题；每图 1 个 `<svg>` 且每条 polyline 点数 = CSV 行数；表头起止时间与时长等于
+CSV 注释（12 份逐一核对）；单文件 < 1.5 MB 且表格恰好 20 行（第 21 行的时间戳不得出现在 HTML 里）；
+用 `exportCsv()` 现算的 CSV 与 golden CSV 产出同一份报告；`generatedAt` 固定时输出可复现。
+
+### 12.5 与原版的差距（明确不做）
+
+- **地图/轨迹底图**：原版 `Trajectory Plot` 是一张 base64 JPEG 的 Leaflet 截图，这里没有底图，
+  `2D Trajectory` 只画经纬度随时间的变化（本样本 5 行经纬度完全不变，图上就是两条直线——这是事实）。
+- **交互**：没有 ECharts 的缩放、tooltip、图例开关；替代品是"前 20 行表格 + 图例最后值"。
+- **PDF**（`clean.pdf` 348 KB）、多语言文案、主题切换同样不做。
+- `Generated Date` 默认取当前本地时间（`YYYY/MM/DD HH:mm:ss`），要可复现就传
+  `options.generatedAt`；测试即固定该值后做全等比较。
+- 分节与节内顺序写在 `html.ts` 的 `SECTIONS` 常量里（照 `clean.html` 观察所得）；`PlotSummary` 里
+  出现但表里没有的图会落到末尾的 `Charts` 节，不会消失。

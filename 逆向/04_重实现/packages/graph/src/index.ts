@@ -6,8 +6,9 @@
  *  - `loadCapture`   SBF/ASCII capture → per-message records (reuses `packages/protocol`)
  *  - `exportCsv`     all 12 charts of the sample project, byte-identical to the shipped golden
  *  - `exportKml`     `clean.kml`, byte-identical
+ *  - `buildHtmlReport`  self-contained `<project>.html` (inline CSS + SVG + first rows of each CSV)
  *
- * Not implemented: the HTML/PDF reports and map rendering.
+ * Not implemented: the PDF report, the ECharts interactive report and map rendering.
  */
 
 export * from './format.ts';
@@ -17,3 +18,4 @@ export * from './csv.ts';
 export * from './receiver-status.ts';
 export * from './range-charts.ts';
 export * from './kml.ts';
+export * from './html.ts';
