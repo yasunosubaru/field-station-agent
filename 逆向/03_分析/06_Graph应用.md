@@ -1336,3 +1336,111 @@ CSV 注释（12 份逐一核对）；单文件 < 1.5 MB 且表格恰好 20 行�
   `options.generatedAt`；测试即固定该值后做全等比较。
 - 分节与节内顺序写在 `html.ts` 的 `SECTIONS` 常量里（照 `clean.html` 观察所得）；`PlotSummary` 里
   出现但表里没有的图会落到末尾的 `Charts` 节，不会消失。
+
+## 13. PDF 报告
+
+`--pdf` 写出 `<out>/<project>.pdf`，实现是 `packages/graph/src/pdf.ts`。§12.5 里"PDF 不做"那句由本节
+取代，§12 正文没有改动。
+
+### 13.1 为什么是手写的 PDF 容器
+
+原版 `clean.pdf`（348 419 B）的第 1 个对象写着 `/Creator (Chromium)`、`/Producer (Skia/PDF m146)`，
+即浏览器打印；它的 8 页是连续排版的产物（图表会跨页）。这台机器上 **npm registry 不通，没有 PDF 库**，
+也不可能嵌一个 Chromium，所以容器自己写：
+
+- PDF 1.4：对象表 + `xref` + `trailer`，全部**不压缩**（文本因此可以被直接搜索，测试也靠这一点）；
+- 字体用标准 14 号 `Helvetica` / `Helvetica-Bold`（`/WinAnsiEncoding`，**不嵌入**任何字体文件）；
+- 页面 A4 横向 **842 × 595 pt**，与 Chromium 那次打印的页面盒一致。
+
+### 13.2 对象与页面结构
+
+对象编号是固定的，两次生成不会漂移：
+
+| 对象 | 内容 |
+|---|---|
+| 1 | `/Catalog` → `/Pages 2 0 R` |
+| 2 | `/Pages`：13 个 `/Kids`，`/Count 13` |
+| 3 | `/Info`：`Title` / `Creator` / `Producer` / `CreationDate` |
+| 4 / 5 | `/Helvetica`、`/Helvetica-Bold` |
+| 6 … 31 | 每页一对：`/Page`（`/MediaBox [0 0 842 595]`）+ 内容流 |
+
+页数 = **1 + 12 = 13**：第 1 页是项目信息，之后一图一页。
+
+- 第 1 页：`Report Information`（Generated Date / Charts / Pages）→ `Project Information`（六项，
+  拼写与 CSV 注释完全一致）→ `Message Summary`（消息名 → 条数）。
+- 图表页：标题 → 说明行（行数、列数、常量列、抽稀、共享 Y 轴）→ 图例 → 折线 → 前 20 行表格 → 页码。
+
+`--golden` 不比对 PDF：它是结构等价，不是拷贝等价（与 HTML 同一原则）。
+
+### 13.3 坐标与样式
+
+- **每页统一 Y 轴**（本报告的选择；HTML 走的是"≤12 列每列自量程"的小多图）。先扫全部序列得
+  min/max，5 等分刻度，PDF 的 y 向上增长，所以底部 = min、顶部 = max。
+- 某列全等 → 画一条 0.8 pt 水平线，图例写 `列名 = 值 (constant)`；整张图只有常数列时上下各留 1%
+  余量（否则除以 0）。
+- 刻度精度由**步长**决定（≥100 取 0 位、≥10 取 1 位、≥1 取 2 位……），同一轴不会出现 `2500`
+  和 `740.13` 混排。
+- X 轴是行号，标签取第 0 列（GPS 时间；`Receiver Status` 是条件名），5 个刻度，首尾贴边、中间居中。
+- 折线：一列一条 `m`/`l`/`S` 路径；单行数据画 2.8 pt 方块；10 色调色板与 `html.ts` 同一组颜色
+  （换成 0–1 RGB）。
+- 图例最多 8 行，放不下时末尾写 `+N more`。
+
+### 13.4 硬边界（为什么不会画爆）
+
+| 边界 | 值 | 行为 |
+|---|---|---|
+| 每页表格行数 | 20（`PDF_TABLE_ROWS`） | 只放前 20 行，注 `first 20 of N rows` |
+| 每页表格列数 | 按 762 pt 宽度贪心取整列 | `Tracking Time` 61 列只放 14 列，注 `showing 14 of 61 columns` |
+| 每序列点数 | 1200（`PDF_MAX_POINTS`） | 超出按步长抽稀、末点保留，说明行写 `decimated (1/N points)` |
+| 图例行数 | 8 | 其余合并成 `+N more` |
+
+写的时候踩到的两个坑，改之前必须知道：
+
+- `Math.min(...values)` 在几十万个采样点上会**超参数上限**（RangeError），min/max 必须用循环；
+- `assert.deepEqual` 拿两个 300 KB 的 Buffer 比较，**失败时会生成逐字节 diff 而卡死**（这次测试
+  卡死的真正原因）。测试改成 `Buffer.equals` + 报告首个差异偏移，失败也是一行字。
+
+### 13.5 可复现与文本可提取
+
+- 内容流不压缩，`(2D Trajectory) Tj` 这样的文本可以直接在字节里搜到；`(`、`)`、`\` 按 PDF 字面量转义。
+- 非 ASCII 一律写成 `?`：不嵌入字体的 WinAnsi Helvetica 画不出中文，写进去只会是乱码。
+- `options.generatedAt` 固定后整份**字节可复现**（`/CreationDate` 也由它派生：
+  `2026/10/30 21:00:00` → `D:20261030210000`）；默认取当前本地时间。
+
+### 13.6 验证
+
+```
+node --test --test-force-exit "packages/graph/test/*.test.ts"        # 38 项 / 38 pass（新增 9 项）
+node packages/cli/src/graph.ts --project …/clean.gpf --capture …/clean-9600.gps \
+     --out <tmp> --csv --kml --html --pdf --golden …/samples/graph/export
+```
+
+CSV / KML 仍全部 `identical to golden`；PDF 不参与逐字节比对。实测：
+
+| 项 | 结果 |
+|---|---|
+| `clean.pdf` | **330 802 B**，13 页（< 1.5 MB） |
+| 对象 | 31 个（编号 1–31），`/Size 32`，`startxref 330082` |
+| xref | 32 条**逐条**核对：每条偏移读回来必须落在该编号的 `<n> 0 obj` 上 |
+| 文本 | 12 个图表标题、`clean`、`2442,463097.350`、`2442,463102.300`、`00:00:04` 全部在内容流里 |
+| 刻度 | 12 页各 5 个刻度，从顶部到底部严格递减 |
+| 最小输入（1 图 2 行） | 4 975 B，0.3–2.8 ms |
+| 完整 12 图 | 330 802 B，14–19 ms |
+| 合成 20 000 行 × 5 列 | 抽稀 1/17，整份 < 1.5 MB，构建 < 100 ms |
+| 浏览器（Playwright + Chrome 156，`file://`） | HTTP 200，**0 console error、0 page error**；截图 1100×900，平均亮度 199.6，纯黑像素 0.0% |
+
+浏览器截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\graph-pdf.png` —— Chrome 自带 PDF 阅读器，
+左侧 13 个缩略图全部有内容，右侧第 1 页显示 `clean Report` / 六项项目信息 / Message Summary。
+
+测试断言（`packages/graph/test/pdf.test.ts`，9 项）：`%PDF-1.4` 开头、`%%EOF` 结尾；xref 每条偏移
+回读校验、`startxref` 指向 `xref` 关键字；13 页；12 标题 + 项目名 + 起止 + 时长可搜；每图至少一条
+路径、表格 ≤ 20 行且第 21 行不出现；< 1.5 MB；两次生成字节相同；`selectedPlots` / `tableRows` 生效；
+大图抽稀后仍 < 1.5 MB 且构建 < 5 秒。
+
+### 13.7 与原版的差距
+
+- 原版 348 419 B / 8 页（Chromium 连续排版、图表跨页）；这里固定一图一页 → 13 页。页数不同是设计
+  选择，不是缺陷。
+- 没有地图/轨迹底图；没有 Chromium 的字体子集（引用标准 14 号字体，不嵌入），所以文档里只有 ASCII。
+- 不追求像素一致：对齐的是信息结构、可提取文本和容器正确性（xref 逐条校验）。
+- 图表顺序沿用调用方传入的顺序（CLI 即 `exportCsv()` 的顺序），不按 `html.ts` 的分节重排。

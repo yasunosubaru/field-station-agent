@@ -7,8 +7,9 @@
  *  - `exportCsv`     all 12 charts of the sample project, byte-identical to the shipped golden
  *  - `exportKml`     `clean.kml`, byte-identical
  *  - `buildHtmlReport`  self-contained `<project>.html` (inline CSS + SVG + first rows of each CSV)
+ *  - `buildPdfReport`   hand-written PDF 1.4, one page per chart (no library, no embedded fonts)
  *
- * Not implemented: the PDF report, the ECharts interactive report and map rendering.
+ * Not implemented: the ECharts interactive report and map rendering.
  */
 
 export * from './format.ts';
@@ -19,3 +20,4 @@ export * from './receiver-status.ts';
 export * from './range-charts.ts';
 export * from './kml.ts';
 export * from './html.ts';
+export * from './pdf.ts';

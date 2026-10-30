@@ -1,17 +1,20 @@
 /**
  * Graph export driver — the reimplemented `ExportCSV` / `ExportKML` without the Electron app.
  *
- *   node packages/cli/src/graph.ts --project <project.gpf> [--capture <log>] --out <dir> [--csv] [--kml] [--html]
+ *   node packages/cli/src/graph.ts --project <project.gpf> [--capture <log>] --out <dir>
+ *                                  [--csv] [--kml] [--html] [--pdf]
  *                                  [--golden <export-dir>] [--time-format GPS|UTC]
  *
- * `--csv` writes `<out>/csv/<chart>.csv`, `--kml` writes `<out>/<project>.kml` and `--html` writes
- * `<out>/<project>.html` (a self-contained report: inline CSS, inline SVG, first 20 rows per chart),
- * i.e. the same destination layout Graph uses (CSV in a **sibling** `csv/` folder of the KML) plus the
- * report file the original calls `clean.html`.
+ * `--csv` writes `<out>/csv/<chart>.csv`, `--kml` writes `<out>/<project>.kml`, `--html` writes
+ * `<out>/<project>.html` (a self-contained report: inline CSS, inline SVG, first 20 rows per chart)
+ * and `--pdf` writes `<out>/<project>.pdf` (hand-written PDF 1.4, one page per chart), i.e. the same
+ * destination layout Graph uses (CSV in a **sibling** `csv/` folder of the KML) plus the report files
+ * the original calls `clean.html` / `clean.pdf`.
  *
  * `--golden` is optional: point it at a Graph export folder (`…/export`) and every produced file is
- * compared byte for byte, which is how the acceptance run is checked. The HTML report is **not**
- * compared — it is a structural equivalent, not a pixel/copy equivalent (see `06_Graph应用.md §12`).
+ * compared byte for byte, which is how the acceptance run is checked. Neither report file is
+ * **compared** — both are structural equivalents, not copy equivalents (see
+ * `06_Graph应用.md §12`/§13).
  *
  * The capture comes from the project's own `filePath` when that file still exists; otherwise pass
  * `--capture` (the shipped sample project points at `C:\Users\…\Temp\gs\clean.gps`, which is gone).
@@ -25,6 +28,7 @@ import { loadCapture } from '../../graph/src/capture.ts';
 import { exportCsv } from '../../graph/src/csv.ts';
 import { renderKml } from '../../graph/src/kml.ts';
 import { writeHtmlReport } from '../../graph/src/html.ts';
+import { writePdfReport } from '../../graph/src/pdf.ts';
 
 interface Args {
   project?: string;
@@ -33,12 +37,13 @@ interface Args {
   csv: boolean;
   kml: boolean;
   html: boolean;
+  pdf: boolean;
   golden?: string;
   timeFormat: 'GPS' | 'UTC';
 }
 
 function parse(argv: string[]): Args {
-  const args: Args = { csv: false, kml: false, html: false, timeFormat: 'GPS' };
+  const args: Args = { csv: false, kml: false, html: false, pdf: false, timeFormat: 'GPS' };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (token === '--project' || token === '-p') args.project = argv[++i];
@@ -49,6 +54,7 @@ function parse(argv: string[]): Args {
     else if (token === '--csv') args.csv = true;
     else if (token === '--kml') args.kml = true;
     else if (token === '--html') args.html = true;
+    else if (token === '--pdf') args.pdf = true;
   }
   return args;
 }
@@ -71,9 +77,9 @@ function compare(path: string, goldenPath: string): string {
 
 function main(): void {
   const args = parse(process.argv.slice(2));
-  if (!args.project || !args.out || (!args.csv && !args.kml && !args.html)) {
+  if (!args.project || !args.out || (!args.csv && !args.kml && !args.html && !args.pdf)) {
     console.error(
-      'usage: graph.ts --project <project.gpf> [--capture <log>] --out <dir> [--csv] [--kml] [--html] [--golden <export-dir>]',
+      'usage: graph.ts --project <project.gpf> [--capture <log>] --out <dir> [--csv] [--kml] [--html] [--pdf] [--golden <export-dir>]',
     );
     process.exit(2);
   }
@@ -93,6 +99,7 @@ function main(): void {
 
   const rows: string[] = [];
   const charts = exportCsv(project, capture);
+  const sources = charts.map((result) => ({ title: result.fileName.replace(/\.csv$/, ''), csv: result.buffer }));
   if (args.csv) {
     const dir = join(outDir, 'csv');
     mkdirSync(dir, { recursive: true });
@@ -111,12 +118,12 @@ function main(): void {
     rows.push(`  ${project.projectName}.kml${' '.repeat(30)} ${String(buffer.length).padStart(7)} B${verdict}`);
   }
   if (args.html) {
-    const { bytes } = writeHtmlReport(
-      project,
-      charts.map((result) => ({ title: result.fileName.replace(/\.csv$/, ''), csv: result.buffer })),
-      outDir,
-    );
+    const { bytes } = writeHtmlReport(project, sources, outDir);
     rows.push(`  ${project.projectName}.html${' '.repeat(29)} ${String(bytes).padStart(7)} B  [self-contained, ${charts.length} charts]`);
+  }
+  if (args.pdf) {
+    const { bytes } = writePdfReport(project, sources, outDir);
+    rows.push(`  ${project.projectName}.pdf${' '.repeat(30)} ${String(bytes).padStart(7)} B  [PDF 1.4, ${1 + charts.length} pages]`);
   }
 
   console.log(`project ${project.projectName}  (${project.projectDirectory})`);
