@@ -76,11 +76,11 @@
   .controls { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .field { display: grid; gap: 5px; min-width: 210px; flex: 1 1 240px; }
   .field > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-  select, input[type="search"] {
+  select, input[type="search"], input[type="number"] {
     width: 100%; appearance: none; border: 1px solid var(--line-strong); border-radius: 8px;
     background: #fff; color: var(--ink); padding: 9px 10px; font: 13px var(--sans);
   }
-  select:focus, input[type="search"]:focus { outline: 2px solid rgba(15,118,110,.35); outline-offset: 0; border-color: var(--accent); }
+  select:focus, input[type="search"]:focus, input[type="number"]:focus { outline: 2px solid rgba(15,118,110,.35); outline-offset: 0; border-color: var(--accent); }
   .btn {
     appearance: none; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px;
     font: 600 13px var(--sans); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 7px;
@@ -157,11 +157,31 @@
   .stamp { flex: 0 0 auto; font: 700 10px/1 var(--mono); letter-spacing: .12em; color: var(--warn); background: var(--warn-soft); border: 1px solid #f0d9ac; border-radius: 6px; padding: 6px 8px; }
   .timeline-box { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 8px 6px 2px; }
   .timeline-box svg { width: 100%; height: auto; display: block; }
-  .transport { display: flex; align-items: center; gap: 8px; }
+  .transport { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .transport .btn { padding: 7px 12px; }
+  .transport .clock { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
   .playback-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .fact { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 10px 12px; color: var(--muted); font-size: 12px; }
   .fact b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 3px; }
+
+  .range { width: 100%; display: block; margin: 10px 0 12px; height: 22px; appearance: none; background: transparent; }
+  .range:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+  .range::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #e2e8ee; border: 1px solid var(--line-strong); }
+  .range::-webkit-slider-thumb {
+    appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(15,118,110,.45); cursor: pointer;
+  }
+  .range::-moz-range-track { height: 6px; border-radius: 3px; background: #e2e8ee; border: 1px solid var(--line-strong); }
+  .range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; cursor: pointer; }
+  .range:disabled { opacity: .5; }
+
+  .field-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .field-chip { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); background: #f7f9fb; border-radius: 6px; padding: 3px 8px; color: #33404d; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .field-chip b { font-family: var(--sans); font-weight: 600; color: var(--muted); margin-right: 5px; font-size: 10.5px; }
+
+  .chart-box { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 8px; }
+  .chart-box svg { width: 100%; height: auto; display: block; }
+  .series-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-right: 6px; }
 
   footer { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
   footer code { font-family: var(--mono); background: #eef1f4; border-radius: 4px; padding: 1px 5px; }
@@ -194,7 +214,8 @@
   <nav class="tabs" role="tablist" aria-label="工作页">
     <button role="tab" id="tab-convert" data-tab="convert" aria-selected="true" aria-controls="panel-convert">Convert<span>格式转换</span></button>
     <button role="tab" id="tab-manage" data-tab="manage" aria-selected="false" aria-controls="panel-manage">Manage<span>日志统计</span></button>
-    <button role="tab" id="tab-playback" data-tab="playback" aria-selected="false" aria-controls="panel-playback">Playback<span>回放占位</span></button>
+    <button role="tab" id="tab-playback" data-tab="playback" aria-selected="false" aria-controls="panel-playback">Playback<span>回放 / 裁剪</span></button>
+    <button role="tab" id="tab-graph" data-tab="graph" aria-selected="false" aria-controls="panel-graph">Graph<span>CSV 折线</span></button>
   </nav>
 
   <main>
@@ -287,55 +308,98 @@
     </section>
 
     <section class="panel" id="panel-playback" role="tabpanel" aria-labelledby="tab-playback" hidden>
-      <div class="card playback-wrap">
-        <div class="placeholder-note">
-          <span class="stamp">NOT IMPLEMENTED</span>
-          <div>
-            <h2 style="margin:0 0 6px;font-size:15px">Playback 回放 · 尚未实现</h2>
-            <p class="muted" style="margin:0">
-              回放引擎由另一个平行任务实现，本壳不依赖它。等引擎落地后，这一页会接到
-              <code class="mono">/api/playback</code>（帧流 + 时钟）；现在只保留时间轴占位与布局位。
-            </p>
-          </div>
+      <div class="card">
+        <div class="card-head">
+          <h2>回放</h2>
+          <span class="hint">服务端只读拆帧；播放由浏览器时钟推进，导出走 exportRange，CRC 原样保留</span>
+        </div>
+        <div class="controls">
+          <label class="field"><span>抓包文件</span><select id="pb-capture"></select></label>
+          <label class="field" style="flex:0 0 150px;min-width:130px"><span>倍速</span><select id="pb-speed"></select></label>
+          <button class="btn primary" id="pb-load" type="button">载入时间轴</button>
+        </div>
+        <div class="stats" id="pb-stats"></div>
+        <p class="muted" id="pb-meta" style="margin:10px 0 0">正在读取抓包列表…</p>
+      </div>
+
+      <div class="notice error" id="pb-error" hidden></div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>时间轴 <span class="badge" id="pb-state">未载入</span></h3>
+          <span class="hint" id="pb-span"></span>
         </div>
         <div class="timeline-box">
-          <svg viewBox="0 0 900 132" role="img" aria-label="回放时间轴占位">
-            <defs>
-              <linearGradient id="track" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stop-color="#0f766e" stop-opacity=".55"/>
-                <stop offset="1" stop-color="#0e7490" stop-opacity=".18"/>
-              </linearGradient>
-            </defs>
-            <text x="12" y="24" font-size="11" fill="#66727f" font-family="Segoe UI, sans-serif">时间轴占位 · 引擎未接入</text>
-            <rect x="12" y="52" width="876" height="10" rx="5" fill="#e7ecf1"/>
-            <rect x="12" y="52" width="120" height="10" rx="5" fill="url(#track)"/>
-            <g stroke="#c6cfd9" stroke-width="1">
-              <line x1="12" y1="46" x2="12" y2="68"/><line x1="231" y1="46" x2="231" y2="68"/>
-              <line x1="450" y1="46" x2="450" y2="68"/><line x1="669" y1="46" x2="669" y2="68"/>
-              <line x1="888" y1="46" x2="888" y2="68"/>
-            </g>
-            <g font-size="10" fill="#8a95a1" font-family="Cascadia Mono, Consolas, monospace">
-              <text x="12" y="88">00:00</text><text x="213" y="88">--:--</text><text x="432" y="88">--:--</text>
-              <text x="651" y="88">--:--</text><text x="849" y="88">--:--</text>
-            </g>
-            <line x1="132" y1="38" x2="132" y2="74" stroke="#0f766e" stroke-width="2"/>
-            <circle cx="132" cy="57" r="5" fill="#0f766e"/>
-            <g opacity=".45" font-size="11" fill="#66727f" font-family="Segoe UI, sans-serif">
-              <text x="12" y="118">播放头</text>
-              <text x="72" y="118">·</text>
-              <text x="86" y="118">等待帧时钟与轨道数据</text>
-            </g>
-          </svg>
+          <svg id="pb-strip" viewBox="0 0 900 58" role="img" aria-label="报文分布与播放头"></svg>
         </div>
+        <input type="range" class="range" id="pb-range" min="0" max="1000" step="1" value="0" aria-label="回放位置" disabled>
         <div class="transport">
-          <button class="btn" type="button" disabled>▶ 播放</button>
-          <button class="btn" type="button" disabled>⏸ 暂停</button>
-          <button class="btn" type="button" disabled>⏮ 回到起点</button>
-          <span class="muted">控件为占位，禁用状态</span>
+          <button class="btn primary" id="pb-play" type="button" disabled>▶ 播放</button>
+          <button class="btn ghost" id="pb-pause" type="button" disabled>⏸ 暂停</button>
+          <button class="btn ghost" id="pb-rewind" type="button" disabled>⏮ 回到起点</button>
+          <span class="clock" id="pb-clock">0.000 s</span>
+          <span class="muted" id="pb-clock-note">未载入</span>
         </div>
-        <div class="playback-grid">
-          <div class="fact"><b>接入点：帧流</b>回放需要 <code class="mono">SbfFrame[]</code> 与每帧的 GPS 周/毫秒，现有 <code class="mono">/api/logs</code> 已给出时间跨度。</div>
-          <div class="fact"><b>接入点：视图</b>BESTPOS/轨迹与状态面板复用 Manage 的字段解码（<code class="mono">decodeEdie</code>），无需第二套解析。</div>
+      </div>
+
+      <div class="card" id="pb-frame-card" hidden>
+        <div class="card-head">
+          <h3 id="pb-frame-title">当前帧</h3>
+          <span class="hint" id="pb-frame-note"></span>
+        </div>
+        <div class="record-meta" id="pb-frame-meta"></div>
+        <div class="field-chips" id="pb-frame-fields"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>裁剪导出</h3>
+          <span class="hint">按时间裁切，输出原始 SBF 记录（逐字节复制，不重算 CRC）</span>
+        </div>
+        <div class="controls">
+          <label class="field" style="flex:0 0 150px;min-width:120px"><span>起（秒）</span><input id="pb-from" type="number" min="0" step="0.01" value="0"></label>
+          <label class="field" style="flex:0 0 150px;min-width:120px"><span>止（秒）</span><input id="pb-to" type="number" min="0" step="0.01" value="0"></label>
+          <button class="btn ghost" id="pb-export-prepare" type="button" disabled>生成下载</button>
+          <a class="btn primary" id="pb-export-link" href="#" download aria-disabled="true">下载 SBF</a>
+        </div>
+        <p class="muted" id="pb-export-note" style="margin:10px 0 0">载入时间轴后可裁剪导出。</p>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-graph" role="tabpanel" aria-labelledby="tab-graph" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>Graph 图表</h2>
+          <span class="hint">直接读 samples/graph/export/csv/*.csv（Graph 2.11.0 导出的原始数据，不经 packages/graph）</span>
+        </div>
+        <div class="controls">
+          <label class="field"><span>CSV 文件</span><select id="graph-file"></select></label>
+          <label class="field" style="flex:0 0 260px;min-width:180px"><span>绘图列（y）</span><select id="graph-column"></select></label>
+          <button class="btn primary" id="graph-refresh" type="button">重新读取</button>
+        </div>
+        <p class="muted" id="graph-meta" style="margin:10px 0 0">正在读取 CSV 列表…</p>
+      </div>
+
+      <div class="notice error" id="graph-error" hidden></div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>折线图 <span class="badge" id="graph-badge">—</span></h3>
+          <span class="hint" id="graph-note"></span>
+        </div>
+        <div class="chart-box" id="graph-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>前 20 行</h3>
+          <span class="hint" id="graph-table-note"></span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr id="graph-table-head"></tr></thead>
+            <tbody id="graph-table-body"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -343,7 +407,7 @@
 
   <footer>
     <span>仅监听 <code>127.0.0.1</code> · 样例只读 · 零依赖 / 无外网资源</span>
-    <span class="mono" id="footer-endpoints">/api/health · /api/captures · /api/convert · /api/logs · /api/records · /api/download</span>
+    <span class="mono" id="footer-endpoints">/api/health · /api/captures · /api/convert · /api/logs · /api/records · /api/playback/* · /api/graph/*</span>
   </footer>
 </div>
 
@@ -360,6 +424,24 @@
     detailOffset: 0,
     fieldFilter: ''
   };
+
+  var pb = {
+    loaded: false,
+    info: null,
+    frames: [],
+    duration: 0,
+    time: 0,
+    playing: false,
+    speed: 1,
+    detailIndex: -1,
+    detailPending: false,
+    pendingDetail: null,
+    raf: 0,
+    last: 0,
+    capture: ''
+  };
+
+  var graph = { files: [], data: null };
 
   function $(id) { return document.getElementById(id); }
 
@@ -407,10 +489,12 @@
       var selected = tabs[i].getAttribute('data-tab') === name;
       tabs[i].setAttribute('aria-selected', selected ? 'true' : 'false');
     }
-    ['convert', 'manage', 'playback'].forEach(function (tab) {
+    ['convert', 'manage', 'playback', 'graph'].forEach(function (tab) {
       $('panel-' + tab).hidden = tab !== name;
     });
     if (name === 'manage' && state.captures.length && !state.logs) loadLogs();
+    if (name === 'playback' && state.captures.length && !pb.loaded) loadPlayback();
+    if (name === 'graph' && !graph.files.length) loadGraphFiles();
   }
 
   document.querySelectorAll('.tabs [data-tab]').forEach(function (button) {
@@ -428,12 +512,14 @@
     var html = options.length ? options.join('') : '<option value="">（samples 下没有找到抓包）</option>';
     $('capture-select').innerHTML = html;
     $('manage-capture').innerHTML = html;
+    $('pb-capture').innerHTML = html;
     var preferred = state.captures.find(function (item) { return item.path === 'convert/clean-9600.gps'; })
       || state.captures.find(function (item) { return item.name === 'clean-9600.gps'; })
       || state.captures[0];
     if (preferred) {
       $('capture-select').value = preferred.path;
       $('manage-capture').value = preferred.path;
+      $('pb-capture').value = preferred.path;
     }
     updateCaptureMeta();
   }
@@ -674,6 +760,430 @@
     });
   }
 
+  /* ---------------- playback ---------------- */
+
+  var PB_PALETTE = ['#0f766e', '#0e7490', '#7c3aed', '#b45309', '#b91c1c', '#4d7c0f', '#a21caf', '#0369a1'];
+
+  function timeText(value) {
+    return Number(value).toFixed(3) + ' s';
+  }
+
+  function gpsLabel(info, t) {
+    if (!info) return '';
+    var seconds = info.startTime + t;
+    var week = info.startWeek;
+    while (seconds >= 604800) { seconds -= 604800; week += 1; }
+    return 'GPS W' + week + ' · ' + seconds.toFixed(3) + ' s';
+  }
+
+  function frameIndexAt(t) {
+    var frames = pb.frames;
+    if (!frames.length) return -1;
+    var target = t * 1000 + 0.5;
+    var low = 0, high = frames.length - 1, found = 0;
+    while (low <= high) {
+      var mid = (low + high) >> 1;
+      if (frames[mid].offsetMs <= target) { found = mid; low = mid + 1; }
+      else high = mid - 1;
+    }
+    return found;
+  }
+
+  function renderStrip() {
+    var svg = $('pb-strip');
+    var width = 900, height = 58;
+    if (!pb.loaded || !pb.frames.length) {
+      svg.innerHTML = '<text x="12" y="34" font-size="12" fill="#8a95a1" font-family="Segoe UI, sans-serif">尚未载入时间轴</text>';
+      return;
+    }
+    var duration = pb.duration || 1;
+    var colors = {};
+    var parts = ['<rect x="0" y="14" width="' + width + '" height="28" rx="6" fill="#e9eef3"/>'];
+    // Narrow ticks: 100 RANGE records inside 4.95 s would merge into a solid block at 7 px width.
+    var barWidth = 3;
+    for (var i = 0; i < pb.frames.length; i++) {
+      var frame = pb.frames[i];
+      if (!colors[frame.messageId]) colors[frame.messageId] = PB_PALETTE[Object.keys(colors).length % PB_PALETTE.length];
+      var x = (frame.offsetMs / (duration * 1000)) * width;
+      parts.push('<rect x="' + (x - barWidth / 2).toFixed(2) + '" y="14" width="' + barWidth.toFixed(2)
+        + '" height="28" fill="' + colors[frame.messageId] + '" opacity=".72"/>');
+    }
+    for (var k = 0; k <= 4; k++) {
+      var tickX = (width - 1) * k / 4;
+      parts.push('<line x1="' + tickX + '" y1="44" x2="' + tickX + '" y2="50" stroke="#c6cfd9"/>');
+      parts.push('<text x="' + tickX + '" y="' + (height - 2) + '" font-size="10" fill="#8a95a1" text-anchor="'
+        + (k === 0 ? 'start' : (k === 4 ? 'end' : 'middle'))
+        + '" font-family="Cascadia Mono, Consolas, monospace">' + (duration * k / 4).toFixed(2) + 's</text>');
+    }
+    parts.push('<line id="pb-head" x1="0" y1="6" x2="0" y2="46" stroke="#0f766e" stroke-width="2"/>');
+    parts.push('<circle id="pb-head-dot" cx="0" cy="6" r="4" fill="#0f766e"/>');
+    svg.innerHTML = parts.join('');
+
+    var counts = {};
+    pb.frames.forEach(function (item) { counts[item.messageId] = (counts[item.messageId] || 0) + 1; });
+    var legend = Object.keys(counts).map(function (id) {
+      var match = pb.frames.find(function (item) { return String(item.messageId) === id; });
+      return { name: match ? match.name : ('#' + id), count: counts[id] };
+    }).sort(function (a, b) { return b.count - a.count; });
+    $('pb-span').textContent = legend.map(function (item) { return item.name + ' × ' + item.count; }).join(' · ');
+    moveHead();
+  }
+
+  function moveHead() {
+    var duration = pb.duration || 1;
+    var x = (pb.time / duration) * 900;
+    var line = document.getElementById('pb-head');
+    var dot = document.getElementById('pb-head-dot');
+    if (line) { line.setAttribute('x1', x); line.setAttribute('x2', x); }
+    if (dot) dot.setAttribute('cx', x);
+  }
+
+  function pbStateLabels(name) {
+    return { idle: '就绪', playing: '播放中', paused: '已暂停', ended: '已结束' }[name] || name;
+  }
+
+  function setPbState(name) {
+    var badge = $('pb-state');
+    badge.textContent = pbStateLabels(name);
+    badge.className = 'badge' + (name === 'playing' ? ' ok' : (name === 'ended' ? ' warn' : ''));
+    $('pb-play').disabled = !pb.loaded || name === 'playing';
+    $('pb-pause').disabled = !pb.loaded || name !== 'playing';
+  }
+
+  function renderFrameHead(frame) {
+    $('pb-frame-card').hidden = false;
+    $('pb-frame-title').textContent = '当前帧 · ' + frame.name + ' · #' + (frame.index + 1) + ' / ' + pb.frames.length;
+    $('pb-frame-note').textContent = '偏移 ' + timeText(frame.time) + ' · 整帧 ' + frame.bytes + ' B';
+    var chips = [
+      ['报文', frame.name + ' (' + frame.messageId + ')'],
+      ['帧序号', frame.index + 1],
+      ['GPS', 'W' + frame.week + ' · ' + (frame.milliseconds / 1000).toFixed(3)],
+      ['时间轴', timeText(frame.time)],
+      ['整帧', frame.bytes + ' B']
+    ];
+    $('pb-frame-meta').innerHTML = chips.map(function (chip) {
+      return '<span class="chip"><b>' + esc(chip[0]) + '</b>' + esc(chip[1]) + '</span>';
+    }).join('');
+    $('pb-frame-fields').innerHTML = '<span class="muted">正在解码字段…</span>';
+  }
+
+  function renderFrameFields(data) {
+    if (!data.fields.length) {
+      $('pb-frame-fields').innerHTML = '<span class="muted">该报文没有 EDIE 布局，只有 SBF 头信息。</span>';
+      return;
+    }
+    var html = data.fields.slice(0, 12).map(function (field) {
+      var shown = field.text == null ? String(field.value) : field.text;
+      return '<span class="field-chip" title="' + esc(field.path) + '"><b>' + esc(field.path) + '</b>' + esc(shown) + '</span>';
+    }).join('');
+    if (data.fieldTotal > 12) html += '<span class="field-chip"><b>共</b>' + data.fieldTotal + ' 项</span>';
+    $('pb-frame-fields').innerHTML = html;
+  }
+
+  function fetchFrameDetail(index) {
+    if (pb.detailPending) { pb.pendingDetail = index; return; }
+    pb.detailPending = true;
+    api('/api/playback/frame?capture=' + encodeURIComponent(pb.capture) + '&index=' + index).then(function (data) {
+      if (pb.detailIndex === index) {
+        renderFrameFields(data);
+        $('pb-frame-note').textContent = '偏移 ' + timeText(data.frame.time) + ' · ' + data.fieldTotal
+          + ' 个字段 · 整帧 ' + data.frame.bytes + ' B' + (data.layoutKnown ? '' : ' · 无 EDIE 布局');
+      }
+    }).catch(function () {
+      /* A frame that scrolls out of view mid-flight is not an error the user needs to see. */
+    }).finally(function () {
+      pb.detailPending = false;
+      var next = pb.pendingDetail;
+      pb.pendingDetail = null;
+      if (next !== null && next !== index) fetchFrameDetail(next);
+    });
+  }
+
+  function updateCurrentFrame() {
+    var index = frameIndexAt(pb.time);
+    if (index < 0) return;
+    if (index === pb.detailIndex) return;
+    pb.detailIndex = index;
+    renderFrameHead(pb.frames[index]);
+    fetchFrameDetail(index);
+  }
+
+  function setTime(t) {
+    if (!pb.loaded) return;
+    var clamped = Math.min(Math.max(t, 0), pb.duration);
+    pb.time = clamped;
+    var permille = pb.duration > 0 ? Math.round((clamped / pb.duration) * 1000) : 0;
+    $('pb-range').value = String(permille);
+    $('pb-clock').textContent = timeText(clamped) + ' / ' + timeText(pb.duration);
+    $('pb-clock-note').textContent = gpsLabel(pb.info, clamped);
+    moveHead();
+    updateCurrentFrame();
+  }
+
+  function renderPbStats(info) {
+    var cards = [
+      ['帧数', info.frameCount, 'frames'],
+      ['时长', (info.durationMs / 1000).toFixed(3) + ' s', info.durationMs + ' ms'],
+      ['报文类型', info.messageCounts.length, 'types'],
+      ['丢弃 CRC', info.stats.badCrc, 'bad crc']
+    ];
+    $('pb-stats').innerHTML = cards.map(function (card) {
+      return '<div class="stat"><b>' + esc(card[0]) + '</b><span>' + esc(card[1]) + '<em>' + esc(card[2]) + '</em></span></div>';
+    }).join('');
+  }
+
+  function fillSpeeds(speeds) {
+    $('pb-speed').innerHTML = speeds.map(function (value) {
+      return '<option value="' + value + '">' + value + '×</option>';
+    }).join('');
+    $('pb-speed').value = String(pb.speed);
+    if (!$('pb-speed').value) {
+      pb.speed = 1;
+      $('pb-speed').value = '1';
+    }
+  }
+
+  function loadPlayback() {
+    var capture = $('pb-capture').value;
+    if (!capture) { showNotice('pb-error', '没有可用的抓包文件'); return; }
+    pausePlayback();
+    var button = $('pb-load');
+    button.disabled = true;
+    showNotice('pb-error', '');
+    Promise.all([
+      api('/api/playback/info?capture=' + encodeURIComponent(capture)),
+      api('/api/playback/frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ capture: capture })
+      })
+    ]).then(function (results) {
+      var info = results[0];
+      var frames = results[1];
+      pb.info = info;
+      pb.frames = frames.frames || [];
+      pb.duration = info.durationMs / 1000;
+      pb.time = 0;
+      pb.detailIndex = -1;
+      pb.pendingDetail = null;
+      pb.capture = info.capture;
+      pb.loaded = true;
+      fillSpeeds(info.speeds || [0.5, 1, 2, 4, 8]);
+      renderPbStats(info);
+      $('pb-range').disabled = false;
+      $('pb-play').disabled = false;
+      $('pb-rewind').disabled = false;
+      $('pb-export-prepare').disabled = false;
+      $('pb-frame-card').hidden = true;
+      $('pb-from').value = '0';
+      $('pb-to').value = pb.duration.toFixed(2);
+      renderStrip();
+      setPbState('idle');
+      setTime(0);
+      syncExportLink();
+      $('pb-meta').textContent = info.capture + ' · ' + bytesText(info.bytes)
+        + ' · 首帧 ' + utcText(info.startUtc) + ' UTC · 末帧 ' + utcText(info.finishUtc) + ' UTC'
+        + ' · ' + info.messageCounts.map(function (item) { return item.name + ' ' + item.count; }).join(' / ');
+    }).catch(function (error) {
+      pb.loaded = false;
+      pb.frames = [];
+      showNotice('pb-error', '载入失败：' + error.message);
+      setPbState('idle');
+    }).finally(function () {
+      button.disabled = false;
+    });
+  }
+
+  function playPlayback() {
+    if (!pb.loaded || pb.playing) return;
+    if (pb.time >= pb.duration - 1e-9) setTime(0);
+    pb.playing = true;
+    pb.last = 0;
+    setPbState('playing');
+    pb.raf = requestAnimationFrame(playbackTick);
+  }
+
+  function pausePlayback() {
+    pb.playing = false;
+    if (pb.raf) { cancelAnimationFrame(pb.raf); pb.raf = 0; }
+    if (pb.loaded) setPbState('paused');
+  }
+
+  function playbackTick(now) {
+    if (!pb.playing) return;
+    if (!pb.last) pb.last = now;
+    var delta = now - pb.last;
+    pb.last = now;
+    if (delta > 250) delta = 250; // tab was hidden; do not jump the whole capture
+    setTime(pb.time + (delta * pb.speed) / 1000);
+    if (pb.time >= pb.duration - 1e-9) {
+      pb.playing = false;
+      pb.raf = 0;
+      setPbState('ended');
+      return;
+    }
+    pb.raf = requestAnimationFrame(playbackTick);
+  }
+
+  function syncExportLink() {
+    var link = $('pb-export-link');
+    var note = $('pb-export-note');
+    var from = Number($('pb-from').value);
+    var to = Number($('pb-to').value);
+    if (!pb.loaded) {
+      link.setAttribute('aria-disabled', 'true');
+      note.textContent = '载入时间轴后可裁剪导出。';
+      return;
+    }
+    if (!isFinite(from) || !isFinite(to) || from < 0 || to < 0 || from > to) {
+      link.setAttribute('aria-disabled', 'true');
+      note.textContent = '起止时间不合法：需要 0 ≤ 起 ≤ 止。';
+      return;
+    }
+    var stem = pb.capture.split('/').pop().replace(/\.[^.]+$/, '');
+    link.href = '/api/playback/export?capture=' + encodeURIComponent(pb.capture)
+      + '&from=' + from + '&to=' + to;
+    link.setAttribute('download', stem + '_' + from.toFixed(3) + '-' + to.toFixed(3) + '.sbf');
+    link.setAttribute('aria-disabled', 'false');
+    note.textContent = '将导出 [ ' + from.toFixed(3) + ' s , ' + Math.min(to, pb.duration).toFixed(3)
+      + ' s ] 内的原始 SBF 记录（CRC 原样），点按钮直接下载。';
+  }
+
+  /* ---------------- graph ---------------- */
+
+  function fmtNum(value) {
+    if (!isFinite(value)) return '—';
+    var abs = Math.abs(value);
+    if (abs !== 0 && (abs >= 1e6 || abs < 1e-4)) return value.toExponential(2);
+    return String(Math.round(value * 1000) / 1000);
+  }
+
+  function chartSvg(series) {
+    var points = series.points;
+    var width = 860, height = 300;
+    var pad = { left: 66, right: 18, top: 30, bottom: 46 };
+    var xs = points.map(function (p) { return p[0]; });
+    var ys = points.map(function (p) { return p[1]; });
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    if (xMax === xMin) xMax = xMin + 1;
+    if (yMax === yMin) { yMax = yMin + 1; yMin = yMin - 1; }
+    var plotW = width - pad.left - pad.right;
+    var plotH = height - pad.top - pad.bottom;
+    function px(x) { return pad.left + ((x - xMin) / (xMax - xMin)) * plotW; }
+    function py(y) { return pad.top + plotH - ((y - yMin) / (yMax - yMin)) * plotH; }
+
+    var parts = ['<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(series.label || '折线图') + '">'];
+    for (var i = 0; i <= 4; i++) {
+      var yValue = yMin + ((yMax - yMin) * i) / 4;
+      var yPos = py(yValue);
+      parts.push('<line x1="' + pad.left + '" y1="' + yPos.toFixed(1) + '" x2="' + (width - pad.right) + '" y2="' + yPos.toFixed(1) + '" stroke="#e6ecf1"/>');
+      parts.push('<text x="' + (pad.left - 8) + '" y="' + (yPos + 3.5).toFixed(1) + '" font-size="10" fill="#8a95a1" text-anchor="end" font-family="Cascadia Mono, Consolas, monospace">' + esc(fmtNum(yValue)) + '</text>');
+    }
+    for (var k = 0; k <= 4; k++) {
+      var xValue = xMin + ((xMax - xMin) * k) / 4;
+      var xPos = px(xValue);
+      parts.push('<line x1="' + xPos.toFixed(1) + '" y1="' + pad.top + '" x2="' + xPos.toFixed(1) + '" y2="' + (pad.top + plotH) + '" stroke="#eef2f6"/>');
+      parts.push('<text x="' + xPos.toFixed(1) + '" y="' + (pad.top + plotH + 16) + '" font-size="10" fill="#8a95a1" text-anchor="middle" font-family="Cascadia Mono, Consolas, monospace">' + esc(fmtNum(xValue)) + '</text>');
+    }
+    parts.push('<line x1="' + pad.left + '" y1="' + (pad.top + plotH) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + plotH) + '" stroke="#c6cfd9"/>');
+    parts.push('<line x1="' + pad.left + '" y1="' + pad.top + '" x2="' + pad.left + '" y2="' + (pad.top + plotH) + '" stroke="#c6cfd9"/>');
+    parts.push('<polyline fill="none" stroke="#0f766e" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="'
+      + points.map(function (p) { return px(p[0]).toFixed(1) + ',' + py(p[1]).toFixed(1); }).join(' ') + '"/>');
+    if (points.length <= 80) {
+      parts.push(points.map(function (p) {
+        return '<circle cx="' + px(p[0]).toFixed(1) + '" cy="' + py(p[1]).toFixed(1) + '" r="2.2" fill="#0f766e"/>';
+      }).join(''));
+    }
+    parts.push('<text x="' + pad.left + '" y="' + (height - 8) + '" font-size="10.5" fill="#66727f" font-family="Segoe UI, sans-serif">'
+      + esc(series.xLabel) + ' · ' + esc(series.xStartLabel) + ' → ' + esc(series.xEndLabel) + '</text>');
+    parts.push('<text x="' + (width - pad.right) + '" y="13" font-size="10.5" fill="#0b4f49" text-anchor="end" font-family="Segoe UI, sans-serif">y = ' + esc(series.label || '') + '</text>');
+    parts.push('</svg>');
+    return parts.join('');
+  }
+
+  function loadGraphFiles() {
+    showNotice('graph-error', '');
+    api('/api/graph/files').then(function (data) {
+      graph.files = data.files || [];
+      var select = $('graph-file');
+      if (!graph.files.length) {
+        select.innerHTML = '<option value="">（没有 CSV）</option>';
+        $('graph-meta').textContent = '未在 ' + data.directory + ' 下找到 CSV。';
+        $('graph-chart').innerHTML = '<div class="code-empty">没有可绘制的 CSV。</div>';
+        return;
+      }
+      select.innerHTML = graph.files.map(function (file) {
+        return '<option value="' + esc(file.name) + '">' + esc(file.name) + '  ·  '
+          + file.rows + ' 行 / ' + file.columns + ' 列 · ' + bytesText(file.bytes) + '</option>';
+      }).join('');
+      var preferred = graph.files.find(function (file) { return file.name === 'GNSS Signal Strength.csv'; })
+        || graph.files[0];
+      select.value = preferred.name;
+      $('graph-meta').textContent = '共 ' + graph.files.length + ' 份 CSV · 目录 ' + data.directory
+        + ' · 行数是数据行（不含 6 行注释与表头）';
+      loadGraphFile(preferred.name);
+    }).catch(function (error) {
+      showNotice('graph-error', '读取 CSV 列表失败：' + error.message);
+    });
+  }
+
+  function loadGraphFile(name, column) {
+    showNotice('graph-error', '');
+    api('/api/graph/data?file=' + encodeURIComponent(name) + (column ? '&column=' + encodeURIComponent(column) : ''))
+      .then(function (data) {
+        graph.data = data;
+        renderGraph(data);
+      }).catch(function (error) {
+        showNotice('graph-error', '读取 CSV 失败：' + error.message);
+      });
+  }
+
+  function renderGraph(data) {
+    var comments = data.comments || {};
+    var facts = [
+      comments.projectName ? '工程 ' + comments.projectName : '',
+      comments.dataFileName ? '数据 ' + comments.dataFileName : '',
+      comments.startTime ? 'GPS ' + comments.startTime + ' – ' + (comments.endTime || '?') : '',
+      comments.duration ? '时长 ' + comments.duration : '',
+      data.rows + ' 行 · ' + data.columns.length + ' 列'
+    ].filter(Boolean);
+    $('graph-meta').textContent = facts.join(' · ');
+
+    var columnSelect = $('graph-column');
+    if (data.numericColumns.length) {
+      columnSelect.innerHTML = data.numericColumns.map(function (column) {
+        return '<option value="' + esc(column.name) + '">' + esc(column.name) + '</option>';
+      }).join('');
+      columnSelect.value = data.column;
+      columnSelect.disabled = false;
+    } else {
+      columnSelect.innerHTML = '<option value="">（无数值列）</option>';
+      columnSelect.disabled = true;
+    }
+
+    $('graph-badge').textContent = data.column || '无数值列';
+    $('graph-note').textContent = data.series.points.length
+      ? data.series.points.length + ' 点 · x = ' + data.series.xLabel + ' · ' + data.series.xStartLabel + ' → ' + data.series.xEndLabel
+      : '全部列为枚举文本，没有可绘制的数值列';
+    $('graph-chart').innerHTML = data.series.points.length
+      ? chartSvg(data.series)
+      : '<div class="code-empty">该 CSV 没有数值列，只能查看表格。</div>';
+
+    $('graph-table-head').innerHTML = data.table.columns.map(function (column) {
+      return '<th>' + esc(column) + '</th>';
+    }).join('');
+    $('graph-table-body').innerHTML = data.table.rows.length
+      ? data.table.rows.map(function (row) {
+        return '<tr>' + row.map(function (cell) {
+          return '<td class="mono">' + esc(cell) + '</td>';
+        }).join('') + '</tr>';
+      }).join('')
+      : '<tr class="empty-row"><td colspan="' + Math.max(data.table.columns.length, 1) + '">没有数据行</td></tr>';
+    $('graph-table-note').textContent = '显示前 ' + data.table.rows.length + ' / ' + data.rows + ' 行'
+      + (data.tableTruncated ? '（其余请在 CSV 中查看）' : '（全部）');
+  }
+
   /* ---------------- wiring ---------------- */
 
   $('convert-btn').addEventListener('click', runConvert);
@@ -708,6 +1218,52 @@
     state.fieldFilter = $('field-filter').value;
     if (state.detail) renderDetail();
   });
+
+  /* playback wiring */
+  $('pb-load').addEventListener('click', loadPlayback);
+  $('pb-capture').addEventListener('change', loadPlayback);
+  $('pb-speed').addEventListener('change', function () {
+    pb.speed = Number($('pb-speed').value) || 1;
+  });
+  $('pb-range').addEventListener('input', function () {
+    if (!pb.loaded) return;
+    if (pb.playing) pausePlayback();
+    setTime((Number($('pb-range').value) / 1000) * pb.duration);
+    if (pb.time < pb.duration - 1e-9) setPbState('paused');
+  });
+  $('pb-play').addEventListener('click', playPlayback);
+  $('pb-pause').addEventListener('click', pausePlayback);
+  $('pb-rewind').addEventListener('click', function () {
+    if (!pb.loaded) return;
+    pausePlayback();
+    setTime(0);
+    setPbState('paused');
+  });
+  $('pb-from').addEventListener('input', syncExportLink);
+  $('pb-to').addEventListener('input', syncExportLink);
+  $('pb-export-prepare').addEventListener('click', function () {
+    syncExportLink();
+    if ($('pb-export-link').getAttribute('aria-disabled') === 'false') {
+      $('pb-export-note').textContent += ' 已更新下载链接。';
+    }
+  });
+  $('pb-export-link').addEventListener('click', function (event) {
+    if ($('pb-export-link').getAttribute('aria-disabled') !== 'false') {
+      event.preventDefault();
+      showNotice('pb-error', '请先载入时间轴并填写合法的起止时间');
+    }
+  });
+
+  /* graph wiring */
+  $('graph-file').addEventListener('change', function () {
+    loadGraphFile($('graph-file').value);
+  });
+  $('graph-column').addEventListener('change', function () {
+    loadGraphFile($('graph-file').value, $('graph-column').value);
+  });
+  $('graph-refresh').addEventListener('click', loadGraphFiles);
+
+  fillSpeeds([0.5, 1, 2, 4, 8]);
 
   api('/api/health').then(function (data) {
     $('health-dot').className = 'dot ok';

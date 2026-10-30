@@ -9,9 +9,11 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { PlaybackEngine } from '../../playback/src/playback.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = resolve(here, '..', 'src', 'server.ts');
@@ -115,6 +117,10 @@ test('首页返回 200 且含页面标题与三个工作页', async () => {
   assert.match(html, /id="panel-manage"/);
   assert.match(html, /id="panel-playback"/);
   assert.match(html, /Playback/);
+  // Graph is wired too, and Playback is no longer a placeholder.
+  assert.match(html, /id="panel-graph"/);
+  assert.match(html, /data-tab="graph"/);
+  assert.doesNotMatch(html, /NOT IMPLEMENTED/);
   // Offline shell: no CDN scripts or stylesheets.
   assert.doesNotMatch(html, /<(script|link)[^>]+(src|href)="https?:/i);
 });
@@ -210,3 +216,179 @@ test('未知抓包与未知接口返回 404', async () => {
   const unknown = await fetch(base + '/api/nothing');
   assert.equal(unknown.status, 404);
 });
+
+/* ---------------- playback ---------------- */
+
+const capturePath = join(samplesDir, 'convert', 'clean-9600.gps');
+const graphCsvDir = join(samplesDir, 'graph', 'export', 'csv');
+
+function sampleEngine(): PlaybackEngine {
+  const engine = new PlaybackEngine();
+  engine.load(new Uint8Array(readFileSync(capturePath)));
+  return engine;
+}
+
+test('GET /api/playback/info 的帧数 / 时长与 clean-9600.gps 一致', async () => {
+  const { response, body } = await getJson('/api/playback/info?capture=clean-9600.gps');
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.frameCount, 119);
+  assert.equal(body.durationMs, 4950);
+  assert.equal(body.durationSeconds, 4.95);
+  assert.equal(body.startWeek, 2442);
+  assert.equal(body.startTime, 463097.35);
+  assert.equal(body.finishTime, 463102.3);
+  assert.deepEqual(body.speeds, [0.5, 1, 2, 4, 8]);
+  assert.deepEqual(body.stats, { textFrames: 0, badCrc: 0, bufferedBytes: 0 });
+
+  const counts = new Map<number, { count: number; name: string }>(
+    body.messageCounts.map((item: { id: number; count: number; name: string }) => [item.id, item]),
+  );
+  assert.equal(counts.get(43)!.count, 100);
+  assert.equal(counts.get(43)!.name, 'RANGE');
+  assert.equal(counts.get(42)!.count, 5);
+  assert.equal(counts.get(93)!.count, 4);
+  // The whole capture is 4 messages short of the 119 records only if a CRC failed; nothing did.
+  assert.equal([...counts.values()].reduce((total, item) => total + item.count, 0), 119);
+});
+
+test('POST /api/playback/frames 的时间轴首尾与窗口与引擎一致', async () => {
+  const engine = sampleEngine();
+  const response = await fetch(base + '/api/playback/frames', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ capture: 'clean-9600.gps' }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.total, 119);
+  assert.equal(body.count, 119);
+  assert.equal(body.frames.length, 119);
+  assert.equal(body.frames[0].offsetMs, engine.frames[0].offsetMs);
+  assert.equal(body.frames[0].messageId, 43);
+  assert.equal(body.frames[118].offsetMs, engine.duration);
+  assert.equal(body.frames[118].offsetMs, 4950);
+  for (let i = 1; i < body.frames.length; i++) {
+    assert.ok(body.frames[i].offsetMs >= body.frames[i - 1].offsetMs, `offset 在第 ${i} 帧回退`);
+  }
+
+  // A window is inclusive on both ends and matches the engine's own range.
+  const windowed = await fetch(base + '/api/playback/frames', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ capture: 'clean-9600.gps', from: 1, to: 2 }),
+  });
+  const window = await windowed.json();
+  assert.equal(window.from, 1);
+  assert.equal(window.to, 2);
+  assert.equal(window.count, engine.range(1, 2).frameCount);
+  assert.equal(window.frames[0].offsetMs, 1000);
+  assert.equal(window.frames[window.frames.length - 1].offsetMs, 2000);
+});
+
+test('GET /api/playback/export?from=1&to=2 的字节数与 exportRange 相同', async () => {
+  const engine = sampleEngine();
+  const expected = engine.exportRange(1, 2);
+  const response = await fetch(base + '/api/playback/export?capture=clean-9600.gps&from=1&to=2');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /application\/octet-stream/);
+  assert.match(response.headers.get('content-disposition') ?? '', /attachment; filename="/);
+  assert.equal(response.headers.get('x-playback-frames'), String(engine.range(1, 2).frameCount));
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assert.equal(bytes.byteLength, expected.byteLength);
+  assert.ok(bytes.equals(Buffer.from(expected)), '导出的 SBF 必须与 exportRange 逐字节一致');
+  assert.ok(bytes.byteLength > 0);
+
+  // The same range through POST returns the same bytes.
+  const posted = await fetch(base + '/api/playback/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ capture: 'clean-9600.gps', from: 1, to: 2 }),
+  });
+  assert.equal(posted.status, 200);
+  assert.ok(Buffer.from(await posted.arrayBuffer()).equals(bytes));
+});
+
+test('POST /api/playback/frame 返回当前帧的报文名与字段', async () => {
+  const { response, body } = await getJson('/api/playback/frame?capture=clean-9600.gps&index=1');
+  assert.equal(response.status, 200);
+  assert.equal(body.index, 1);
+  assert.equal(body.total, 119);
+  assert.equal(body.frame.messageId, 43);
+  assert.equal(body.frame.name, 'RANGE');
+  assert.equal(body.layoutKnown, true);
+  assert.ok(body.fields.length > 0);
+  const field = body.fields.find((item: { path: string }) => item.path === 'obs[0].psr');
+  assert.ok(field, 'RANGE 第 1 帧应解出 obs[0].psr');
+  assert.equal(typeof field.value, 'number');
+});
+
+/* ---------------- graph ---------------- */
+
+test('GET /api/graph/files 列出 12 份实际存在的 CSV', async () => {
+  const onDisk = readdirSync(graphCsvDir)
+    .filter((name) => name.toLowerCase().endsWith('.csv'))
+    .sort((a, b) => a.localeCompare(b, 'en'));
+  assert.equal(onDisk.length, 12, 'samples/graph/export/csv 下应有 12 份 CSV');
+
+  const { response, body } = await getJson('/api/graph/files');
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.count, 12);
+  assert.deepEqual(body.files.map((file: { name: string }) => file.name), onDisk);
+  assert.equal(body.directory, '逆向/00_来源/samples/graph/export/csv');
+
+  for (const file of body.files) {
+    const lines = readFileSync(join(graphCsvDir, file.name), 'utf8')
+      .replace(/^\uFEFF/, '').split(/\r?\n/)
+      .filter((line) => line.trim() && !line.startsWith('#'));
+    assert.equal(file.rows, lines.length - 1, `${file.name} 的数据行数`);
+    assert.equal(file.columns, lines[0].split(',').length, `${file.name} 的列数`);
+  }
+});
+
+test('GET /api/graph/data 的行数与 golden CSV 一致，并给出可绘制的数值列', async () => {
+  for (const name of ['2D Trajectory.csv', 'GNSS Signal Strength.csv', 'Tracking Time.csv', 'Receiver Status.csv']) {
+    const lines = readFileSync(join(graphCsvDir, name), 'utf8')
+      .replace(/^\uFEFF/, '').split(/\r?\n/)
+      .filter((line) => line.trim() && !line.startsWith('#'));
+    const expectedRows = lines.length - 1;
+
+    const { response, body } = await getJson('/api/graph/data?file=' + encodeURIComponent(name));
+    assert.equal(response.status, 200, name);
+    assert.equal(body.name, name);
+    assert.equal(body.rows, expectedRows, `${name} 的行数`);
+    assert.equal(body.columns.length, lines[0].split(',').length, `${name} 的列数`);
+    assert.equal(body.table.rows.length, Math.min(20, expectedRows), `${name} 的前 20 行`);
+    assert.ok(body.table.rows[0].length === body.columns.length, `${name} 表格每行与表头列数一致`);
+    assert.ok(body.numericColumns.length > 0, `${name} 应至少有一列数值`);
+    assert.ok(body.series.points.length > 0, `${name} 应能画出折线`);
+    assert.equal(body.series.points.length, expectedRows, `${name} 每个数据行一个点`);
+    assert.ok(String(body.series.label).length > 0);
+
+    // Metadata is read from the `#` block, not invented.
+    const start = /^#Start Time\(GPS\):\s*(.+)$/m.exec(readFileSync(join(graphCsvDir, name), 'utf8'));
+    assert.equal(body.comments.startTime, start![1].trim());
+  }
+
+  // A file whose every column is an enum label has no series to draw, and says so.
+  const position = await getJson('/api/graph/data?file=' + encodeURIComponent('Position Status.csv'));
+  assert.equal(position.body.rows, 5);
+  assert.equal(position.body.numericColumns.length, 0);
+  assert.equal(position.body.column, null);
+  assert.equal(position.body.series.points.length, 0);
+  assert.equal(position.body.table.rows.length, 5);
+
+  // `&column=` picks a different numeric column.
+  const picked = await getJson('/api/graph/data?file=' + encodeURIComponent('Position SD.csv') + '&column=' + encodeURIComponent('Height SD'));
+  assert.equal(picked.body.column, 'Height SD');
+  assert.equal(picked.body.series.points.length, 5);
+
+  // The graph reader is confined to the CSV directory.
+  for (const bad of ['../clean.gpf', 'C:\\Windows\\win.ini', 'nope.csv']) {
+    const response = await fetch(base + '/api/graph/data?file=' + encodeURIComponent(bad));
+    assert.ok(response.status === 400 || response.status === 404, bad);
+  }
+});
+

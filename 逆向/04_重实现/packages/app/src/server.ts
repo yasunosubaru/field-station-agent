@@ -16,6 +16,8 @@ import { join, relative } from 'node:path';
 import { CONVERT_FORMATS, convertCapture, FORMAT_LABELS, FORMAT_NOTES, isConvertFormat, type ConvertFormat } from './convert.ts';
 import { loadCapture, tables } from './capture.ts';
 import { readRecords, summarizeLogs } from './logs.ts';
+import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
+import { GRAPH_CSV_DIR, graphData, listGraphCsv } from './graphcsv.ts';
 import {
   HttpError,
   SAMPLES_DIR,
@@ -90,6 +92,24 @@ function sendText(res: ServerResponse, status: number, text: string, contentType
   res.end(body);
 }
 
+function sendBytes(
+  res: ServerResponse,
+  status: number,
+  bytes: Uint8Array,
+  headers: Record<string, string>,
+  method = 'GET',
+): void {
+  res.writeHead(status, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Length': bytes.byteLength,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    ...headers,
+  });
+  if (method === 'HEAD') res.end();
+  else res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -121,6 +141,14 @@ function integer(value: string | null, fallback: number, min: number, max: numbe
   return parsed;
 }
 
+/** Seconds as a decimal; `undefined` when the value is absent. */
+function seconds(value: unknown, label: string): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const parsed = typeof value === 'number' ? value : Number(String(value));
+  if (!Number.isFinite(parsed) || parsed < 0) throw new HttpError(400, `${label} 必须是 ≥ 0 的秒数`);
+  return parsed;
+}
+
 function formatOptions() {
   return CONVERT_FORMATS.map((format) => ({
     id: format,
@@ -139,6 +167,20 @@ function health() {
     samples: relative(REPO_DIR, SAMPLES_DIR).split('\\').join('/'),
     formats: formatOptions(),
     limits: { previewLines: 200, jsonBodyBytes: JSON_LIMIT, artifactsKept: ARTIFACT_LIMIT },
+    endpoints: [
+      '/api/health',
+      '/api/captures',
+      '/api/convert',
+      '/api/download',
+      '/api/logs',
+      '/api/records',
+      '/api/playback/info',
+      '/api/playback/frames',
+      '/api/playback/frame',
+      '/api/playback/export',
+      '/api/graph/files',
+      '/api/graph/data',
+    ],
   };
 }
 
@@ -241,6 +283,79 @@ function handleRecords(url: URL, res: ServerResponse, method: string): void {
   sendJson(res, 200, { ok: true, ...result }, method);
 }
 
+function handlePlaybackInfo(url: URL, res: ServerResponse, method: string): void {
+  const capture = resolveCapture(url.searchParams.get('capture'));
+  sendJson(res, 200, { ok: true, ...playbackInfo(capture) }, method);
+}
+
+async function handlePlaybackFrames(req: IncomingMessage, res: ServerResponse, method: string, url: URL): Promise<void> {
+  let captureName: unknown = url.searchParams.get('capture');
+  let from: number | undefined;
+  let to: number | undefined;
+  if (method === 'POST') {
+    const body = await readJsonBody(req);
+    captureName = body.capture ?? captureName;
+    from = seconds(body.from, 'from');
+    to = seconds(body.to, 'to');
+  } else {
+    from = seconds(url.searchParams.get('from'), 'from');
+    to = seconds(url.searchParams.get('to'), 'to');
+  }
+  if (from !== undefined && to !== undefined && from > to) throw new HttpError(400, 'from 必须不大于 to');
+
+  const capture = resolveCapture(captureName);
+  sendJson(res, 200, { ok: true, ...playbackFrames(capture, from, to) }, method);
+}
+
+function handlePlaybackFrame(url: URL, res: ServerResponse, method: string): void {
+  const capture = resolveCapture(url.searchParams.get('capture'));
+  const index = integer(url.searchParams.get('index'), -1, 0, 10_000_000, 'index');
+  if (index < 0) throw new HttpError(400, '缺少 index');
+  sendJson(res, 200, { ok: true, ...playbackFrame(capture, index) }, method);
+}
+
+async function handlePlaybackExport(req: IncomingMessage, res: ServerResponse, method: string, url: URL): Promise<void> {
+  let captureName: unknown = url.searchParams.get('capture');
+  let from: number | undefined;
+  let to: number | undefined;
+  if (method === 'POST') {
+    const body = await readJsonBody(req);
+    captureName = body.capture ?? captureName;
+    from = seconds(body.from, 'from');
+    to = seconds(body.to, 'to');
+  } else {
+    from = seconds(url.searchParams.get('from'), 'from');
+    to = seconds(url.searchParams.get('to'), 'to');
+  }
+  if (from === undefined || to === undefined) throw new HttpError(400, '需要 from 与 to（秒）');
+
+  const capture = resolveCapture(captureName);
+  const exported = playbackExport(capture, from, to);
+  const stem = capture.name.replace(/\.[^.]+$/, '');
+  const ascii = `${stem}_${exported.from.toFixed(3)}-${exported.to.toFixed(3)}.sbf`;
+  sendBytes(res, 200, exported.bytes, {
+    'Content-Disposition': `attachment; filename="${ascii}"`,
+    'X-Playback-Frames': String(exported.frameCount),
+    'X-Playback-From': String(exported.from),
+    'X-Playback-To': String(exported.to),
+  }, method);
+}
+
+function handleGraphFiles(res: ServerResponse, method: string): void {
+  const files = listGraphCsv();
+  sendJson(res, 200, {
+    ok: true,
+    directory: relative(REPO_DIR, GRAPH_CSV_DIR).split('\\').join('/'),
+    count: files.length,
+    files,
+  }, method);
+}
+
+function handleGraphData(url: URL, res: ServerResponse, method: string): void {
+  const column = url.searchParams.get('column');
+  sendJson(res, 200, { ok: true, ...graphData(url.searchParams.get('file'), column) }, method);
+}
+
 function handlePage(res: ServerResponse): void {
   let html: string;
   try {
@@ -309,6 +424,30 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/records') {
         handleRecords(url, res, method);
+        return;
+      }
+      if (path === '/api/playback/info') {
+        handlePlaybackInfo(url, res, method);
+        return;
+      }
+      if (path === '/api/playback/frames') {
+        await handlePlaybackFrames(req, res, method, url);
+        return;
+      }
+      if (path === '/api/playback/frame') {
+        handlePlaybackFrame(url, res, method);
+        return;
+      }
+      if (path === '/api/playback/export') {
+        await handlePlaybackExport(req, res, method, url);
+        return;
+      }
+      if (path === '/api/graph/files') {
+        handleGraphFiles(res, method);
+        return;
+      }
+      if (path === '/api/graph/data') {
+        handleGraphData(url, res, method);
         return;
       }
       if (path.startsWith('/api/')) {
