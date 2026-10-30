@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>野外台站智能体 · 重实现控制台</title>
+<style>
+  :root {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --ink: #1a2330;
+    --muted: #66727f;
+    --line: #dde3ea;
+    --line-strong: #c6cfd9;
+    --accent: #0f766e;
+    --accent-soft: #e6f4f2;
+    --accent-ink: #0b4f49;
+    --warn: #9a5b00;
+    --warn-soft: #fdf3e1;
+    --danger: #b42318;
+    --danger-soft: #fdeceb;
+    --code-bg: #f8fafc;
+    --radius: 10px;
+    --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+    --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background:
+      linear-gradient(180deg, #eef2f6 0%, var(--bg) 240px),
+      var(--bg);
+    color: var(--ink);
+    font: 14px/1.55 var(--sans);
+    min-height: 100vh;
+  }
+  .shell { max-width: 1180px; margin: 0 auto; padding: 22px 24px 56px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; padding: 6px 0 18px; }
+  .brand { display: flex; align-items: center; gap: 13px; }
+  .mark {
+    width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+    background: linear-gradient(150deg, #0f766e, #134e4a); color: #e9fbf8;
+    font: 700 15px/1 var(--mono); letter-spacing: .5px;
+    box-shadow: 0 6px 14px rgba(15, 118, 110, .25);
+  }
+  .brand h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: .2px; }
+  .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #b8c1cb; box-shadow: 0 0 0 3px rgba(184,193,203,.25); }
+  .dot.ok { background: #12805c; box-shadow: 0 0 0 3px rgba(18,128,92,.18); }
+  .dot.bad { background: var(--danger); box-shadow: 0 0 0 3px rgba(180,35,24,.16); }
+
+  .tabs { display: flex; gap: 4px; padding: 5px; background: #e7ecf1; border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
+  .tabs button {
+    appearance: none; border: 0; background: transparent; color: #45525f; cursor: pointer;
+    padding: 8px 18px; border-radius: 8px; font: 600 13px/1.3 var(--sans); white-space: nowrap;
+    display: flex; align-items: baseline; gap: 7px;
+  }
+  .tabs button span { font-weight: 400; font-size: 11px; color: var(--muted); }
+  .tabs button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 4px rgba(26,35,48,.10); }
+  .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  main { margin-top: 18px; min-width: 0; }
+  /* minmax(0,1fr): without it a 4 KB unbreakable ASCII line in the preview would blow the grid
+     track (and the whole page) out to the width of that line instead of scrolling inside .code-scroll. */
+  .panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+  .panel[hidden] { display: none; }
+
+  .card { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: 0 1px 2px rgba(26,35,48,.03); }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .card-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+  .card-head h3 { margin: 0; font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+  .hint, .muted { color: var(--muted); font-size: 12px; }
+  .mono { font-family: var(--mono); }
+
+  .controls { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .field { display: grid; gap: 5px; min-width: 210px; flex: 1 1 240px; }
+  .field > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  select, input[type="search"] {
+    width: 100%; appearance: none; border: 1px solid var(--line-strong); border-radius: 8px;
+    background: #fff; color: var(--ink); padding: 9px 10px; font: 13px var(--sans);
+  }
+  select:focus, input[type="search"]:focus { outline: 2px solid rgba(15,118,110,.35); outline-offset: 0; border-color: var(--accent); }
+  .btn {
+    appearance: none; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px;
+    font: 600 13px var(--sans); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 7px;
+    background: #eef1f4; color: var(--ink);
+  }
+  .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 2px 6px rgba(15,118,110,.22); }
+  .btn.primary:hover { background: var(--accent-ink); }
+  .btn.ghost { background: transparent; border-color: var(--line-strong); color: #45525f; }
+  .btn:disabled { opacity: .55; cursor: progress; }
+  .btn.small { padding: 5px 10px; font-size: 12px; }
+
+  .notice { border-radius: 8px; padding: 10px 13px; font-size: 13px; border: 1px solid transparent; }
+  .notice.error { background: var(--danger-soft); border-color: #f3c3bf; color: var(--danger); }
+  .notice.info { background: var(--accent-soft); border-color: #bfe3df; color: var(--accent-ink); }
+  .notice.warn { background: var(--warn-soft); border-color: #f0d9ac; color: var(--warn); }
+
+  .result-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+  .grid-meta { display: flex; gap: 22px; flex-wrap: wrap; }
+  .meta { display: grid; gap: 2px; min-width: 74px; }
+  .meta b { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .meta span { font-size: 15px; font-weight: 600; }
+  .meta span.small { font-size: 12px; font-weight: 500; }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; background: #eef1f4; color: #45525f; }
+  .badge.ok { background: var(--accent-soft); color: var(--accent-ink); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.bad { background: var(--danger-soft); color: var(--danger); }
+  .badge.mono { font-family: var(--mono); }
+
+  .code-card { padding-bottom: 6px; }
+  .code-scroll { max-width: 100%; min-width: 0; max-height: 430px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); }
+  .cline { display: flex; font: 12px/1.55 var(--mono); white-space: pre; }
+  .cline:nth-child(even) { background: rgba(26,35,48,.025); }
+  .cline .ln { flex: 0 0 46px; padding: 0 8px; text-align: right; color: #9aa5b1; user-select: none; border-right: 1px solid var(--line); background: rgba(255,255,255,.6); }
+  .cline .lc { padding: 0 12px; color: #23303d; }
+  .code-empty { padding: 18px; color: var(--muted); font-size: 13px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+  .stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fbfcfd; }
+  .stat b { display: block; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+  .stat span { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .stat span em { font-style: normal; font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+
+  .table-scroll { max-width: 100%; min-width: 0; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th {
+    position: sticky; top: 0; background: #f7f9fb; text-align: left; font-size: 11px; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 9px 11px; border-bottom: 1px solid var(--line);
+    white-space: nowrap; z-index: 1;
+  }
+  tbody td { padding: 9px 11px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr.clickable { cursor: pointer; }
+  tbody tr.clickable:hover td { background: #f4f9f8; }
+  tbody tr.selected td { background: var(--accent-soft); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .type-name { font-weight: 600; }
+  .time { font-family: var(--mono); font-size: 11.5px; color: #33404d; white-space: nowrap; }
+  .time small { display: block; color: var(--muted); font-size: 10.5px; }
+  .sample { display: block; font-family: var(--mono); font-size: 11px; color: #4a5866; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty-row td { color: var(--muted); text-align: center; padding: 26px 12px; }
+
+  .record-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .record-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 14px; }
+  .chip { font-family: var(--mono); font-size: 11px; background: #f2f5f8; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; color: #3d4a57; }
+  .chip b { font-family: var(--sans); font-weight: 600; color: var(--muted); margin-right: 5px; font-size: 10.5px; text-transform: uppercase; }
+  .pager { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .field-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .field-tools input { max-width: 280px; }
+  .fields { max-height: 380px; }
+
+  .playback-wrap { display: grid; gap: 16px; }
+  .placeholder-note { display: flex; gap: 12px; align-items: flex-start; }
+  .stamp { flex: 0 0 auto; font: 700 10px/1 var(--mono); letter-spacing: .12em; color: var(--warn); background: var(--warn-soft); border: 1px solid #f0d9ac; border-radius: 6px; padding: 6px 8px; }
+  .timeline-box { border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 8px 6px 2px; }
+  .timeline-box svg { width: 100%; height: auto; display: block; }
+  .transport { display: flex; align-items: center; gap: 8px; }
+  .transport .btn { padding: 7px 12px; }
+  .playback-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fact { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 10px 12px; color: var(--muted); font-size: 12px; }
+  .fact b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 3px; }
+
+  footer { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; }
+  footer code { font-family: var(--mono); background: #eef1f4; border-radius: 4px; padding: 1px 5px; }
+
+  @media (max-width: 760px) {
+    .shell { padding: 16px 14px 40px; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .playback-grid { grid-template-columns: 1fr; }
+    .brand h1 { font-size: 16px; }
+    .tabs { width: 100%; }
+    .tabs button { flex: 1; justify-content: center; }
+    .tabs button span { display: none; }
+    .table-scroll { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark">NS</span>
+      <div>
+        <h1>野外台站智能体 · 重实现控制台</h1>
+        <p>NovAtel Application Suite 2.11.0 · 本地离线壳</p>
+      </div>
+    </div>
+    <div class="status"><span class="dot" id="health-dot"></span><span id="health-text">正在连接本地服务…</span></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="工作页">
+    <button role="tab" id="tab-convert" data-tab="convert" aria-selected="true" aria-controls="panel-convert">Convert<span>格式转换</span></button>
+    <button role="tab" id="tab-manage" data-tab="manage" aria-selected="false" aria-controls="panel-manage">Manage<span>日志统计</span></button>
+    <button role="tab" id="tab-playback" data-tab="playback" aria-selected="false" aria-controls="panel-playback">Playback<span>回放占位</span></button>
+  </nav>
+
+  <main>
+    <section class="panel" id="panel-convert" role="tabpanel" aria-labelledby="tab-convert">
+      <div class="card">
+        <div class="card-head">
+          <h2>格式转换</h2>
+          <span class="hint">服务端读取 samples 下的抓包，产物只留在内存，不写回样例目录</span>
+        </div>
+        <div class="controls">
+          <label class="field"><span>抓包文件</span><select id="capture-select"></select></label>
+          <label class="field"><span>输出格式</span><select id="format-select"></select></label>
+          <button class="btn primary" id="convert-btn" type="button">开始转换</button>
+          <button class="btn ghost" id="convert-clear" type="button">清空结果</button>
+        </div>
+        <p class="muted" id="capture-meta" style="margin:10px 0 0">正在读取抓包列表…</p>
+      </div>
+
+      <div class="notice error" id="convert-error" hidden></div>
+
+      <div class="panel" id="convert-result" hidden>
+        <div class="card">
+          <div class="result-top">
+            <div class="grid-meta" id="convert-meta"></div>
+            <div class="actions"><a class="btn primary" id="download-link" href="#" download>下载产物</a></div>
+          </div>
+        </div>
+        <div class="card code-card">
+          <div class="card-head">
+            <h3>产物预览 <span class="badge" id="preview-badge"></span></h3>
+            <span class="hint" id="preview-note"></span>
+          </div>
+          <div class="code-scroll" id="preview-body"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-manage" role="tabpanel" aria-labelledby="tab-manage" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>日志统计</h2>
+          <span class="hint">按报文类型聚合；点击任一行查看解析后的字段表</span>
+        </div>
+        <div class="controls">
+          <label class="field"><span>抓包文件</span><select id="manage-capture"></select></label>
+          <label class="field" style="flex:0 0 240px;min-width:180px"><span>筛选类型</span><input type="search" id="log-filter" placeholder="报文名 / ID / 示例内容"></label>
+          <button class="btn primary" id="logs-refresh" type="button">刷新统计</button>
+        </div>
+        <div class="stats" id="log-stats"></div>
+        <p class="muted" id="logs-meta" style="margin:10px 0 0"></p>
+      </div>
+
+      <div class="notice error" id="logs-error" hidden></div>
+
+      <div class="card">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>报文类型</th><th class="num">条数</th><th class="num">CRC 失败</th>
+                <th>时间范围（GPS / UTC）</th><th>示例一行</th>
+              </tr>
+            </thead>
+            <tbody id="log-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="record-card" hidden>
+        <div class="record-head">
+          <h3 id="record-title">解析字段</h3>
+          <div class="pager">
+            <button class="btn small ghost" id="record-prev" type="button">上一帧</button>
+            <span id="record-index">— / —</span>
+            <button class="btn small ghost" id="record-next" type="button">下一帧</button>
+          </div>
+        </div>
+        <div class="record-meta" id="record-meta"></div>
+        <div class="field-tools">
+          <input type="search" id="field-filter" placeholder="筛选字段（如 latitude、obs[3]）">
+          <span class="muted" id="field-count"></span>
+        </div>
+        <div class="table-scroll fields">
+          <table>
+            <thead><tr><th class="num" style="width:44px">#</th><th>字段路径</th><th>显示值</th><th>原始值</th></tr></thead>
+            <tbody id="field-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-playback" role="tabpanel" aria-labelledby="tab-playback" hidden>
+      <div class="card playback-wrap">
+        <div class="placeholder-note">
+          <span class="stamp">NOT IMPLEMENTED</span>
+          <div>
+            <h2 style="margin:0 0 6px;font-size:15px">Playback 回放 · 尚未实现</h2>
+            <p class="muted" style="margin:0">
+              回放引擎由另一个平行任务实现，本壳不依赖它。等引擎落地后，这一页会接到
+              <code class="mono">/api/playback</code>（帧流 + 时钟）；现在只保留时间轴占位与布局位。
+            </p>
+          </div>
+        </div>
+        <div class="timeline-box">
+          <svg viewBox="0 0 900 132" role="img" aria-label="回放时间轴占位">
+            <defs>
+              <linearGradient id="track" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#0f766e" stop-opacity=".55"/>
+                <stop offset="1" stop-color="#0e7490" stop-opacity=".18"/>
+              </linearGradient>
+            </defs>
+            <text x="12" y="24" font-size="11" fill="#66727f" font-family="Segoe UI, sans-serif">时间轴占位 · 引擎未接入</text>
+            <rect x="12" y="52" width="876" height="10" rx="5" fill="#e7ecf1"/>
+            <rect x="12" y="52" width="120" height="10" rx="5" fill="url(#track)"/>
+            <g stroke="#c6cfd9" stroke-width="1">
+              <line x1="12" y1="46" x2="12" y2="68"/><line x1="231" y1="46" x2="231" y2="68"/>
+              <line x1="450" y1="46" x2="450" y2="68"/><line x1="669" y1="46" x2="669" y2="68"/>
+              <line x1="888" y1="46" x2="888" y2="68"/>
+            </g>
+            <g font-size="10" fill="#8a95a1" font-family="Cascadia Mono, Consolas, monospace">
+              <text x="12" y="88">00:00</text><text x="213" y="88">--:--</text><text x="432" y="88">--:--</text>
+              <text x="651" y="88">--:--</text><text x="849" y="88">--:--</text>
+            </g>
+            <line x1="132" y1="38" x2="132" y2="74" stroke="#0f766e" stroke-width="2"/>
+            <circle cx="132" cy="57" r="5" fill="#0f766e"/>
+            <g opacity=".45" font-size="11" fill="#66727f" font-family="Segoe UI, sans-serif">
+              <text x="12" y="118">播放头</text>
+              <text x="72" y="118">·</text>
+              <text x="86" y="118">等待帧时钟与轨道数据</text>
+            </g>
+          </svg>
+        </div>
+        <div class="transport">
+          <button class="btn" type="button" disabled>▶ 播放</button>
+          <button class="btn" type="button" disabled>⏸ 暂停</button>
+          <button class="btn" type="button" disabled>⏮ 回到起点</button>
+          <span class="muted">控件为占位，禁用状态</span>
+        </div>
+        <div class="playback-grid">
+          <div class="fact"><b>接入点：帧流</b>回放需要 <code class="mono">SbfFrame[]</code> 与每帧的 GPS 周/毫秒，现有 <code class="mono">/api/logs</code> 已给出时间跨度。</div>
+          <div class="fact"><b>接入点：视图</b>BESTPOS/轨迹与状态面板复用 Manage 的字段解码（<code class="mono">decodeEdie</code>），无需第二套解析。</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>仅监听 <code>127.0.0.1</code> · 样例只读 · 零依赖 / 无外网资源</span>
+    <span class="mono" id="footer-endpoints">/api/health · /api/captures · /api/convert · /api/logs · /api/records · /api/download</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var state = {
+    captures: [],
+    formats: [],
+    logs: null,
+    selectedId: null,
+    detail: null,
+    detailOffset: 0,
+    fieldFilter: ''
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function bytesText(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+  }
+
+  function utcText(iso) {
+    if (!iso) return '—';
+    return String(iso).replace('T', ' ').replace('Z', '');
+  }
+
+  function showNotice(id, message, tone) {
+    var box = $(id);
+    if (!message) { box.hidden = true; box.textContent = ''; return; }
+    box.hidden = false;
+    box.className = 'notice ' + (tone || 'error');
+    box.textContent = message;
+  }
+
+  function api(path, options) {
+    return fetch(path, options).then(function (res) {
+      var type = res.headers.get('content-type') || '';
+      var parse = type.indexOf('application/json') >= 0 ? res.json() : res.text().then(function (t) { return { error: t }; });
+      return parse.then(function (data) {
+        if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+        return data;
+      });
+    });
+  }
+
+  /* ---------------- tabs ---------------- */
+
+  function switchTab(name) {
+    var tabs = document.querySelectorAll('.tabs [data-tab]');
+    for (var i = 0; i < tabs.length; i++) {
+      var selected = tabs[i].getAttribute('data-tab') === name;
+      tabs[i].setAttribute('aria-selected', selected ? 'true' : 'false');
+    }
+    ['convert', 'manage', 'playback'].forEach(function (tab) {
+      $('panel-' + tab).hidden = tab !== name;
+    });
+    if (name === 'manage' && state.captures.length && !state.logs) loadLogs();
+  }
+
+  document.querySelectorAll('.tabs [data-tab]').forEach(function (button) {
+    button.addEventListener('click', function () { switchTab(button.getAttribute('data-tab')); });
+  });
+
+  /* ---------------- convert ---------------- */
+
+  function fillCaptureSelects() {
+    var options = state.captures.map(function (item) {
+      var dir = item.path.indexOf('/') >= 0 ? item.path.slice(0, item.path.lastIndexOf('/')) : '.';
+      var label = item.name + '  ·  ' + dir + '  ·  ' + bytesText(item.bytes);
+      return '<option value="' + esc(item.path) + '">' + esc(label) + '</option>';
+    });
+    var html = options.length ? options.join('') : '<option value="">（samples 下没有找到抓包）</option>';
+    $('capture-select').innerHTML = html;
+    $('manage-capture').innerHTML = html;
+    var preferred = state.captures.find(function (item) { return item.path === 'convert/clean-9600.gps'; })
+      || state.captures.find(function (item) { return item.name === 'clean-9600.gps'; })
+      || state.captures[0];
+    if (preferred) {
+      $('capture-select').value = preferred.path;
+      $('manage-capture').value = preferred.path;
+    }
+    updateCaptureMeta();
+  }
+
+  function updateCaptureMeta() {
+    var path = $('capture-select').value;
+    var item = state.captures.find(function (entry) { return entry.path === path; });
+    var format = state.formats.find(function (entry) { return entry.id === $('format-select').value; });
+    var head = format ? '输出：' + format.note + ' · ' : '';
+    $('capture-meta').textContent = item
+      ? head + '将读取逆向/00_来源/samples/' + item.path + '（' + item.bytes.toLocaleString('en-US') + ' 字节，只读）'
+      : '未选择抓包';
+  }
+
+  function fillFormats() {
+    var html = state.formats.map(function (item) {
+      return '<option value="' + esc(item.id) + '" title="' + esc(item.note) + '">' + esc(item.label) + '</option>';
+    }).join('');
+    $('format-select').innerHTML = html;
+    if (state.formats.some(function (item) { return item.id === 'ASCII'; })) $('format-select').value = 'ASCII';
+    updateCaptureMeta();
+  }
+
+  function renderMeta(data) {
+    var rows = [
+      ['产物文件', data.fileName, 'small'],
+      ['大小', bytesText(data.bytes), ''],
+      ['输出行', data.binary ? data.lineTotal + ' 行十六进制' : data.lineTotal + ' 行', ''],
+      ['有效记录', data.records.accepted + ' / ' + data.records.total, 'small'],
+      ['耗时', data.elapsedMs.toFixed(1) + ' ms', 'small']
+    ];
+    $('convert-meta').innerHTML = rows.map(function (row) {
+      return '<div class="meta"><b>' + esc(row[0]) + '</b><span class="' + row[2] + '">' + esc(row[1]) + '</span></div>';
+    }).join('');
+  }
+
+  function renderPreview(text) {
+    var body = $('preview-body');
+    body.innerHTML = '';
+    if (!text) {
+      body.innerHTML = '<div class="code-empty">（空产物）</div>';
+      return;
+    }
+    var lines = text.split('\n');
+    // Text artifacts end with CRLF; drop the empty tail so the gutter shows the real line count.
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < lines.length; i++) {
+      var row = document.createElement('div');
+      row.className = 'cline';
+      var ln = document.createElement('span');
+      ln.className = 'ln';
+      ln.textContent = String(i + 1);
+      var code = document.createElement('span');
+      code.className = 'lc';
+      code.textContent = lines[i];
+      row.appendChild(ln);
+      row.appendChild(code);
+      frag.appendChild(row);
+    }
+    body.appendChild(frag);
+  }
+
+  function renderConvert(data) {
+    renderMeta(data);
+    $('preview-badge').textContent = data.binary ? 'HEX' : data.format;
+    $('preview-badge').className = 'badge mono';
+    $('preview-note').textContent = data.truncated
+      ? '仅显示前 ' + data.shownLines + ' / ' + data.lineTotal + ' 行，完整内容请下载'
+      : (data.binary ? '十六进制预览，前 ' + data.shownLines + ' 行' : '全部 ' + data.lineTotal + ' 行，' + bytesText(data.bytes));
+    renderPreview(data.preview || data.text || '');
+    var link = $('download-link');
+    link.href = data.downloadUrl;
+    link.setAttribute('download', data.fileName);
+    link.textContent = '下载 ' + data.fileName;
+    $('convert-result').hidden = false;
+    showNotice('convert-error', '');
+  }
+
+  function runConvert() {
+    var capture = $('capture-select').value;
+    var format = $('format-select').value;
+    if (!capture) { showNotice('convert-error', '没有可用的抓包文件'); return; }
+    var button = $('convert-btn');
+    button.disabled = true;
+    var old = button.textContent;
+    button.textContent = '转换中…';
+    showNotice('convert-error', '');
+    api('/api/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture: capture, format: format })
+    }).then(function (data) {
+      renderConvert(data);
+    }).catch(function (error) {
+      $('convert-result').hidden = true;
+      showNotice('convert-error', '转换失败：' + error.message);
+    }).finally(function () {
+      button.disabled = false;
+      button.textContent = old;
+    });
+  }
+
+  /* ---------------- manage ---------------- */
+
+  function renderLogStats(data) {
+    var cards = [
+      ['总记录', data.totalRecords, 'frames'],
+      ['有效（CRC）', data.accepted, 'accepted'],
+      ['丢弃', data.dropped, 'zero-crc'],
+      ['报文类型', data.types, 'types']
+    ];
+    $('log-stats').innerHTML = cards.map(function (card) {
+      return '<div class="stat"><b>' + esc(card[0]) + '</b><span>' + esc(card[1]) + '<em>' + esc(card[2]) + '</em></span></div>';
+    }).join('');
+    $('logs-meta').textContent = data.capture + ' · ' + bytesText(data.bytes) + ' · 首条 ' + utcText(data.spanUtc) + ' UTC'
+      + (data.textRecords ? ' · 另有 ' + data.textRecords + ' 条文本记录（不参与转换）' : '');
+  }
+
+  function renderLogRows() {
+    var body = $('log-rows');
+    if (!state.logs) { body.innerHTML = ''; return; }
+    var needle = $('log-filter').value.trim().toLowerCase();
+    var groups = state.logs.groups.filter(function (group) {
+      if (!needle) return true;
+      return String(group.id).indexOf(needle) >= 0
+        || group.name.toLowerCase().indexOf(needle) >= 0
+        || group.sample.toLowerCase().indexOf(needle) >= 0;
+    });
+    if (!groups.length) {
+      body.innerHTML = '<tr class="empty-row"><td colspan="6">没有匹配的报文类型</td></tr>';
+      return;
+    }
+    body.innerHTML = groups.map(function (group) {
+      var gps = 'W' + group.firstWeek + ' · ' + (group.firstMilliseconds / 1000).toFixed(3)
+        + ' – ' + (group.lastMilliseconds / 1000).toFixed(3);
+      var utc = utcText(group.firstUtc) + ' – ' + utcText(group.lastUtc).slice(11);
+      var crc = group.crcFailed ? '<span class="badge bad">' + group.crcFailed + '</span>' : '<span class="muted">0</span>';
+      var known = group.known ? '' : ' <span class="badge warn">无布局</span>';
+      return '<tr class="clickable' + (state.selectedId === group.id ? ' selected' : '') + '" data-msgid="' + group.id + '">'
+        + '<td class="mono num">' + group.id + '</td>'
+        + '<td><span class="type-name">' + esc(group.name) + '</span>' + known + '</td>'
+        + '<td class="num">' + group.count + '</td>'
+        + '<td class="num">' + crc + '</td>'
+        + '<td><span class="time">' + esc(gps) + '<small>' + esc(utc) + ' UTC</small></span></td>'
+        + '<td><span class="sample" title="' + esc(group.sample) + '">' + esc(group.sample) + '</span></td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function loadLogs() {
+    var capture = $('manage-capture').value;
+    if (!capture) { showNotice('logs-error', '没有可用的抓包文件'); return; }
+    showNotice('logs-error', '');
+    var button = $('logs-refresh');
+    button.disabled = true;
+    api('/api/logs?capture=' + encodeURIComponent(capture)).then(function (data) {
+      state.logs = data;
+      state.selectedId = null;
+      state.detail = null;
+      $('record-card').hidden = true;
+      renderLogStats(data);
+      renderLogRows();
+    }).catch(function (error) {
+      showNotice('logs-error', '统计失败：' + error.message);
+    }).finally(function () {
+      button.disabled = false;
+    });
+  }
+
+  function recordChips(record) {
+    var header = record.header;
+    var chips = [
+      ['帧', record.index + 1],
+      ['端口', header.portName],
+      ['序号', header.sequence],
+      ['GPS', 'W' + header.week + ' · ' + (header.milliseconds / 1000).toFixed(3)],
+      ['UTC', utcText(header.utc)],
+      ['时间状态', header.timeStatus],
+      ['接收机状态', header.receiverStatus],
+      ['载荷', header.payloadLength + ' B'],
+      ['整帧', header.frameBytes + ' B'],
+      ['CRC', header.crcOk ? 'OK' : 'FAIL']
+    ];
+    return chips.map(function (chip) {
+      return '<span class="chip"><b>' + esc(chip[0]) + '</b>' + esc(chip[1]) + '</span>';
+    }).join('');
+  }
+
+  function fieldRows(record) {
+    var needle = state.fieldFilter.trim().toLowerCase();
+    var fields = record.fields.filter(function (field) {
+      if (!needle) return true;
+      return field.path.toLowerCase().indexOf(needle) >= 0 || String(field.text == null ? '' : field.text).toLowerCase().indexOf(needle) >= 0;
+    });
+    if (!fields.length) return '<tr class="empty-row"><td colspan="4">没有匹配的字段</td></tr>';
+    var rows = fields.map(function (field, index) {
+      var shown = field.text == null ? String(field.value) : field.text;
+      var raw = String(field.value);
+      return '<tr><td class="num muted">' + (index + 1) + '</td>'
+        + '<td class="mono">' + esc(field.path) + '</td>'
+        + '<td class="mono">' + esc(shown) + '</td>'
+        + '<td class="mono muted">' + esc(raw === shown ? '' : raw) + '</td></tr>';
+    }).join('');
+    if (record.fieldsTruncated) {
+      rows += '<tr class="empty-row"><td colspan="4">字段过多，仅显示前 ' + record.fields.length + ' / ' + record.fieldTotal + ' 项</td></tr>';
+    }
+    return rows;
+  }
+
+  function renderDetail() {
+    var data = state.detail;
+    if (!data || !data.records.length) return;
+    var record = data.records[0];
+    $('record-title').textContent = data.name + ' · #' + data.messageId + ' · 字段表';
+    $('record-index').textContent = (record.index + 1) + ' / ' + data.total;
+    $('record-meta').innerHTML = recordChips(record);
+    $('field-rows').innerHTML = fieldRows(record);
+    $('field-count').textContent = record.fieldTotal + ' 个字段' + (data.layoutKnown ? '' : '（无布局，无法解码）');
+    $('record-prev').disabled = record.index <= 0;
+    $('record-next').disabled = record.index >= data.total - 1;
+    $('record-card').hidden = false;
+  }
+
+  function loadRecord(messageId, offset) {
+    var capture = $('manage-capture').value;
+    if (!capture) return;
+    state.selectedId = messageId;
+    state.detailOffset = offset;
+    renderLogRows();
+    api('/api/records?capture=' + encodeURIComponent(capture) + '&msgId=' + encodeURIComponent(messageId)
+      + '&offset=' + offset + '&limit=1').then(function (data) {
+      state.detail = data;
+      renderDetail();
+      $('record-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }).catch(function (error) {
+      showNotice('logs-error', '字段解析失败：' + error.message);
+    });
+  }
+
+  /* ---------------- wiring ---------------- */
+
+  $('convert-btn').addEventListener('click', runConvert);
+  $('convert-clear').addEventListener('click', function () {
+    $('convert-result').hidden = true;
+    showNotice('convert-error', '');
+  });
+  $('capture-select').addEventListener('change', updateCaptureMeta);
+  $('format-select').addEventListener('change', updateCaptureMeta);
+  $('logs-refresh').addEventListener('click', loadLogs);
+  $('manage-capture').addEventListener('change', function ()
+  {
+    state.logs = null;
+    state.detail = null;
+    state.selectedId = null;
+    $('record-card').hidden = true;
+    loadLogs();
+  });
+  $('log-filter').addEventListener('input', renderLogRows);
+  $('log-rows').addEventListener('click', function (event) {
+    var row = event.target.closest('tr[data-msgid]');
+    if (!row) return;
+    loadRecord(Number(row.getAttribute('data-msgid')), 0);
+  });
+  $('record-prev').addEventListener('click', function () {
+    if (state.detail && state.detail.records.length) loadRecord(state.detail.messageId, Math.max(0, state.detail.records[0].index - 1));
+  });
+  $('record-next').addEventListener('click', function () {
+    if (state.detail && state.detail.records.length) loadRecord(state.detail.messageId, state.detail.records[0].index + 1);
+  });
+  $('field-filter').addEventListener('input', function () {
+    state.fieldFilter = $('field-filter').value;
+    if (state.detail) renderDetail();
+  });
+
+  api('/api/health').then(function (data) {
+    $('health-dot').className = 'dot ok';
+    $('health-text').textContent = '本地服务正常 · v' + data.version + ' · ' + data.formats.length + ' 种格式';
+  }).catch(function () {
+    $('health-dot').className = 'dot bad';
+    $('health-text').textContent = '无法连接本地服务';
+  });
+
+  api('/api/captures').then(function (data) {
+    state.captures = data.captures || [];
+    state.formats = data.formats || [];
+    fillCaptureSelects();
+    fillFormats();
+  }).catch(function (error) {
+    $('capture-meta').textContent = '抓包列表读取失败：' + error.message;
+    showNotice('convert-error', '抓包列表读取失败：' + error.message);
+  });
+})();
+</script>
+</body>
+</html>

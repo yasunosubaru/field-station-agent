@@ -1,0 +1,15 @@
+{
+  "name": "@nas-reimpl/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "零依赖本地 HTTP 壳：把重实现的 Convert / Manage 能力接到一个单页控制台上",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test --test-force-exit \"test/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}
