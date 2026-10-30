@@ -9,7 +9,8 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { request } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -392,3 +393,86 @@ test('GET /api/graph/data 的行数与 golden CSV 一致，并给出可绘制的
   }
 });
 
+
+/* ---------------- 原版外观资源（/assets/* 与外壳静态文件） ---------------- */
+
+const viewDir = join(repoRoot, '逆向', '01_解包', 'app', 'view');
+
+/** 不走 URL 规范化：用原始路径发请求，才能测到字面的 `..`。 */
+function rawGet(rawPath: string): Promise<number> {
+  const target = new URL(base);
+  return new Promise((resolveStatus, reject) => {
+    const req = request(
+      { host: target.hostname, port: Number(target.port), path: rawPath, method: 'GET' },
+      (res) => {
+        res.resume();
+        resolveStatus(res.statusCode ?? 0);
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('GET /assets/ 在默认路径下能取到原版 style.css 与图标', async () => {
+  const cssPath = join(viewDir, 'css', 'style.css');
+  assert.ok(existsSync(cssPath), '默认资源目录应指向 逆向/01_解包/app/view');
+
+  const css = await fetch(base + '/assets/css/style.css');
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type') ?? '', /text\/css/);
+  const text = await css.text();
+  assert.equal(Buffer.byteLength(text, 'utf8'), statSync(cssPath).size, '返回的字节数应与磁盘上的原版文件一致');
+  // 顶栏渐变与外壳用到的字体族，证明拿到的是真文件而不是占位
+  assert.match(text, /#00ABC8/i);
+  assert.match(text, /linear-gradient\(155\.01deg/);
+  assert.match(text, /OpenSans-Bold/);
+
+  const icon = await fetch(base + '/assets/images/app_menu.svg');
+  assert.equal(icon.status, 200);
+  assert.match(icon.headers.get('content-type') ?? '', /image\/svg\+xml/);
+
+  const font = await fetch(base + '/assets/fonts/Roboto-Regular.ttf');
+  assert.equal(font.status, 200, '原版 fonts/ 也要能取到');
+
+  // 只开放 images / fonts / css：js、json 这些目录一律 404
+  assert.equal((await fetch(base + '/assets/js/jquery.js')).status, 404);
+  assert.equal((await fetch(base + '/assets/images/nope.svg')).status, 404);
+
+  // 外壳自己的静态文件
+  const shell = await fetch(base + '/shell.css');
+  assert.equal(shell.status, 200);
+  assert.match(shell.headers.get('content-type') ?? '', /text\/css/);
+  assert.equal((await fetch(base + '/panels/definitely-not-here.js')).status, 404);
+});
+
+test('/assets/ 与 /panels/ 的路径穿越一律 400', async () => {
+  // 字面的 `..`：Node 的 http 服务器不会替我们规范化 req.url
+  assert.equal(await rawGet('/assets/../package.json'), 400);
+  assert.equal(await rawGet('/assets/images/../../packages/app/package.json'), 400);
+  assert.equal(await rawGet('/panels/../server.ts'), 400);
+
+  // 百分号编码的 `..`：%2e%2e 会被 URL 规范化掉（服务端看到的是塌缩后的路径），
+  // %252e%252e 只会被解码一次、落到一个不存在的名字上 —— 两种都读不到任何东西。
+  for (const path of [
+    '/assets/images/%252e%252e/%252e%252e/%252e%252e/package.json',
+    '/assets/%252e%252e/package.json',
+    '/panels/%252e%252e/%252e%252e/server.ts',
+  ]) {
+    const response = await fetch(base + path);
+    assert.ok(response.status === 400 || response.status === 404, `${path} → ${response.status}`);
+    const body = await response.json();
+    assert.equal(body.ok, false);
+  }
+
+  // 反斜杠（Windows 语义）也要被挡
+  for (const path of [
+    '/assets/images/..%5c..%5c..%5cpackage.json',
+    '/assets/fonts/..%5c..%5c..%5cpackage.json',
+  ]) {
+    assert.equal((await fetch(base + path)).status, 400, path);
+  }
+
+  // 未开放的子目录不是穿越，但也不能被读到
+  assert.equal((await fetch(base + '/assets/model/userStore.js')).status, 404);
+});

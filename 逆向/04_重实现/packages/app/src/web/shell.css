@@ -1,0 +1,897 @@
+@charset "utf-8";
+/*
+ * 外壳样式（顶栏 / 应用标签栏 / 左侧窄轨 / 内容区 / 面板通用件）
+ *
+ * 全部数值与颜色都摘自原版 NovAtel Application Suite 前端：
+ *   逆向/01_解包/app/view/css/style.css                （下面简称 S）
+ *   逆向/01_解包/app/view/GRIT/styles/gritStyles.css   （下面简称 G，左侧窄轨与落地页用 GRIT 那一套）
+ * 注释里的 `S:2623-2638` 就是该文件的行号区间，方便回查；没有一处颜色是手编的。
+ * 只有尺寸换算与布局方式（用 flex 代替原版的 float + fixed）是重写的。
+ */
+
+/* ---------- 字体：S:184-216 的 @font-face 表 ----------
+ * 字体文件从 01_解包/app/view/fonts 裁成 latin-1 + 标点/箭头子集（4 个共 161 KB）；
+ * 原版整份 Open Sans 每款约 215 KB，4 款 660 KB 会超出「500 KB 内」的预算。
+ * 中文仍落到系统字体（Open Sans 本身没有 CJK 字形）。 */
+@font-face {
+  font-family: OpenSans-Light;
+  src: url('./fonts/OpenSans-Light.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: OpenSans-Regular;
+  src: url('./fonts/OpenSans-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: OpenSans-SemiBold;
+  src: url('./fonts/OpenSans-SemiBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: OpenSans-Bold;
+  src: url('./fonts/OpenSans-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+
+/* ---------- 基础：S:1-10 / S:50-52 / S:116-119 / S:282-298 ---------- */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff; /* bootstrap body 默认底色，原版没改 */
+  color: RGBA(0, 0, 0, 0.87); /* S:117 */
+  font-family: OpenSans-Regular, "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+span {
+  color: RGBA(0, 0, 0, 0.87); /* S:116-119 */
+  font-family: OpenSans-Regular, "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+}
+
+a {
+  -webkit-user-drag: none; /* S:50-52 */
+  text-decoration: none;
+  color: inherit;
+}
+
+/* 滚动条：S:282-298 —— 8 px，白色轨道，RGB(155,155,155) 圆角滑块 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+::-webkit-scrollbar-thumb {
+  background: RGB(155, 155, 155);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: RGB(155, 155, 155);
+}
+
+/* ================================================================
+   ① 顶栏（原版 .navigation.banner-img.home-menu）
+   ================================================================ */
+
+/* S:2623-2638：155.01° 渐变 #00ABC8 → #00526F，兜底底色 #0c6153，36 px 高 */
+.banner-img {
+  flex: 0 0 36px;
+  height: 36px;
+  box-sizing: border-box;
+  width: 100%;
+  background-image: linear-gradient(155.01deg, #00ABC8 0%, #00526F 171.72%);
+  background-color: #0c6153;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  z-index: 1005;
+}
+
+/* S:1474-1479 / S:5982-5985 */
+.left-section {
+  display: flex;
+  align-items: center;
+}
+.right-section {
+  display: flex;
+  align-items: center;
+  margin-right: 15px;
+}
+
+/* S:5965-5973 / S:5925-5960：栏内导航条 */
+.navigation .sidebar-nav {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: nowrap;
+}
+.sidebar-nav > li {
+  text-align: center;
+  box-sizing: border-box;
+  font-family: OpenSans-Light, sans-serif; /* S:5953 */
+  font-weight: 200;
+  color: #ffffff;
+  line-height: normal;
+  font-size: 17px;
+  padding: 6px 0;
+}
+
+/* S:6053-6058：九宫格按钮所在的那个 li */
+.left-section li.sidebar-nav-item.dropdown {
+  position: relative;
+  height: 24px;
+  margin-top: 7px;
+  padding: 7px 3px 1px 6px;
+  width: 28px;
+}
+
+/* S:1462-1473：16 px 的 app_menu.svg 九宫格 */
+.menu-img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-image: url('/assets/images/app_menu.svg');
+  background-size: 16px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  opacity: 0.92;
+}
+.menu-img:hover {
+  background-color: RGBA(255, 255, 255, 0.24); /* S:1444-1446 */
+  border-radius: 2px;
+}
+
+/* S:1432-1443：右侧齿轮 */
+.settings {
+  display: block;
+  width: 23px;
+  height: 19px;
+  margin-left: 15px;
+  background-image: url('/assets/images/menubar_settings.svg');
+  background-repeat: no-repeat;
+  background-position: 4px 1px;
+  background-size: 19px;
+  cursor: pointer;
+}
+/* S:1450-1461：右侧问号 */
+.help {
+  display: block;
+  width: 35px;
+  height: 35px;
+  margin-left: 15px;
+  background-image: url('/assets/images/app_help.svg');
+  background-repeat: no-repeat;
+  background-position: 5px 6px;
+  background-size: 25px 25px;
+  cursor: pointer;
+}
+.settings:hover,
+.help:hover {
+  background-color: RGBA(255, 255, 255, 0.24); /* S:1444-1446 */
+}
+
+/* S:6028-6043：下拉面板（白色、4 px 圆角、三层阴影） */
+.dropdown {
+  position: relative;
+}
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: 4px 0 0 0;
+  padding: 8px 0;
+  list-style: none;
+  min-width: 248px;
+  background-color: rgba(255, 255, 255, 1);
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0px 5px 5px rgba(0, 0, 0, 0.2), 0px 3px 14px rgba(0, 0, 0, 0.12),
+    0px 8px 10px rgba(0, 0, 0, 0.14);
+  z-index: 900;
+}
+.dropdown-menu.show {
+  display: block;
+}
+/* S:6063-6069 */
+.app-menu {
+  width: 248px;
+  background-color: #ffffff;
+  box-sizing: border-box;
+  border-radius: 4px;
+}
+
+/* S:6093-6119 + S:6063-6110：菜单项（35 px 行高、左图标、文字 #115C7C 用 Bold） */
+.app-menu-item {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding: 0 16px 0 12px;
+  font-family: OpenSans-Regular, sans-serif;
+  color: RGBA(0, 0, 0, 0.87);
+  cursor: pointer;
+}
+.app-menu-item:hover {
+  background-color: RGBA(0, 0, 0, 0.04); /* S:78-82 的 hover 基调 */
+}
+.app-menu-item.suite {
+  color: #115C7C; /* S:6116-6119 */
+  font-family: OpenSans-Bold, sans-serif;
+}
+/* S:6282-6301：24 px 的应用图标 */
+.sm-menu-icon,
+.pl-menu-icon,
+.home-menu-icon,
+.convert-menu-icon,
+.feature-menu-icon {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  background-image: url('/assets/images/new_s&micon.png');
+  background-repeat: no-repeat;
+  background-size: 23px 23px;
+  background-position: center;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.pl-menu-icon {
+  background-image: url('/assets/images/new_playbackicon.png');
+}
+.convert-menu-icon {
+  background-image: url('/assets/images/new_converticon.png');
+}
+.home-menu-icon {
+  background-image: url('/assets/images/new_nas_icon.png');
+}
+
+/* ================================================================
+   ② 应用标签栏（原版 #tabs-list，S:1922-2050）
+   ================================================================ */
+
+#tabs-list {
+  flex: 0 0 35px;
+  height: 35px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+  border: none;
+  background: RGB(0, 81, 111); /* S:1923 */
+  z-index: 1003;
+  overflow: hidden;
+}
+#tabs-list li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  border-radius: 5px 5px 0 0; /* S:1937 */
+  width: 150px;
+  height: 32px; /* S:1939 */
+  margin: 3px 8px 0 0;
+  background-color: #666666; /* S:1941 */
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+#tabs-list li a {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px 0 10px;
+  font-family: OpenSans-Regular, sans-serif; /* S:1953 */
+  font-size: 14px;
+  color: #ffffff; /* S:1954 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+#tabs-list li:hover {
+  background-color: #7a7a7a; /* #666 抬一档，写法同 S:1444-1446 的白色叠加 */
+}
+#tabs-list li.ui-tabs-active {
+  background: RGBA(0, 0, 0, 0.87); /* S:2047-2050 */
+}
+#tabs-list li.ui-tabs-active a,
+#tabs-list li.ui-tabs-active:hover {
+  font-family: OpenSans-Bold, sans-serif; /* S:2025-2027 */
+}
+#tabs-list li.ui-tabs-active:hover {
+  background: RGBA(0, 0, 0, 0.87);
+}
+
+/* S:2029-2046：第一格是应用名，不画卡片底、18 px Bold、左边距 13 px
+ * （min-width 从 263 px 放宽到 300 px，因为套件名比 "GRIT Monitor" 长） */
+#tabs-list li.tab-title-list {
+  background: none;
+  border: none;
+  border-radius: 0;
+  margin-left: 13px;
+  min-width: 300px;
+  width: auto;
+  cursor: default;
+}
+#tabs-list li.tab-title-list a {
+  font-family: OpenSans-Bold, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 16px;
+  padding: 8px 0 0 34px;
+}
+#tabs-list li.tab-title-list:hover {
+  background: none;
+}
+
+/* S:1870-1873 + S:6247-6281：应用图标 */
+.tabImg {
+  position: absolute;
+  top: 6px;
+  left: 0;
+}
+.default-icon,
+.pl-default-icon,
+.convert-default-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-size: cover;
+  background-repeat: no-repeat;
+  box-sizing: border-box;
+}
+.default-icon {
+  background-image: url('/assets/images/new_s&micon.png');
+}
+/* 标签栏第一格的图标 = 套件图标（S:6299-6301 的 new_nas_icon.png） */
+#app-icon {
+  background-image: url('/assets/images/new_nas_icon.png');
+}
+.pl-default-icon {
+  background-image: url('/assets/images/new_playbackicon.png');
+}
+.convert-default-icon {
+  background-image: url('/assets/images/new_converticon.png');
+}
+
+/* ================================================================
+   ③ 左侧窄轨（原版 GRIT 分组栏，#gritGroupView + .gritSideNav）
+   ================================================================ */
+
+.nas-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+/* G:30-34 / G:537-543：70 px 宽，#e1e1e1 底 */
+#gritGroupView {
+  width: 70px;
+  flex: 0 0 70px;
+  background: #e1e1e1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.gritSideNav {
+  width: 70px;
+  padding: 0;
+  background: #e1e1e1;
+}
+/* G:728-738 */
+.gritSideNav .folders_content {
+  width: 100%;
+  position: relative;
+  background: #e1e1e1;
+}
+.gritSideNav .folders_list {
+  width: 100%;
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+/* G:708-719：+ 按钮，40 px 的 add_circle_blue.svg（原版这里还有 position: initial !important，
+ * 否则会被下面 .folder_device img 的绝对定位规则带跑，两格会叠在一起） */
+.gritSideNav .add_network {
+  text-align: center;
+  padding-top: 10px;
+}
+.gritSideNav .add_network img {
+  position: static;
+  width: 40px;
+  height: 40px;
+  display: inline-block;
+  background-size: 40px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+/* G:750-757：Add group 小字 */
+.gritSideNav .add_folder-btn .add-group {
+  width: 70px;
+  font-size: 12px;
+  text-align: center;
+  margin: 5px 0 0 0;
+  color: RGBA(0, 0, 0, 0.87);
+  font-family: OpenSans-Regular, sans-serif;
+  cursor: pointer;
+}
+/* G:758-771：All 那一格 70×40，图标 70×42 绝对定位 */
+.gritSideNav .folder_device {
+  width: 70px;
+  height: 40px;
+  background: transparent;
+  position: relative;
+  cursor: pointer;
+}
+.gritSideNav .folder_device img {
+  width: 70px;
+  height: 42px;
+  left: 0;
+  top: 0;
+  position: absolute;
+  cursor: pointer;
+}
+/* G:721-726：选中分组是半透明青底 + 白色文件夹图标 */
+.gritSideNav .active-folder {
+  background: rgba(0, 171, 200, 0.87);
+}
+.gritSideNav .active-folder img {
+  content: url('/assets/images/folder_white.svg');
+}
+/* G:778-791：All 文字 */
+.gritSideNav .folders_list .folder_text {
+  width: 40px;
+  height: 28px;
+  line-height: 30px;
+  left: 14px;
+  top: 7px;
+  text-align: center;
+  position: absolute;
+  color: #ffffff;
+  font-family: OpenSans-SemiBold, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.gritSideNav .folders_list .active-folder .folder_text {
+  color: #000000; /* G:772-774 */
+}
+
+/* ================================================================
+   ④ 内容区
+   ================================================================ */
+
+.nas-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  background: #ffffff;
+  /* 标题左边距按原版实测：窗口 128 CSS px − 窄轨 70 px = 58 px */
+  padding: 20px 32px 32px 58px;
+  box-sizing: border-box;
+}
+
+/* S:3814-3818：标题行（原版 0 10px，这里去掉左右内边距，标题左边缘才与截图对齐） */
+.folder-detail-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  min-height: 45px;
+  padding: 0;
+  margin-top: 4px;
+}
+/* S:1884-1892：34 px OpenSans-Regular 大标题 */
+.device-text {
+  margin: 0 5px;
+  line-height: 36px;
+  font-size: 34px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.87);
+  font-family: OpenSans-Regular, sans-serif;
+  letter-spacing: 0;
+}
+/* G:4847-4849：标题下的副标题行 */
+.receiver-count {
+  display: block;
+  margin: 4px 0 0 5px;
+  font-size: 18px;
+  font-family: OpenSans-SemiBold, sans-serif;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+/* 内容区右上角的工具条（抓包选择 + 健康状态），布局对应原版
+ * .landing-page-btns / .device-data-details 右侧按钮组的位置（G:1050-1060） */
+.device-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-bottom: 4px;
+}
+.device-tools > * + * {
+  margin-left: 16px;
+}
+
+/* 输入类控件按原版 input 规则：S:78-86 */
+.nas-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+}
+.nas-field > span {
+  font-size: 12px;
+  color: RGBA(0, 0, 0, 0.6); /* 取自 S:15400 的次要文字色 */
+  font-family: OpenSans-Regular, sans-serif;
+  margin-bottom: 2px;
+}
+select.nas-select,
+.nas-field select {
+  box-sizing: border-box;
+  height: 32px;
+  min-width: 260px;
+  padding: 4px 6px;
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 14px;
+  color: RGBA(0, 0, 0, 0.87);
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid RGBA(0, 0, 0, 0.42);
+  border-radius: 0;
+  outline: none;
+  cursor: pointer;
+}
+.nas-field select:hover {
+  background-color: RGBA(0, 0, 0, 0.04); /* S:78-82 */
+  border-bottom: 1px solid RGBA(0, 0, 0, 0.6);
+}
+.nas-field select:focus {
+  background-color: RGBA(0, 0, 0, 0.12); /* S:83-86 */
+  border-bottom: 2px solid RGB(0, 81, 111);
+}
+
+.nas-health {
+  font-size: 12px;
+  color: RGBA(0, 0, 0, 0.6);
+  font-family: OpenSans-Regular, sans-serif;
+  white-space: nowrap;
+}
+.nas-health.ok {
+  color: #417505; /* S:3827 的「正常」绿色 */
+}
+.nas-health.bad {
+  color: #A00214; /* S:5206 的错误红 */
+}
+
+/* 面板容器：一次只显示一个 */
+.app-panel {
+  display: block;
+  margin-top: 14px;
+  min-width: 0;
+}
+.app-panel[hidden] {
+  display: none;
+}
+
+/* 面板还没挂上时的占位，样式对应原版空态 .no-devices-data（S:3734-3788） */
+.panel-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 380px;
+  text-align: center;
+  font-family: OpenSans-Light, sans-serif;
+  font-size: 15px;
+}
+.panel-state-title {
+  font-family: OpenSans-Bold, sans-serif;
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: 0.17px;
+  color: RGB(0, 81, 111);
+}
+.panel-state-text {
+  margin-top: 12px;
+  max-width: 82%;
+  font-family: OpenSans-Light, sans-serif;
+  font-size: 15px;
+  color: rgba(0, 0, 0, 0.6);
+}
+.panel-state .btn {
+  margin-top: 22px;
+}
+
+/* ================================================================
+   ⑤ 面板通用件（卡片 / 按钮 / 表格 / 提示）
+   三个面板与 Graph 页共用；颜色全部来自原版按钮与设备卡片。
+   ================================================================ */
+
+.app-panel .card {
+  background-color: #FCFCFC; /* S:3928-3934 设备卡片底色 */
+  border: 1px solid RGBA(0, 0, 0, 0.12); /* S:1709-1712 按钮描边 */
+  border-radius: 4px; /* S:1711 */
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.app-panel .card-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.app-panel .card-head h2,
+.app-panel .card-head h3 {
+  margin: 0;
+  font-size: 18px; /* S:3964-3975 卡片标题 */
+  font-family: OpenSans-Bold, sans-serif;
+  font-weight: 700;
+  color: #115C7C; /* S:3869 */
+}
+.app-panel .card-head h3 {
+  font-size: 16px;
+}
+.app-panel .hint,
+.app-panel .muted {
+  font-size: 12px;
+  color: RGBA(0, 0, 0, 0.6);
+  font-family: OpenSans-Regular, sans-serif;
+}
+.app-panel .controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: -10px;
+}
+.app-panel .controls > * {
+  margin: 0 10px 10px 0;
+}
+.app-panel .field {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+}
+.app-panel .field > span {
+  font-size: 12px;
+  color: RGBA(0, 0, 0, 0.6);
+  margin-bottom: 2px;
+}
+.app-panel select,
+.app-panel input[type="search"],
+.app-panel input[type="number"] {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 4px 6px;
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 14px;
+  color: RGBA(0, 0, 0, 0.87);
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid RGBA(0, 0, 0, 0.42);
+  border-radius: 0;
+  outline: none;
+}
+.app-panel select:hover,
+.app-panel input:hover {
+  background-color: RGBA(0, 0, 0, 0.04);
+}
+.app-panel select:focus,
+.app-panel input:focus {
+  background-color: RGBA(0, 0, 0, 0.12);
+  border-bottom: 2px solid RGB(0, 81, 111);
+}
+
+/* 按钮：S:1705-1772（.whiteBtn / .darkBtn） */
+.app-panel .btn,
+.panel-state .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 80px;
+  padding: 0 16px;
+  background: #fff;
+  border: 1px solid RGBA(0, 0, 0, 0.12);
+  border-radius: 4px;
+  color: #00516F;
+  font-family: OpenSans-SemiBold, sans-serif;
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  text-shadow: none;
+  box-shadow: none;
+  cursor: pointer;
+  text-decoration: none;
+}
+.app-panel .btn:hover,
+.panel-state .btn:hover {
+  background-color: RGBA(0, 81, 111, 0.04);
+  color: #115C7C;
+}
+.app-panel .btn.primary,
+.app-panel .btn.darkBtn {
+  background-color: #00516F; /* S:1751-1757 */
+  border: 1px solid #00516F;
+  color: #fff;
+}
+.app-panel .btn.primary:hover {
+  background-color: #3a7b91; /* S:1761-1763 */
+}
+.app-panel .btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.app-panel .btn.small {
+  height: 28px;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
+/* 提示条：错误色 S:5206 / 成功色 S:3827 / 信息色 S:1766 */
+.app-panel .notice {
+  box-sizing: border-box;
+  padding: 10px 13px;
+  margin-bottom: 14px;
+  border-radius: 4px;
+  border: 1px solid RGBA(0, 0, 0, 0.12);
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 13px;
+  background: #fff;
+  color: RGBA(0, 0, 0, 0.87);
+}
+.app-panel .notice.error {
+  border-color: #A00214;
+  color: #A00214;
+}
+.app-panel .notice.info {
+  border-color: #00516F;
+  color: #00516F;
+}
+.app-panel .notice.warn {
+  border-color: #417505;
+  color: #417505;
+}
+
+/* 小徽标：底色取 RGBA(0,81,111,.04)（S:1721），文字 #00516F */
+.app-panel .badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background-color: RGBA(0, 81, 111, 0.04);
+  border: 1px solid RGBA(0, 81, 111, 0.24);
+  color: #00516F;
+  font-family: OpenSans-SemiBold, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+
+/* 表格：border-collapse + 1 px 边框（S:14474-14491 .TableStyle-Standard），
+ * 表头行用 S:15420 的 #9B9B9B 分隔线，正文行用按钮描边色 rgba(0,0,0,.12) */
+.app-panel .table-scroll {
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid RGBA(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: #fff;
+}
+.app-panel table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 13px;
+}
+.app-panel thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #FCFCFC;
+  text-align: left;
+  font-family: OpenSans-Bold, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: RGBA(0, 0, 0, 0.6);
+  padding: 8px 10px;
+  border-bottom: 1px solid #9B9B9B;
+  white-space: nowrap;
+}
+.app-panel tbody td {
+  padding: 7px 10px;
+  border-bottom: 1px solid RGBA(0, 0, 0, 0.12);
+  vertical-align: top;
+  color: RGBA(0, 0, 0, 0.87);
+}
+.app-panel tbody tr:last-child td {
+  border-bottom: 0;
+}
+.app-panel tbody tr.clickable {
+  cursor: pointer;
+}
+.app-panel tbody tr.clickable:hover td {
+  background: RGBA(0, 81, 111, 0.04);
+}
+.app-panel tbody tr.selected td {
+  background: RGBA(0, 171, 200, 0.12);
+}
+.app-panel .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.app-panel .mono {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+.app-panel .empty-row td {
+  color: RGBA(0, 0, 0, 0.6);
+  text-align: center;
+  padding: 24px 12px;
+}
+
+/* Graph 页的折线容器 */
+.app-panel .chart-box {
+  width: 100%;
+  min-height: 200px;
+}
+.app-panel .chart-box svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.app-panel .code-empty {
+  padding: 18px;
+  color: RGBA(0, 0, 0, 0.6);
+  font-size: 13px;
+  font-family: OpenSans-Regular, sans-serif;
+}
+
+/* 打印/窄屏兜底：1440 是主要目标宽度 */
+@media (max-width: 900px) {
+  #tabs-list li {
+    width: 120px;
+  }
+  #tabs-list li.tab-title-list {
+    min-width: 180px;
+  }
+  .nas-content {
+    padding-left: 24px;
+  }
+  .device-tools {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+}

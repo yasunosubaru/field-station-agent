@@ -9,9 +9,9 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { join, relative } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { CONVERT_FORMATS, convertCapture, FORMAT_LABELS, FORMAT_NOTES, isConvertFormat, type ConvertFormat } from './convert.ts';
 import { loadCapture, tables } from './capture.ts';
@@ -356,6 +356,127 @@ function handleGraphData(url: URL, res: ServerResponse, method: string): void {
   sendJson(res, 200, { ok: true, ...graphData(url.searchParams.get('file'), column) }, method);
 }
 
+/* ---------------- 原版外观资源（只读） --------------------------------
+ *
+ * 外壳要的图标、渐变条与字体都留在解包出来的原版前端里，不复制进仓库：
+ *   /assets/<images|fonts|css>/<file>  →  FIELD_STATION_VIEW_ASSETS
+ * 默认 `<仓库根>/逆向/01_解包/app/view`。只开放 images/ fonts/ css/ 三个子目录，
+ * 路径穿越（..、反斜杠、盘符、NUL）一律 400。
+ */
+
+const ASSETS_DIR = process.env.FIELD_STATION_VIEW_ASSETS
+  ? resolve(process.env.FIELD_STATION_VIEW_ASSETS)
+  : resolve(REPO_DIR, '逆向', '01_解包', 'app', 'view');
+
+/** 允许从原版目录暴露出去的子目录。 */
+const ASSET_GROUPS = new Set(['images', 'fonts', 'css']);
+
+const MIME_TYPES: Record<string, string> = {
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+let assetsWarned = false;
+
+function warnMissingAssets(): void {
+  if (assetsWarned) return;
+  assetsWarned = true;
+  console.warn(
+    `[app] 未找到原版资源目录：${ASSETS_DIR}\n` +
+      '[app] 用 FIELD_STATION_VIEW_ASSETS 指向 逆向/01_解包/app/view，图标与字体才有内容',
+  );
+}
+
+/** 拆段 + 逐段解码；任何 `..`、反斜杠、盘符、NUL 都当越界。 */
+function safeSegments(rawPath: string): string[] {
+  const segments: string[] = [];
+  for (const raw of rawPath.split('/')) {
+    if (raw === '' || raw === '.') continue;
+    let part: string;
+    try {
+      part = decodeURIComponent(raw);
+    } catch {
+      throw new HttpError(400, `资源路径无法解码：${raw}`);
+    }
+    if (part === '..') throw new HttpError(400, '资源路径不允许包含 ..');
+    if (part.includes('\\')) throw new HttpError(400, '资源路径不允许反斜杠');
+    if (part.includes('\0')) throw new HttpError(400, '资源路径含非法字符');
+    if (/^[a-zA-Z]:/.test(part)) throw new HttpError(400, '资源路径不允许盘符');
+    segments.push(part);
+  }
+  if (!segments.length) throw new HttpError(400, '缺少资源路径');
+  return segments;
+}
+
+/** 拼绝对路径，并再核一次确实落在 root 下。 */
+function resolveUnder(root: string, segments: string[], label: string): string {
+  const target = resolve(root, ...segments);
+  const rel = relative(root, target);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new HttpError(400, `${label}路径越界`);
+  }
+  return target;
+}
+
+function sendFile(res: ServerResponse, absolutePath: string, method: string, cacheControl: string): void {
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(absolutePath);
+  } catch {
+    throw new HttpError(404, `读不到文件：${absolutePath}`);
+  }
+  res.writeHead(200, {
+    'Content-Type': MIME_TYPES[extname(absolutePath).toLowerCase()] ?? 'application/octet-stream',
+    'Content-Length': bytes.byteLength,
+    'Cache-Control': cacheControl,
+    'X-Content-Type-Options': 'nosniff',
+  });
+  if (method === 'HEAD') res.end();
+  else res.end(bytes);
+}
+
+/** /assets/<group>/<file> → 原版 view 目录（只读） */
+function handleAsset(rawPath: string, res: ServerResponse, method: string): void {
+  if (!existsSync(ASSETS_DIR)) {
+    warnMissingAssets();
+    throw new HttpError(404, `未找到原版资源目录：${ASSETS_DIR}`);
+  }
+  const segments = safeSegments(rawPath);
+  const group = segments[0].toLowerCase();
+  if (!ASSET_GROUPS.has(group)) {
+    throw new HttpError(404, `未开放的原版资源目录：${segments[0]}（只开放 images / fonts / css）`);
+  }
+  const target = resolveUnder(ASSETS_DIR, segments, '原版资源');
+  if (!statSync(target, { throwIfNoEntry: false })?.isFile()) {
+    throw new HttpError(404, `没有这个资源：${segments.join('/')}`);
+  }
+  sendFile(res, target, method, 'public, max-age=3600');
+}
+
+/** 外壳自己的静态文件：/shell.css 与 /panels/*.js（页面按需 import） */
+function handleWebFile(rawPath: string, res: ServerResponse, method: string): void {
+  const segments = safeSegments(rawPath);
+  const target = resolveUnder(WEB_DIR, segments, '页面资源');
+  if (!statSync(target, { throwIfNoEntry: false })?.isFile()) {
+    throw new HttpError(404, `没有这个文件：/${segments.join('/')}`);
+  }
+  sendFile(res, target, method, 'no-store');
+}
+
 function handlePage(res: ServerResponse): void {
   let html: string;
   try {
@@ -387,8 +508,22 @@ const server = createServer((req, res) => {
     const path = url.pathname;
 
     try {
+      // WHATWG URL 会把 `../` 规范化掉，规范化之后的 pathname 已经看不出原始意图；
+      // 所以先看原始串（问号之前）：里面带字面的 `..` 或反斜杠一律 400。
+      const rawPathname = (req.url ?? '').split('?')[0];
+      if (rawPathname.includes('..') || rawPathname.includes('\\')) {
+        throw new HttpError(400, '资源路径越界');
+      }
       if (path === '/' || path === '/index.html') {
         handlePage(res);
+        return;
+      }
+      if (path.startsWith('/assets/')) {
+        handleAsset(path.slice('/assets/'.length), res, method);
+        return;
+      }
+      if (path === '/shell.css' || path.startsWith('/panels/') || path.startsWith('/fonts/')) {
+        handleWebFile(path.slice(1), res, method);
         return;
       }
       if (path === '/favicon.ico') {
@@ -473,6 +608,7 @@ server.listen(port, HOST, () => {
   const line = `nas-reimpl app listening on http://${HOST}:${actual}`;
   console.log(line);
   console.log(`samples: ${SAMPLES_DIR}`);
+  console.log(`assets: ${ASSETS_DIR}${existsSync(ASSETS_DIR) ? '' : '（缺失，图标与字体走 404）'}`);
   console.log(`READY ${actual}`);
 });
 

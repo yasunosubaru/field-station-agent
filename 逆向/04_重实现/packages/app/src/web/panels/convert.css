@@ -1,0 +1,657 @@
+/* =============================================================================
+ * convert.css — Convert panel (Format screen + result summary + preview).
+ *
+ * Quoted from 逆向/01_解包/app/view/css/style.css; the line numbers below point at
+ * the rule each block was taken from. Palette (no new colours):
+ *   frame border #005170 · grey panel rgba(232,232,232,.87) / #eee
+ *   hairlines rgba(0,0,0,.87) (form panels) · #c5c5c5 (row dividers) · #80808052 (tabs)
+ *   accent #00516F · active tab text #115C7C · ink rgba(0,0,0,.87) / .6 / .38
+ *
+ * Layout-only deviations from the suite, because this page has no Bootstrap and must
+ * fit any viewport:
+ *   - `.convert-screens` / `.selected-file-info` / `.summary-container` lose their fixed
+ *     1224 / 1176 px widths and become fluid;
+ *   - `.format-settings-layout` and its two columns use a grid instead of
+ *     `position:absolute` + `margin-left:620px`, so the panel can shrink;
+ *   - `.single-file-name` / `.single-file-size` are laid out by flex, not by
+ *     absolute `right: 10.5%`;
+ *   - flex `gap` is never used (Chromium 80 has none) — margins instead.
+ * ========================================================================== */
+
+.convertLayout {
+  --nas-ink: rgba(0, 0, 0, 0.87);
+  --nas-ink-60: rgba(0, 0, 0, 0.6);
+  --nas-ink-38: rgba(0, 0, 0, 0.38);
+  --nas-teal: #00516f;
+  --nas-teal-hover: #3a7b91;
+  --nas-teal-dark: #115c7c;
+  --nas-rule: #c5c5c5;
+  --nas-grey-panel: rgba(232, 232, 232, 0.87);
+  --nas-bad: #a00214;
+  --nas-sans: Roboto, "Roboto-Regular", "Open Sans", "OpenSans-Regular", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --nas-sans-bold: Roboto, "OpenSans-Bold", "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
+  --nas-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+
+  margin: 0 0 20px;
+  color: var(--nas-ink);
+  font-family: var(--nas-sans);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.convertLayout *,
+.convertLayout *::before,
+.convertLayout *::after {
+  box-sizing: border-box;
+}
+
+.convertLayout [hidden] {
+  display: none !important;
+}
+
+/* style.css:20508 `.convert-screens` — width 1224 dropped. */
+.convertLayout .convert-screens {
+  border: 1px solid #005170;
+  border-radius: 2px;
+  width: 100%;
+  background: #fff;
+}
+
+/* style.css:20520 `.convert-settings` — `display:none` in the suite (it is a JS-driven
+   step); here the format screen is the page, so it is shown. */
+.convertLayout .convert-settings {
+  display: block;
+  min-height: 0;
+}
+
+/* ---- selected file ------------------------------------------------------ */
+
+/* style.css:20524 `.selected-file-info` */
+.convertLayout .selected-file-info {
+  border: 1px dashed #005170;
+  width: auto;
+  height: auto;
+  margin: 24px;
+  padding: 10px 16px;
+  border-radius: 2px;
+}
+
+/* style.css:20461 `.convertLayout .single-file-view label` + :20470 display:flex */
+.convertLayout .single-file-view {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-left: -10px;
+}
+
+.convertLayout .single-file-view > * {
+  margin-left: 10px;
+}
+
+.convertLayout .single-file-view label {
+  font-size: 16px;
+  font-family: Roboto, "OpenSans-Regular", "Segoe UI", sans-serif;
+  line-height: 24px;
+  letter-spacing: 0.5px;
+  color: var(--nas-ink);
+}
+
+/* style.css:20489 `.single-file-view .single-file-msg` */
+.convertLayout .single-file-view .single-file-msg {
+  color: #00516f !important;
+  letter-spacing: 0.15px;
+}
+
+.convertLayout .single-file-view .single-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.convertLayout .convert-capture {
+  flex: 0 1 460px;
+  min-width: 220px;
+  margin-left: auto;
+  height: 36px;
+  border: 1px solid var(--nas-rule);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.87);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--nas-ink);
+  font: 14px var(--nas-sans);
+  padding: 0 8px;
+}
+
+.convertLayout .convert-capture:focus {
+  outline: none;
+  border-bottom: 2px solid var(--nas-teal);
+}
+
+/* ---- output settings ---------------------------------------------------- */
+
+/* style.css:20860 `.convertLayout .output-settings` padding-left:24 */
+.convertLayout .output-settings {
+  padding: 0 24px 20px;
+}
+
+.convertLayout .output-title {
+  display: block;
+  font-family: var(--nas-sans-bold);
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--nas-ink);
+  padding-bottom: 2px;
+}
+
+/* style.css:16904 `.tabStyle` + :16860 odd span + :16931 `.active` */
+.convertLayout .tabStyle {
+  display: flex;
+  align-items: center;
+  margin: 17px 0;
+}
+
+.convertLayout .tabStyle > span {
+  border: 1px solid #80808052;
+  padding: 6px 18px;
+  font-size: 14px;
+  color: var(--nas-ink-38);
+  font-family: var(--nas-sans-bold);
+  font-weight: 600;
+  border-radius: 4px;
+  width: auto;
+}
+
+.convertLayout .tabStyle > span + span {
+  margin-left: 10px;
+}
+
+.convertLayout .tabStyle > span.active {
+  color: #fff;
+  background-color: #00516f;
+}
+
+/* style.css:21577 `.format-settings-layout` (height:478px dropped) */
+.convertLayout .format-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 600px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* style.css:21857 `.format-settings-tab .msg-format-selection` */
+.convertLayout .msg-format-selection {
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--nas-ink);
+  background-color: var(--nas-grey-panel);
+  padding: 15px 10px;
+  border-radius: 2px;
+}
+
+/* style.css:21891 `.msg-format-selection > label` */
+.convertLayout .msg-format-selection > label {
+  color: var(--nas-ink);
+  font-family: var(--nas-sans-bold);
+  font-size: 18px;
+}
+
+/* style.css:21872 `.msg-format-list` + :21875 `.format-entry` */
+.convertLayout .msg-format-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+  padding: 8px 0 0 8px;
+}
+
+.convertLayout .format-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 10px 44px 10px 0;
+  border-bottom: 1px solid #c5c5c5;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.convertLayout .format-entry:hover {
+  background-color: rgba(0, 81, 111, 0.04);
+}
+
+.convertLayout .format-entry.active {
+  background-color: rgba(0, 171, 200, 0.1);
+  box-shadow: inset 3px 0 0 #00516f;
+}
+
+.convertLayout .format-entry:focus {
+  outline: 2px solid var(--nas-teal);
+  outline-offset: -2px;
+}
+
+/* style.css:21977 `.format-details` (width:230px dropped) */
+.convertLayout .format-details {
+  position: relative;
+  min-width: 0;
+}
+
+/* style.css:21883 `.format-details label` */
+.convertLayout .format-details label {
+  font-weight: 400 !important;
+  font-size: 16px;
+  font-family: Roboto, "OpenSans-Regular", "Segoe UI", sans-serif;
+  line-height: 24px;
+  letter-spacing: 0.15px;
+  color: var(--nas-ink);
+}
+
+.convertLayout .convert-hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--nas-ink-60);
+}
+
+/* style.css:20906 `.select-device-btn` — same box artwork (feedback_checked_box.svg /
+   feedback_unchecked_box.svg), inlined so the page needs no image request. */
+.convertLayout .select-device-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  margin-top: -12px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 24px 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M19 5v14H5V5h14m0-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z' fill='%23000000' fill-opacity='.6'/%3E%3C/svg%3E");
+}
+
+.convertLayout .active-select-btn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-9 14-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' fill='%2300516F'/%3E%3C/svg%3E") !important;
+}
+
+/* style.css:21866 `.format-gereral-settings` (absolute / margin-left:620px dropped) */
+.convertLayout .format-gereral-settings {
+  width: auto;
+  min-height: 0;
+  padding: 4px 0 0;
+}
+
+/* style.css:21589 `.timeIntervalHeading` — absolute placement dropped. */
+.convertLayout .timeIntervalHeading {
+  display: block;
+  font-size: 18px;
+  line-height: 24px;
+  font-family: var(--nas-sans-bold);
+  color: var(--nas-ink);
+}
+
+/* style.css:21649 `.time-interval-layout` / :21656 `.utc-time-inputs` / :21661 `.time-row` */
+.convertLayout .time-interval-layout {
+  display: block;
+  width: auto;
+  margin-top: 4px;
+}
+
+.convertLayout .utc-time-inputs {
+  margin: 0;
+}
+
+.convertLayout .time-row {
+  display: flex;
+  height: auto;
+  align-items: center;
+  width: auto;
+  flex-wrap: wrap;
+}
+
+.convertLayout .time-row > * + * {
+  margin-left: 8px;
+}
+
+/* style.css:21695 `.time-label` */
+.convertLayout .time-label {
+  font-size: 14px;
+  color: var(--nas-ink);
+  min-width: 48px;
+}
+
+/* style.css:21667 `.date-input` / :21682 `.time-input` */
+.convertLayout .date-input,
+.convertLayout .time-input {
+  border: none;
+  height: 40px;
+  font-size: 16px !important;
+  background-color: rgba(200, 200, 200, 0.38);
+  border-bottom: 1px solid var(--nas-ink);
+  border-radius: 4px 4px 0 0;
+  color: var(--nas-ink);
+  font-family: var(--nas-sans);
+}
+
+.convertLayout .date-input {
+  width: 158px;
+  padding: 0 12px;
+}
+
+.convertLayout .time-input {
+  width: 60px;
+  padding-left: 10px;
+}
+
+.convertLayout .time-separator {
+  color: var(--nas-ink);
+  font-size: 16px;
+}
+
+.convertLayout .date-input:focus,
+.convertLayout .time-input:focus {
+  outline: none;
+  border-bottom: 2px solid var(--nas-teal);
+}
+
+/* style.css:22022 `.destination-selection-layout input.destination-folder-path` */
+.convertLayout .destination-selection-layout {
+  margin-top: 26px;
+}
+
+.convertLayout .destination-selection-layout .format-settings-headings {
+  display: block;
+  font-size: 12px;
+  color: var(--nas-ink-60);
+  padding-bottom: 2px;
+}
+
+.convertLayout .destination-selection-layout input.destination-folder-path {
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border: none;
+  border-bottom: 0 solid rgba(0, 0, 0, 0.6) !important;
+  border-radius: 4px 4px 0 0;
+  height: 40px;
+  padding-left: 16px;
+  margin-top: 5px;
+  color: var(--nas-ink);
+  font-family: var(--nas-mono);
+  font-size: 13px;
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+/* style.css:9114 `.btnsRow` + :3312 `.btnsRow .need-help` */
+.convertLayout .btnsRow {
+  display: flex;
+  align-items: center;
+  margin: 20px 0 0;
+  padding: 12px 0 18px;
+  border-top: 1px solid var(--nas-rule);
+}
+
+.convertLayout .btnsRow .need-help {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--nas-ink-60);
+  font-size: 12px;
+  line-height: 18px;
+  padding-right: 16px;
+}
+
+/* style.css:1705 `.whiteBtn,.lightBtn,.darkBtn` */
+.convertLayout .btn,
+.convertLayout .lightBtn {
+  appearance: none;
+  height: 36px;
+  min-width: 80px;
+  padding: 0 16px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  color: var(--nas-teal);
+  font-family: var(--nas-sans-bold);
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* style.css:1768 `.lightBtn:hover` */
+.convertLayout .lightBtn:hover {
+  background-color: rgba(0, 81, 111, 0.04);
+  color: var(--nas-teal);
+}
+
+/* style.css:20784 `button.lightBtn.start-over-button` (float / margin-left dropped) */
+.convertLayout button.lightBtn.start-over-button {
+  margin-right: 12px;
+}
+
+/* style.css:1751 `.darkBtn` + :1732 `.darkBtn:hover` */
+.convertLayout .darkBtn {
+  background-color: var(--nas-teal);
+  color: #fff;
+  border: 1px solid var(--nas-teal);
+}
+
+.convertLayout .darkBtn:hover {
+  background-color: var(--nas-teal-hover);
+  color: #fff;
+}
+
+.convertLayout .btn:focus {
+  outline: 2px solid var(--nas-teal-dark);
+  outline-offset: 1px;
+}
+
+.convertLayout .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- summary ------------------------------------------------------------ */
+
+/* style.css:22255 `.convert-summary .summary-container` — 1176px dropped. */
+.convertLayout .summary-container {
+  margin: 20px;
+  width: auto;
+}
+
+/* style.css:22167 `.convert-summary .conversion-heading` */
+.convertLayout .conversion-heading {
+  display: block;
+  font-family: Roboto, "OpenSans-Regular", "Segoe UI", sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.18px;
+  line-height: 32px;
+  margin-top: 5px;
+  color: var(--nas-ink);
+  padding-bottom: 12px;
+}
+
+/* style.css:22149 `.conversion-summary-formats` */
+.convertLayout .conversion-summary-formats {
+  min-height: 100px;
+  padding: 24px;
+  background-color: #eee;
+  margin-bottom: 16px;
+  border-radius: 2px;
+}
+
+.convertLayout .format-row {
+  display: flex;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.convertLayout .format-row:last-child {
+  border-bottom: 0;
+}
+
+.convertLayout .format-row-label {
+  flex: 0 0 150px;
+  font-size: 13px;
+  color: var(--nas-ink-60);
+}
+
+.convertLayout .format-row-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--nas-ink);
+  word-break: break-all;
+}
+
+.convertLayout .format-row-value.mono {
+  font-family: var(--nas-mono);
+  font-size: 13.5px;
+}
+
+.convertLayout .format-row-value.small {
+  font-size: 12.5px;
+  color: var(--nas-ink-60);
+}
+
+.convertLayout .format-row.actions {
+  border-top: 1px solid #d0d0d0;
+  border-bottom: 0;
+  padding-top: 12px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.convertLayout .format-row.actions .darkBtn {
+  min-width: 0;
+  letter-spacing: 0.6px;
+}
+
+/* style.css:5635 `.summary-details-tabs` + :5599 `a` + :5626 `.active-tab` */
+.convertLayout .summary-details-tabbing {
+  display: flex;
+  align-items: baseline;
+  border-bottom: 1px solid var(--nas-rule);
+  margin-bottom: 10px;
+}
+
+.convertLayout .summary-details-tabs {
+  display: inline-block;
+  margin: 0 0 -1px;
+}
+
+.convertLayout .summary-details-tabs a {
+  font-weight: 100;
+  padding: 3px 10px;
+  font-size: 14px;
+  display: inline-block;
+  width: auto;
+  margin: 0 10px;
+  text-align: center;
+  font-family: var(--nas-sans-bold);
+  line-height: normal;
+  color: #00516f !important;
+  opacity: 0.6;
+  letter-spacing: 1.25px;
+}
+
+.convertLayout .summary-details-tabs.active-tab {
+  border-bottom: 2px solid #115c7c;
+}
+
+.convertLayout .summary-details-tabs.active-tab a {
+  color: #115c7c;
+  opacity: 1;
+}
+
+.convertLayout .summary-preview-note {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--nas-ink-60);
+}
+
+/* The preview is not in the suite (it always wrote a folder); it follows the
+   suite's code surface: white sheet, hairline border, monospace body. */
+.convertLayout .convert-preview {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--nas-rule);
+  border-radius: 2px;
+  background: #fff;
+  font-family: var(--nas-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.convertLayout .preview-line {
+  display: flex;
+  white-space: pre;
+  min-width: max-content;
+}
+
+.convertLayout .preview-line:nth-child(even) {
+  background: #fafafa;
+}
+
+.convertLayout .preview-line .ln {
+  flex: 0 0 52px;
+  padding: 0 10px 0 0;
+  text-align: right;
+  color: rgba(0, 0, 0, 0.28);
+  border-right: 1px solid #ececec;
+  background: #f7f7f7;
+  user-select: none;
+}
+
+.convertLayout .preview-line .lc {
+  padding: 0 12px;
+  color: var(--nas-ink);
+}
+
+.convertLayout .preview-empty {
+  padding: 18px;
+  color: var(--nas-ink-38);
+  font-family: var(--nas-sans);
+  font-size: 13px;
+}
+
+/* ---- alert -------------------------------------------------------------- */
+
+.convertLayout .notice {
+  border: 1px solid #e0a6a6;
+  border-left: 4px solid var(--nas-bad);
+  background: #fdf3f3;
+  color: var(--nas-bad);
+  font-size: 13px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+
+/* ---- narrow viewport ---------------------------------------------------- */
+
+@media (max-width: 1080px) {
+  .convertLayout .format-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .convertLayout .msg-format-selection {
+    min-height: 0;
+  }
+
+  .convertLayout .format-gereral-settings {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .convertLayout .msg-format-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
