@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { connectTcp } from '../src/transport.ts';
-import { ReceiverSession, loadCatalog, type Catalog, type DecodedLog } from '../src/session.ts';
+import { ReceiverSession, loadCatalog, DOCUMENTED_HEARTBEAT, MIRROR_HEARTBEAT, type Catalog, type DecodedLog } from '../src/session.ts';
 import { buildLongHeader } from '../../protocol/src/header.ts';
 import { appendCrcLe } from '../../protocol/src/crc.ts';
 
@@ -277,4 +277,31 @@ test('unknown message names are rejected rather than silently mistyped', async (
   h.session.start();
   assert.throws(() => h.session.log('NOT_A_LOG'), /not in the OEM7 catalog/);
   await h.close();
+});
+
+/**
+ * `pingpong.js:12-27` sends `"Sendhxdt"` with `length: 6`; on a real OEM729 (2026-10-30) the
+ * receiver answers `ERROR:Invalid Message. Field = 2` because `SENDHEX` wants a hex payload.
+ * The mirror stays the default; the hardware-valid six bytes are one option away.
+ */
+test('the heartbeat mirrors the shipped payload and offers the hardware-valid hex payload', async () => {
+  assert.equal(MIRROR_HEARTBEAT.length, 6);
+  assert.equal(Buffer.from(MIRROR_HEARTBEAT).toString('latin1'), 'Sendhx');
+  assert.deepEqual([...DOCUMENTED_HEARTBEAT], [0x14, 0x3a, 0xb5, 0x90, 0x0d, 0x0a]);
+
+  const mirror = await startHarness();
+  const mark = mirror.received.length;
+  mirror.session.sendHeartbeat();
+  const mirrored = Buffer.concat(mirror.received.slice(mark));
+  assert.ok(mirrored.includes(Buffer.from('Sendhx', 'latin1')), 'mirror payload reaches the wire');
+  assert.ok(!mirrored.includes(Buffer.from('Sendhxdt', 'latin1')), 'the shipped length is 6, not 8');
+
+  const documented = await startHarness({ heartbeat: { payload: DOCUMENTED_HEARTBEAT } });
+  const start = documented.received.length;
+  documented.session.sendHeartbeat();
+  const sent = Buffer.concat(documented.received.slice(start));
+  assert.ok(sent.includes(Buffer.from(DOCUMENTED_HEARTBEAT)), 'documented payload reaches the wire');
+
+  await mirror.close();
+  await documented.close();
 });

@@ -70,11 +70,26 @@ function safeRead(path: string): Record<string, RichSpec> | undefined {
   }
 }
 
+/**
+ * `pingpong.js:12-27` sends the literal `"Sendhxdt"` with `length: 6`, so the bytes that actually
+ * leave the process are its first six characters. Kept as the default because the reimplementation
+ * mirrors shipped behaviour: on real hardware this payload is **rejected**
+ * (`SENDHEX USB3 6 Sendhx` → `ERROR:Invalid Message. Field = 2`, OEM729, 2026-10-30).
+ */
+export const MIRROR_HEARTBEAT: Uint8Array = latin1('Sendhxdt').slice(0, 6);
+
+/**
+ * What a receiver does accept: `SENDHEX [port] length data` wants a **hex string**, and the manual's
+ * own example (`OEM7 Commands and Logs Reference §2.163`) is six bytes `14 3A B5 90 0D 0A`
+ * (verified on the same OEM729: `<OK` + those bytes echoed on the target port).
+ */
+export const DOCUMENTED_HEARTBEAT: Uint8Array = new Uint8Array([0x14, 0x3a, 0xb5, 0x90, 0x0d, 0x0a]);
+
 export interface HeartbeatOptions {
   enabled?: boolean;
   intervalMs?: number;
   maxMisses?: number;
-  /** SENDHEX payload. The original sends the string `Sendhxdt` (see doc §9.1). */
+  /** SENDHEX payload. Default is the shipped (invalid) Sendhxdt[0..6); pass DOCUMENTED_HEARTBEAT for hardware. */
   payload?: Uint8Array;
 }
 
@@ -218,7 +233,7 @@ export class ReceiverSession extends EventEmitter {
 
   /** Raw value of the application's heartbeat command (SENDHEX). */
   sendHeartbeat(): void {
-    const payload = this.options.heartbeat?.payload ?? latin1('Sendhxdt');
+    const payload = this.options.heartbeat?.payload ?? MIRROR_HEARTBEAT;
     this.transport.write(
       buildBinaryCommand({
         messageId: this.options.catalog.commands.sendhex.messageId,
