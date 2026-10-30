@@ -21,6 +21,8 @@ import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
 import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbrev-log.ts';
 import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
 import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
+import { buildRinex21GloNav, buildRinex21Nav } from '../../protocol/src/rinex21-nav.ts';
+import { buildRinex3Obs, type Rinex3Version } from '../../protocol/src/rinex3.ts';
 import { buildSummary, formatDirectory, formatExtension } from '../../protocol/src/summary.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 import { decodeEdie } from '../../protocol/src/edie.ts';
@@ -28,7 +30,7 @@ import { decodeEdie } from '../../protocol/src/edie.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA = resolve(here, '..', '..', 'protocol', 'data');
 
-const FORMATS = new Set(['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21']);
+const FORMATS = new Set(['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21', 'RINEX301', 'RINEX302', 'RINEX303', 'RINEX304']);
 
 function stamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -69,7 +71,8 @@ function main(): void {
   const formatDir = join(convertedDir, formatDirectory(format));
   mkdirSync(formatDir, { recursive: true });
 
-  let payload: Uint8Array | string;
+  const yy = String(at.getFullYear() % 100).padStart(2, '0');
+  const outputs: Array<{ name: string; data: Uint8Array | string }> = [];
   if (format === 'ASCII') {
     const lines: string[] = [];
     for (const frame of accepted) {
@@ -78,7 +81,7 @@ function main(): void {
       const line = encodeAsciiLog(frame, layout, tables);
       if (line) lines.push(line);
     }
-    payload = `${lines.join('\r\n')}\r\n`;
+    outputs.push({ name: `${base}.ASCII`, data: `${lines.join('\r\n')}\r\n` });
   } else if (format === 'ABBREV_ASCII') {
     const lines: string[] = [];
     for (const frame of accepted) {
@@ -86,7 +89,7 @@ function main(): void {
       if (!layout) continue;
       lines.push(...encodeAbbrevLines(frame, layout, tables));
     }
-    payload = `${lines.join('\r\n')}\r\n`;
+    outputs.push({ name: `${base}.ABBREV_ASCII`, data: `${lines.join('\r\n')}\r\n` });
   } else if (format === 'KML') {
     const points: KmlPoint[] = [];
     for (const frame of accepted) {
@@ -105,19 +108,24 @@ function main(): void {
         positionType: String(get('position_type')?.text),
       });
     }
-    payload = buildKml(points, { name: `${base}_BESTPOS` });
+    outputs.push({ name: `${base}_BESTPOS.KML`, data: buildKml(points, { name: `${base}_BESTPOS` }) });
   } else if (format === 'RINEX21') {
-    payload = buildRinex21Obs(accepted, tables, { builtAt: at });
+    outputs.push({ name: `${base}.${yy}O`, data: buildRinex21Obs(accepted, tables, { builtAt: at }) });
+    outputs.push({ name: `${base}.${yy}N`, data: buildRinex21Nav(accepted, tables, { builtAt: at }) });
+    outputs.push({ name: `${base}.${yy}G`, data: buildRinex21GloNav({ builtAt: at }) });
+  } else if (format.startsWith('RINEX30')) {
+    const version = `${format.slice(6, 7)}.${format.slice(7)}` as Rinex3Version;
+    outputs.push({ name: `${base}.${yy}O`, data: buildRinex3Obs(accepted, tables, version, { builtAt: at }) });
   } else {
-    payload = encodeBinaryCapture(accepted).bytes;
+    outputs.push({ name: `${base}.BINARY`, data: encodeBinaryCapture(accepted).bytes });
   }
 
-  // KML names the file after the message it maps (`<base>_BESTPOS.KML`); RINEX uses `<base>.<yy>O`;
-  // everything else is named after the input file.
-  const outputBase = format === 'KML' ? `${base}_BESTPOS` : base;
-  const extension = format === 'RINEX21' ? `${String(at.getFullYear() % 100).padStart(2, '0')}O` : formatExtension(format);
-  const outputFile = join(formatDir, `${outputBase}.${extension}`);
-  writeFileSync(outputFile, payload);
+  const written: string[] = [];
+  for (const output of outputs) {
+    const file = join(formatDir, output.name);
+    writeFileSync(file, output.data);
+    written.push(file);
+  }
 
   // Per-log record counts for the summary table.
   const counts = new Map<number, { name: string; source: number; output: number }>();
@@ -145,7 +153,7 @@ function main(): void {
 
   console.log(`input     : ${inputPath} (${inputBytes.byteLength} bytes, ${all.length} records)`);
   console.log(`format    : ${format}`);
-  console.log(`output    : ${outputFile} (${statSync(outputFile).size} bytes)`);
+  for (const file of written) console.log(`output    : ${file} (${statSync(file).size} bytes)`);
   console.log(`summary   : ${join(convertedDir, `Summary_${base}.txt`)}`);
   console.log(`dropped   : ${all.length - accepted.length} (bad CRC)`);
 }

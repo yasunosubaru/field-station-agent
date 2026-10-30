@@ -37,6 +37,10 @@ const FORMAT_DIRECTORY: Record<string, string> = {
   BINARY: 'BINARY',
   KML: 'KML',
   RINEX21: 'RINEXv2_1',
+  RINEX301: 'RINEXv3_01',
+  RINEX302: 'RINEXv3_02',
+  RINEX303: 'RINEXv3_03',
+  RINEX304: 'RINEXv3_04',
 };
 
 const FORMAT_EXTENSION: Record<string, string> = {
@@ -45,6 +49,10 @@ const FORMAT_EXTENSION: Record<string, string> = {
   BINARY: 'BINARY',
   KML: 'KML',
   RINEX21: '26O',
+  RINEX301: '26O',
+  RINEX302: '26O',
+  RINEX303: '26O',
+  RINEX304: '26O',
 };
 
 export function formatDirectory(formatName: string): string {
