@@ -39,3 +39,17 @@ node 04_重实现/packages/cli/src/offline.ts com8.bin --limit 3
 这些抓包同时钉死了三条原先的未解项，见 `03_分析/00_通信协议与调度核心.md §9`：
 `SENDHEX` 的真实负载必须是十六进制串、`_28`/`_29` 是套件自选的虚拟日志组、
 `FILEROTATECONFIG` 的 `MaxFileSize` 单位是 MB（且不支持 OEM729）。
+
+## Graph 工程（`graph/project/`）
+
+用 Playwright 驱动原版 `Graph.exe`，拿上面那份 `convert/clean-9600.gps` 建出来的真实工程：
+
+| 文件 | 内容 |
+|---|---|
+| `clean.gpf` | 工程文件（`PageRoute`/`DataSummary`/`fileTimeline`/`updatedProjSummary`） |
+| `DataSummary.json` | `DataInfo` + `PlotSummary`（应用自己算的图表清单）+ `Messages` |
+| `GOS/position.db`、`GOS/events.db` | SQLCipher 库（`aes128cbc`），密钥派生见 `06_Graph应用.md §9 U1` |
+
+**要注意的坑**：工程目录与日志路径必须是**纯 ASCII**。同一份日志放在含中文/空格的路径下，
+`File Validation` 会永远停在 0%（`graphing` 子进程无任何响应）；换到 `%TEMP%\gs` 后立刻
+96%→100%。详见 `03_分析/06_Graph应用.md §9.1`。

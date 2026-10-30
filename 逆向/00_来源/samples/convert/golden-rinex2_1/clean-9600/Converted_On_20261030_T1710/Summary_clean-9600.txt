@@ -1,0 +1,38 @@
+
+The following conversion was completed at 2026-10-30T17:10:08.862Z
+
+
+Input File was clean-9600.gps, 270864 bytes from H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\convert
+
+
+Converted files were output to H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\convert\golden-rinex2_1\clean-9600
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2442, 463097.35
+      Finish time: 2442, 463102.3
+
+    UTC Time:
+      Start time : 2026-10-30T08:38:17.350Z
+      Finish time: 2026-10-30T08:38:22.300Z
+
+    Total Duration: 00:00:05
+      
+
+The following 6 log(s) were converted successfully to RINEXv2_1 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+      42 | BESTPOS                       |       5 |       5 |
+     963 | HWMONITOR                     |       1 |       0 |
+      72 | PORTSTATS                     |       1 |       0 |
+      43 | RANGE                         |     100 |     100 |
+      41 | RAWEPHEM                      |       8 |       8 |
+      93 | RXSTATUS                      |       4 |       0 |
+
+
+
+1672 bytes could not be converted.
+

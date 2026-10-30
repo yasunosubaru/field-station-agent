@@ -905,7 +905,56 @@ GitLab job 变量、`FROGBOT_ACCESS_TOKEN`（JWT）、`ART_DOCKER_PASS`、`ARTI_
 | U7 | `fr` 只有 69 键，是"未翻译完"还是"法语版被裁" | `[观察]` 69 vs 329 | 比对官方法语安装包；或看 GitLab 历史（`!838`） |
 | U8 | `nonCoreAppData` 的 `version:"2.0.0"` | 与 `package.json` 2.11.0 冲突 | 看 NAS 主程序怎么用这个字段（是"最低版本"还是"当前版本"）；`updateApplication.js` 的比较逻辑未读完 |
 | U9 | 3D 地图是否真的启用 | 有 `REF_3D="EPSG:4978"`、`MAP_CONTRAINTS_3D_ABOVE`、`is2D` 参数，但三处 `LuciadMap` 调用全部传 `is2D` 缺省 `true` | 找到传 `is2D={false}` 的调用点（若不存在，3D 是死代码） |
-| U10 | `.jsc` 与 Electron 41 的绑定关系 | loader 会改写 flag hash，说明字节码与 V8 版本强耦合 | 用 Electron 41.x 对应 V8 版本重打包验证；换 Electron 版本必须重新编译 |
+| U10 | `.jsc` 与 Electron 41 的绑定关系 | loader 会改写 flag hash，说明字节码与 V8 版本强耦合 | 用 Electron 41.x 对应 V8 版本重打包验证；换 El
+
+### 9.1 真机操控结果（2026-10-30，Playwright 驱动原版 Graph.exe）
+
+结论先行：**Graph 可以被完整驱动，而且它的项目是"能造出来的"**；此前的"校验卡在 0%"不是文件问题，
+是**路径问题**。
+
+驱动方式（不需要改安装目录、不需要 UI 录制）：
+
+```js
+const { _electron } = require('C:/Users/<user>/AppData/Roaming/npm/node_modules/playwright');
+const app = await _electron.launch({ executablePath: '…\\Graph\\Graph.exe' });
+const page = await app.firstWindow();
+// 之后全部走 DOM：page.getByRole('button', { name: 'New Project' }).click() …
+// 原生"选择文件夹/打开文件"对话框用坐标点掉（Enter 接受当前目录 / 粘贴完整路径 + Enter）
+```
+
+`window.graphing.onGraphingResponse(cb)` 能收到 graphing 子进程的每一条 JSON，这是判定校验进度的正规口子。
+
+**A/B 实验（同一份 270 864 B 的日志，只改路径）**
+
+| 项目路径 | 结果 |
+|---|---|
+| `H:\…\野外台站智能体\逆向\00_来源\samples\graph`（含中文与空格） | `File Validation` 停在 **0%**，180 s 无变化，`graphing` 子进程**一条响应都没有**，也未派生进程 |
+| `C:\Users\<user>\AppData\Local\Temp\gs`（纯 ASCII） | 立刻 `Percentage: 96 → 100`，`Finish` 可点，进入 `#/overview` |
+
+→ **Graph 的校验/建库链路处理不了非 ASCII 路径**（推断是原生侧按 ANSI 路径传参）。这是本子系统
+新增的确定性缺陷，复现时若路径含中文，必须先把工程与日志放到纯 ASCII 目录。
+
+**产物（已归档到 `00_来源/samples/graph/project/`）**
+
+```
+clean.gpf            4 640 B   工程文件（PageRoute/DataSummary/projectDirectory/fileTimeline/updatedProjSummary）
+DataSummary.json     1 438 B   DataInfo + PlotSummary + ReceiverInfo + Messages
+GOS\position.db     24 576 B   SQLCipher（aes128cbc，密钥见 U1）
+GOS\events.db       24 576 B   同上
+```
+
+**同一份日志触发的图表清单**（应用自己算的 `PlotSummary`，可直接对照我们要复现的 16 图）：
+
+| 分组 | 图表 | 数据来源 |
+|---|---|---|
+| `PVT / GNSS` | 2D Trajectory、Height、Position SD、Position Status、Position Type、Solution Statistics | BESTPOS |
+| `Position View` | 地图（1 条轨迹） | BESTPOS |
+| `Receiver_Status` | CPU Usage、HW Monitor Status、Receiver Status | BESTPOS / RANGE / HWMONITOR / RXSTATUS |
+| `Tracking_Measurements / Primary` | GNSS Signal Strength、Satellites and Signals、Tracking Time | RANGE |
+
+即**"16 图"是上限，实际出哪几张取决于日志里有哪些消息**——这一点直接影响重实现的图表注册方式
+（按 `PlotSummary` 动态建，而不是固定 16 个）。
+ectron 版本必须重新编译 |
 
 ---
 

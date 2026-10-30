@@ -1,0 +1,16 @@
+
+clean-9600.gps: Conversion started
+clean-9600.gps: Conversion Completed
+There were 6  ABBREV_ASCII log types converted:
+---------+-------------------------------+-------------------+
+         |                               |  INPUT  | OUTPUT  |
+         |                               |---------+---------+
+      Id | Name                          |  count  |ABB_ASCII|
+---------+-------------------------------+---------+---------+
+      42 | BESTPOS                       |       5 |       5 |
+     963 | HWMONITOR                     |       1 |       1 |
+      72 | PORTSTATS                     |       1 |       1 |
+      43 | RANGE                         |     100 |     100 |
+      41 | RAWEPHEM                      |       8 |       8 |
+      93 | RXSTATUS                      |       4 |       4 |
+---------+-------------------------------+-------------------+

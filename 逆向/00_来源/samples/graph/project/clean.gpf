@@ -1,0 +1,196 @@
+{
+  "PageRoute": "/process",
+  "DataSummary": "C:\\Users\\SunCh\\AppData\\Local\\Temp\\gs\\clean\\DataSummary.json",
+  "projectDirectory": "C:\\Users\\SunCh\\AppData\\Local\\Temp\\gs\\clean",
+  "filePath": "C:\\Users\\SunCh\\AppData\\Local\\Temp\\gs\\clean.gps",
+  "fileTimeline": {
+    "StartTime": 1477384697350,
+    "EndTime": 1477384702300
+  },
+  "updatedProjSummary": {
+    "DataInfo": {
+      "Duration": 4950,
+      "EndTime": 1477384702300,
+      "FileSize": 270864,
+      "StartTime": 1477384697350
+    },
+    "ReceiverInfo": {
+      "signalinfo": null,
+      "version": null
+    },
+    "Messages": {
+      "BESTPOS": 5,
+      "HWMONITOR": 1,
+      "PORTSTATS": 1,
+      "RANGE": 100,
+      "RAWEPHEM": 8,
+      "RXSTATUS": 4
+    },
+    "PlotSummary": {
+      "PVT": {
+        "GNSS": {
+          "2D Trajectory": {
+            "BESTPOS": 1
+          },
+          "Height": {
+            "BESTPOS": 1
+          },
+          "Position SD": {
+            "BESTPOS": 1
+          },
+          "Position Status": {
+            "BESTPOS": 1
+          },
+          "Position Type": {
+            "BESTPOS": 1
+          },
+          "Solution Statistics": {
+            "BESTPOS": 1
+          }
+        },
+        "count": 5
+      },
+      "Position View": {
+        "GNSS": {
+          "1": "BESTPOS"
+        },
+        "count": 1
+      },
+      "Receiver_Status": {
+        "CPU Usage": {
+          "BESTPOS": 1,
+          "RANGE": 19
+        },
+        "HW Monitor Status": {
+          "HWMONITOR": 1
+        },
+        "Receiver Status": {
+          "BESTPOS": 2,
+          "RANGE": 20,
+          "RXSTATUS": 1
+        },
+        "count": 10
+      },
+      "Tracking_Measurements": {
+        "Primary": {
+          "GNSS Signal Strength": {
+            "RANGE": 1
+          },
+          "Satellites and Signals": {
+            "RANGE": 1
+          },
+          "Tracking Time": {
+            "RANGE": 1
+          }
+        },
+        "count": 100
+      }
+    }
+  },
+  "GOSMetaPath": "\\\\?\\C:\\Users\\SunCh\\AppData\\Local\\Temp\\gs\\clean\\GOS",
+  "InputValidation": 0,
+  "Percentage": 100,
+  "TotalLogInstances": 119,
+  "ValidationCode": 0,
+  "api": "FileValidation",
+  "filename": "clean.gps",
+  "currentTimeStamp": 0,
+  "isPlaying": false,
+  "editedStart": 0,
+  "editedEnd": 0,
+  "PersistenceInfo": {
+    "OverviewMap": {
+      "LegendInfo": {
+        "Single Point": "#3C4AE7"
+      }
+    },
+    "PVT": {
+      "chartInfo": {
+        "positionmode": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "positionvalid": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "positionsd": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "solutionstatistic": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "trajectory": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "height": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        }
+      },
+      "dynamicTilesInfo": {}
+    },
+    "Receiver Status": {
+      "chartInfo": {
+        "rxstatus": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "cpuusage": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "hwmonitor": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        }
+      },
+      "dynamicTilesInfo": {}
+    },
+    "Tracking & Measurements": {
+      "chartInfo": {
+        "cno": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "satellitestracked": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        },
+        "locktime": {
+          "labelState": [],
+          "groupLabelState": "",
+          "showPlot": true,
+          "showAllLegneds": true
+        }
+      },
+      "dynamicTilesInfo": {}
+    }
+  },
+  "checksum": "8827df0461130c6233b5a9e0a5b983289908778c129f18c1bc0d75539e6e3fff"
+}

@@ -1,0 +1,80 @@
+{
+  "DataInfo": {
+    "Duration": 4950,
+    "EndTime": 1477384702300,
+    "FileSize": 270864,
+    "StartTime": 1477384697350
+  },
+  "PlotSummary": {
+    "PVT": {
+      "GNSS": {
+        "2D Trajectory": {
+          "BESTPOS": 1
+        },
+        "Height": {
+          "BESTPOS": 1
+        },
+        "Position SD": {
+          "BESTPOS": 1
+        },
+        "Position Status": {
+          "BESTPOS": 1
+        },
+        "Position Type": {
+          "BESTPOS": 1
+        },
+        "Solution Statistics": {
+          "BESTPOS": 1
+        }
+      },
+      "count": 5
+    },
+    "Position View": {
+      "GNSS": {
+        "1": "BESTPOS"
+      },
+      "count": 1
+    },
+    "Receiver_Status": {
+      "CPU Usage": {
+        "BESTPOS": 1,
+        "RANGE": 19
+      },
+      "HW Monitor Status": {
+        "HWMONITOR": 1
+      },
+      "Receiver Status": {
+        "BESTPOS": 2,
+        "RANGE": 20,
+        "RXSTATUS": 1
+      },
+      "count": 10
+    },
+    "Tracking_Measurements": {
+      "Primary": {
+        "GNSS Signal Strength": {
+          "RANGE": 2
+        },
+        "Satellites and Signals": {
+          "RANGE": 2
+        },
+        "Tracking Time": {
+          "RANGE": 2
+        }
+      },
+      "count": 100
+    }
+  },
+  "ReceiverInfo": {
+    "signalinfo": null,
+    "version": null
+  },
+  "Messages": {
+    "BESTPOS": 5,
+    "HWMONITOR": 1,
+    "PORTSTATS": 1,
+    "RANGE": 100,
+    "RAWEPHEM": 8,
+    "RXSTATUS": 4
+  }
+}
