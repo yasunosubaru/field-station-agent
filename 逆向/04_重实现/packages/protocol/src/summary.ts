@@ -36,6 +36,7 @@ const FORMAT_DIRECTORY: Record<string, string> = {
   'ABBREV_ASCII': 'ABBREV_ASCII',
   BINARY: 'BINARY',
   KML: 'KML',
+  RINEX21: 'RINEXv2_1',
 };
 
 const FORMAT_EXTENSION: Record<string, string> = {
@@ -43,6 +44,7 @@ const FORMAT_EXTENSION: Record<string, string> = {
   'ABBREV_ASCII': 'ABBREV_ASCII',
   BINARY: 'BINARY',
   KML: 'KML',
+  RINEX21: '26O',
 };
 
 export function formatDirectory(formatName: string): string {

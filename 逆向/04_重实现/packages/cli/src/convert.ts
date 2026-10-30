@@ -19,13 +19,16 @@ import { fileURLToPath } from 'node:url';
 import { SbfDeframer, type SbfFrame } from '../../protocol/src/framing.ts';
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
 import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbrev-log.ts';
+import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
+import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
 import { buildSummary, formatDirectory, formatExtension } from '../../protocol/src/summary.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
+import { decodeEdie } from '../../protocol/src/edie.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA = resolve(here, '..', '..', 'protocol', 'data');
 
-const FORMATS = new Set(['ASCII', 'ABBREV_ASCII', 'BINARY']);
+const FORMATS = new Set(['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21']);
 
 function stamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -84,11 +87,36 @@ function main(): void {
       lines.push(...encodeAbbrevLines(frame, layout, tables));
     }
     payload = `${lines.join('\r\n')}\r\n`;
+  } else if (format === 'KML') {
+    const points: KmlPoint[] = [];
+    for (const frame of accepted) {
+      if (frame.header.messageId !== 42) continue; // BESTPOS is the only position log Convert maps
+      const values = decodeEdie(frame.payload, tables.messages['42'], tables);
+      const get = (path: string) => values.find((value) => value.path === path);
+      points.push({
+        week: frame.header.week,
+        milliseconds: frame.header.milliseconds,
+        latitude: Number(get('latitude')?.value),
+        longitude: Number(get('longitude')?.value),
+        height: Number(get('orthometric_height')?.value),
+        latitudeDeviation: Number(get('latitude_std_dev')?.value),
+        longitudeDeviation: Number(get('longitude_std_dev')?.value),
+        heightDeviation: Number(get('height_std_dev')?.value),
+        positionType: String(get('position_type')?.text),
+      });
+    }
+    payload = buildKml(points, { name: `${base}_BESTPOS` });
+  } else if (format === 'RINEX21') {
+    payload = buildRinex21Obs(accepted, tables, { builtAt: at });
   } else {
     payload = encodeBinaryCapture(accepted).bytes;
   }
 
-  const outputFile = join(formatDir, `${base}.${formatExtension(format)}`);
+  // KML names the file after the message it maps (`<base>_BESTPOS.KML`); RINEX uses `<base>.<yy>O`;
+  // everything else is named after the input file.
+  const outputBase = format === 'KML' ? `${base}_BESTPOS` : base;
+  const extension = format === 'RINEX21' ? `${String(at.getFullYear() % 100).padStart(2, '0')}O` : formatExtension(format);
+  const outputFile = join(formatDir, `${outputBase}.${extension}`);
   writeFileSync(outputFile, payload);
 
   // Per-log record counts for the summary table.
@@ -107,7 +135,7 @@ function main(): void {
       bytes: statSync(inputPath).size,
       inputDirectory: dirname(inputPath),
       outputDirectory: join(outputRoot, base),
-      formatName: format,
+      formatName: formatDirectory(format),
       frames: accepted,
       completedAt: at,
     },
