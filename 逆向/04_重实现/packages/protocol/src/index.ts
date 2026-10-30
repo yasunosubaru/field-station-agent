@@ -4,5 +4,7 @@ export * from './framing.ts';
 export * from './ascii.ts';
 export * from './command.ts';
 export * from './decode.ts';
+export * from './edie.ts';
+export * from './ascii-diff.ts';
 export * from './time.ts';
 export * from './status-fields.ts';
