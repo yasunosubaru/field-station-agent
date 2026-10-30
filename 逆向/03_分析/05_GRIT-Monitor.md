@@ -1163,3 +1163,34 @@ plotView:"SUPERWIDEBAND", stepSize:{…}}` `[观察] spectrumViewer.js:19-51`。
 本次**没有**拿到 NovAtel OEM7 手册 PDF 中 `ITPSDFINAL / ITPSDDETECT / ITDETECTSTATUS /
 ITPROGFILTBANK / ITBANDPASSBANK` 的字段表，因此 §5 的单位结论只能停在
 "代码观察 + 单位一致性推断"，见 §9 第 1–2 条。
+
+---
+
+## 11. 真机一轮（2026-10-31 12:05 UTC，OEM729 / OM7MR1002RN0000）
+
+第一次把 GRIT 跑到真接收机上并留证：套件 2.11.0 → 应用启动器 → **GRIT Monitor** → Connect
+（COM12）→ Open。截图 `00_来源/samples/grit/live-20261031/grit-dashboard.png`。
+
+| 区域 | 实测显示 |
+|---|---|
+| Positioning | Good / `Single`，30.5399718°, 114.3528004°, Height (MSL) 63.79 m，Tracked **25**，Used **15** |
+| Device | **Warning**，OEM729-2.03，CPU 24%，Interference **Jamming**，Time (UTC) 12:05:33 |
+| 警告横幅 | `Interference is being detected at 1270Mhz.` / `Began today at 12:05:32 UTC` |
+| Spectrum Viewer | 双窗（L5/L2/BDS B2B + L1），−40…−130 dB，1270 MHz 竖线 + 干扰图标；右轴 GPS/BDS/QZSS/SBAS |
+| Signal Matrix | GPS/BDS/QZSS/LBAND/SBAS × L5/L2/L1，绿/橙/红/空心四态 |
+| Position Overview | Map / Satellite 页签、`Add Point of Interest`、Timeline |
+
+同一时刻用本仓库解码器读 USB2（`com11-live-8s.bin`，8 s / 487 830 B）：
+
+```
+RANGE:168  BESTPOS:9  RXSTATUS:3
+BESTPOS: SOL_COMPUTED SINGLE num_svs=25 num_soln_svs=15 lat=30.539972065 lon=114.352801038
+RXSTATUS: rx_error=00000000  status_words.count=5
+```
+
+`num_svs / num_soln_svs` 与界面 Tracked 25 / Used 15 逐一对应，`rx_error=0` 对应 Device 的
+Good（警告只来自干扰，不是接收机错误）。回归用例：
+`packages/protocol/test/grit-live.test.ts`。
+
+**没覆盖到的**：干扰频率 1270 MHz 来自 GRIT 自己的频谱采集通道，这次抓包没有
+`ITDETECTSTATUS`（该端口未订阅），要复现干扰判定必须同时录该日志与频谱数据。
