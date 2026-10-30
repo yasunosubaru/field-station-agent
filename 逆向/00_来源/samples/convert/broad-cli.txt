@@ -1,0 +1,23 @@
+
+broad-clean.gps: Conversion started
+broad-clean.gps: Conversion Completed
+There were 13  ASCII log types converted:
+---------+-------------------------------+-------------------+
+         |                               |  INPUT  | OUTPUT  |
+         |                               |---------+---------+
+      Id | Name                          |  count  | ASCII   |
+---------+-------------------------------+---------+---------+
+      42 | BESTPOS                       |      60 |      60 |
+    1194 | BESTSATS                      |      60 |      60 |
+      99 | BESTVEL                       |      60 |      60 |
+     963 | HWMONITOR                     |      65 |      65 |
+    2065 | ITDETECTSTATUS                |      60 |      60 |
+      72 | PORTSTATS                     |      18 |      18 |
+      43 | RANGE                         |    1199 |    1199 |
+      41 | RAWEPHEM                      |      18 |      18 |
+      93 | RXSTATUS                      |      22 |      22 |
+    1043 | SATVIS2                       |      40 |      40 |
+     101 | TIME                          |      60 |      60 |
+      83 | TRACKSTAT                     |      59 |      59 |
+       0 | UNKNOWN                       |    2236 |      -- |
+---------+-------------------------------+-------------------+

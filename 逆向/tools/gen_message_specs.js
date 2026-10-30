@@ -65,6 +65,34 @@ function resolveEnum(ref) {
 
 const specs = {};
 const problems = [];
+// Layout width per type, used to reject fields that overlap the previous one. `parsers-fields.csv`
+// mixes a few fields in from other logs (BESTPOS carries `sentenceTerminator` at offset 4, which
+// sits inside `positionType`, and `idleTime` at 12, which is HWMONITOR's field): a field whose
+// offset falls before the end of the previous field cannot belong to this message.
+const TYPE_SIZE = {
+  ENUM: 4, UINT: 4, INT: 4, ULONG: 4, LONG: 4, FLOAT: 4, DOUBLE: 8,
+  UCHAR: 1, CHAR: 1, USHORT: 2, SHORT: 2, STRING_4: 4,
+};
+const extents = new Map();
+const dropped = [];
+
+// Messages whose rows describe block-relative or dynamic offsets (notes mention 所在重复块 / 动态 /
+// 绝对偏移) cannot be validated with a linear "offset must not go backwards" rule: their offsets are
+// relative to a block, not to the payload. Only the plain payload-offset messages get the filter.
+const BLOCK_RELATIVE = /所在重复块|重复块|动态/;
+const filteredMessages = new Set();
+{
+  const byMessage = new Map();
+  for (let r = 1; r < csv.length; r++) {
+    const row = csv[r];
+    if (!row || row.length < 4) continue;
+    const msgId = row[idx['msgId']]?.trim();
+    if (!msgId) continue;
+    const notes = row[idx['notes']]?.trim() ?? '';
+    byMessage.set(msgId, (byMessage.get(msgId) ?? false) || BLOCK_RELATIVE.test(notes));
+  }
+  for (const [msgId, blockRelative] of byMessage) if (!blockRelative) filteredMessages.add(msgId);
+}
 for (let r = 1; r < csv.length; r++) {
   const row = csv[r];
   if (!row || row.length < 4) continue;
@@ -82,6 +110,22 @@ for (let r = 1; r < csv.length; r++) {
 
   const spec = (specs[msgId] ??= { name: msgName, repeat: false, fields: {} });
   if (notes.includes('重复块')) spec.repeat = true;
+
+  const extent = extents.get(msgId) ?? { end: -1 };
+  const size = TYPE_SIZE[type] ?? 0;
+  if (filteredMessages.has(msgId)) {
+    if (Object.prototype.hasOwnProperty.call(spec.fields, field)) {
+      dropped.push(`${msgId}/${field}: duplicate name`);
+      continue;
+    }
+    if (offset < extent.end) {
+      dropped.push(`${msgId}/${field}@${offset} < previous end ${extent.end}`);
+      continue;
+    }
+    extent.end = Math.max(extent.end, offset + size);
+    extents.set(msgId, extent);
+  }
+
   const entry = { type, offset };
   const k = scale === '' || scale === undefined ? 1 : Number(scale);
   if (Number.isFinite(k) && k !== 1) entry.scale = k;
@@ -97,6 +141,7 @@ const fieldCount = ids.reduce((n, id) => n + Object.keys(specs[id].fields).lengt
 console.log(`message-specs.json: ${ids.length} messages, ${fieldCount} fields, ${fs.statSync(out).size} bytes`);
 console.log('repeated-block messages: ' + ids.filter((id) => specs[id].repeat).length);
 if (problems.length) console.log('bad offsets: ' + JSON.stringify(problems.slice(0, 5)));
+if (dropped.length) console.log('dropped overlapping/duplicate fields: ' + dropped.length + '  e.g. ' + dropped.slice(0, 6).join(' | '));
 
 // sanity: BESTPOS should be complete and scaled 1
 const bestpos = specs['42'];

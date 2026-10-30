@@ -1,0 +1,45 @@
+
+The following conversion was completed at 2026-10-30T18:00:02.289Z
+
+
+Input File was broad-clean.gps, 3199316 bytes from H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\convert
+
+
+Converted files were output to H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\convert\golden-broad-ascii\broad-clean
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2442, 467940
+      Finish time: 2442, 468009
+
+    UTC Time:
+      Start time : 2026-10-30T09:59:00.000Z
+      Finish time: 2026-10-30T10:00:09.000Z
+
+    Total Duration: 00:01:09
+      
+
+The following 13 log(s) were converted successfully to ASCII 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+      42 | BESTPOS                       |      60 |      60 |
+    1194 | BESTSATS                      |      60 |      60 |
+      99 | BESTVEL                       |      60 |      60 |
+     963 | HWMONITOR                     |      65 |      65 |
+    2065 | ITDETECTSTATUS                |      60 |      60 |
+      72 | PORTSTATS                     |      18 |      18 |
+      43 | RANGE                         |    1199 |    1199 |
+      41 | RAWEPHEM                      |      18 |      18 |
+      93 | RXSTATUS                      |      22 |      22 |
+    1043 | SATVIS2                       |      40 |      40 |
+     101 | TIME                          |      60 |      60 |
+      83 | TRACKSTAT                     |      59 |      59 |
+       0 | UNKNOWN                       |    2236 |       0 |
+
+
+
+
+
