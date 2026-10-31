@@ -15,6 +15,8 @@ import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { CONVERT_FORMATS, convertCapture, FORMAT_LABELS, FORMAT_NOTES, isConvertFormat, type ConvertFormat } from './convert.ts';
 import { loadCapture, tables } from './capture.ts';
+import { LiveLink, type LiveTarget } from './live.ts';
+import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, summarizeLogs } from './logs.ts';
 import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
 import { GRAPH_CSV_DIR, graphData, listGraphCsv } from './graphcsv.ts';
@@ -23,6 +25,7 @@ import {
   SAMPLES_DIR,
   REPO_DIR,
   WEB_DIR,
+  PROTOCOL_DATA_DIR,
   listCaptures,
   resolveCapture,
 } from './paths.ts';
@@ -157,6 +160,66 @@ function formatOptions() {
   }));
 }
 
+/** One live session for the whole server process; the UI opens it from the Terminal page. */
+let liveInstance: LiveLink | undefined;
+function liveLink(): LiveLink {
+  if (!liveInstance) liveInstance = new LiveLink(PROTOCOL_DATA_DIR);
+  return liveInstance;
+}
+
+/**
+ * `serialport` is optional (the repo installs nothing by default), so the opener is resolved at
+ * connect time and its absence is reported as a plain error instead of a crash.
+ */
+async function serialOpener(): Promise<SerialOpener | undefined> {
+  try {
+    const name = 'serialport';
+    const loaded = (await import(name)) as {
+      SerialPort?: new (options: Record<string, unknown>) => never;
+      default?: { SerialPort?: new (options: Record<string, unknown>) => never };
+    };
+    const Port = loaded.SerialPort ?? loaded.default?.SerialPort;
+    if (!Port) return undefined;
+    return async (path, options) => new Port({ path, autoOpen: true, ...options }) as never;
+  } catch {
+    return undefined;
+  }
+}
+
+async function handleLiveConnect(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'POST') throw new HttpError(405, '/api/live/connect 只接受 POST');
+  const body = await readJsonBody(req);
+  const kind = String(body.kind ?? 'tcp').toLowerCase();
+  if (kind !== 'serial' && kind !== 'tcp' && kind !== 'udp') {
+    throw new HttpError(400, 'kind 必须是 serial / tcp / udp');
+  }
+  const target: LiveTarget = { kind };
+  if (kind === 'serial') {
+    if (typeof body.path !== 'string' || body.path.trim() === '') throw new HttpError(400, '串口需要 path（COM8）');
+    target.path = body.path.trim();
+    if (body.baud !== undefined) target.baud = integer(String(body.baud), 115200, 300, 4_000_000, 'baud');
+  } else {
+    target.host = typeof body.host === 'string' && body.host ? body.host : '127.0.0.1';
+    target.port = integer(body.port === undefined ? 3001 : String(body.port), 3001, 1, 65535, 'port');
+  }
+  try {
+    const status = await liveLink().connect(target, await serialOpener());
+    sendJson(res, 200, { ok: true, ...status }, method);
+  } catch (error) {
+    throw new HttpError(400, error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function handleLiveCommand(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'POST') throw new HttpError(405, '/api/live/command 只接受 POST');
+  const body = await readJsonBody(req);
+  const line = typeof body.line === 'string' ? body.line : '';
+  if (!line.trim()) throw new HttpError(400, 'line 不能为空');
+  // 200 with `ok: false` for "not connected": the Terminal page shows the error, it is not a
+  // malformed request.
+  sendJson(res, 200, { ok: true, ...liveLink().send(line) }, method);
+}
+
 function health() {
   return {
     ok: true,
@@ -180,6 +243,11 @@ function health() {
       '/api/playback/export',
       '/api/graph/files',
       '/api/graph/data',
+      '/api/live/status',
+      '/api/live/logs',
+      '/api/live/connect',
+      '/api/live/disconnect',
+      '/api/live/command',
     ],
   };
 }
@@ -560,6 +628,30 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/records') {
         handleRecords(url, res, method);
+        return;
+      }
+      if (path === '/api/live/status') {
+        sendJson(res, 200, { ok: true, ...liveLink().status() }, method);
+        return;
+      }
+      if (path === '/api/live/logs') {
+        const after = integer(url.searchParams.get('after'), 0, 0, 10_000_000, 'after');
+        const page = liveLink().logs(after);
+        sendJson(res, 200, { ok: true, ...page }, method);
+        return;
+      }
+      if (path === '/api/live/connect') {
+        await handleLiveConnect(req, res, method);
+        return;
+      }
+      if (path === '/api/live/disconnect') {
+        if (method !== 'POST') throw new HttpError(405, '/api/live/disconnect 只接受 POST');
+        const status = await liveLink().disconnect();
+        sendJson(res, 200, { ok: true, ...status }, method);
+        return;
+      }
+      if (path === '/api/live/command') {
+        await handleLiveCommand(req, res, method);
         return;
       }
       if (path === '/api/playback/info') {

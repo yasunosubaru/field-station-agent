@@ -83,7 +83,17 @@ const MENU = [
   { key: 'status', label: 'Status', icon: 'status', caret: false, wired: true },
   { key: 'configuration', label: 'Configuration', icon: 'configuration', caret: false, wired: false },
   { key: 'settings', label: 'Settings', icon: 'settings', caret: true, wired: false },
-  { key: 'tools', label: 'Tools', icon: 'tools', caret: true, wired: false },
+  {
+    key: 'tools',
+    label: 'Tools',
+    icon: 'tools',
+    caret: true,
+    wired: true,
+    items: [
+      { key: 'terminal', label: 'Terminal', wired: true },
+      { key: 'events', label: 'Events', wired: false },
+    ],
+  },
   { key: 'device', label: 'Device', icon: 'device', caret: true, wired: false },
 ];
 
@@ -280,15 +290,25 @@ function menuBar() {
   const items = MENU.map((item) => {
     const off = item.wired ? '' : ' is-off';
     const title = item.wired ? `${item.label} — this page` : `${item.label}: ${UNWIRED_NOTE}`;
-    return (
-      `<button type="button" class="mg-menu-btn${off}${item.wired ? ' is-current' : ''}" ` +
+    const button =
+      `<button type="button" class="mg-menu-btn${off}${item.wired && !item.items ? ' is-current' : ''}" ` +
       `data-menu="${esc(item.key)}" role="menuitem" title="${esc(title)}" ` +
-      `${item.wired ? 'aria-current="page"' : 'aria-disabled="true" disabled'}>` +
+      `${item.wired ? '' : 'aria-disabled="true" disabled'}>` +
       `<span class="mg-menu-icon" aria-hidden="true">${ICONS[item.icon] ?? ''}</span>` +
       `<span class="mg-menu-text">${esc(item.label)}</span>` +
       (item.caret ? '<span class="mg-menu-caret" aria-hidden="true"></span>' : '') +
-      '</button>'
-    );
+      '</button>';
+    if (!item.items) return button;
+    const entries = item.items
+      .map(
+        (entry) =>
+          `<button type="button" class="mg-drop-item${entry.wired ? '' : ' is-off'}" ` +
+          `data-menu-item="${esc(entry.key)}" role="menuitem" ` +
+          `${entry.wired ? '' : `aria-disabled="true" disabled title="${esc(UNWIRED_NOTE)}"`}>` +
+          `${esc(entry.label)}</button>`,
+      )
+      .join('');
+    return `<span class="mg-drop-host">${button}<span class="mg-drop" data-drop="${esc(item.key)}" hidden>${entries}</span></span>`;
   }).join('');
   return (
     '<div class="mg-menubar" role="menubar" aria-label="Device pages">' +
@@ -468,7 +488,33 @@ function template() {
     dashboard the original shows for a connected receiver.</p>
 </div>
 
-<div class="notice mg-notice" data-el="error" hidden></div>`;
+<div class="notice mg-notice" data-el="error" hidden></div>
+
+<div class="mg-terminal" data-el="terminal" role="dialog" aria-label="Terminal" hidden>
+  <div class="mg-term-head">
+    <span class="mg-term-title">Terminal</span>
+    <span class="mg-term-status" data-term="status">Not connected</span>
+    <button type="button" class="mg-term-close" data-term="close" aria-label="Close">×</button>
+  </div>
+  <div class="mg-term-rows">
+    <label class="mg-term-field"><span>Serial</span>
+      <input type="text" data-term="path" placeholder="COM8" spellcheck="false"></label>
+    <label class="mg-term-field"><span>Baud</span>
+      <input type="text" data-term="baud" value="115200" spellcheck="false"></label>
+    <label class="mg-term-field"><span>or TCP</span>
+      <input type="text" data-term="host" placeholder="127.0.0.1" spellcheck="false"></label>
+    <label class="mg-term-field"><span>Port</span>
+      <input type="text" data-term="port" placeholder="3001" spellcheck="false"></label>
+    <button type="button" class="mg-term-btn" data-term="connect">Connect</button>
+    <button type="button" class="mg-term-btn" data-term="disconnect">Disconnect</button>
+  </div>
+  <div class="mg-term-output" data-term="output" tabindex="0"></div>
+  <form class="mg-term-send" data-term="form">
+    <span class="mg-term-prompt" aria-hidden="true">&gt;</span>
+    <input type="text" data-term="line" placeholder="LOG COM1 BESTPOSB ONTIME 1" spellcheck="false" autocomplete="off">
+    <button type="submit" class="mg-term-btn">Send</button>
+  </form>
+</div>`;
 }
 
 /* ---------------- mount / unmount ---------------- */
@@ -488,6 +534,96 @@ export function mount(root, ctx = {}) {
   root.classList.add('manage-panel');
   root.innerHTML = template();
   const el = collect(root);
+
+  /* ---------------- terminal (the live link behind Tools ▸ Terminal) ---------------- */
+
+  const term = { open: false, cursor: 0, timer: 0, lines: [] };
+  const termEls = {};
+  for (const node of root.querySelectorAll('[data-term]')) termEls[node.dataset.term] = node;
+
+  function termStatus(text) {
+    if (termEls.status) termEls.status.textContent = text;
+  }
+  function termAppend(text) {
+    term.lines.push(text);
+    if (term.lines.length > 400) term.lines.splice(0, term.lines.length - 400);
+    if (termEls.output) {
+      termEls.output.textContent = term.lines.join('\n');
+      termEls.output.scrollTop = termEls.output.scrollHeight;
+    }
+  }
+  async function termRefresh() {
+    try {
+      const status = await api.get('/api/live/status');
+      const base = status.connected ? `Connected — ${status.target} — ${status.records} records` : 'Not connected';
+      termStatus(status.lastError ? `${base} — ${status.lastError}` : base);
+      const page = await api.get('/api/live/logs', { after: term.cursor });
+      term.cursor = page.cursor ?? term.cursor;
+      for (const entry of page.entries ?? []) {
+        termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
+      }
+    } catch (error) {
+      termStatus(`API error: ${error.message}`);
+    }
+  }
+  function termStartPolling() {
+    termStopPolling();
+    term.timer = setInterval(termRefresh, 800);
+    void termRefresh();
+  }
+  function termStopPolling() {
+    if (term.timer) {
+      clearInterval(term.timer);
+      term.timer = 0;
+    }
+  }
+  async function termConnect() {
+    const path = (termEls.path?.value ?? '').trim();
+    const body = path
+      ? { kind: 'serial', path, baud: Number(termEls.baud?.value) || 115200 }
+      : { kind: 'tcp', host: (termEls.host?.value ?? '').trim() || '127.0.0.1', port: Number(termEls.port?.value) || 3001 };
+    try {
+      const status = await api.post('/api/live/connect', body);
+      term.cursor = 0;
+      term.lines = [];
+      termAppend(`Connected to ${status.target}`);
+      termStartPolling();
+    } catch (error) {
+      termAppend(`Connect failed: ${error.message}`);
+    }
+  }
+  async function termDisconnect() {
+    try {
+      await api.post('/api/live/disconnect', {});
+      termAppend('Disconnected');
+      termStopPolling();
+      termStatus('Not connected');
+    } catch (error) {
+      termAppend(`Disconnect failed: ${error.message}`);
+    }
+  }
+  async function termSend(line) {
+    if (!line.trim()) return;
+    try {
+      const status = await api.post('/api/live/command', { line });
+      if (status.lastError) termAppend(`> ${line}   (${status.lastError})`);
+      else termAppend(`> ${line}`);
+      termRefresh();
+    } catch (error) {
+      termAppend(`> ${line}   (${error.message})`);
+    }
+  }
+  function termOpen() {
+    term.open = true;
+    if (el.terminal) el.terminal.hidden = false;
+    termStartPolling();
+    termEls.line?.focus();
+  }
+  function termClose() {
+    term.open = false;
+    if (el.terminal) el.terminal.hidden = true;
+    termStopPolling();
+  }
 
   /* The 1232 px column is centred in the area *left of the scrollbar* (the reference window has a
    * 15 px one). Chromium draws overlay scrollbars in this environment, which reserve nothing, so
@@ -973,11 +1109,53 @@ export function mount(root, ctx = {}) {
     event.preventDefault();
   };
 
+  /* Tools ▸ Terminal: the only menu entry that does real work in this build. */
+  const onMenuClick = (event) => {
+    const dropItem = event.target.closest('[data-menu-item]');
+    if (dropItem) {
+      const key = dropItem.dataset.menuItem;
+      if (key === 'terminal') termOpen();
+      root.querySelectorAll('[data-drop]').forEach((node) => {
+        node.hidden = true;
+      });
+      return;
+    }
+    const button = event.target.closest('[data-menu]');
+    if (!button) return;
+    const host = button.closest('.mg-drop-host');
+    const drop = host ? host.querySelector('[data-drop]') : null;
+    root.querySelectorAll('[data-drop]').forEach((node) => {
+      if (node !== drop) node.hidden = true;
+    });
+    if (drop) drop.hidden = !drop.hidden;
+  };
+  const onTermClick = (event) => {
+    const button = event.target.closest('[data-term]');
+    if (!button) return;
+    const action = button.dataset.term;
+    if (action === 'close') termClose();
+    else if (action === 'connect') void termConnect();
+    else if (action === 'disconnect') void termDisconnect();
+  };
+  const onTermSubmit = (event) => {
+    if (!event.target.matches('[data-term="form"]')) return;
+    event.preventDefault();
+    const line = termEls.line?.value ?? '';
+    if (termEls.line) termEls.line.value = '';
+    void termSend(line);
+  };
+
+
   if (appTab) {
     appTab.addEventListener('click', onAppTabClick);
   }
   el.listCards.addEventListener('click', onListClick);
   el.device.addEventListener('click', onHelpClick);
+  el.device.addEventListener('click', onMenuClick);
+  if (el.terminal) {
+    el.terminal.addEventListener('click', onTermClick);
+    el.terminal.addEventListener('submit', onTermSubmit);
+  }
 
   let offCapture = null;
   if (typeof ctx.onCaptureChange === 'function') {
@@ -991,8 +1169,14 @@ export function mount(root, ctx = {}) {
 
   root.__manageCleanup = () => {
     state.alive = false;
+    termStopPolling();
     el.listCards.removeEventListener('click', onListClick);
     el.device.removeEventListener('click', onHelpClick);
+    el.device.removeEventListener('click', onMenuClick);
+    if (el.terminal) {
+      el.terminal.removeEventListener('click', onTermClick);
+      el.terminal.removeEventListener('submit', onTermSubmit);
+    }
     if (appTab) {
       appTab.removeEventListener('click', onAppTabClick);
       appTab.remove();
