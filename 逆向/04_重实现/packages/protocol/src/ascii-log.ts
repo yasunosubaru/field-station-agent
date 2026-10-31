@@ -319,10 +319,12 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     if (table && typeof value === 'number') {
       const name = table.values[String(value)];
       if (name !== undefined) return name;
-      // Out-of-table values print as the dictionary's `UNKNOWN` member when the enum has one
-      // (PORTSTATS lists ports 53/65..68, past the end of `CommPort`, and the suite writes
-      // `UNKNOWN` for every one of them).
-      if (Object.values(table.values).includes('UNKNOWN')) return 'UNKNOWN';
+      // A value outside the table always prints `UNKNOWN` — not the number, and not only when the
+      // enum happens to declare an `UNKNOWN` member: `PORTSTATS` lists ports 53/65..68 past the end
+      // of `CommPort` and the suite writes `UNKNOWN` for every one of them, and BESTUTM's
+      // `datum_id` (the `Datum` table starts at 1 and has no `UNKNOWN` member) prints `UNKNOWN`
+      // for 0, 999 and 0xffffffff, measured through Convert.
+      return 'UNKNOWN';
     }
   }
   if (segment.type === 'bool') return value ? 'TRUE' : 'FALSE';
@@ -373,9 +375,42 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     case 'lk':
     case 'llk':
       return formatK(number, width, hasWidth, precision ?? 3);
+    // `%T` — a millisecond counter printed as **seconds with three decimals**. Measured on a
+    // synthetic CLOCKMODEL/RAWALM/GLOALMANAC/GLORAWEPHEM/GALALMANAC capture fed to the suite's own
+    // Convert: 0 → `0.000`, 1 → `0.001`, 999 → `0.999`, 91818000 → `91818.000`, 4294967295 →
+    // `4294967.295`, 123456789 → `123456.789`. No week is involved and no exponent form exists, so
+    // it is a plain `%.3f` of `ms / 1000` — `exactFixed` keeps the half-even rounding `printf` uses.
+    case 'T':
+      return exactFixed(number / 1000, 3);
+    // `%c` — the low byte printed as one **raw character**, unquoted and unescaped: BESTUTM's
+    // `zone_letter` (a ULONG) prints `A` for 65, `z` for 122, a literal 0x00 byte for 0 and 256,
+    // 0x7f for 127, 0xc8 for 200, 0xff for 255 and 0xff for 0xffffffff. Nothing is added around it,
+    // so the line may carry a non-printable byte (`golden` files never do: a zone letter is A..Z).
+    case 'c':
+      return String.fromCharCode(number & 0xff);
     default:
       return String(value);
   }
+}
+
+/**
+ * `%P` — a pass-through payload copied out **escaped**, as one token: bytes 0x20..0x7E print
+ * verbatim except `\` (0x5C) which doubles, and everything else becomes `\xNN` in lowercase hex.
+ *
+ * Measured on a synthetic PASSCOM1 capture (all 256 byte values in one frame, fed to the suite):
+ * 0x00-0x1F become `\xnn`, then 0x20-0x7E print verbatim (with `\` doubled), then 0x7F-0xFF become
+ * `\xnn` again. So a payload's own commas and `*` are **not** escaped (`a,b;c*d` stays `a,b;c*d`) —
+ * the element count in front of it is what delimits the field — but a CR/LF is (`ab\r\ncd` →
+ * `ab\x0d\x0acd`), which is why a payload can never break the line.
+ */
+function escapePassThrough(bytes: Uint8Array, at: number, length: number): string {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    const byte = bytes[at + i] ?? 0;
+    if (byte >= 0x20 && byte <= 0x7e) out += byte === 0x5c ? '\\\\' : String.fromCharCode(byte);
+    else out += `\\x${byte.toString(16).padStart(2, '0')}`;
+  }
+  return out;
 }
 
 function decodeString(bytes: Uint8Array, at: number, size: number): string {
@@ -487,6 +522,23 @@ function renderSegments(
       continue;
     }
     const array = segment as EdieArray;
+    // `%P` — the whole payload is one pass-through token, not one number per byte (all 29 PASS*
+    // logs). The declared element count is printed first, then the escaped bytes.
+    //
+    // The suite reads exactly `count` bytes whatever the payload holds — a frame declaring 10 bytes
+    // and carrying 3 prints `abc` plus the frame's CRC bytes and then zeros past the end of the
+    // allocation (measured), and a count of 0xffffffff makes Convert crash outright. We stop at the
+    // end of the payload instead of reading past it: for a well-formed record (`count` inside the
+    // payload, which is every record a receiver writes) the two agree byte for byte.
+    if (String(array.format ?? '') === '%P') {
+      if (at + array.countSize > bytes.byteLength) continue;
+      const count = array.countSize ? readCount(bytes, at, array.countSize) : 0;
+      out.push(String(count));
+      const start = at + array.countSize;
+      const available = Math.max(0, bytes.byteLength - start);
+      out.push(escapePassThrough(bytes, start, Math.min(Math.max(0, count), available)));
+      continue;
+    }
     const stride = array.stride || 1;
     const first = at + array.countSize;
     // An element that carries a variable-length string does not occupy `stride` bytes on the wire,
@@ -504,7 +556,14 @@ function renderSegments(
       : array.countSize
         ? readCount(bytes, at, array.countSize)
         : capacity;
-    if (array.countSize) out.push(String(declared));
+    // A count field that is not inside the payload prints nothing at all — GLORAWEPHEM synthesised
+    // without its `glo_raw_ephem` array (payload ending right after `milliseconds`) comes out as
+    // `…,2402,91818.000*…`, while a count that is present but zero (RAWALM with no pages) prints
+    // `…,91818.000,0`. Measured with the suite's Convert on both shapes.
+    if (array.countSize) {
+      if (at + array.countSize > bytes.byteLength) continue;
+      out.push(String(declared));
+    }
     const count = Math.max(0, Math.min(declared, capacity));
     for (let i = 0; i < count; i++) renderSegments(bytes, array.elements, first + i * stride, tables, out, depth, options, state);
   }
