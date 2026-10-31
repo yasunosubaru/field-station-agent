@@ -89,3 +89,77 @@ test('an unknown page name is rejected instead of silently doing nothing', () =>
   const host = new ConfigHost(options());
   assert.throws(() => host.show('noSuchPage'), /unknown config page/);
 });
+
+/* ------------------------------------------------------- 1/12 the page becomes visible */
+
+test('select() switches the tab to Configuration and leaves the pane displayed', () => {
+  const host = new ConfigHost(options());
+  host.show('portConfig');
+  const detail = host.selectDetail('portConfig');
+  // This is the pair `statusConfigClick` → `containers.build(tab)` used to fail on: the build is
+  // registered by `buildPanels`, the tab is switched, the pane is the active one.
+  assert.equal(detail.selected, true, 'the Ports pill was activated');
+  assert.equal(detail.configOpen, true, 'the tab is in the Configuration view');
+  assert.equal(detail.paneId, 'config-ports-tabs-2');
+  assert.equal(detail.paneDisplay, 'block', 'the pane is not folded away');
+  assert.ok(host.elementHtml('#config-ports-tabs-2')?.includes('class="totaldata active active-config"'));
+});
+
+test('the Ports page shows the shipped row template before any receiver record', () => {
+  const host = new ConfigHost(options());
+  host.show('portConfig');
+  const list = host.elementHtml('#desktop-portconfig-list') ?? '';
+  // `portConfig.html` ships only the empty <ul>; the row is built by the page's own render().
+  assert.ok(list.includes('data-portconfig-note="no-receiver"'), 'the empty state explains itself');
+  assert.ok(list.includes('class="row portconfig-item"'), 'the "+" row is there');
+  assert.ok(list.includes('class="message-text-area"'), 'the message box is an editable input');
+  assert.ok(list.includes('class="dropdown input-selection"'));
+  assert.ok(list.includes('class="dropdown output-selection"'));
+  // Apply is the shipped button, not a re-drawn one.
+  assert.match(host.elementHtml('#portConfig-apply') ?? '', /applyPortButtonReceive/);
+});
+
+test('an INTERFACEMODE record produces one row per configured port', () => {
+  const host = new ConfigHost(options());
+  host.show('portConfig');
+  const tab = host.tabId;
+  host.feed(3, { tab, port: 'COM1', rxType: 'NOVATEL', txType: 'NOVATEL' });
+  host.feed(3, { tab, port: 'COM2', rxType: 'NONE', txType: 'NOVATEL' });
+  host.feed(3, { tab, port: 'COM3', rxType: 'NONE', txType: 'NONE' });
+  host.show('portConfig'); // reset + render, the same two steps `resetPortConfigUI` takes
+  const list = host.elementHtml('#desktop-portconfig-list') ?? '';
+  assert.ok(list.includes('id="COM1"'), 'a configured port gets a row');
+  assert.ok(list.includes('id="COM2"'), 'NONE/NOVATEL still counts as configured');
+  assert.ok(!list.includes('id="COM3"'), 'NONE/NONE is not a row — the receiver says it is off');
+  assert.ok(!list.includes('data-portconfig-note'), 'the empty-state note is gone');
+});
+
+/* ------------------------------------------------------------------ 3/12 Events */
+
+test('the Events page mounts into its shipped panel and starts honestly empty', () => {
+  const host = new ConfigHost(options());
+  const shown = host.showOperational('events');
+  assert.equal(shown.mounted, true, 'events mounts on first use');
+  const panel = host.elementHtml('#events-panel-tabs-2') ?? '';
+  assert.ok(panel.includes('events-sidenav'), 'the shipped drawer markup mounted');
+  assert.ok(panel.includes('showEvents'), 'the drawer is slid in, otherwise it sits off-screen');
+  assert.ok(panel.includes('No events present'), 'no data is stated, not invented');
+  assert.equal(host.eventCount(), 0);
+});
+
+test('a real RXSTATUSEVENT line becomes one event entry', () => {
+  const host = new ConfigHost(options());
+  host.showOperational('events');
+  const ascii =
+    '#RXSTATUSEVENTA,COM1,0,53.5,FINESTEERING,2287,137888.000,02000020,4b5f,1682;' +
+    '"MODEL INVALID FOR THIS RECEIVER",1,1,0,0*7c1c2f8e';
+  assert.deepEqual(host.feedAscii(94, ascii), ['events']);
+  assert.equal(host.eventCount(), 1);
+  const entries = host.elementHtml('#events-panel-tabs-2 .current-events-layout .event-entries') ?? '';
+  assert.ok(entries.includes('eventElement'), 'the list has an entry');
+  assert.ok(entries.includes('Invalid Model'), 'the receiver’s description is translated, not guessed');
+  // A line with no quoted description is not an event.
+  assert.deepEqual(host.feedAscii(94, '#RXSTATUSEVENTA,COM1'), []);
+  assert.deepEqual(host.feedAscii(93, ascii), [], 'RXSTATUS is not an event record');
+  assert.equal(host.eventCount(), 1, 'nothing was invented');
+});

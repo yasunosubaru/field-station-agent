@@ -20,14 +20,22 @@ import {
   configPageDocument,
   configPageList,
   configStylesheet,
+  deviceExportFile,
+  deviceImportApply,
+  deviceImportPreview,
+  deviceStatus,
+  eventsSummary,
+  feedEventsFromEntries,
   isConfigPage,
+  primeEventsPage,
   readConfigAsset,
 } from './config-http.ts';
 import { LiveLink, type LiveTarget } from './live.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, summarizeLogs } from './logs.ts';
 import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
-import { GRAPH_CSV_DIR, graphData, listGraphCsv } from './graphcsv.ts';
+import { GRAPH_CSV_DIR, graphData, listGraphCsv, readGraphCsv } from './graphcsv.ts';
+import { graphPdfReport } from './pdf.ts';
 import {
   HttpError,
   SAMPLES_DIR,
@@ -251,6 +259,7 @@ function health() {
       '/api/playback/export',
       '/api/graph/files',
       '/api/graph/data',
+      '/api/graph/pdf',
       '/api/live/status',
       '/api/live/logs',
       '/api/live/connect',
@@ -430,6 +439,32 @@ function handleGraphFiles(res: ServerResponse, method: string): void {
 function handleGraphData(url: URL, res: ServerResponse, method: string): void {
   const column = url.searchParams.get('column');
   sendJson(res, 200, { ok: true, ...graphData(url.searchParams.get('file'), column) }, method);
+}
+
+/**
+ * `GET /api/graph/pdf[?file=<one csv>]` — the document Graph's *Export → PDF* downloads.
+ *
+ * Built server-side from the CSVs the project already exported (all twelve by default, one with
+ * `?file=`), so the bytes are a real PDF 1.4 rather than a print dialog: see `pdf.ts`. The panel
+ * keeps its `window.print()` fallback for now, because `web/panels/graph.js` is owned by another
+ * task; pointing its PDF entry at this URL is a one-line change.
+ */
+function handleGraphPdf(url: URL, res: ServerResponse, method: string): void {
+  const only = url.searchParams.get('file');
+  const names = only ? [only] : listGraphCsv().map((entry) => entry.name);
+  if (names.length === 0) throw new HttpError(404, '没有可导出的 CSV');
+  const sources = names.map((name) => {
+    const data = readGraphCsv(name);
+    return { name: data.name, text: data.text };
+  });
+  const report = graphPdfReport(sources);
+  sendBytes(res, 200, report.bytes, {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="${report.fileName}"`,
+    'X-PDF-Pages': String(report.pages),
+    'X-PDF-Charts': String(report.charts),
+    'X-PDF-Bytes': String(report.bytes.byteLength),
+  }, method);
 }
 
 /* ---------------- 原版外观资源（只读） --------------------------------
@@ -649,6 +684,9 @@ const server = createServer((req, res) => {
         const limit = integer(url.searchParams.get('limit'), 0, 0, 10_000, 'limit');
         const page = liveLink().logs(after);
         if (limit > 0 && page.entries.length > limit) page.entries = page.entries.slice(-limit);
+        // RXSTATUSEVENT (#94) is a text event; the Events page is fed the same records the
+        // Terminal sees, so the two can never disagree about what the receiver said.
+        feedEventsFromEntries(page.entries);
         sendJson(res, 200, { ok: true, ...page }, method);
         return;
       }
@@ -670,9 +708,57 @@ const server = createServer((req, res) => {
         sendJson(res, 200, { ok: true, pages: configPageList() }, method);
         return;
       }
+      if (path === '/api/config/events/summary') {
+        sendJson(res, 200, eventsSummary(), method);
+        return;
+      }
+      if (path === '/api/config/device/status') {
+        const live = liveLink();
+        sendJson(res, 200, deviceStatus(live.status().connected, live.logs(0).entries), method);
+        return;
+      }
+      if (path === '/api/config/device/export' && method === 'GET') {
+        // A `.cfg` built from the receiver records this link is holding is a plain download;
+        // without any the response says exactly which records are missing.
+        const file = deviceExportFile(liveLink().logs(0).entries);
+        if (!file.ok) {
+          sendJson(res, 409, { ok: false, reason: file.reason, records: file.records }, method);
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${file.fileName}"`,
+          'Cache-Control': 'no-store',
+        });
+        res.end(file.text);
+        return;
+      }
+      if (path === '/api/config/device/import/preview') {
+        if (method !== 'POST') throw new HttpError(405, '/api/config/device/import/preview 只接受 POST');
+        const body = await readJsonBody(req);
+        const text = typeof body.text === 'string' ? body.text : '';
+        const versions =
+          body.versions && typeof body.versions === 'object'
+            ? (body.versions as { hardwareVersion: string; model: string; softwareVersion: string })
+            : undefined;
+        sendJson(res, 200, deviceImportPreview(text, versions), method);
+        return;
+      }
+      if (path === '/api/config/device/import') {
+        if (method !== 'POST') throw new HttpError(405, '/api/config/device/import 只接受 POST');
+        const body = await readJsonBody(req);
+        const text = typeof body.text === 'string' ? body.text : '';
+        const connected = liveLink().status().connected;
+        const result = deviceImportApply(text, connected);
+        sendJson(res, result.ok ? 200 : 409, result, method);
+        return;
+      }
       if (path.startsWith('/config/')) {
         const name = path.slice('/config/'.length);
         if (!isConfigPage(name)) throw new HttpError(404, `未知配置页：${name}`);
+        // Events replays whatever RXSTATUSEVENT records the link still holds before serialising,
+        // so the page shows the session's real events rather than only the ones arriving next.
+        if (name === 'events') primeEventsPage(liveLink().logs(0).entries);
         sendText(res, 200, configPageDocument(name), 'text/html; charset=utf-8');
         return;
       }
@@ -750,6 +836,10 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/graph/data') {
         handleGraphData(url, res, method);
+        return;
+      }
+      if (path === '/api/graph/pdf') {
+        handleGraphPdf(url, res, method);
         return;
       }
       if (path.startsWith('/api/')) {

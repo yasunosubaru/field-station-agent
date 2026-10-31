@@ -122,13 +122,13 @@ const LIVE_RANGE_HISTORY = 120;
 const TERMINAL_BACKFILL = 150;
 
 /**
- * The black bar under the app bar. Only `Status` is a real page in this build; the other four are
- * rendered as the original's dropdowns (`▾`) but disabled, with the reason in `title` — the same
- * honest marking Convert uses for its unwired formats.
+ * The black bar under the app bar. `Status` and `Configuration` are real pages in this build;
+ * `Settings` stays disabled with its reason in `title`. `Tools` carries the Terminal, the Events
+ * drawer and the Device `.cfg` pair — the same three doors the original has.
  */
 const MENU = [
   { key: 'status', label: 'Status', icon: 'status', caret: false, wired: true },
-  { key: 'configuration', label: 'Configuration', icon: 'configuration', caret: false, wired: false },
+  { key: 'configuration', label: 'Configuration', icon: 'configuration', caret: false, wired: true },
   { key: 'settings', label: 'Settings', icon: 'settings', caret: true, wired: false },
   {
     key: 'tools',
@@ -138,7 +138,16 @@ const MENU = [
     wired: true,
     items: [
       { key: 'terminal', label: 'Terminal', wired: true },
-      { key: 'events', label: 'Events', wired: false },
+      { key: 'events', label: 'Events', wired: true },
+      {
+        key: 'device',
+        label: 'Device',
+        wired: true,
+        items: [
+          { key: 'exportCfg', label: 'Export Configuration…', wired: true },
+          { key: 'importCfg', label: 'Import Configuration…', wired: true },
+        ],
+      },
     ],
   },
   { key: 'device', label: 'Device', icon: 'device', caret: true, wired: false },
@@ -333,6 +342,27 @@ function skySvg() {
   );
 }
 
+/** A dropdown entry: a leaf (`data-menu-item`) or a nested flyout (`data-submenu`). */
+function dropEntry(entry) {
+  if (!entry.items) {
+    const off = entry.wired ? '' : ' is-off';
+    const disabled = entry.wired ? '' : `aria-disabled="true" disabled title="${esc(UNWIRED_NOTE)}"`;
+    return (
+      `<button type="button" class="mg-drop-item${off}" data-menu-item="${esc(entry.key)}" ` +
+      `role="menuitem" ${disabled}>${esc(entry.label)}</button>`
+    );
+  }
+  const entries = entry.items.map(dropEntry).join('');
+  return (
+    '<span class="mg-drop-host mg-drop-nested">' +
+    `<button type="button" class="mg-drop-item mg-drop-parent" data-submenu="${esc(entry.key)}" ` +
+    `role="menuitem" aria-haspopup="true" aria-expanded="false">${esc(entry.label)}` +
+    '<span class="mg-drop-arrow" aria-hidden="true">›</span></button>' +
+    `<span class="mg-drop mg-drop-fly" data-drop="${esc(entry.key)}" hidden>${entries}</span>` +
+    '</span>'
+  );
+}
+
 function menuBar() {
   const items = MENU.map((item) => {
     const off = item.wired ? '' : ' is-off';
@@ -346,15 +376,7 @@ function menuBar() {
       (item.caret ? '<span class="mg-menu-caret" aria-hidden="true"></span>' : '') +
       '</button>';
     if (!item.items) return button;
-    const entries = item.items
-      .map(
-        (entry) =>
-          `<button type="button" class="mg-drop-item${entry.wired ? '' : ' is-off'}" ` +
-          `data-menu-item="${esc(entry.key)}" role="menuitem" ` +
-          `${entry.wired ? '' : `aria-disabled="true" disabled title="${esc(UNWIRED_NOTE)}"`}>` +
-          `${esc(entry.label)}</button>`,
-      )
-      .join('');
+    const entries = item.items.map(dropEntry).join('');
     return `<span class="mg-drop-host">${button}<span class="mg-drop" data-drop="${esc(item.key)}" hidden>${entries}</span></span>`;
   }).join('');
   return (
@@ -574,6 +596,56 @@ function template() {
     <input type="text" data-term="line" placeholder="LOG COM1 BESTPOSB ONTIME 1" spellcheck="false" autocomplete="off">
     <button type="submit" class="mg-term-btn">Send</button>
   </form>
+</div>
+
+<div class="mg-config" data-el="config" role="dialog" aria-label="Configuration" hidden>
+  <div class="mg-config-head">
+    <span class="mg-config-title">Configuration</span>
+    <label class="mg-config-pick">
+      <span class="mg-config-pick-label">Page</span>
+      <select class="mg-config-select" data-config="page"></select>
+    </label>
+    <span class="mg-config-note" data-config="note">Replaces nothing: the shipped page, served by the suite's own controller.</span>
+    <button type="button" class="mg-config-close" data-config="close" aria-label="Close configuration">×</button>
+  </div>
+  <iframe class="mg-config-frame" data-config="frame" title="Configuration page"></iframe>
+</div>
+
+<div class="mg-cfg" data-el="cfg" role="dialog" aria-modal="true" aria-label="Device configuration file" hidden>
+  <div class="mg-cfg-sheet">
+    <div class="mg-cfg-head">
+      <span class="mg-cfg-title" data-cfg="title">Configuration file</span>
+      <button type="button" class="mg-cfg-close" data-cfg="close" aria-label="Close">×</button>
+    </div>
+    <div class="mg-cfg-tabs" role="tablist">
+      <button type="button" class="mg-cfg-tab is-active" data-cfg-tab="export" role="tab" aria-selected="true">Export</button>
+      <button type="button" class="mg-cfg-tab" data-cfg-tab="import" role="tab" aria-selected="false">Import</button>
+    </div>
+    <section class="mg-cfg-body" data-cfg-body="export">
+      <p class="mg-cfg-state" data-cfg="exportState">Checking the receiver…</p>
+      <p class="mg-cfg-reason" data-cfg="exportReason"></p>
+      <p class="mg-cfg-line" data-cfg="exportFile"></p>
+      <div class="mg-cfg-actions">
+        <button type="button" class="mg-cfg-btn" data-cfg="download" disabled>Download .cfg</button>
+        <button type="button" class="mg-cfg-btn mg-cfg-btn-quiet" data-cfg="refresh">Re-check</button>
+      </div>
+    </section>
+    <section class="mg-cfg-body" data-cfg-body="import" hidden>
+      <p class="mg-cfg-state" data-cfg="importState">Parse first — the .cfg is read with the shipped loader, nothing is sent.</p>
+      <label class="mg-cfg-pick">
+        <span>Choose a .cfg</span>
+        <input type="file" data-cfg="file" accept=".cfg,.txt,.gps,.asc">
+      </label>
+      <textarea class="mg-cfg-text" data-cfg="text" spellcheck="false"
+        placeholder="…or paste the file’s text here"></textarea>
+      <div class="mg-cfg-actions">
+        <button type="button" class="mg-cfg-btn" data-cfg="parse">Parse</button>
+        <button type="button" class="mg-cfg-btn mg-cfg-btn-primary" data-cfg="import" disabled>Import to receiver</button>
+      </div>
+      <p class="mg-cfg-reason" data-cfg="importReason"></p>
+      <pre class="mg-cfg-report" data-cfg="report" hidden></pre>
+    </section>
+  </div>
 </div>`;
 }
 
@@ -600,6 +672,200 @@ export function mount(root, ctx = {}) {
   const term = { open: false, backfilling: false, lines: [] };
   const termEls = {};
   for (const node of root.querySelectorAll('[data-term]')) termEls[node.dataset.term] = node;
+
+  /* ---- Configuration drawer: the shipped pages, served by the suite's own controller ---- */
+
+  const configEls = {};
+  for (const node of root.querySelectorAll('[data-config]')) configEls[node.dataset.config] = node;
+  const fileEls = {};
+  for (const node of root.querySelectorAll('[data-cfg]')) fileEls[node.dataset.cfg] = node;
+
+  const drawer = { pages: null, page: '' };
+
+  /** `/api/config/pages` is fetched once: the 14 pill pages plus the operational ones (Events). */
+  async function configPages() {
+    if (drawer.pages) return drawer.pages;
+    try {
+      const data = await api.get('/api/config/pages');
+      drawer.pages = Array.isArray(data.pages) ? data.pages : [];
+    } catch (error) {
+      drawer.pages = [];
+      if (configEls.note) configEls.note.textContent = `Page list failed: ${error.message}`;
+    }
+    if (configEls.page) {
+      configEls.page.innerHTML = drawer.pages
+        .map((page) => `<option value="${esc(page.name)}">${esc(page.label)}</option>`)
+        .join('');
+      if (drawer.page) configEls.page.value = drawer.page;
+    }
+    return drawer.pages;
+  }
+
+  function setConfigFrame(page) {
+    if (!page) return;
+    drawer.page = page;
+    if (configEls.page) configEls.page.value = page;
+    if (configEls.frame) configEls.frame.src = `/config/${encodeURIComponent(page)}`;
+    if (configEls.note) {
+      const entry = (drawer.pages ?? []).find((item) => item.name === page);
+      configEls.note.textContent = entry
+        ? `${entry.label} — the suite’s shipped markup and controller (${page})`
+        : page;
+    }
+  }
+
+  async function openConfigDrawer(page) {
+    if (!el.config) return;
+    await configPages();
+    el.config.hidden = false;
+    setConfigFrame(page || drawer.page || 'portConfig');
+  }
+
+  function closeConfigDrawer() {
+    if (!el.config) return;
+    el.config.hidden = true;
+    if (configEls.frame) configEls.frame.src = 'about:blank';
+  }
+
+  /* ---- Tools ▸ Device ▸ Export / Import Configuration (.cfg) ---- */
+
+  const device = { status: null, parsed: null };
+
+  function setCfgDisabled(node, disabled) {
+    if (node) node.disabled = Boolean(disabled);
+  }
+
+  async function loadDeviceStatus() {
+    try {
+      device.status = await api.get('/api/config/device/status');
+    } catch (error) {
+      device.status = null;
+      if (fileEls.exportReason) fileEls.exportReason.textContent = `Status failed: ${error.message}`;
+      return;
+    }
+    const status = device.status;
+    if (fileEls.exportState) {
+      fileEls.exportState.textContent = status.connected
+        ? 'A receiver session is open.'
+        : 'No receiver connected — a .cfg is the receiver’s own configuration, so there is nothing to read it from.';
+    }
+    if (fileEls.exportReason) fileEls.exportReason.textContent = status.export?.reason ?? '';
+    if (fileEls.exportFile) {
+      fileEls.exportFile.textContent = status.suggestedFileName
+        ? `File name the suite would use: ${status.suggestedFileName}` +
+          (status.export?.records > 0 ? ` · ${status.export.records} receiver record(s) on the link` : '')
+        : '';
+    }
+    if (fileEls.importReason) fileEls.importReason.textContent = status.import?.reason ?? '';
+    setCfgDisabled(fileEls.download, !status.export?.available);
+    setCfgDisabled(fileEls.import, !(status.import?.available && device.parsed?.ok));
+  }
+
+  function openDeviceModal(tab) {
+    if (!el.cfg) return;
+    el.cfg.hidden = false;
+    selectCfgTab(tab);
+    void loadDeviceStatus();
+  }
+
+  function closeDeviceModal() {
+    if (el.cfg) el.cfg.hidden = true;
+  }
+
+  function selectCfgTab(tab) {
+    for (const node of root.querySelectorAll('[data-cfg-tab]')) {
+      const active = node.dataset.cfgTab === tab;
+      node.classList.toggle('is-active', active);
+      node.setAttribute('aria-selected', active ? 'true' : 'false');
+    }
+    for (const node of root.querySelectorAll('[data-cfg-body]')) {
+      node.hidden = node.dataset.cfgBody !== tab;
+    }
+    if (fileEls.title) {
+      fileEls.title.textContent =
+        tab === 'export' ? 'Export Configuration (.cfg)' : 'Import Configuration (.cfg)';
+    }
+  }
+
+  function showReport(text) {
+    if (!fileEls.report) return;
+    fileEls.report.hidden = !text;
+    fileEls.report.textContent = text ?? '';
+  }
+
+  async function downloadCfg() {
+    try {
+      const response = await fetch('/api/config/device/export');
+      const type = response.headers.get('content-type') ?? '';
+      if (!response.ok || !type.includes('text/plain')) {
+        const body = type.includes('application/json') ? await response.json() : null;
+        showReport(`Export refused (HTTP ${response.status}): ${(body && body.reason) || 'no .cfg available'}`);
+        return;
+      }
+      const text = await response.text();
+      const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '');
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name ? name[1] : 'receiver.cfg';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      showReport(`Downloaded ${anchor.download} (${text.length} bytes).`);
+    } catch (error) {
+      showReport(`Export failed: ${error.message}`);
+    }
+  }
+
+  async function parseCfg() {
+    const text = fileEls.text ? fileEls.text.value : '';
+    try {
+      const result = await api.post('/api/config/device/import/preview', { text });
+      device.parsed = result;
+      const lines = [
+        `loadable commands: ${result.commands.length} · skipped lines: ${result.skipped} · comments: ${result.comments}`,
+      ];
+      if (result.currentPort) lines.push(`current port: ${result.currentPort} (its own CONFIG line is skipped)`);
+      if (result.mismatches && result.mismatches.length) {
+        lines.push(`version warnings: ${result.mismatches.join(', ')}`);
+      }
+      if (result.error) lines.push(`error: ${result.error}`);
+      if (result.reason) lines.push(result.reason);
+      for (const command of (result.commands ?? []).slice(0, 40)) lines.push(`  ${command}`);
+      if ((result.commands ?? []).length > 40) {
+        lines.push(`  … ${result.commands.length - 40} more`);
+      }
+      showReport(lines.join('\n'));
+      if (fileEls.importState) {
+        fileEls.importState.textContent = result.ok
+          ? `Parsed — ${result.commands.length} command(s) would be sent.`
+          : 'Parse finished, but nothing in this file can be loaded.';
+      }
+      setCfgDisabled(fileEls.import, !(device.status?.import?.available && result.ok));
+    } catch (error) {
+      showReport(`Parse failed: ${error.message}`);
+    }
+  }
+
+  async function importCfg() {
+    const text = fileEls.text ? fileEls.text.value : '';
+    try {
+      const response = await fetch('/api/config/device/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const result = await response.json();
+      showReport(
+        `Import refused (HTTP ${response.status}): ${result.reason}\n` +
+          `parsed ${result.preview?.commands?.length ?? 0} command(s); 0 sent; verified: no`,
+      );
+    } catch (error) {
+      showReport(`Import failed: ${error.message}`);
+    }
+  }
 
   /**
    * Everything the Status dashboard knows about the live link. `latest`/`ranges`/`satvis` are fed
@@ -1858,25 +2124,90 @@ export function mount(root, ctx = {}) {
     event.preventDefault();
   };
 
-  /* Tools ▸ Terminal: the only menu entry that does real work in this build. */
+  /* Tools ▸ Terminal / Events / Device ▸ .cfg, and the Configuration drawer. */
+  const closeDrops = () => {
+    root.querySelectorAll('[data-drop]').forEach((node) => {
+      node.hidden = true;
+    });
+    root.querySelectorAll('[data-submenu]').forEach((node) => {
+      node.setAttribute('aria-expanded', 'false');
+    });
+  };
   const onMenuClick = (event) => {
-    const dropItem = event.target.closest('[data-menu-item]');
-    if (dropItem) {
-      const key = dropItem.dataset.menuItem;
-      if (key === 'terminal') termOpen();
-      root.querySelectorAll('[data-drop]').forEach((node) => {
-        node.hidden = true;
-      });
+    /* A nested flyout is opened by its own button and must not run the leaf action. Its parent
+     * dropdown has to stay open, otherwise `closeDrops()` would hide the flyout along with it. */
+    const submenu = event.target.closest('[data-submenu]');
+    if (submenu) {
+      const host = submenu.closest('.mg-drop-nested');
+      const drop = host ? host.querySelector('[data-drop]') : null;
+      const parentDrop = submenu.closest('.mg-drop');
+      const wasOpen = drop ? !drop.hidden : false;
+      closeDrops();
+      if (parentDrop) parentDrop.hidden = false;
+      if (drop && !wasOpen) {
+        drop.hidden = false;
+        submenu.setAttribute('aria-expanded', 'true');
+      }
       return;
     }
     const button = event.target.closest('[data-menu]');
-    if (!button) return;
-    const host = button.closest('.mg-drop-host');
-    const drop = host ? host.querySelector('[data-drop]') : null;
-    root.querySelectorAll('[data-drop]').forEach((node) => {
-      if (node !== drop) node.hidden = true;
-    });
-    if (drop) drop.hidden = !drop.hidden;
+    if (button) {
+      const key = button.dataset.menu;
+      if (key === 'configuration') {
+        closeDrops();
+        void openConfigDrawer();
+        return;
+      }
+      const host = button.closest('.mg-drop-host');
+      const drop = host ? host.querySelector('[data-drop]') : null;
+      const wasOpen = drop ? !drop.hidden : false;
+      closeDrops();
+      if (drop && !wasOpen) drop.hidden = false;
+      return;
+    }
+    const dropItem = event.target.closest('[data-menu-item]');
+    if (!dropItem) return;
+    const key = dropItem.dataset.menuItem;
+    closeDrops();
+    if (key === 'terminal') termOpen();
+    else if (key === 'events') void openConfigDrawer('events');
+    else if (key === 'exportCfg') openDeviceModal('export');
+    else if (key === 'importCfg') openDeviceModal('import');
+  };
+  const onConfigClick = (event) => {
+    const node = event.target.closest('[data-config]');
+    if (!node) return;
+    if (node.dataset.config === 'close') closeConfigDrawer();
+  };
+  const onConfigChange = (event) => {
+    if (!event.target.matches('[data-config="page"]')) return;
+    setConfigFrame(event.target.value);
+  };
+  const onCfgClick = (event) => {
+    const node = event.target.closest('[data-cfg]');
+    if (!node) return;
+    const action = node.dataset.cfg;
+    if (action === 'close') closeDeviceModal();
+    else if (action === 'refresh') void loadDeviceStatus();
+    else if (action === 'download') void downloadCfg();
+    else if (action === 'parse') void parseCfg();
+    else if (action === 'import') void importCfg();
+  };
+  const onCfgTabClick = (event) => {
+    const node = event.target.closest('[data-cfg-tab]');
+    if (!node) return;
+    selectCfgTab(node.dataset.cfgTab);
+    if (node.dataset.cfgTab === 'export') void loadDeviceStatus();
+  };
+  const onCfgFile = (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (fileEls.text) fileEls.text.value = String(reader.result ?? '');
+      void parseCfg();
+    };
+    reader.readAsText(file);
   };
   const onTermClick = (event) => {
     const button = event.target.closest('[data-term]');
@@ -1917,6 +2248,15 @@ export function mount(root, ctx = {}) {
   el.device.addEventListener('click', onHelpClick);
   el.device.addEventListener('click', onMenuClick);
   el.device.addEventListener('click', onModeAction);
+  if (el.config) {
+    el.config.addEventListener('click', onConfigClick);
+    el.config.addEventListener('change', onConfigChange);
+  }
+  if (el.cfg) {
+    el.cfg.addEventListener('click', onCfgClick);
+    el.cfg.addEventListener('click', onCfgTabClick);
+    el.cfg.addEventListener('change', onCfgFile);
+  }
   if (el.terminal) {
     el.terminal.addEventListener('click', onTermClick);
     el.terminal.addEventListener('submit', onTermSubmit);
@@ -1939,6 +2279,15 @@ export function mount(root, ctx = {}) {
     el.device.removeEventListener('click', onHelpClick);
     el.device.removeEventListener('click', onMenuClick);
     el.device.removeEventListener('click', onModeAction);
+    if (el.config) {
+      el.config.removeEventListener('click', onConfigClick);
+      el.config.removeEventListener('change', onConfigChange);
+    }
+    if (el.cfg) {
+      el.cfg.removeEventListener('click', onCfgClick);
+      el.cfg.removeEventListener('click', onCfgTabClick);
+      el.cfg.removeEventListener('change', onCfgFile);
+    }
     if (el.terminal) {
       el.terminal.removeEventListener('click', onTermClick);
       el.terminal.removeEventListener('submit', onTermSubmit);

@@ -32,6 +32,79 @@ const REQUIRED_BASE = [
   PORT_MSG.SERIALCONFIG,
 ] as const;
 
+/** `NovatelIdConstants.inputFormatList` / `outputFormatList` (`model/NovatelIdConstants.js:51-52`). */
+const INPUT_FORMATS = ['NONE', 'AUTO', 'CMR', 'NOVATEL', 'NOVATELX', 'RTCA', 'RTCM', 'RTCMV3', 'VERIPOS'];
+const OUTPUT_FORMATS = ['NONE', 'CMR', 'NMEA', 'NOVATEL', 'NOVATELX', 'RTCA', 'RTCM', 'RTCMV3'];
+
+/** `portConfig.js:2670-2752` — the message box placeholder for the current output format. */
+const PLACEHOLDER_MESSAGE = 'Type a message name, then press Enter';
+const PLACEHOLDER_NO_OUTPUT = 'Output format is NONE — no messages can be logged on this port';
+
+function optionList(values: string[], attribute: string): string {
+  return values.map((value) => `<li class="portconfigvalues" ${attribute}>${value}</li>`).join('');
+}
+
+/**
+ * One row of `#desktop-portconfig-list`, exactly the ids/classes `getPortItem` writes
+ * (`portConfig.js:2712-2752`): `div#<port>.portconfig-item` with three dropdowns and the message
+ * textarea. Two deliberate deltas, both because this markup is *serialised* and re-parsed by the
+ * browser rather than built with `append()`:
+ *  - the root is an `<li>`: a `<div>` inside `<ul>` would be foster-parented out of the list by the
+ *    HTML parser, and `#desktop-portconfig-list` would come back empty;
+ *  - `list-style:none` restores the look of the original `<div>` children.
+ */
+function portRowHtml(port: string, inputFormat: string, outputFormat: string): string {
+  const noOutput = outputFormat === 'NONE' || outputFormat === 'Select';
+  const placeholder = noOutput ? PLACEHOLDER_NO_OUTPUT : PLACEHOLDER_MESSAGE;
+  return `<li class="row portconfig-item" id="${port}" style="list-style:none">
+        <div class="title col-md-2 col-sm-2 col-xs-2">
+            <div class="dropdown input-selection">
+                <button class="btn portconfig-dropdown" type="button" data-toggle="dropdown">
+                    <span class="active-port">${inputFormat}</span>
+                    <div class="portconfig-down-arrow"></div>
+                </button>
+                <ul class="dropdown-menu scrollable-menu inputlist">${optionList(INPUT_FORMATS, '')}</ul>
+            </div>
+        </div>
+        <div class="title col-md-2 col-sm-2 col-xs-2">
+            <div class="dropdown port-selection">
+                <button class="btn portconfig-dropdown portsListDropdown" type="button" data-toggle="dropdown">
+                    <span class="active-port">${port}</span>
+                    <div class="portconfig-down-arrow"></div>
+                </button>
+                <div><button class="port-config-settings config-settings-desk-btn port-selected"></button></div>
+                <ul class="dropdown-menu scrollable-menu portlist"></ul>
+            </div>
+        </div>
+        <div class="title col-md-2 col-sm-2 col-xs-2">
+            <div class="dropdown output-selection">
+                <button class="btn portconfig-dropdown" type="button" data-toggle="dropdown">
+                    <span class="active-port">${outputFormat}</span>
+                    <div class="portconfig-down-arrow"></div>
+                </button>
+                <ul class="dropdown-menu scrollable-menu outputlist">${optionList(OUTPUT_FORMATS, '')}</ul>
+            </div>
+        </div>
+        <div class="title col-md-5 col-sm-5 col-xs-5 message-layout autocomplete">
+            <textarea class="message-text-area" placeholder="${placeholder}"${noOutput ? ' disabled' : ''}></textarea>
+            <button class="msg-stng-btn config-settings-desk-btn"></button>
+            <div class="overlay-msg-blocks">
+                <ul class="msg-items" role="listbox"></ul>
+                <div class="msg-info-tile"><span>+2</span><span data-lang-more>&nbsp;More</span></div>
+            </div>
+        </div>
+        <div type="button" class="list-close-btn"></div>
+    </li>`;
+}
+
+/** Honest empty state: no receiver configuration has arrived, so no port row can be shown. */
+const NO_RECEIVER_NOTE =
+  '<li class="portconfig-note" data-portconfig-note="no-receiver" style="list-style:none">' +
+  'No receiver configuration yet: the port rows are built from the receiver’s INTERFACEMODE and ' +
+  'SERIALCONFIG records, and no such record has arrived on this link. The row below is the shipped ' +
+  'template (the one the “+” button adds); Apply stays a no-op until the receiver answers.' +
+  '</li>';
+
 const REQUIRED_NTRIP = [
   PORT_MSG.ICOMCONFIG,
   PORT_MSG.NTRIPCONFIG,
@@ -543,11 +616,68 @@ export class PortConfigPage extends BaseConfigPage {
     return this.validateApply(tab);
   }
 
+  /**
+   * `portConfig.js:2772-2790` (`addDesktopComponent`): one row per port whose INTERFACEMODE is not
+   * NONE/NONE, in the receiver's own port order. Without that record the list is empty in 2.11.0
+   * too, so a `Select` template row plus the note explains why — never a fabricated port.
+   */
+  private readonly rowSignature = new Map<TabId, string>();
+
   protected render(tab: TabId): void {
     const root = scopedQuery(this.context, tab, '#desktop-portconfig-list');
-    if (root) {
-      const connected = this.connectedComPort.get(tab)?.comPort;
-      if (connected) root.setAttribute('data-connected-port', connected);
+    if (!root) return;
+    const connected = this.connectedComPort.get(tab)?.comPort;
+    if (connected) root.setAttribute('data-connected-port', connected);
+
+    const current = this.state.current(tab) as Record<string, Record<string, Record<string, unknown>>>;
+    const interfaces = current[String(PORT_MSG.INTERFACE_MODE)] ?? {};
+    const ports = Object.keys(interfaces)
+      .filter((port) => {
+        const value = interfaces[port] ?? {};
+        return value.rxType !== 'NONE' || value.txType !== 'NONE';
+      })
+      .sort((left, right) => left.localeCompare(right, 'en', { numeric: true }));
+
+    const signature = ports.join(',');
+    if (this.rowSignature.get(tab) === signature && root.querySelector('.portconfig-item')) {
+      this.paintLogMessages(tab, root, ports);
+      return;
+    }
+    this.rowSignature.set(tab, signature);
+
+    if (!ports.length) {
+      root.innerHTML = NO_RECEIVER_NOTE + portRowHtml('Select', 'Select', 'Select');
+      return;
+    }
+    root.innerHTML = ports
+      .map((port) =>
+        portRowHtml(
+          port,
+          String(interfaces[port]?.rxType ?? 'NONE'),
+          String(interfaces[port]?.txType ?? 'NONE'),
+        ),
+      )
+      .join('');
+    this.paintLogMessages(tab, root, ports);
+  }
+
+  /** `portConfig.js:1590-1660` (`prepareMessageList`): the port's LOGLIST entries as chips. */
+  private paintLogMessages(tab: TabId, root: Element, ports: string[]): void {
+    const current = this.state.current(tab) as Record<string, Record<string, Record<string, unknown>>>;
+    const logList = current[String(PORT_MSG.LOGLIST)] ?? {};
+    for (const port of ports) {
+      const row = root.querySelector(`#${port} .msg-items`);
+      const area = root.querySelector(`#${port} .message-text-area`) as
+        | (Element & { placeholder?: string })
+        | null;
+      if (!row) continue;
+      const messages = Object.values(logList[port] ?? {})
+        .map((entry) => String(entry?.name ?? entry?.message ?? ''))
+        .filter(Boolean);
+      row.innerHTML = messages
+        .map((name) => `<li class="msg-item elidedText">${name}</li>`)
+        .join('');
+      if (area && messages.length) area.setAttribute('placeholder', messages.join(', '));
     }
   }
 }
