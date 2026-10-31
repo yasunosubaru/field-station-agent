@@ -183,8 +183,10 @@ function template() {
         <span class="file-pipe">|</span>
         <label class="file-label">Name:</label>
         <label class="single-file-name elidedText" data-el="capture-name">&mdash;</label>
-        <label class="size-colon">Size:</label>
-        <label class="single-file-size" data-el="capture-size">&mdash;</label>
+        <span class="size-group">
+          <label class="size-colon">Size:</label>
+          <label class="single-file-size" data-el="capture-size">&mdash;</label>
+        </span>
       </div>
     </div>
 
@@ -272,30 +274,34 @@ function template() {
             <div class="unconverted-bytes-layout">
               <label class="format-settings-headings">Unknown Data</label>
               <div class="format-choice-row customDisableButton">
-                <label class="radio-input-container">
+                <label class="radio-input-container is-selected">
                   <input type="radio" name="cv-unknown" value="SEPARATE" checked disabled>
                   <span class="checkmark"></span><label>Separate file</label>
                 </label>
-                <label class="radio-input-container">
+                <label class="radio-input-container is-disabled">
                   <input type="radio" name="cv-unknown" value="INTERLEAVE" disabled>
                   <span class="checkmark"></span><label>Interleave</label>
                 </label>
               </div>
+              <p class="format-settings-help">This will separate the unknown bytes into a single
+                separate file for each chosen output format.</p>
             </div>
 
             <div class="destination-selection-layout">
               <label class="format-settings-headings">Destination</label>
               <div class="format-choice-row customDisableButton">
-                <label class="radio-input-container">
+                <label class="radio-input-container is-selected">
                   <input type="radio" name="cv-dest" value="SOURCE" checked disabled>
                   <span class="checkmark"></span><label>Source file folder</label>
                 </label>
-                <label class="radio-input-container">
+                <label class="radio-input-container is-disabled">
                   <input type="radio" name="cv-dest" value="SELECTED" disabled>
                   <span class="checkmark"></span><label>Select folder</label>
                 </label>
               </div>
-              <input readonly class="destination-folder-path" data-el="destination" value="(in memory)" hidden>
+              <input readonly class="destination-folder-path" data-el="destination"
+                value="" spellcheck="false" aria-label="Capture folder">
+              <span class="browse-dest-folder" aria-hidden="true"></span>
             </div>
 
             <div class="prefix-suffix-layout">
@@ -304,19 +310,18 @@ function template() {
                 <input type="text" class="prefix-suffix-value" id="cv-prefix" data-el="prefix"
                   placeholder="Example: my-gps" maxlength="18" disabled>
               </div>
+              <p class="format-settings-help">This will be added to the output file name(s)</p>
               <div class="prefix-suffix-options customDisableButton">
-                <label class="radio-input-container">
+                <label class="radio-input-container is-selected">
                   <input type="radio" name="cv-affix" value="PREFIX" checked disabled>
                   <span class="checkmark"></span><label>Prefix</label>
                 </label>
-                <label class="radio-input-container">
+                <label class="radio-input-container is-disabled">
                   <input type="radio" name="cv-affix" value="SUFFIX" disabled>
                   <span class="checkmark"></span><label>Suffix</label>
                 </label>
               </div>
             </div>
-
-            <p class="format-settings-help in-memory-note" data-el="destination-note"></p>
           </div>
         </div>
       </div>
@@ -370,6 +375,8 @@ export function mount(root, ctx = {}) {
     alive: true,
     step: 1,
     capture: typeof ctx.capture === 'string' ? ctx.capture : '',
+    /** repo-relative samples root from `/api/captures` (what the Destination field shows) */
+    samples: '',
     groups: [],
     bytes: 0,
     /** name → ticked; every type is ticked when a capture loads (the suite's default). */
@@ -428,12 +435,29 @@ export function mount(root, ctx = {}) {
 
   /* ---- capture header ---- */
 
+  /** `逆向\00_来源\samples\convert` — the folder the capture was read from.
+   *  The suite shows an absolute path; this build only knows the repo-relative samples root
+   *  that `/api/captures` reports, so the rows are joined with the platform separator. */
+  function folderText() {
+    const capture = String(state.capture || '');
+    const cut = Math.max(capture.lastIndexOf('/'), capture.lastIndexOf('\\'));
+    const dir = cut >= 0 ? capture.slice(0, cut) : '';
+    return [state.samples, dir].filter(Boolean).join('/').split('/').join('\\');
+  }
+
+  function renderDestination() {
+    const folder = folderText();
+    el.destination.value = folder;
+    el.destination.title = folder;
+  }
+
   function renderCapture() {
     const name = state.capture ? baseName(state.capture) : '—';
     el.captureName.textContent = name;
     el.captureName.title = state.capture || '';
     el.captureSize.textContent = state.bytes ? bytesText(state.bytes) : '—';
     el.captureSize.title = state.bytes ? exactBytes(state.bytes) : '';
+    renderDestination();
   }
 
   /* ---- step 1 ---- */
@@ -554,7 +578,10 @@ export function mount(root, ctx = {}) {
       return (
         `<div class="format-entry${cls}" data-format="${esc(row.id)}">` +
         '<div class="format-details">' +
-        `<label>${esc(row.label)}</label>` +
+        `<label>${esc(row.label)}</label> ` +
+        // S:21896 `.format-settings-icon` — decorative in this build (the suite opens a
+        // per-format options popup there; the HTTP layer has nothing to configure).
+        `<span class="format-settings-icon" aria-hidden="true" title="${esc(row.label)} options"></span>` +
         note +
         '</div>' +
         `<button type="button" class="select-device-btn${on ? ' active-select-btn' : ''}" ` +
@@ -722,7 +749,7 @@ export function mount(root, ctx = {}) {
     resetInterval();
     el.summary.hidden = true;
     el.preview.innerHTML = '';
-    el.destination.value = '(in memory)';
+    renderDestination();
     alert('');
     setStep(1);
   }
@@ -737,11 +764,18 @@ export function mount(root, ctx = {}) {
     el.msgNote.textContent = '';
     renderCapture();
 
-    const [logs, info] = await Promise.allSettled([
+    const [logs, info, roots] = await Promise.allSettled([
       api.get('/api/logs', { capture }),
       api.get('/api/playback/info', { capture }),
+      // Only needed when the shell handed us a capture before boot() saw `/api/captures`.
+      state.samples ? Promise.resolve(null) : api.get('/api/captures'),
     ]);
     if (!state.alive) return;
+
+    if (roots.status === 'fulfilled' && roots.value && typeof roots.value.samples === 'string') {
+      state.samples = roots.value.samples;
+      renderDestination();
+    }
 
     if (logs.status === 'fulfilled') {
       // The suite lists the types alphabetically (BESTPOS, HWMONITOR, PORTSTATS, …); `/api/logs`
@@ -775,6 +809,7 @@ export function mount(root, ctx = {}) {
       try {
         const data = await api.get('/api/captures');
         if (!state.alive) return;
+        if (typeof data.samples === 'string') state.samples = data.samples;
         const captures = data.captures ?? [];
         const preferred =
           captures.find((item) => item.path === 'convert/clean-9600.gps') ||

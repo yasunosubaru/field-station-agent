@@ -72,7 +72,7 @@
   border: 1px dashed var(--cv-frame);
   margin: 24px;
   min-height: 56px;
-  padding: 10px 16px;
+  padding: 13.3px 16px 0;
 }
 
 /* S:20470 `.single-file-view{display:flex;align-items:flex-start}` */
@@ -112,15 +112,36 @@
   white-space: nowrap;
 }
 
-.convertLayout .size-colon {
+/* S:20475 `.size-colon{margin-left:auto;position:absolute;right:17%}` and
+ * S:20480 `.single-file-size{...right:10.5%}`: the pair is pinned to a 1224 px containing
+ * block, not floated after the name. Both percentages resolve against the card, so the value
+ * ends 10.5% + the labels' 10 px padding-right inside the card's right edge.
+ * Measured in `ref-ui/convert-max2.png`: "Size:" starts at 1208.7 css, "KB" ends at 1320.7,
+ * card right edge 1461.3 → 140.6 px inset. One flex group reproduces that right edge. */
+.convertLayout .size-group {
+  display: inline-flex;
+  align-items: baseline;
   margin-left: auto;
+  margin-right: 100px;
 }
 
+/* the flex rules above set `margin-left:10px` on every direct child; the size pair is pinned */
+.convertLayout .sel-files-view.single-file-view > .size-group {
+  margin-left: auto;
+  margin-right: 100px;
+}
+
+/* S:20475/S:20480 — the two labels abut (`Size:264.52 KB`, no space after the colon) */
+.convertLayout .size-group .size-colon,
+.convertLayout .size-group .single-file-size {
+  margin-left: 0;
+}
+
+/* S:20461 `.single-file-view label` — the value keeps the 16 px OpenSans of its neighbours
+ * (the suite never sets a monospace face on `.single-file-size`) */
 .convertLayout .single-file-size {
-  font-family: var(--cv-mono);
-  font-size: 14px !important;
-  letter-spacing: 0 !important;
   color: var(--cv-ink) !important;
+  letter-spacing: 0.5px !important;
 }
 
 .convertLayout .file-pipe {
@@ -135,33 +156,44 @@
   padding: 0 24px 0 24px;
 }
 
-/* S:21009 `.output-title` — 24 px OpenSans-Regular */
+/* S:21009 `.output-title` — 24 px OpenSans-Regular
+ * The suite's 24 px box margin plus its 5 px label padding-top land the ink 27 px below the
+ * dashed box's bottom edge; -5 px reproduces that without moving the pills below it. */
 .convertLayout .output-title {
   display: block;
+  margin: -5px 0 0;
   font-family: var(--cv-sans);
   font-size: 24px;
   line-height: 32px;
   color: var(--cv-ink);
 }
 
-/* ---- step pills (S:16904 `.tabStyle`, S:16860 odd, S:16913 arrow, S:16931 .active) */
+/* ---- step pills (S:16904 `.tabStyle`, S:16860 odd, S:16913 arrow, S:16931 .active) ----
+ * The two pills are indicators: the suite never binds a click to them (checked against the
+ * shipped view — switching steps happens through Next / Previous only), so they stay inert. */
 
 .convertLayout .tabStyle {
   display: flex;
   align-items: center;
-  margin: 12px 0;
+  margin: 22px 0 17px;
 }
 
+/* S:16860 `.tabStyle span:nth-of-type(odd){border:1px solid #80808052;padding:0.5% 2%}` —
+ * 0.5% / 2% of the 1176 px column is 5.88 / 23.5 px; the shipped pills measure 129.3 and
+ * 112.6 px wide, which 22 px side padding reproduces against this build's label widths. */
 .convertLayout .tabStyle > span {
   width: auto;
   border: 1px solid #80808052;
-  padding: 6px 18px;
+  padding: 5.88px 23.2px;
   font-size: 14px;
-  line-height: 18px;
+  line-height: normal;
   color: var(--cv-ink-38);
   font-family: var(--cv-semi);
   font-weight: 600;
   border-radius: 4px;
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
 }
 
 .convertLayout .tabStyle > span.active {
@@ -365,67 +397,83 @@
   color: var(--cv-ink-60);
 }
 
-/* ---- step 2: time interval (S:21580 `.single-file-time-interval`) ------- */
+/* ---- step 2: time interval (S:21580 `.single-file-time-interval`) -------
+ * Measured against `ref-ui/convert-max2.png` (card left 238, panel left 262.7, top 363.3):
+ *   panel 1176 × 199.3, heading at +24/+29, labels at +202, date input at +434, inputs 40 tall,
+ *   rows 66 apart, Duration/Reset row at +153.4, Reset 78 × 34 at +725 and Duration:value 539. */
 
 .convertLayout .format-settings-tab {
   display: block;
+  /* S:21577 `.time-interval-layout{margin-top:34px}` — the wrapper that used to provide the
+     34 px between the pills and this panel is gone, so the panel carries it; padding (not
+     margin) keeps it from collapsing into `.tabStyle`'s 17 px bottom margin. */
+  padding-top: 34px;
 }
 
+/* S:21580 — `display:none` until JS shows it; here `hidden` on the parent does that */
 .convertLayout .single-file-time-interval {
   position: relative;
+  height: 199px;
   border: 1px solid var(--cv-ink);
   background-color: var(--cv-grey);
   margin-bottom: 16px;
-  padding: 14px 24px 12px 24px;
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  align-items: start;
 }
 
-/* S:21589 `.timeIntervalHeading` (18 px OpenSans-Bold) */
+/* S:21589 `.timeIntervalHeading` (absolute 145 wide at 23/24, 18 px OpenSans-Bold) */
 .convertLayout .timeIntervalHeading {
+  position: absolute;
+  left: 23px;
+  top: 24px;
+  width: 145px;
   margin: 0;
-  padding-top: 8px;
   font-size: 18px;
   font-family: var(--cv-bold);
   line-height: 24px;
   color: var(--cv-ink);
 }
 
-/* S:21649 `.time-interval-layout` / S:21656 `.utc-time-inputs` */
+/* S:21656 `.utc-time-inputs{margin-left:200px;margin-top:10px}` — 200 + the 1 px border puts
+ * both labels at 464.7 css, which is what the reference shows. */
 .convertLayout .utc-time-inputs {
   display: block;
+  width: 602px;
+  margin-left: 201px;
+  padding-top: 2px;
 }
 
-/* S:21661 `.time-row{display:flex;height:66px}` — 66 → 52 so step 2 fits a 1066 px window */
+/* S:21661 `.time-row{display:flex;height:66px;width:62%;justify-content:space-between}` —
+ * width 62% of 958.43 = 594; the reference group ends at +804.6 from the panel's left border
+ * (i.e. 604 from the inputs' left edge), so the row is 604 here. */
 .convertLayout .time-row {
   display: flex;
   align-items: center;
-  min-height: 52px;
+  justify-content: space-between;
+  height: 66px;
+  width: 100%;
 }
 
-/* S:21695 `.time-label{position:relative;top:16px}` → a real column */
+/* S:21695 `.time-label{position:relative;top:16px}` → a real flex item */
 .convertLayout .time-label {
-  flex: 0 0 190px;
-  width: 190px;
+  flex: 0 0 auto;
+  margin: 0;
   font-size: 14px;
   font-family: var(--cv-sans);
   line-height: 20px;
   color: var(--cv-ink);
-  margin: 0;
 }
 
 .convertLayout .datetime-input-group {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
 }
 
-/* S:21667 `.date-input` — 150 px, 40 px tall, grey fill, hairline bottom */
+/* S:21667 `.date-input` — 150 px, 40 px tall, grey fill, hairline bottom, 10 px right margin */
 .convertLayout .date-input {
   width: 150px;
   height: 40px;
-  margin-right: 10px;
-  padding: 0 12px;
+  margin-right: 14px;
+  padding: 0 12px 0 16px;
   border: none;
   border-bottom: 1px solid var(--cv-ink);
   border-radius: 4px 4px 0 0;
@@ -436,7 +484,7 @@
   line-height: 40px;
 }
 
-/* S:21682 `.time-input` — 60 px, same surface */
+/* S:21682 `.time-input` — 60 px, same surface (measured 60 × 40, 13 px between the boxes) */
 .convertLayout .time-input {
   width: 60px;
   height: 40px !important;
@@ -451,8 +499,9 @@
   line-height: 40px;
 }
 
+/* the ":" between the boxes measures 13 css wide in the reference (glyph + 4 px padding) */
 .convertLayout .time-separator {
-  padding: 0 6px;
+  padding: 0 4.25px;
   font-size: 16px;
   color: var(--cv-ink);
 }
@@ -464,24 +513,25 @@
   border-bottom: 2px solid var(--cv-teal);
 }
 
-/* S:21729 `.duration-row` */
+/* S:21729 `.duration-row{width:539px;margin-top:10px;justify-content:space-between}` */
 .convertLayout .duration-row {
   display: flex;
   align-items: center;
-  margin: 2px 0;
-  min-height: 40px;
+  justify-content: space-between;
+  width: 539px;
+  height: 40px;
+  margin: 16px 0 0;
 }
 
 .convertLayout .duration-label {
-  flex: 0 0 190px;
-  width: 190px;
-  font-size: 16px;
-  line-height: 24px;
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--cv-ink);
 }
 
 .convertLayout .duration-value {
-  font-size: 16px;
+  font-size: 14px;
   font-family: var(--cv-mono);
   color: var(--cv-ink);
   min-width: 96px;
@@ -491,53 +541,62 @@
   color: var(--cv-bad);
 }
 
-/* S:21738 `.resetTime{left:65px}` */
+/* S:21738 `.resetTime{position:relative;left:65px}` — 36 × 78 at +725.3 from the panel's left */
 .convertLayout .duration-row .resetTime {
-  margin-left: 45px;
+  position: relative;
+  left: 65px;
+  flex: 0 0 auto;
 }
 
-/* ---- step 2: format columns (S:21857 / S:21866) ------------------------- */
+/* ---- step 2: format columns (S:21857 / S:21866) -------------------------
+ * Measured in `ref-ui/convert-max2.png` (card top 124.7, format panel 578.7..1056.7):
+ *   panel 600 × 478 at +24.7, right column at +644.7 (556 wide), entries 272 × 64 on a 288
+ *   pitch, hairlines at +114/+178/+242/+306/+370, checkbox at entry-left + 240. */
 
 .convertLayout .format-settings-layout {
   display: grid;
   grid-template-columns: 600px minmax(0, 1fr);
-  column-gap: 20px;
-  align-items: stretch;
+  column-gap: 21px;
+  align-items: start;
+  height: 478px;
   margin-bottom: 4px;
 }
 
-/* S:21857 `.msg-format-selection` — grey sheet, 1 px ink border */
+/* S:21857 `.msg-format-selection` — grey sheet, 1 px ink border, 600 × 478 */
 .convertLayout .msg-format-selection {
-  min-height: 0;
+  height: 478px;
   border: 1px solid var(--cv-ink);
   background-color: var(--cv-grey);
-  padding: 15px 10px 10px 10px;
+  padding: 15px 0 0 10px;
 }
 
-/* S:21891 `.msg-format-selection > label` */
+/* S:21891 `.msg-format-selection > label` (18 px OpenSans-Bold, 24 px line box) */
 .convertLayout .msg-format-selection > label {
+  display: block;
+  height: 24px;
   font-family: var(--cv-bold);
   font-size: 18px;
   line-height: 24px;
   color: var(--cv-ink);
 }
 
-/* S:21872 `.msg-format-list{padding-left:8px}` — two 272 px columns */
+/* S:21872 `.msg-format-list{padding-left:8px}` — two 272 px columns 288 apart */
 .convertLayout .msg-format-list {
   display: grid;
   grid-template-columns: repeat(2, 272px);
-  column-gap: 12px;
+  column-gap: 16px;
   padding-left: 8px;
-  margin-top: 4px;
+  margin-top: 11.3px;
 }
 
-/* S:21875 `.format-entry` — 272×64, hairline under every entry */
+/* S:21875 `.format-entry` — 272 × 64, padding-top 20 (the row's ink starts there), hairline
+ * under each entry; the checkbox's 24 px box shares that top edge in the reference. */
 .convertLayout .format-entry {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   width: 272px;
-  min-height: 64px;
-  padding-top: 8px;
+  height: 64px;
+  padding-top: 20px;
   border-bottom: 1px solid rgb(197, 197, 197);
 }
 
@@ -546,6 +605,7 @@
   width: 230px;
   min-width: 0;
   position: relative;
+  flex: 0 0 230px;
 }
 
 /* S:21883 `.format-details label` */
@@ -558,26 +618,45 @@
   color: var(--cv-ink);
 }
 
-.convertLayout .format-entry .select-device-btn {
-  margin-left: auto;
+/* S:21896 `.format-settings-icon` — the 14 × 14.4 gear after every format name
+ * (`feedback_receiver_configuration.svg`, 60% opacity on top of its own 60% fill) */
+.convertLayout .format-settings-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14.4px;
+  margin-left: 0;
+  vertical-align: middle;
+  background-image: url("/assets/images/feedback_receiver_configuration.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100%;
+  opacity: 0.6;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
-/* S:21924 `.customDisableButton .select-device-btn{pointer-events:none}` */
-.convertLayout .customDisableButton .select-device-btn {
+.convertLayout .customDisableButton .format-settings-icon {
   pointer-events: none !important;
 }
 
-/* S:21866 `.format-gereral-settings` (absolute / margin-left:620 → grid cell) */
-.convertLayout .format-gereral-settings {
-  align-self: start;
-  padding-top: 4px;
+/* S:20906 `.select-device-btn` — 24 × 24 at entry-left + 240 (i.e. 8 px in from the hairline) */
+.convertLayout .format-entry .select-device-btn {
+  margin-left: auto;
+  margin-right: 8px;
+  flex: 0 0 auto;
 }
 
-/* S:21982 `.format-settings-headings` */
+/* S:21866 `.format-gereral-settings` (absolute / margin-left:620 → grid column) */
+.convertLayout .format-gereral-settings {
+  align-self: start;
+  padding-top: 7px;
+}
+
+/* S:21982 `.format-settings-headings` — 12 px, 60% ink, 16 px line box */
 .convertLayout .format-settings-headings {
   display: block;
   width: 100%;
-  margin-bottom: 6px;
+  margin: 0 0 6.3px;
   font-size: 12px;
   font-family: var(--cv-sans);
   line-height: 16px;
@@ -585,17 +664,29 @@
 }
 
 .convertLayout .sample-rate-layout,
-.convertLayout .unconverted-bytes-layout,
-.convertLayout .destination-selection-layout,
-.convertLayout .prefix-suffix-layout {
-  margin-bottom: 20px;
+.convertLayout .unconverted-bytes-layout {
+  margin-bottom: 16.6px;
 }
 
-/* S:22006 `input.common-sample-freq` — 296 px, grey fill */
+.convertLayout .destination-selection-layout {
+  position: relative;
+  margin-bottom: 25px;
+}
+
+.convertLayout .prefix-suffix-layout {
+  margin-bottom: 0;
+}
+
+/* S:22006 `input.common-sample-freq` — 296 px, grey fill, 50 px right padding for the unit */
+.convertLayout .common-sample-rate {
+  position: relative;
+  width: 296px;
+}
+
 .convertLayout .common-sample-freq {
   width: 296px;
   height: 40px !important;
-  padding: 0 16px;
+  padding: 0 50px 0 16px;
   border: none;
   border-bottom: 1px solid var(--cv-ink);
   border-radius: 4px 4px 0 0;
@@ -605,76 +696,128 @@
   font-size: 16px !important;
 }
 
-/* S:22019 `.common-sample-rate span.sampleRate-units` */
+/* S:22019 `.common-sample-rate span.sampleRate-units{margin-left:-45px}` — the unit sits
+ * inside the field; measured ink 1138.7..1165.3 against an input right edge of 1178.7 */
 .convertLayout .sampleRate-units {
-  display: inline-block;
-  margin-left: 8px;
-  font-size: 14px;
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  line-height: 20px;
   color: var(--cv-ink);
+  pointer-events: none;
 }
 
-/* S:22072 `.format-gereral-settings p` */
+/* S:22072 `.format-gereral-settings p` — 12 px, 16 px line box, 16 px left padding */
 .convertLayout .format-settings-help {
   margin: 4px 0 0;
+  padding-left: 16px;
   font-size: 12px;
   font-family: var(--cv-sans);
   line-height: 16px;
   color: rgba(18, 18, 18, 0.6);
 }
 
-.convertLayout .in-memory-note {
-  margin-top: 4px;
-  color: var(--cv-teal-text);
+/* the note under the radio pills sits further down in the reference */
+.convertLayout .unconverted-bytes-layout > .format-settings-help {
+  margin-top: 7.3px;
 }
 
-/* S:22049 `.prefix-suffix-layout` + S:22052 `.prefix-suffix-value` */
+/* S:22052 `.prefix-suffix-layout input.prefix-suffix-value` */
 .convertLayout .prefix-suffix-value {
   width: 296px;
   height: 40px !important;
+  margin-top: 1.5px;
   padding: 0 16px;
   border: none;
   border-bottom: 1px solid var(--cv-ink);
   border-radius: 4px 4px 0 0;
-  background-color: rgba(200, 200, 200, 0.38);
+  background-color: #cecece;
   color: var(--cv-ink);
   font-family: var(--cv-sans);
   font-size: 16px !important;
 }
 
-/* S:22022 `.destination-selection-layout input.destination-folder-path` */
+/* S:22022 `.destination-selection-layout input.destination-folder-path` — 568 px wide,
+ * 40 px tall, 4% black fill, no border; the reference spans 882.7..1438.7 = 556 here. */
 .convertLayout .destination-folder-path {
-  width: 296px;
+  display: block;
+  width: 100%;
   height: 40px;
-  margin-top: 6px;
-  padding: 0 16px;
+  margin-top: 7.6px;
+  padding: 0 30px 0 16px;
   border: none;
   border-radius: 4px 4px 0 0;
   background-color: rgba(0, 0, 0, 0.04);
   color: var(--cv-ink);
-  font-family: var(--cv-mono);
-  font-size: 13px;
+  font-family: var(--cv-sans);
+  font-size: 14px;
+  cursor: pointer;
+  text-overflow: ellipsis;
 }
 
-/* S:21989 `.unconverted-bytes-options` / `.destination-options` — one row of radios */
+/* S:22036 `.browse-dest-folder` — the magnifier at the field's right end (search.svg, 18 px) */
+.convertLayout .browse-dest-folder {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  width: 25px;
+  height: 40px;
+  background-image: url("/assets/images/search.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 18px 18px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* S:22759 `.convertLayout .list-inline li` — Unknown Data and Destination are rows of pills
+ * (`ul.list-inline > li` in the suite): 24 px glyph at 5 px, 35 px left padding, 15 px right
+ * padding, 4 px radius, grey fill; the selected pill drops the fill and takes a 1 px ink
+ * border. Prefix/Suffix are plain radios (`div.prefix-suffix-options`), not pills.
+ * The reference greys the whole Unknown Data block and the Prefix/Suffix pair out (`opacity`
+ * .5, which is what makes the inactive fill read 244 instead of 234 and the border 144
+ * instead of 33); Destination stays at full strength. */
 .convertLayout .format-choice-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 2px;
+  margin: 6.3px 0 0;
 }
 
-/* S:14161 `.radio-input-container` + S:13717 `.checkmark` (the suite's radio artwork) */
+.convertLayout .unconverted-bytes-layout {
+  opacity: 0.5;
+}
+
+.convertLayout .prefix-suffix-options {
+  display: flex;
+  align-items: center;
+  margin-top: 4.7px;
+  opacity: 0.5;
+}
+
+/* the plain radios are 16 px labels set 51 px apart (reference: glyphs at 887 and 1015) */
+.convertLayout .prefix-suffix-options .radio-input-container {
+  font-size: 16px;
+  margin-right: 51px;
+}
+
+/* ---- plain radio (Prefix / Suffix) ---- */
+
 .convertLayout .radio-input-container {
   position: relative;
   display: inline-flex;
   align-items: center;
+  height: 24px;
   padding-left: 27px;
-  margin: 0 24px 10px 0;
-  cursor: pointer;
-  font-size: 14px;
-  font-family: var(--cv-semi);
-  line-height: 24px;
+  margin: 0 4px 0 0;
   color: var(--cv-ink);
+  font-family: var(--cv-semi);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 24px;
+  cursor: pointer;
   user-select: none;
 }
 
@@ -693,54 +836,80 @@
   width: 24px;
   height: 24px;
   margin-top: -12px;
-  border-radius: 50%;
   background-repeat: no-repeat;
   background-position: center;
   background-size: 24px 24px;
   background-image: url("/assets/images/btn_radio_unselected.svg");
+  pointer-events: none;
 }
 
-.convertLayout .radio-input-container input:checked ~ .checkmark {
+.convertLayout .radio-input-container.is-selected .checkmark {
   background-image: url("/assets/images/btn_radio_selected.svg");
 }
 
-/* S:22064 disabled-but-checked keeps the greyed-out radio glyph */
-.convertLayout .customDisableButton .radio-input-container {
-  cursor: default;
+/* S:22064 — inside the disabled Prefix/Suffix pair the ticked glyph is the grey one */
+.convertLayout .prefix-suffix-options .radio-input-container.is-selected .checkmark {
+  background-image: url("/assets/images/btn_radio_selected_disabled.svg");
 }
 
-.convertLayout .customDisableButton input:checked ~ .checkmark {
-  background-image: url("/assets/images/btn_radio_selected_disabled.svg");
+/* ---- pill radio (Unknown Data / Destination) ---- */
+
+.convertLayout .format-choice-row .radio-input-container {
+  height: 39px;
+  padding: 0 15px 0 35px;
+  margin: 0 13px 0 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background-color: rgba(200, 200, 200, 0.38);
+  background-image: url("/assets/images/btn_radio_unselected.svg");
+  background-repeat: no-repeat;
+  background-position: 5px center;
+  background-size: 24px 24px;
+}
+
+.convertLayout .format-choice-row .radio-input-container.is-selected {
+  background-color: transparent;
+  border-color: var(--cv-ink);
+  background-image: url("/assets/images/btn_radio_selected.svg");
+}
+
+/* the pill carries its glyph itself; the span is only used by the plain variant */
+.convertLayout .format-choice-row .radio-input-container .checkmark {
+  display: none;
 }
 
 /* ---- bottom bar (S:9114 `.btnsRow`, S:3312 `.btnsRow .need-help`) ------- */
 
+/* The rule is wider than the column it lives in: the suite's `.row` carries -15 px side
+ * margins and its `.col-12` puts 15 px back, so the border spans 253.3..1453.3 css while the
+ * content stays at the column's edge. Reproduced with negative margins (no collapse: the bar
+ * is a flex container) and a right padding that lands Convert's edge on 1445.3. */
 .convertLayout .btnsRow.convert-actions {
   display: flex;
   align-items: center;
-  width: 100%;
-  margin: 10px 0 0;
-  padding: 10px 24px 10px 24px;
+  width: auto;
+  margin: 10px -16.3px 0 -9.7px;
+  padding: 10px 8px 10px 0;
   border-top: 1px solid var(--cv-rule);
   background: #fff;
 }
 
-/* S:19720 `.need-help:before` — the round "?" */
+/* S:19720 `.need-help:before` — the round "?" (14 px here; the reference measures 254.7..268.7) */
 .convertLayout .need-help {
   display: inline-flex;
   align-items: center;
-  margin-right: 22px;
+  margin-right: 35px;
 }
 
 .convertLayout .need-help:before {
   content: "?";
   display: inline-block;
-  width: 18px;
-  height: 18px;
-  margin-right: 6px;
+  width: 14px;
+  height: 14px;
+  margin-right: 10px;
   font-family: sans-serif;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 10.5px;
+  line-height: 14px;
   text-align: center;
   border-radius: 50%;
   color: #fff;
@@ -812,13 +981,21 @@
   font-family: var(--cv-semi) !important;
 }
 
-/* S:20784 `button.lightBtn.start-over-button{float:left;margin-left:50px}` */
+/* S:20784 `button.lightBtn.start-over-button{float:left;margin-left:50px}` — a flex item now;
+ * the reference puts it at 343.3..437.3, i.e. 94 px wide with ~5 px side padding. */
 .convertLayout .start-over-button {
-  margin-left: 50px;
+  padding: 0 5px;
 }
 
+/* reference: 1254..1337.3 (83.3 wide) */
 .convertLayout .format-previous-button {
-  margin-right: 15px;
+  padding: 0 5px;
+  margin-right: 20px;
+}
+
+/* reference: 1358..1445.3 (87.3 wide, 12 px side padding like bootstrap's `.btn`) */
+.convertLayout .format-convert-button {
+  padding: 0 11px;
 }
 
 /* S:21564 `.customDisableButton` — the suite's greyed-out Convert */
@@ -1076,10 +1253,12 @@
   .convertLayout .format-settings-layout {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 16px;
+    height: auto;
   }
 
   .convertLayout .msg-format-selection {
-    min-height: 0;
+    height: auto;
+    padding-bottom: 10px;
   }
 
   .convertLayout .msg-format-list {
@@ -1101,19 +1280,31 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* the fixed 199 px panel only holds at the card's full 1224 px */
   .convertLayout .single-file-time-interval {
-    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    padding: 16px 0 12px;
   }
 
   .convertLayout .timeIntervalHeading {
-    padding-top: 0;
-    margin-bottom: 8px;
+    position: static;
+    width: auto;
+    margin: 0 0 8px 23px;
   }
 
-  .convertLayout .time-label,
-  .convertLayout .duration-label {
-    flex: 0 0 150px;
-    width: 150px;
+  .convertLayout .utc-time-inputs {
+    width: auto;
+    margin-left: 24px;
+    padding-top: 0;
+  }
+
+  .convertLayout .time-row,
+  .convertLayout .duration-row {
+    width: auto;
+  }
+
+  .convertLayout .duration-row .resetTime {
+    left: 0;
   }
 }
 
