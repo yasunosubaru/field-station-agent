@@ -1,41 +1,60 @@
 /* =============================================================================
- * playback.css — Playback panel (transport bar + current frame + snippet export).
+ * playback.css — Playback page = the suite's status dashboard in playback mode.
  *
- * Quoted from 逆向/01_解包/app/view/css/style.css; `.player` is the suite's own dark
- * transport surface, everything below it is a light card:
- *   player surface rgba(0,0,0,.87) · track rgba(255,255,255,.36)
- *   elapsed fill rgba(0,171,200,.87) (cyan) · handle #fff with a 3 px cyan border
- *   secondary labels rgba(255,255,255,.6) · values rgba(255,255,255,.87)
- *   snippet amber #F5A623 · "Create Snippet" text #27A0BF
- *   cards #FCFCFC / border #005170 · ink rgba(0,0,0,.87) · rules #c5c5c5
+ * Every colour / size below is quoted from the unpacked original (line numbers refer to
+ * `逆向/01_解包/app/view/css/style.css`, shortened to S):
  *
- * The three SVG icons (`playback/pause_button.svg`, `play_button.svg`, `rewind30.svg`)
- * are inlined as data URIs so the page needs no image request and cannot 404.
+ *   app bar            #00516F                                    (S:1923, shell owns it)
+ *   status band        #E4E4E4, bottom rule #B6B6B6, headings 18 px OpenSans-Bold (S:19737-19753)
+ *   band rows          16 px OpenSans-Regular / value 600 (S:3456-3477)
+ *   tab underline      3 px #00516F                               (S:14554 `.active-tab`)
+ *   tile (#FCFCFC)     1 px #005170 border, 15/9/9/15 padding, min-height 350 (S:379)
+ *   tile heading       18 px OpenSans-Bold, rgba(0,0,0,.87)       (S:3330)
+ *   badges             green #305703 (S:19868) · red #A00214 with the "i" (S:19804) ·
+ *                      amber #F5A623 (S:19754)
+ *   Help link          #00516F 14 px + 18 px "?" disc, bottom-left (S:3295-3320)
+ *   satellite legend   In Use rgb(65,118,5) · Not Used rgb(245,165,36) 2 px dotted ·
+ *                      Missing rgb(207,2,26) + dashed white/black frame (S:13051-13172)
+ *   count chips        40×28, sprite `sats-sprite.png` at -193px 0 / -194px -49px / -194px -101px
+ *   constellation icon 28×40 from the same sprite (S:1401-1426), LBAND/SBAS 34×30 (S:29691)
+ *   sky plot           disc #DDDDDD, border .08em rgba(0,0,0,.87), rings 66.66 % / 50 %,
+ *                      axes rgba(0,0,0,.87), labels 13 px (S:1104-1210)
+ *   Timeline bar       #212121, 36 px, bottom-right (measured from `ref-ui/playback-loaded.png`)
+ *   transport          the suite's `.player` surface rgba(0,0,0,.87), cyan rgba(0,171,200,.87)
+ *                      fill, white handle with a 3 px cyan border, amber snippet (S:4543-5000)
  *
- * Layout-only deviations: `float` in `.player-footer` becomes flex, `display:none`
- * on `.player` is lifted (the suite toggles it from JS), and no flex `gap` is used
- * (Chromium 80).
+ * Three page-scoped overrides of the shell live at the very bottom (§10): the original page has
+ * no "抓包" heading above the dashboard, its band spans the full width, and the file tab has to
+ * sit in the app bar. They are written as `body[data-page="playback"] …` so no other page moves.
+ *
+ * Layout-only deviations: float → flex/grid, `position:fixed` for the Timeline dock (the suite
+ * pins it to the viewport too), and the band/tile column is a max-width grid instead of the
+ * original's 392 px floated tiles.
  * ========================================================================== */
 
 .playback-panel {
-  --nas-ink: rgba(0, 0, 0, 0.87);
-  --nas-ink-60: rgba(0, 0, 0, 0.6);
-  --nas-ink-38: rgba(0, 0, 0, 0.38);
-  --nas-teal: #00516f;
-  --nas-teal-hover: #3a7b91;
-  --nas-teal-dark: #115c7c;
-  --nas-rule: #c5c5c5;
-  --nas-rule-strong: #9b9b9b;
-  --nas-surface: #fcfcfc;
-  --nas-cyan: #00abc8;
-  --nas-amber: #f5a623;
-  --nas-bad: #a00214;
-  --nas-sans: Roboto, "Roboto-Regular", "Open Sans", "OpenSans-Regular", "Segoe UI", "Microsoft YaHei", sans-serif;
-  --nas-sans-bold: Roboto, "OpenSans-Bold", "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
-  --nas-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  --pb-ink: rgba(0, 0, 0, 0.87);
+  --pb-ink-60: rgba(0, 0, 0, 0.6);
+  --pb-ink-38: rgba(0, 0, 0, 0.38);
+  --pb-teal: #00516f;
+  --pb-teal-dark: #115c7c;
+  --pb-band: #e4e4e4;
+  --pb-band-rule: #b6b6b6;
+  --pb-rule: #c5c5c5;
+  --pb-surface: #fcfcfc;
+  --pb-cyan: #00abc8;
+  --pb-amber: #f5a623;
+  --pb-green: #305703;
+  --pb-green-chip: #417605;
+  --pb-red: #a00214;
+  --pb-miss: rgb(207, 2, 26);
+  --pb-sans: OpenSans-Regular, "Microsoft YaHei", "Segoe UI", sans-serif;
+  --pb-semi: OpenSans-SemiBold, "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
+  --pb-bold: OpenSans-Bold, "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
+  --pb-light: OpenSans-Light, "Segoe UI", "Microsoft YaHei", sans-serif;
 
-  color: var(--nas-ink);
-  font-family: var(--nas-sans);
+  color: var(--pb-ink);
+  font-family: var(--pb-sans);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -50,582 +69,1305 @@
   display: none !important;
 }
 
-/* ---- file row (same dashed box Convert uses) ---------------------------- */
-
-.playback-panel .selected-file-info {
-  border: 1px dashed #005170;
-  border-radius: 2px;
-  padding: 10px 16px;
-  margin-bottom: 16px;
-  background: #fff;
-}
-
-.playback-panel .single-file-view {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-left: -10px;
-}
-
-.playback-panel .single-file-view > * {
-  margin-left: 10px;
-}
-
-.playback-panel .single-file-view label {
-  font-size: 16px;
-  line-height: 24px;
-  letter-spacing: 0.5px;
-  color: var(--nas-ink);
-}
-
-.playback-panel .single-file-view .single-file-msg {
-  color: #00516f;
-  letter-spacing: 0.15px;
-}
-
-.playback-panel select {
-  appearance: none;
-  height: 36px;
-  border: 1px solid var(--nas-rule);
-  border-bottom: 1px solid var(--nas-ink);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--nas-ink);
-  font: 14px var(--nas-sans);
-  padding: 0 8px;
-}
-
-.playback-panel .playback-capture {
-  flex: 1 1 320px;
-  min-width: 200px;
-}
-
-.playback-panel .playback-speed {
-  width: 92px;
-}
-
-.playback-panel select:focus {
-  outline: none;
-  border-bottom: 2px solid var(--nas-teal);
-}
-
-.playback-panel .pb-meta {
-  margin: 8px 0 0 10px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nas-ink-60);
-}
-
-/* ---- transport bar ------------------------------------------------------ */
-
-/* style.css:4543 `.playback-controls` */
-.playback-panel .playback-controls {
-  min-height: auto;
-  margin-bottom: 16px;
-}
-
-/* style.css:4681 `.player` — dark surface; `display:none` lifted. */
-.playback-panel .player {
-  display: block;
-  padding: 4px 25px 6px 15px;
-  background: rgba(0, 0, 0, 0.87);
-  color: rgba(0, 0, 0, 0.87);
-  text-align: center;
-  line-height: normal;
-  font-family: var(--nas-sans);
-  font-size: 13px;
-  border-radius: 2px;
-  user-select: none;
-}
-
-/* style.css:4617 `.progress-bar` */
-.playback-panel .progress-bar {
-  position: relative;
-  margin: 15px 15px 22px 20px;
-  width: auto;
-  height: 10px;
-  background-color: rgba(255, 255, 255, 0.36);
-  display: block;
-  cursor: pointer;
-  border-radius: 2px;
-}
-
-.playback-panel .progress-bar:focus {
-  outline: 1px solid var(--nas-cyan);
-  outline-offset: 4px;
-}
-
-/* style.css:4661 `.timeline` */
-.playback-panel .timeline {
-  position: relative;
-  background-color: rgba(0, 171, 200, 0.87);
-  left: 0;
-  height: 10px;
-  width: 0%;
-  border-radius: 2px;
-}
-
-/* style.css:4668 `#playbackscrub` */
-.playback-panel #playbackscrub {
-  height: 20px;
-  width: 8px;
-  background-color: #fff;
-  position: relative;
-  bottom: 5px;
-  z-index: 5;
-  left: 100%;
-  margin-left: -8px;
-  border: 3px solid rgba(0, 171, 200, 0.87);
-  border-radius: 2px;
-  box-sizing: border-box;
-}
-
-/* style.css:4957 `.snippet` — the dashed yellow selection box, drawn around the track
-   the way the suite draws it around the timeline. */
-.playback-panel .snippet {
-  position: absolute;
-  top: -3px;
-  height: 16px;
-  background: rgba(245, 166, 35, 0.12);
-  border: 2px dashed var(--nas-amber);
-  border-radius: 2px;
-  z-index: 4;
-  pointer-events: none;
-}
-
-/* `.playback-events` (inline `display:flex;position:relative` in the suite) — one tick
-   per record, aligned with the track above. */
-.playback-panel .playback-events {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 13px;
-  height: 7px;
-  pointer-events: none;
-}
-
-.playback-panel .pb-tick {
-  position: absolute;
-  top: 0;
-  width: 2px;
-  height: 7px;
-  margin-left: -1px;
-  opacity: 0.75;
-}
-
-/* style.css:4787 `.player-footer` (floats dropped, flex kept) */
-.playback-panel .player-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin: 8px 0 0;
-  padding-bottom: 4px;
-}
-
-.playback-panel .left-controls {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 1 auto;
-}
-
-/* style.css:4704 `.startEnddate` */
-.playback-panel .startEnddate {
-  height: 34px;
-  display: flex;
-  align-items: center;
-  line-height: normal;
-}
-
-/* style.css:4711 `.startEnddate span span:nth-child(odd), .speed-section label` */
-.playback-panel .startEnddate span span:nth-child(odd),
-.playback-panel .speed-section label {
-  font-weight: 400;
-  font-size: 12px;
-  line-height: 16px;
-  color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.4px;
-}
-
-/* style.css:4724 `.startEnddate span, .middle-controls .time-timeline span` */
-.playback-panel .startEnddate span,
-.playback-panel .middle-controls .time-timeline span {
-  color: rgba(255, 255, 255, 0.87);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 24px;
-  letter-spacing: 0.5px;
-  text-align: left;
-}
-
-/* style.css:4711 — the inner "Start/End" labels are 12 px, the values 16 px. */
-.playback-panel .startEnddate span span span {
-  font-size: 12px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.playback-panel .startEnddate span span span:nth-child(2),
-.playback-panel .startEnddate span span span:nth-child(4) {
-  font-size: 16px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.87);
-}
-
-/* style.css:4720 `.player-footer .middle-controls` */
-.playback-panel .player-footer .middle-controls {
-  display: flex;
-  align-items: center;
-  flex: 0 1 auto;
-}
-
-/* style.css:4734 `.middle-controls .time-timeline span:last-child` */
-.playback-panel .middle-controls .time-timeline span:last-child {
-  font-weight: normal;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.playback-panel .time-timeline {
-  white-space: nowrap;
-  padding-left: 4px;
-}
-
-/* style.css:4554 `.play-pause` — pause glyph (what the button does while playing). */
-.playback-panel .play-pause {
-  width: 16px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: transparent url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAxNiAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMCAxOS4zMzMySDUuMzMzMzNWMC42NjY1MDRIMFYxOS4zMzMyWk0xMC42NjY3IDAuNjY2NTA0VjE5LjMzMzJIMTZWMC42NjY1MDRIMTAuNjY2N1oiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuODciLz4NCjwvc3ZnPg0K") no-repeat center;
-  margin: 5px 21px 0 0;
-  cursor: pointer;
-}
-
-/* style.css:4598 `.play-pause.pause` — play glyph (shown while paused). */
-.playback-panel .play-pause.pause {
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAxNiAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMC42NjY2MjYgMC42NjY1MDRWMTkuMzMzMkwxNS4zMzMzIDkuOTk5ODRMMC42NjY2MjYgMC42NjY1MDRaIiBmaWxsPSJ3aGl0ZSIvPg0KPC9zdmc+DQo=");
-  height: 20px;
-}
-
-.playback-panel .play-pause:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.playback-panel .play-pause:focus {
-  outline: 1px solid var(--nas-cyan);
-  outline-offset: 3px;
-}
-
-/* style.css:4609 `.player-footer .rewind` */
-.playback-panel .player-footer .rewind {
-  width: 22px;
-  height: 27px;
-  padding: 0;
-  border: none;
-  background: transparent url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIiIGhlaWdodD0iMjciIHZpZXdCb3g9IjAgMCAyMiAyNyIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMTAuOTk5OSA1LjY2NjgzVjAuMzMzNDk2TDQuMzMzMjUgNy4wMDAxNkwxMC45OTk5IDEzLjY2NjhWOC4zMzM1QzE1LjM5OTkgOC4zMzM1IDE4Ljk5OTkgMTEuOTMzNSAxOC45OTk5IDE2LjMzMzVDMTguOTk5OSAyMC43MzM1IDE1LjM5OTkgMjQuMzMzNSAxMC45OTk5IDI0LjMzMzVDNi41OTk5MiAyNC4zMzM1IDIuOTk5OTIgMjAuNzMzNSAyLjk5OTkyIDE2LjMzMzVIMC4zMzMyNTJDMC4zMzMyNTIgMjIuMjAwMiA1LjEzMzI1IDI3LjAwMDIgMTAuOTk5OSAyNy4wMDAyQzE2Ljg2NjYgMjcuMDAwMiAyMS42NjY2IDIyLjIwMDIgMjEuNjY2NiAxNi4zMzM1QzIxLjY2NjYgMTAuNDY2OCAxNi44NjY2IDUuNjY2ODMgMTAuOTk5OSA1LjY2NjgzWk03Ljc5OTkyIDE3LjAwMDJIOC4zMzMyNUM4LjU5OTkyIDE3LjAwMDIgOC44NjY1OCAxNi44NjY4IDguOTk5OTIgMTYuNzMzNUM5LjEzMzI1IDE2LjYwMDIgOS4yNjY1OCAxNi40NjY4IDkuMjY2NTggMTYuMjAwMlYxNS45MzM1QzkuMjY2NTggMTUuOTMzNSA5LjEzMzI1IDE1LjgwMDIgOS4xMzMyNSAxNS42NjY4QzkuMTMzMjUgMTUuNTMzNSA4Ljk5OTkyIDE1LjUzMzUgOC44NjY1OCAxNS41MzM1SDguMTk5OTJDOC4xOTk5MiAxNS41MzM1IDguMDY2NTggMTUuNjY2OCA3LjkzMzI1IDE1LjY2NjhDNy43OTk5MiAxNS42NjY4IDcuNzk5OTIgMTUuODAwMiA3Ljc5OTkyIDE1LjkzMzVWMTYuMjAwMkg2LjQ2NjU4QzYuNDY2NTggMTUuOTMzNSA2LjQ2NjU4IDE1LjgwMDIgNi41OTk5MiAxNS41MzM1QzYuNzMzMjUgMTUuMjY2OCA2Ljg2NjU4IDE1LjEzMzUgNi45OTk5MiAxNS4wMDAyQzcuMTMzMjUgMTQuODY2OCA3LjM5OTkyIDE0LjczMzUgNy41MzMyNSAxNC43MzM1QzcuNjY2NTggMTQuNzMzNSA4LjA2NjU4IDE0LjYwMDIgOC4xOTk5MiAxNC42MDAyQzguNDY2NTggMTQuNjAwMiA4LjczMzI1IDE0LjYwMDIgOC45OTk5MiAxNC43MzM1QzkuMjY2NTggMTQuODY2OCA5LjM5OTkyIDE0Ljg2NjggOS42NjY1OCAxNS4wMDAyQzkuOTMzMjUgMTUuMTMzNSA5LjkzMzI1IDE1LjI2NjggMTAuMDY2NiAxNS41MzM1QzEwLjE5OTkgMTUuODAwMiAxMC4xOTk5IDE1LjkzMzUgMTAuMTk5OSAxNi4yMDAyVjE2LjYwMDJDMTAuMTk5OSAxNi42MDAyIDEwLjA2NjYgMTYuODY2OCAxMC4wNjY2IDE3LjAwMDJDMTAuMDY2NiAxNy4xMzM1IDkuOTMzMjUgMTcuMjY2OCA5Ljc5OTkyIDE3LjI2NjhDOS42NjY1OCAxNy4yNjY4IDkuNTMzMjUgMTcuNDAwMiA5LjM5OTkyIDE3LjUzMzVDOS42NjY1OCAxNy42NjY4IDkuOTMzMjUgMTcuODAwMiAxMC4wNjY2IDE4LjA2NjhDMTAuMTk5OSAxOC4zMzM1IDEwLjMzMzMgMTguNjAwMiAxMC4zMzMzIDE4Ljg2NjhDMTAuMzMzMyAxOS4xMzM1IDEwLjMzMzMgMTkuNDAwMiAxMC4xOTk5IDE5LjUzMzVDMTAuMDY2NiAxOS42NjY4IDkuOTMzMjUgMTkuOTMzNSA5Ljc5OTkyIDIwLjA2NjhDOS42NjY1OCAyMC4yMDAyIDkuMzk5OTIgMjAuMzMzNSA5LjEzMzI1IDIwLjMzMzVDOC44NjY1OCAyMC4zMzM1IDguNTk5OTIgMjAuNDY2OCA4LjMzMzI1IDIwLjQ2NjhDOC4wNjY1OCAyMC40NjY4IDcuNzk5OTIgMjAuNDY2OCA3LjY2NjU4IDIwLjMzMzVDNy41MzMyNSAyMC4yMDAyIDcuMjY2NTggMjAuMjAwMiA2Ljk5OTkyIDIwLjA2NjhDNi43MzMyNSAxOS45MzM1IDYuNzMzMjUgMTkuODAwMiA2LjU5OTkyIDE5LjUzMzVDNi40NjY1OCAxOS4yNjY4IDYuNDY2NTggMTkuMDAwMiA2LjQ2NjU4IDE4LjczMzVINy41MzMyNVYxOS4wMDAyQzcuNTMzMjUgMTkuMDAwMiA3LjY2NjU4IDE5LjEzMzUgNy42NjY1OCAxOS4yNjY4QzcuNjY2NTggMTkuNDAwMiA3Ljc5OTkyIDE5LjQwMDIgNy45MzMyNSAxOS40MDAySDguNTk5OTJDOC41OTk5MiAxOS40MDAyIDguNzMzMjUgMTkuMjY2OCA4Ljg2NjU4IDE5LjI2NjhDOC45OTk5MiAxOS4yNjY4IDguOTk5OTIgMTkuMTMzNSA4Ljk5OTkyIDE5LjAwMDJWMTguMzMzNUM4Ljk5OTkyIDE4LjMzMzUgOC44NjY1OCAxOC4yMDAyIDguODY2NTggMTguMDY2OEM4Ljg2NjU4IDE3LjkzMzUgOC43MzMyNSAxNy45MzM1IDguNTk5OTIgMTcuOTMzNUg3Ljc5OTkyVjE3LjAwMDJaTTE1LjM5OTkgMTcuOTMzNUMxNS4zOTk5IDE4LjMzMzUgMTUuMzk5OSAxOC43MzM1IDE1LjI2NjYgMTkuMDAwMkwxNC44NjY2IDE5LjgwMDJDMTQuODY2NiAxOS44MDAyIDE0LjQ2NjYgMjAuMjAwMiAxNC4xOTk5IDIwLjIwMDJDMTMuOTMzMyAyMC4yMDAyIDEzLjY2NjYgMjAuMzMzNSAxMy4zOTk5IDIwLjMzMzVDMTMuMTMzMyAyMC4zMzM1IDEyLjg2NjYgMjAuMzMzNSAxMi41OTk5IDIwLjIwMDJDMTIuMzMzMyAyMC4wNjY4IDEyLjE5OTkgMTkuOTMzNSAxMS45MzMzIDE5LjgwMDJDMTEuNjY2NiAxOS42NjY4IDExLjY2NjYgMTkuNDAwMiAxMS41MzMzIDE5LjAwMDJDMTEuMzk5OSAxOC42MDAyIDExLjM5OTkgMTguMzMzNSAxMS4zOTk5IDE3LjkzMzVWMTcuMDAwMkMxMS4zOTk5IDE2LjYwMDIgMTEuMzk5OSAxNi4yMDAyIDExLjUzMzMgMTUuOTMzNUwxMS45MzMzIDE1LjEzMzVDMTEuOTMzMyAxNS4xMzM1IDEyLjMzMzMgMTQuNzMzNSAxMi41OTk5IDE0LjczMzVDMTIuODY2NiAxNC43MzM1IDEzLjEzMzMgMTQuNjAwMiAxMy4zOTk5IDE0LjYwMDJDMTMuNjY2NiAxNC42MDAyIDEzLjkzMzMgMTQuNjAwMiAxNC4xOTk5IDE0LjczMzVDMTQuNDY2NiAxNC44NjY4IDE0LjU5OTkgMTUuMDAwMiAxNC44NjY2IDE1LjEzMzVDMTUuMTMzMyAxNS4yNjY4IDE1LjEzMzMgMTUuNTMzNSAxNS4yNjY2IDE1LjkzMzVDMTUuMzk5OSAxNi4zMzM1IDE1LjM5OTkgMTYuNjAwMiAxNS4zOTk5IDE3LjAwMDJWMTcuOTMzNVpNMTQuMzMzMyAxNi44NjY4VjE2LjIwMDJDMTQuMzMzMyAxNi4wNjY4IDE0LjE5OTkgMTUuOTMzNSAxNC4xOTk5IDE1LjgwMDJDMTQuMTk5OSAxNS42NjY4IDE0LjA2NjYgMTUuNjY2OCAxMy45MzMzIDE1LjUzMzVDMTMuNzk5OSAxNS40MDAyIDEzLjY2NjYgMTUuNDAwMiAxMy41MzMzIDE1LjQwMDJDMTMuMzk5OSAxNS40MDAyIDEzLjI2NjYgMTUuNDAwMiAxMy4xMzMzIDE1LjUzMzVMMTIuODY2NiAxNS44MDAyQzEyLjg2NjYgMTUuODAwMiAxMi43MzMzIDE2LjA2NjggMTIuNzMzMyAxNi4yMDAyVjE4Ljg2NjhDMTIuNzMzMyAxOC44NjY4IDEyLjg2NjYgMTkuMTMzNSAxMi44NjY2IDE5LjI2NjhDMTIuODY2NiAxOS40MDAyIDEyLjk5OTkgMTkuNDAwMiAxMy4xMzMzIDE5LjUzMzVDMTMuMjY2NiAxOS42NjY4IDEzLjM5OTkgMTkuNjY2OCAxMy41MzMzIDE5LjY2NjhDMTMuNjY2NiAxOS42NjY4IDEzLjc5OTkgMTkuNjY2OCAxMy45MzMzIDE5LjUzMzVMMTQuMTk5OSAxOS4yNjY4QzE0LjE5OTkgMTkuMjY2OCAxNC4zMzMzIDE5LjAwMDIgMTQuMzMzMyAxOC44NjY4VjE2Ljg2NjhaIiBmaWxsPSJ3aGl0ZSIvPg0KPC9zdmc+DQo=") no-repeat center;
-  margin-right: 13px;
-  cursor: pointer;
-}
-
-.playback-panel .player-footer .rewind:focus {
-  outline: 1px solid var(--nas-cyan);
-  outline-offset: 3px;
-}
-
-/* style.css:4739 `.right-controls` (float/margin-top dropped: the footer is a flex row) */
-.playback-panel .right-controls {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-}
-
-/* style.css:4794 `.speed-section` + :4799 `.speed-section label` */
-.playback-panel .speed-section {
-  display: flex;
-  align-items: center;
-}
-
-.playback-panel .speed-section label {
-  padding: 0 9px;
-}
-
-.playback-panel .speed-dropdown {
-  display: flex;
-  align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  padding: 2px 10px;
-  min-width: 62px;
-  justify-content: center;
-}
-
-.playback-panel .speed-value {
-  color: rgba(255, 255, 255, 0.87);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.playback-panel .speed-dropdown .caret {
-  margin-left: 6px;
-  border-top: 4px solid rgba(255, 255, 255, 0.87);
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-}
-
-/* The native select stays in the DOM for keyboard/AT users; it is stretched over the
-   pill so the suite's dropdown look is kept without a Bootstrap dropdown. */
-.playback-panel .speed-dropdown {
-  position: relative;
-}
-
-.playback-panel .speed-dropdown select {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  border: 0;
-  padding: 0;
-}
-
-/* style.css:4783 `.snippet-section` + :4767 `button.btn.createSnippet.darkBtn` */
-.playback-panel .snippet-section {
-  display: flex;
-  margin-left: 12px;
-}
-
-.playback-panel button.btn.createSnippet.darkBtn {
-  width: max-content;
-  display: block;
-  font-family: var(--nas-sans);
-  font-size: 14px;
-  line-height: 16px;
-  letter-spacing: 1.25px;
-  text-transform: uppercase;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  background: transparent;
-  color: #27a0bf;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.playback-panel button.btn.createSnippet.darkBtn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-.playback-panel button.btn.createSnippet.darkBtn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.playback-panel button.btn.createSnippet.darkBtn:focus {
-  outline: 1px solid var(--nas-cyan);
-  outline-offset: 2px;
-}
-
-/* ---- light cards -------------------------------------------------------- */
-
-.playback-panel .pb-cards {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-/* style.css:379 `.tile` */
-.playback-panel .tile {
-  background-color: var(--nas-surface);
-  border: 1px solid #005170;
-  border-radius: 4px;
-  padding: 15px 15px 12px;
-  min-width: 0;
-}
-
-.playback-panel .pb-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--nas-rule);
-  padding-bottom: 6px;
-  margin-bottom: 10px;
-}
-
-/* style.css:3330 `.heading` */
-.playback-panel .heading {
-  color: var(--nas-ink);
-  font-size: 18px;
-  font-family: var(--nas-sans-bold);
-  font-weight: 700;
-}
-
-.playback-panel .pb-frame-note {
-  font-size: 12px;
-  color: var(--nas-ink-60);
-  padding-left: 12px;
-}
-
 .playback-panel .pb-empty,
 .playback-panel .pb-hint {
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--nas-ink-38);
+  color: var(--pb-ink-38);
 }
 
-.playback-panel .pb-hint {
-  padding-top: 8px;
+/* ---- app bar file tab (injected into the shell's #tabs-list) -------------- */
+
+/* The shell styles every `#tabs-list li` as a 150 px #666 card; the original file tab is plain
+ * white text on the app bar with a ✕ at its right, so it is reset here. */
+#tabs-list li.pb-filetabs {
+  display: none; /* every page except Playback (overridden by the data-page rule at the bottom) */
+  align-items: center;
+  flex: 0 0 auto;
+  width: auto;
+  height: 100%;
+  margin: 0 0 0 52px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--pb-sans);
+  font-size: 16px;
+  color: #fff;
+  white-space: nowrap;
 }
 
-.playback-panel .pb-frame-table-wrap {
-  border: 1px solid var(--nas-rule);
+#tabs-list li.pb-filetabs span.pb-filetab-name {
+  color: #ffffff;
+  font-family: var(--pb-sans);
+  font-size: 16px;
+  letter-spacing: 0.3px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab-close {
+  margin-left: 18px;
+  padding: 0 4px 3px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: var(--pb-sans);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
   border-radius: 2px;
-  background: #fff;
-  max-height: 260px;
-  overflow: auto;
 }
 
-/* style.css:14855 `.g3-devicedetails-table` */
-.playback-panel .g3-devicedetails-table {
+#tabs-list li.pb-filetabs .pb-filetab-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab-close:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 1px;
+}
+
+/* ---- status band (§2) --------------------------------------------------- */
+
+.pb-bandwrap {
+  background: var(--pb-band);
+  border-bottom: 1px solid var(--pb-band-rule);
+}
+
+/* S:3421 `.status-bar { width:1280px; margin:5px auto }` — the grey background is full-bleed,
+ * the content is a centred column that lines up with the tiles below. */
+.pb-band {
+  display: flex;
+  align-items: stretch;
+  max-width: 1064px;
+  margin: 0 auto;
+  padding: 8px 24px 12px;
+}
+
+.pb-band-half {
+  flex: 1 1 50%;
+  min-width: 0;
+  padding-right: 18px;
+}
+
+.pb-band-half + .pb-band-half {
+  padding-right: 0;
+}
+
+.pb-band-split {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 2px 18px 2px 0;
+  background: #bababa; /* S:3433 `.vertical-liner` */
+}
+
+/* S:19750 `.statusbar-heading { display:flex; align-items:baseline }` + S:19737 `p` 18 px Bold */
+.pb-band-head {
+  display: flex;
+  align-items: baseline;
+  margin: 0 0 8px;
+}
+
+.pb-band-title {
+  font-family: var(--pb-bold);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pb-ink);
+}
+
+.pb-band-head .pb-badge {
+  margin-left: 12px;
+  align-self: center;
+}
+
+/* Position / Latitude / Longitude in the first column, Height (MSL) on the Latitude row.
+ * Every cell is placed explicitly: CSS grid would otherwise auto-place Latitude into row 1 of the
+ * second column (the Height cell is explicitly placed, so the cursor skips back to the free cell). */
+.pb-band-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(24px, auto));
+  align-items: start;
+}
+
+.pb-band-r1c1 { grid-area: 1 / 1; }
+.pb-band-r2c1 { grid-area: 2 / 1; }
+.pb-band-r3c1 { grid-area: 3 / 1; }
+.pb-band-r1c2 { grid-area: 1 / 2; }
+.pb-band-r2c2 { grid-area: 2 / 2; }
+
+.pb-band-row {
+  display: flex;
+  align-items: baseline;
+  line-height: 24px;
+  min-width: 0;
+}
+
+/* S:3456 `.status-bar li span.title/.value` 16 px; S:3473 value is SemiBold 600 */
+.pb-band-label {
+  flex: 0 0 46%;
+  font-family: var(--pb-sans);
+  font-size: 16px;
+  color: var(--pb-ink);
+}
+
+.pb-band-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--pb-semi);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--pb-ink);
+  white-space: nowrap;
+}
+
+/* `Single` is a link in the original status bar. */
+.pb-underlined {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* ---- badges (S:19754 amber · S:19804 red · S:19868 green) ---------------- */
+
+.playback-panel .pb-badge {
+  display: inline-block;
+  padding: 0 14px 2px;
+  border-radius: 3px;
+  font-family: var(--pb-semi);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.playback-panel .pb-badge-good {
+  background: var(--pb-green);
+  border: 1px solid var(--pb-green);
+  color: #fff;
+}
+
+.playback-panel .pb-badge-warn {
+  background: var(--pb-amber);
+  border: 1px solid var(--pb-amber);
+  color: var(--pb-ink);
+}
+
+.playback-panel .pb-badge-bad {
+  position: relative;
+  background: var(--pb-red);
+  border: 1px solid var(--pb-red);
+  color: #fff;
+  padding-right: 26px;
+}
+
+/* S:19848 `.red-status:before` — the little "i" disc that opens the reason. */
+.playback-panel .pb-badge-bad::after {
+  content: "i";
+  position: absolute;
+  right: 5px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border: 1.2px solid #fff;
+  border-radius: 50%;
+  font-family: sans-serif;
+  font-size: 9px;
+  line-height: 10px;
+  text-align: center;
+  color: #fff;
+}
+
+.playback-panel .pb-badge-unknown {
+  background: transparent;
+  border: 1px solid #9b9b9b;
+  color: #6d6d6d;
+}
+
+/* ---- tab strip (§3) ----------------------------------------------------- */
+
+.pb-page {
+  max-width: 1064px;
+  margin: 0 auto;
+  padding: 0 24px 110px;
+}
+
+.pb-tabstrip {
+  display: flex;
+  align-items: stretch;
+  margin: 18px 0 18px;
+  border-bottom: 1px solid #dcdcdc;
+}
+
+/* S:14554 `.active-tab { border-bottom: 3px solid #00516F }` */
+.playback-panel .pb-tab {
+  appearance: none;
+  padding: 0 4px 8px;
+  margin-right: 26px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--pb-ink);
+  font-family: var(--pb-sans);
+  font-size: 17px;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+.playback-panel .pb-tab.active-tab {
+  border-bottom-color: var(--pb-teal);
+  font-family: var(--pb-semi);
+  font-weight: 600;
+}
+
+.playback-panel .pb-tab:focus-visible {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 2px;
+}
+
+/* ---- tiles (§4) --------------------------------------------------------- */
+
+.pb-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+/* S:379 `.tile` */
+.playback-panel .tile {
+  position: relative;
+  background-color: var(--pb-surface);
+  border: 1px solid #005170;
+  border-radius: 0;
+  padding: 15px 9px 9px 15px;
+  min-width: 0;
+}
+
+.playback-panel .pb-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 350px;
+  padding: 15px 15px 44px;
+}
+
+.pb-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* The original tiles carry no rule under the heading (`satellite-status-header`), only spacing. */
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+}
+
+/* S:3330 `.heading` */
+.playback-panel .heading {
+  margin: 0;
+  color: var(--pb-ink);
+  font-family: var(--pb-bold);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.pb-kv-row,
+.pb-device-row {
+  display: flex;
+  align-items: baseline;
+  padding: 3px 0;
+  min-width: 0;
+}
+
+.pb-kv-label {
+  flex: 0 0 46%;
+  padding-right: 8px;
+  font-family: var(--pb-sans);
+  font-size: 14px;
+  color: var(--pb-ink);
+}
+
+.pb-kv-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--pb-semi);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pb-ink);
+  overflow-wrap: anywhere;
+}
+
+.pb-device-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--pb-semi);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pb-ink);
+}
+
+.pb-device-row .pb-badge {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  min-width: 64px;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 0 8px 1px;
+}
+
+/* S:3295 `.need-help` (absolute, bottom-left) + S:3306 link + S:19720 "?" disc */
+.playback-panel .need-help {
+  position: absolute;
+  left: 1em;
+  bottom: 0.6em;
+}
+
+.playback-panel .need-help a {
+  display: inline-flex;
+  align-items: center;
+  color: var(--pb-teal);
+  font-family: var(--pb-semi);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.playback-panel .need-help a::before {
+  content: "?";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--pb-teal);
+  color: #fff;
+  font-family: sans-serif;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.playback-panel .need-help a:hover {
+  color: var(--pb-teal-dark);
+  text-decoration: underline;
+}
+
+.playback-panel .need-help a:focus-visible {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 2px;
+}
+
+/* ---- Satellite View (§5) ------------------------------------------------ */
+
+.playback-panel .pb-sat {
+  margin-top: 16px;
+  padding-bottom: 44px;
+}
+
+.pb-sat-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pb-sat-left {
+  flex: 1 1 60%;
+  min-width: 0;
+}
+
+.pb-sat-right {
+  flex: 1 1 40%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+}
+
+/* S:13051 `.satelliteview-legend` — grey "Tracked" plate, green/amber chips, red Missing tag. */
+.pb-sat .satelliteview-legend {
+  display: flex;
+  align-items: flex-start;
+  margin: 2px 0 14px;
+}
+
+.pb-sat .tracked-legends {
+  width: 232px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #dddddd;
+  padding: 2px 5px 5px 8px;
+}
+
+.pb-sat .tracked-legends p {
+  margin: 0 0 5px;
+  text-align: center;
+  font-family: var(--pb-bold);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--pb-ink);
+}
+
+.pb-sat .tracked-legends > div {
+  display: flex;
+}
+
+.pb-sat .inuse,
+.pb-sat .notused {
+  width: 105px;
+  height: 28px;
+  padding: 4px 12px;
+  font-family: var(--pb-bold);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 20px;
+}
+
+.pb-sat .inuse {
+  background-color: var(--pb-green-chip);
+  color: #fff;
+}
+
+.pb-sat .notused {
+  margin-left: 8px;
+  background-color: var(--pb-amber);
+  border: 2px dotted #000;
+  color: #000;
+}
+
+.pb-sat .missing-label {
+  position: relative;
+  z-index: 1;
+  width: 100px;
+  height: 25px;
+  margin: 26px 0 0 18px;
+  padding: 2px 12px;
+  background-color: var(--pb-miss);
+  border-radius: 0;
+  color: #fff;
+  font-family: var(--pb-bold);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.pb-sat .missing-label::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px dashed #fff;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pb-sat .missing-label::after {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  right: -4px;
+  bottom: -4px;
+  border: 2px solid #000;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* S:1254 `.shapes>div.sat-shape { clear:both; height:4em }` */
+.pb-sat .sat-shape {
+  display: flex;
+  align-items: flex-start;
+  height: 58px;
+  clear: both;
+}
+
+.pb-sat .constel-shape {
+  flex: 0 0 58px;
+  width: 58px;
+  text-align: center;
+}
+
+/* S:1401 `.sat-legends` — 28×40 window into the sprite; positions from S:1408-1426, 29691-29733 */
+.pb-sat .sat-legends {
+  display: block;
+  width: 28px;
+  height: 40px;
+  margin: 0 auto;
+  background-image: url('/assets/images/sats-sprite.png');
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+
+.pb-sat .gps-legend { background-position: -150px -151px; }
+.pb-sat .glonass-legend { background-position: -150px -100px; }
+.pb-sat .galileo-legend { background-position: -150px -49px; }
+.pb-sat .bds-legend { background-position: -150px 0; }
+.pb-sat .qzss-legend { background-position: -150px -200px; }
+.pb-sat .navic-legend { background-position: -150px -248px; width: 38px; }
+.pb-sat .lband-legend { background-position: -151px -296px; width: 34px; height: 30px; margin-top: 8px; }
+.pb-sat .sbas-legend { background-position: -153px -331px; width: 32px; height: 32px; margin-top: 6px; }
+
+.pb-sat .pb-sat-name {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--pb-bold);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--pb-ink);
+}
+
+/* S:1314 `.constellation-value { margin-left:-10px }` + the three 40×28 sprite chips */
+.pb-sat .constellation-value {
+  display: flex;
+  padding-top: 15px;
+}
+
+.pb-sat .constellation-value > div {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 28px;
+  margin-right: 24px;
+  font-family: var(--pb-bold);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 28px;
+  text-align: center;
+  background-image: url('/assets/images/sats-sprite.png');
+  background-repeat: no-repeat;
+}
+
+/* `.outer-div` only wraps the red chip in the original; keep it the same 40×28 box. */
+.pb-sat .constellation-value .outer-div {
+  background-image: none;
+}
+
+.pb-sat .constellation-value .good-health,
+.pb-sat .constellation-value .moderate-health,
+.pb-sat .constellation-value .bad-health {
+  background-image: url('/assets/images/sats-sprite.png');
+  background-repeat: no-repeat;
+}
+
+.pb-sat .constellation-value .good-health {
+  background-position: -193px 0;
+  color: #fff;
+}
+
+.pb-sat .constellation-value .moderate-health {
+  background-position: -194px -49px;
+  color: #000;
+}
+
+.pb-sat .constellation-value .bad-health {
+  width: 40px;
+  height: 28px;
+  background-position: -194px -101px;
+  color: #fff;
+}
+
+.pb-sat .pb-sat-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--pb-ink-60);
+}
+
+/* Sky plot — S:1104-1210 (disc #DDDDDD, rings at 66.66 %/50 %, axes rgba(0,0,0,.87)) */
+.pb-sky-svg {
+  display: block;
   width: 100%;
-  border-collapse: collapse;
+  max-width: 400px;
+  height: auto;
+}
+
+.pb-sky-disc {
+  fill: #dddddd;
+  stroke: rgba(0, 0, 0, 0.87);
+  stroke-width: 1.2;
+}
+
+.pb-sky-ring {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 1.1;
+}
+
+.pb-sky-ring-inner {
+  stroke: rgba(0, 0, 0, 0.6);
+}
+
+.pb-sky-axis {
+  stroke: rgba(0, 0, 0, 0.87);
+  stroke-width: 1.2;
+}
+
+.pb-sky-dir,
+.pb-sky-deg {
+  fill: rgba(0, 0, 0, 0.87);
+  font-family: var(--pb-sans);
   font-size: 13px;
 }
 
-.playback-panel .g3-devicedetails-table tr > td {
-  padding: 4px 10px 7px;
-  color: var(--nas-ink);
-  text-align: left;
-  vertical-align: top;
+.pb-sky-deg {
+  font-size: 12px;
 }
 
-.playback-panel .pb-frame-table tbody tr:nth-child(even) {
-  background: #fbfbfb;
+/* ---- Timeline dock (§6) ------------------------------------------------- */
+
+.pb-dock {
+  position: fixed;
+  right: 10px;
+  bottom: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-.playback-panel .pb-frame-table td.path {
-  font-family: var(--nas-mono);
-  font-size: 12.5px;
-  color: var(--nas-teal-dark);
-  width: 46%;
-  word-break: break-all;
+/* measured on `ref-ui/playback-loaded.png`: #212121, ~107×36, right/bottom pinned */
+.pb-dock-btn {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  min-width: 124px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 3px 3px 0 0;
+  background: #212121;
+  color: rgba(255, 255, 255, 0.87);
+  font-family: var(--pb-sans);
+  font-size: 15px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
 }
 
-.playback-panel .pb-frame-table td.shown {
-  font-family: var(--nas-mono);
-  font-size: 12.5px;
-  word-break: break-all;
+.pb-dock-btn:hover {
+  background: #2c2c2c;
 }
 
-.playback-panel .pb-range-row {
+.pb-dock-btn:focus-visible {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: -2px;
+}
+
+.pb-caret {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 7px solid rgba(255, 255, 255, 0.87);
+}
+
+.pb-dock.is-open .pb-caret {
+  border-bottom: 0;
+  border-top: 7px solid rgba(255, 255, 255, 0.87);
+}
+
+.pb-drawer {
+  width: min(900px, calc(100vw - 140px));
+  margin-bottom: 6px;
+  padding: 10px 18px 12px;
+  border-radius: 4px 4px 0 0;
+  background: rgba(0, 0, 0, 0.87); /* S:4681 `.player` */
+  color: rgba(255, 255, 255, 0.87);
+  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.3);
+  font-family: var(--pb-sans);
+  font-size: 13px;
+  user-select: none;
+}
+
+/* ---- transport (S:4543-5000, same transcription as the old bar) --------- */
+
+.pb-progress {
+  position: relative;
+  height: 10px;
+  margin: 12px 18px 16px 4px;
+  background-color: rgba(255, 255, 255, 0.36); /* S:4617 */
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.pb-progress:focus {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 4px;
+}
+
+.pb-fill {
+  position: relative;
+  height: 10px;
+  width: 0;
+  background-color: rgba(0, 171, 200, 0.87); /* S:4661 */
+  border-radius: 2px;
+}
+
+.pb-scrub {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  width: 8px;
+  height: 16px;
+  border: 3px solid rgba(0, 171, 200, 0.87); /* S:4668 #playbackscrub */
+  border-radius: 2px;
+  background-color: #fff;
+  z-index: 5;
+}
+
+.pb-snippet {
+  position: absolute;
+  top: -3px;
+  height: 16px;
+  background: rgba(245, 166, 35, 0.12); /* S:4957 */
+  border: 2px dashed var(--pb-amber);
+  border-radius: 2px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.pb-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 6px;
+  pointer-events: none;
+}
+
+.pb-tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 6px;
+  margin-left: -0.5px;
+  opacity: 0.55;
+}
+
+.pb-transport {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.pb-transport-left,
+.pb-transport-middle,
+.pb-transport-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pb-label {
+  font-family: var(--pb-sans);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.6); /* S:4711 */
+}
+
+.pb-label-gap {
+  margin-left: 14px;
+}
+
+.pb-strong {
+  margin-left: 6px;
+  font-family: var(--pb-semi);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.pb-clock {
+  margin-left: 10px;
+  white-space: nowrap;
+}
+
+.pb-clock span {
+  color: rgba(255, 255, 255, 0.87);
+  font-family: var(--pb-sans);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pb-clock .pb-clock-sep,
+.pb-clock span:last-child {
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 400;
+}
+
+/* S:4554 `.play-pause` (pause glyph while playing, play glyph while paused) */
+.pb-play {
+  width: 16px;
+  height: 20px;
+  margin: 0 18px 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAxNiAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMCAxOS4zMzMySDUuMzMzMzNWMC42NjY1MDRIMFYxOS4zMzMyWk0xMC42NjY3IDAuNjY2NTA0VjE5LjMzMzJIMTZWMC42NjY1MDRIMTAuNjY2N1oiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuODciLz4NCjwvc3ZnPg0K") no-repeat center;
+  cursor: pointer;
+}
+
+.pb-play:not(.is-playing) {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAxNiAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMC42NjY2MjYgMC42NjY1MDRWMTkuMzMzMkwxNS4zMzMzIDkuOTk5ODRMMC42NjY2MjYgMC42NjY1MDRaIiBmaWxsPSJ3aGl0ZSIvPg0KPC9zdmc+DQo=");
+}
+
+.pb-play:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pb-play:focus {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 3px;
+}
+
+/* S:4609 `.rewind` — 30 s back */
+.pb-rewind {
+  width: 22px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  background: transparent url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIiIGhlaWdodD0iMjciIHZpZXdCb3g9IjAgMCAyMiAyNyIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMTAuOTk5OSA1LjY2NjgzVjAuMzMzNDk2TDQuMzMzMjUgNy4wMDAxNkwxMC45OTk5IDEzLjY2NjhWOC4zMzM1QzE1LjM5OTkgOC4zMzM1IDE4Ljk5OTkgMTEuOTMzNSAxOC45OTk5IDE2LjMzMzVDMTguOTk5OSAyMC43MzM1IDE1LjM5OTkgMjQuMzMzNSAxMC45OTk5IDI0LjMzMzVDNi41OTk5MiAyNC4zMzM1IDIuOTk5OTIgMjAuNzMzNSAyLjk5OTkyIDE2LjMzMzVIMC4zMzMyNTJDMC4zMzMyNTIgMjIuMjAwMiA1LjEzMzI1IDI3LjAwMDIgMTAuOTk5OSAyNy4wMDAyQzE2Ljg2NjYgMjcuMDAwMiAyMS42NjY2IDIyLjIwMDIgMjEuNjY2NiAxNi4zMzM1QzIxLjY2NjYgMTAuNDY2OCAxNi44NjY2IDUuNjY2ODMgMTAuOTk5OSA1LjY2NjgzWk03Ljc5OTkyIDE3LjAwMDJIOC4zMzMyNUM4LjU5OTkyIDE3LjAwMDIgOC44NjY1OCAxNi44NjY4IDguOTk5OTIgMTYuNzMzNUM5LjEzMzI1IDE2LjYwMDIgOS4yNjY1OCAxNi40NjY4IDkuMjY2NTggMTYuMjAwMlYxNS45MzM1QzkuMjY2NTggMTUuOTMzNSA5LjEzMzI1IDE1LjgwMDIgOS4xMzMyNSAxNS42NjY4QzkuMTMzMjUgMTUuNTMzNSA4Ljk5OTkyIDE1LjUzMzUgOC44NjY1OCAxNS41MzM1SDguMTk5OTJDOC4xOTk5MiAxNS41MzM1IDguMDY2NTggMTUuNjY2OCA3LjkzMzI1IDE1LjY2NjhDNy43OTk5MiAxNS42NjY4IDcuNzk5OTIgMTUuODAwMiA3Ljc5OTkyIDE1LjkzMzVWMTYuMjAwMkg2LjQ2NjU4QzYuNDY2NTggMTUuOTMzNSA2LjQ2NjU4IDE1LjgwMDIgNi41OTk5MiAxNS41MzM1QzYuNzMzMjUgMTUuMjY2OCA2Ljg2NjU4IDE1LjEzMzUgNi45OTk5MiAxNS4wMDAyQzcuMTMzMjUgMTQuODY2OCA3LjM5OTkyIDE0LjczMzUgNy41MzMyNSAxNC43MzM1QzcuNjY2NTggMTQuNzMzNSA4LjA2NjU4IDE0LjYwMDIgOC4xOTk5MiAxNC42MDAyQzguNDY2NTggMTQuNjAwMiA4LjczMzI1IDE0LjYwMDIgOC45OTk5MiAxNC43MzM1QzkuMjY2NTggMTQuODY2OCA5LjM5OTkyIDE0Ljg2NjggOS42NjY1OCAxNS4wMDAyQzkuOTMzMjUgMTUuMTMzNSA5LjkzMzI1IDE1LjI2NjggMTAuMDY2NiAxNS41MzM1QzEwLjE5OTkgMTUuODAwMiAxMC4xOTk5IDE1LjkzMzUgMTAuMTk5OSAxNi4yMDAyVjE2LjYwMDJDMTAuMTk5OSAxNi42MDAyIDEwLjA2NjYgMTYuODY2OCAxMC4wNjY2IDE3LjAwMDJDMTAuMDY2NiAxNy4xMzM1IDkuOTMzMjUgMTcuMjY2OCA5Ljc5OTkyIDE3LjI2NjhDOS42NjY1OCAxNy4yNjY4IDkuNTMzMjUgMTcuNDAwMiA5LjM5OTkyIDE3LjUzMzVDOS42NjY1OCAxNy42NjY4IDkuOTMzMjUgMTcuODAwMiAxMC4wNjY2IDE4LjA2NjhDMTAuMTk5OSAxOC4zMzM1IDEwLjMzMzIgMTguNTMzNSAxMC4zMzMyIDE4Ljg2NjhDMTAuMzMzMiAxOS4yMDAyIDEwLjMzMzIgMTkuNDY2OCAxMC4xOTk5IDE5LjczMzVDMTAuMTk5OSAxOS44NjY4IDEwLjA2NjYgMjAuMDY2OCA5Ljg2NjU4IDIwLjIwMDJDOS42NjY1OCAyMC4zMzM1IDkuNDY2NTggMjAuNDY2OCA5LjI2NjU4IDIwLjUzMzVDOS4wNjY1OCAyMC42MDAyIDguNzk5OTIgMjAuNjY2OCA4LjUzMzI1IDIwLjY2NjhDNy43OTk5MiAyMC42NjY4IDcuMjY2NTggMjAuMzMzNSA2Ljg2NjU4IDE5LjczMzVDNi41OTk5MiAxOS4yNjY4IDYuNDY2NTggMTguNjY2OCA2LjQ2NjU4IDE3LjkzMzVWMTcuNjY2OEg3Ljc5OTkyVjE3LjAwMDJaIiBmaWxsPSJ3aGl0ZSIgZmlsbC1vcGFjaXR5PSIwLjg3Ii8+DQo8L3N2Zz4NCg==") no-repeat center;
+  cursor: pointer;
+}
+
+.pb-rewind:focus {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 3px;
+}
+
+/* S:21667-ish select inside the dark bar: keep the native control, dark skin */
+.playback-panel .pb-speed {
+  height: 26px;
+  margin-left: 8px;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.87);
+  font-family: var(--pb-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.playback-panel .pb-speed:focus {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 1px;
+}
+
+/* S:4767 `button.btn.createSnippet.darkBtn` */
+.playback-panel .pb-action {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: transparent;
+  color: #27a0bf;
+  font-family: var(--pb-sans);
+  font-size: 13px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.playback-panel .pb-action:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.playback-panel .pb-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.playback-panel .pb-action:focus {
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 2px;
+}
+
+.pb-transport-right .pb-action {
+  margin-left: 14px;
+}
+
+.pb-action-small {
+  height: 24px;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+}
+
+.pb-export {
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
-  margin-left: -10px;
+  gap: 10px 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.playback-panel .pb-range-row > * {
-  margin-left: 10px;
-}
-
-/* style.css:21667 `.date-input` — same filled-box treatment as Convert's time fields. */
 .playback-panel .pb-field {
   display: flex;
   flex-direction: column;
-  flex: 1 1 110px;
-  min-width: 96px;
+  flex: 0 0 118px;
 }
 
 .playback-panel .pb-field > span {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--nas-ink-60);
+  font-size: 11px;
+  line-height: 15px;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.6);
   padding-bottom: 2px;
 }
 
 .playback-panel .pb-field input {
-  height: 36px;
-  border: none;
-  border-bottom: 1px solid var(--nas-ink);
-  border-radius: 4px 4px 0 0;
-  background-color: rgba(200, 200, 200, 0.38);
-  color: var(--nas-ink);
-  font: 14px var(--nas-mono);
-  padding: 0 10px;
-  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
 }
 
 .playback-panel .pb-field input:focus {
-  outline: none;
-  border-bottom: 2px solid var(--nas-teal);
+  outline: 1px solid var(--pb-cyan);
+  outline-offset: 0;
 }
 
-/* style.css:1705 `.whiteBtn,.lightBtn,.darkBtn` + :1751 `.darkBtn` */
-.playback-panel .btn {
-  appearance: none;
-  height: 36px;
-  min-width: 80px;
-  padding: 0 16px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  color: var(--nas-teal);
-  font-family: var(--nas-sans-bold);
-  font-size: 14px;
-  letter-spacing: 1.2px;
+.pb-export-note {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding-bottom: 4px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.pb-record {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.pb-record-name {
+  font-family: var(--pb-semi);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.pb-record-note {
+  flex: 1 1 auto;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.pb-fields {
+  max-height: 190px;
+  margin-top: 8px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.playback-panel .pb-frame-table-wrap {
+  border: 0;
+  background: transparent;
+}
+
+.playback-panel .pb-frame-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.playback-panel .pb-frame-table td {
+  padding: 2px 10px;
+  color: rgba(255, 255, 255, 0.82);
+  vertical-align: top;
+}
+
+.playback-panel .pb-frame-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.playback-panel .pb-frame-table td.path {
+  width: 44%;
+  color: #7fd3e8;
+  word-break: break-all;
+}
+
+.playback-panel .pb-frame-table td.shown {
+  word-break: break-all;
+}
+
+.pb-fields .pb-hint {
+  color: rgba(255, 255, 255, 0.45);
+  padding: 6px 10px;
+}
+
+.pb-fields .pb-empty {
+  color: rgba(255, 255, 255, 0.45);
+  padding: 10px;
+}
+
+/* ---- empty state (§0) / open dialog ------------------------------------- */
+
+.pb-empty-state {
+  max-width: 1064px;
+  margin: 0 auto;
+  padding: 42px 24px 60px;
+}
+
+.pb-empty-head {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+/* S:3745 `.no-playback-tiles` neighbourhood: 34 px OpenSans-Regular for the section title */
+.pb-empty-title {
+  font-family: var(--pb-sans);
+  font-size: 34px;
+  font-weight: 400;
+  color: var(--pb-ink);
+}
+
+.pb-open-btn {
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--pb-teal);
+  color: #fff;
+  font-family: var(--pb-semi);
+  font-size: 15px;
+  letter-spacing: 0.4px;
   cursor: pointer;
 }
 
-.playback-panel .btn.darkBtn {
-  background-color: var(--nas-teal);
-  color: #fff;
-  border: 1px solid var(--nas-teal);
+.pb-open-btn:hover {
+  background: #3a7b91; /* S:1761 `.darkBtn:hover` */
 }
 
-.playback-panel .btn.darkBtn:hover {
-  background-color: var(--nas-teal-hover);
+.pb-open-btn:focus-visible {
+  outline: 2px solid var(--pb-teal-dark);
+  outline-offset: 2px;
 }
 
-.playback-panel .btn:disabled {
-  opacity: 0.45;
-  cursor: default;
+/* S:3773 `.no-playback-tiles` — 18 px OpenSans-Bold #00516F, centred */
+.pb-empty-note {
+  margin: 150px 0 0;
+  text-align: center;
+  font-family: var(--pb-bold);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.17px;
+  color: rgb(0, 81, 111);
 }
 
-.playback-panel .btn:focus {
-  outline: 2px solid var(--nas-teal-dark);
-  outline-offset: 1px;
+.pb-open-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 96px 24px 24px;
+  background: rgba(0, 0, 0, 0.3);
 }
 
-/* ---- alert -------------------------------------------------------------- */
+.pb-open-panel {
+  width: 620px;
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px 18px;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+}
 
-.playback-panel .notice {
-  border: 1px solid #e0a6a6;
-  border-left: 4px solid var(--nas-bad);
-  background: #fdf3f3;
-  color: var(--nas-bad);
+.pb-open-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--pb-bold);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pb-ink);
+}
+
+.pb-open-close {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--pb-ink-60);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.pb-open-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.pb-open-note {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: var(--pb-ink-60);
+}
+
+.pb-open-list {
+  overflow: auto;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+
+.pb-open-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pb-open-item:last-child {
+  border-bottom: 0;
+}
+
+.pb-open-item:hover,
+.pb-open-item:focus-visible {
+  background: rgba(0, 81, 111, 0.06);
+  outline: none;
+}
+
+.pb-open-name {
+  font-family: var(--pb-semi);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pb-ink);
+}
+
+.pb-open-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--pb-ink-60);
+}
+
+.pb-open-empty {
+  margin: 0;
+  padding: 16px;
   font-size: 13px;
-  padding: 8px 12px;
-  margin-bottom: 16px;
+  color: var(--pb-ink-60);
+}
+
+/* ---- notice ------------------------------------------------------------- */
+
+.playback-panel .pb-notice {
+  margin: 12px 24px 0;
+  padding: 9px 13px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-left: 4px solid var(--pb-red);
+  border-radius: 3px;
+  background: #fdf3f3;
+  color: var(--pb-red);
+  font-family: var(--pb-sans);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.playback-panel .pb-notice.info {
+  border-color: var(--pb-teal);
+  border-left-color: var(--pb-teal);
+  background: #f2f8fa;
+  color: var(--pb-teal);
 }
 
 /* ---- narrow viewport ---------------------------------------------------- */
 
 @media (max-width: 1100px) {
-  .playback-panel .pb-cards {
+  .pb-cards {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .playback-panel .player-footer {
-    justify-content: flex-start;
+  .pb-band {
+    flex-direction: column;
   }
 
-  .playback-panel .right-controls {
-    margin-top: 10px;
+  .pb-band-split {
+    display: none;
   }
+
+  .pb-band-half {
+    padding-right: 0;
+  }
+
+  .pb-sat-body {
+    flex-direction: column;
+  }
+
+  .pb-sat-left,
+  .pb-sat-right {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .pb-drawer {
+    width: calc(100vw - 24px);
+  }
+
+  .pb-empty-note {
+    margin-top: 80px;
+  }
+}
+
+/* =============================================================================
+ * §10 — page-scoped shell adjustments (this page only; no other page changes)
+ *
+ * The original Playback screen starts directly with the status band: there is no "抓包" heading
+ * above it, the band spans the window, and the file tab is part of the app bar. The shell renders
+ * that heading for every panel, so it is hidden here — and the capture is chosen through the
+ * "Open Playback File" dialog / the file tab instead.
+ * ========================================================================== */
+
+body[data-page="playback"] .nas-content {
+  padding: 0;
+}
+
+body[data-page="playback"] .folder-detail-heading,
+body[data-page="playback"] .receiver-count {
+  display: none;
+}
+
+body[data-page="playback"] .app-panel {
+  margin-top: 0;
+}
+
+/* The injected file tab exists on every page (the app bar is shared), so it is pinned to this one. */
+body[data-page="playback"] #tabs-list li.pb-filetabs:not([hidden]) {
+  display: flex;
 }
