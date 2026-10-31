@@ -12,10 +12,11 @@ import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbre
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
 import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
 import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
+import { buildRinex3Obs, type Rinex3Version } from '../../protocol/src/rinex3.ts';
 import { formatDirectory } from '../../protocol/src/summary.ts';
 import type { CaptureData } from './capture.ts';
 
-export const CONVERT_FORMATS = ['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21'] as const;
+export const CONVERT_FORMATS = ['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21', 'RINEX301', 'RINEX302', 'RINEX303', 'RINEX304'] as const;
 export type ConvertFormat = (typeof CONVERT_FORMATS)[number];
 
 export const FORMAT_LABELS: Record<ConvertFormat, string> = {
@@ -24,6 +25,10 @@ export const FORMAT_LABELS: Record<ConvertFormat, string> = {
   BINARY: '二进制抓包',
   KML: 'KML 轨迹',
   RINEX21: 'RINEX 2.1 观测',
+  RINEX301: 'RINEX 3.01 观测',
+  RINEX302: 'RINEX 3.02 观测',
+  RINEX303: 'RINEX 3.03 观测',
+  RINEX304: 'RINEX 3.04 观测',
 };
 
 export const FORMAT_NOTES: Record<ConvertFormat, string> = {
@@ -32,6 +37,10 @@ export const FORMAT_NOTES: Record<ConvertFormat, string> = {
   BINARY: '仅保留 CRC 通过的原记录',
   KML: '按 BESTPOS 位置点绘制，按解类型分组',
   RINEX21: '观测值文件，时间戳取转换时刻',
+  RINEX301: '多系统观测码，仅观测文件（导航由 CLI 导出）',
+  RINEX302: '多系统观测码，仅观测文件（导航由 CLI 导出）',
+  RINEX303: '多系统观测码，仅观测文件（导航由 CLI 导出）',
+  RINEX304: '多系统观测码，仅观测文件（导航由 CLI 导出）',
 };
 
 export interface ConvertArtifact {
@@ -129,6 +138,9 @@ export function convertCapture(
     payload = buildKml(points, { name: `${base}_BESTPOS` });
   } else if (format === 'RINEX21') {
     payload = buildRinex21Obs(accepted, tables, { builtAt: at });
+  } else if (format.startsWith('RINEX30')) {
+    const version = `${format.slice(5, 6)}.${format.slice(6)}` as Rinex3Version;
+    payload = buildRinex3Obs(accepted, tables, version, { builtAt: at });
   } else {
     payload = encodeBinaryCapture(accepted).bytes;
   }
@@ -139,7 +151,9 @@ export function convertCapture(
   const bytes = isText ? Buffer.from(payload, 'utf8') : Buffer.from(payload);
   const text = isText ? payload : null;
   const outputBase = format === 'KML' ? `${base}_BESTPOS` : base;
-  const extension = format === 'RINEX21' ? `${String(at.getFullYear() % 100).padStart(2, '0')}O` : format;
+  const extension = format === 'RINEX21' || format.startsWith('RINEX30')
+    ? `${String(at.getFullYear() % 100).padStart(2, '0')}O`
+    : format;
   const lineTotal = text ? Math.max(0, (text.match(/\n/g) ?? []).length) : Math.ceil(bytes.length / HEX_BYTES_PER_LINE);
 
   let preview: string;
