@@ -435,9 +435,18 @@ IPSTATUS 的条目是「类型 + 若干 `ustring`」，**字符串个数随类�
 ### 状态
 
 - ✅ `b2` 抓包 + golden 入库；21 类里 19 类逐字节一致
-- ❌ RANGECMP 解压与 IPSTATUS 变长字符串**尚未实现**，已登记为 B1 的待办
+- ✅ **RANGECMP2 / RANGECMP4 解压已实现并接线**（`packages/protocol/src/rangecmp.ts` +
+  `convert.ts`）：b2 从 62 行差异降到 **1 行**，这 1 行是 IPSTATUSA（见上）
+  - 61 条压缩记录 → 2 697 / 2 610 个观测，逐字节等于 oracle 的 61 条 `RANGEA` 行
+  - 难点都在 `rangecmp.ts` 头部注释里：CMP2 卫星块是 80 bit 不是 96；LSB-first 位流；
+    `adr` 除以波长；FLOAT 字段要 float32 舍入；CMP4 的 C/No 平局取"能印出与 double
+    同一位"的那个 float32 邻居（`buildRangePayload` 的 `roundForPrint`）；
+    `lock_time` 要跨记录进位（`lockTimeCarry`，否则饱和在 131.071）
+  - 零覆盖但按表实现的：差分块（Table 199/200）、GLONASS/SBAS/Galileo/NavIC 信号
+- ❌ IPSTATUSA 变长字符串未实现（1 行）
 - 真机链路：Tailscale → `serial-bridge.ps1` → COM10 → OEM729，7 s 解出 291 条记录 / 16 类
   （2026-11-01 实测，桥已停、端口已释放）
+
 
 ---
 

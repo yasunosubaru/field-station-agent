@@ -59,9 +59,12 @@ test('a live session decodes a replayed capture and renders Convert-style lines'
     assert.equal(status.connected, true);
     assert.equal(status.target, `tcp://127.0.0.1:${port}`);
 
-    // Wait for the replay to finish decoding.
-    const deadline = Date.now() + 8000;
-    while (link.status().records < 100 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    // Wait until a BESTPOS has actually arrived: b1's first BESTPOS is record #137, so a fixed
+    // "100 records" threshold is a race on a loaded machine (the replay paces itself in 16 KB
+    // chunks and the decoder keeps up with whatever the box gives it).
+    const deadline = Date.now() + 20_000;
+    const hasBestPos = () => link.logs(0).entries.some((entry) => entry.messageId === 42);
+    while (!hasBestPos() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
 
     const live = link.status();
     assert.ok(live.records > 100, `decoded ${live.records} records`);

@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import { SbfDeframer, type Frame, type SbfFrame } from '../../protocol/src/framing.ts';
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
+import { buildRangePayload, decodeRangeCmp2, decodeRangeCmp4, lockTimeCarry } from '../../protocol/src/rangecmp.ts';
 import { textLogLines } from '../../protocol/src/text-log.ts';
 import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbrev-log.ts';
 import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
@@ -81,6 +82,8 @@ function main(): void {
     // Text records (the receiver's own ASCII logs mixed into the capture) go out in capture order
     // too, so the frame list — not `accepted` — drives the loop. See `protocol/src/text-log.ts`.
     const textLines = textLogLines(frames, tables);
+    const rangeCarry2 = lockTimeCarry();
+    const rangeCarry4 = lockTimeCarry();
     const lines: string[] = [];
     frames.forEach((frame, index) => {
       const text = textLines.get(index);
@@ -89,6 +92,23 @@ function main(): void {
         return;
       }
       if (frame.kind !== 'sbf' || !frame.crcOk) return;
+      // Convert unpacks RANGECMP2/4 into ordinary RANGE rows (b2: 699 RANGEA = 638 + 31 + 30);
+      // rebuild a RANGE payload and let the normal writer print it.
+      if (frame.header.messageId === 1273 || frame.header.messageId === 2050) {
+        const cmp2 = frame.header.messageId === 1273;
+        const observations = cmp2
+          ? decodeRangeCmp2(frame.payload, { epochMs: frame.header.milliseconds, lockCarry: rangeCarry2 })
+          : decodeRangeCmp4(frame.payload, { epochMs: frame.header.milliseconds, lockCarry: rangeCarry4 });
+        const rangeLayout = tables.messages['43'];
+        if (!rangeLayout) return;
+        const line = encodeAsciiLog(
+          { ...frame, payload: buildRangePayload(observations) },
+          rangeLayout,
+          tables,
+        );
+        if (line) lines.push(line);
+        return;
+      }
       const layout = tables.messages[String(frame.header.messageId)];
       if (!layout) return;
       const line = encodeAsciiLog(frame, layout, tables);

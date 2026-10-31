@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import { SbfDeframer, type Frame } from '../../protocol/src/framing.ts';
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
+import { buildRangePayload, decodeRangeCmp2, decodeRangeCmp4 } from '../../protocol/src/rangecmp.ts';
 import { textLogLines } from '../../protocol/src/text-log.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 
@@ -51,6 +52,15 @@ function main(): void {
       continue;
     }
     if (frame.kind !== 'sbf') continue;
+    if (frame.header.messageId === 1273 || frame.header.messageId === 2050) {
+      const observations = frame.header.messageId === 1273
+        ? decodeRangeCmp2(frame.payload)
+        : decodeRangeCmp4(frame.payload);
+      const rangeLayout = tables.messages['43'];
+      if (!rangeLayout) continue;
+      lines.push(encodeAsciiLog({ ...frame, payload: buildRangePayload(observations) }, rangeLayout, tables));
+      continue;
+    }
     const layout = tables.messages[String(frame.header.messageId)];
     if (!layout) {
       skippedUnknown += 1;
