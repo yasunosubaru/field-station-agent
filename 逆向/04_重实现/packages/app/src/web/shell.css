@@ -1033,3 +1033,11 @@ body[data-page="playback"] #gritGroupView {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* Convert 卡片宽度与居中：原版整屏参照里卡片约 1064 CSS 宽（2560 物理 ÷1.5
+ * 实测 397..1993），不是 style.css 里写的 1224（那是在 87% 缩放下量的）。 */
+body[data-page="convert"] .convert-screens {
+  max-width: 1064px;
+  margin-left: auto;
+  margin-right: auto;
+}
