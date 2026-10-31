@@ -501,7 +501,7 @@ body[data-page="graph"] #panel-graph {
   color: var(--gp-ink-60);
 }
 
-/* ---- map stage: Legend ↑左，控件列 ↑右，图表铺满 ---- */
+/* ---- map stage: Legend ↑左，控件列 ↑右，地图铺满，折线图停靠在底边 ---- */
 
 .gp-stage {
   position: relative;
@@ -514,6 +514,211 @@ body[data-page="graph"] #panel-graph {
 .gp-pane {
   position: absolute;
   inset: 0;
+}
+
+/* The map fills the pane except for the docked chart strip (`.gp-dock`, 236 px open / 34 px
+ * collapsed). Keeping the map out from under the dock rather than letting it slide beneath is what
+ * makes the scale bar and the north arrow stay legible. */
+.gp-map {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 236px;
+  overflow: hidden;
+  background: #eef1ea;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-panel[data-dock="closed"] .gp-map {
+  bottom: 34px;
+}
+
+.gp-map.is-dragging {
+  cursor: grabbing;
+}
+
+.gp-map-svg {
+  position: absolute;
+  inset: 0;
+}
+
+.gp-map-svg svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gp-map-empty {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  color: var(--gp-ink-60);
+}
+
+/* Hover coordinates — the readout a map is expected to have. It sits a line below the longitude
+ * labels so the two never overlap. */
+.gp-map-readout {
+  position: absolute;
+  top: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  font-family: var(--gp-mono);
+  font-size: 11px;
+  line-height: 16px;
+  color: #3a3a3a;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The required plain-sight disclaimer: one line, always on screen. */
+.gp-map-note {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 340px);
+  margin: 0;
+  padding: 2px 9px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  line-height: 16px;
+  color: rgba(0, 0, 0, 0.58);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.gp-map-hover {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  background:
+    linear-gradient(to right, transparent 5.5px, rgba(0, 0, 0, 0.45) 5.5px, rgba(0, 0, 0, 0.45) 6.5px,
+      transparent 6.5px),
+    linear-gradient(to bottom, transparent 5.5px, rgba(0, 0, 0, 0.45) 5.5px, rgba(0, 0, 0, 0.45) 6.5px,
+      transparent 6.5px);
+  pointer-events: none;
+}
+
+/* The timeline cursor on the map: same red the playhead uses. */
+.gp-map-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid #d0021b;
+  border-radius: 50%;
+  background: rgba(208, 2, 27, 0.16);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.gp-map-marker-label {
+  position: absolute;
+  margin: -9px 0 0 13px;
+  padding: 1px 6px;
+  border-left: 2px solid #d0021b;
+  background: rgba(255, 255, 255, 0.9);
+  font-family: var(--gp-mono);
+  font-size: 10px;
+  line-height: 15px;
+  color: #3a3a3a;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---- docked chart: the Overview chart, along the bottom of the map stage ---- */
+
+.gp-dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  height: 236px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.gp-dock.is-collapsed {
+  height: 34px;
+}
+
+.gp-dock-head {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 8px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.gp-dock-title {
+  font-family: var(--gp-sans-bold);
+  font-size: 12px;
+  color: var(--gp-teal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gp-dock-toggle {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #4a4a4a;
+  cursor: pointer;
+}
+
+.gp-dock-toggle:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.gp-dock-toggle .gp-chevron {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.15s ease;
+}
+
+.gp-dock.is-collapsed .gp-dock-toggle .gp-chevron {
+  transform: rotate(180deg);
+}
+
+.gp-dock-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.gp-dock.is-collapsed .gp-dock-body {
+  display: none;
 }
 
 .gp-chart {
@@ -732,7 +937,9 @@ body[data-page="graph"] #panel-graph {
   font-family: var(--gp-sans);
 }
 
-/* ---- 地图控件列: 量 右侧留 44，指南针 40，其余 28，列宽 40 ---- */
+/* ---- 地图控件列: 量 右侧留 44，指南针 40，其余 28，列宽 40 ----
+ * The icons are the shipped Graph SVGs; the four below the compass are now real buttons
+ * (`data-act="map-*"`), the round compass stays a north-up indicator. */
 
 .gp-mapcontrols {
   position: absolute;
@@ -750,6 +957,8 @@ body[data-page="graph"] #panel-graph {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  border: 0;
   background-color: #ffffff;
   background-position: center;
   background-repeat: no-repeat;
@@ -757,6 +966,26 @@ body[data-page="graph"] #panel-graph {
   box-shadow: 0 2px 4px -1px #0003, 0 4px 5px #00000024, 0 1px 10px #0000001f;
   border-radius: 2px;
   color: #666666;
+  pointer-events: auto;
+}
+
+button.gp-mapbtn {
+  cursor: pointer;
+  font: inherit;
+}
+
+button.gp-mapbtn:hover {
+  background-color: #eef4f6;
+  color: var(--gp-teal);
+}
+
+button.gp-mapbtn:active {
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+button.gp-mapbtn:focus-visible {
+  outline: 2px solid var(--gp-teal);
+  outline-offset: 1px;
 }
 
 .gp-compass {

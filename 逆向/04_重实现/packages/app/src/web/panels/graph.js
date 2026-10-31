@@ -27,13 +27,17 @@
  *             is one column of one CSV read through `/api/graph/data?file=&column=`. Titles, plot
  *             kinds and y-axis units are the catalog's, verbatim; `chartSvgFor()` draws the same
  *             axes/grid/typography as the Overview chart, only repeated per tile.
+ *   real      the Overview map: `2D Trajectory.csv` fixes drawn on a **graticule basemap generated in
+ *             this file** (degree grid + metric scale bar + north arrow + the `Position SD.csv` 1σ
+ *             circle), with wheel/drag zoom and pan, fit / zoom buttons, a hover coordinate readout
+ *             and a cursor bound to the timeline. The original is LuciadRIA (commercial, WebGPU) and
+ *             is not in this repo, so `mapSvg()` draws no imagery and no invented geography — the
+ *             stage carries the line `本构建不是 Luciad 地图` in plain sight, not in a tooltip
  *   honest    a tile whose CSV is missing, whose column cannot be read, or whose rows
  *             `/api/graph/data` truncates prints `--` plus the reason instead of a curve;
  *             `Project Information` shows no message counts because `DataSummary.json` is not behind
  *             `/api/graph/*`, and the catalog's Heading & Attitude / Velocity plots have no tab or
  *             tile because this project (`clean`) exported no INS data
- *             the map itself: there is no Luciad in this repo, the stage shows the chart and the
- *             control column is decoration (`aria-hidden`, no handlers)
  *
  * Contract with the shell (`src/web/index.html`): `mount(root, ctx)` / `unmount(root)`,
  * `ctx = { api: { get, post }, capture, onCaptureChange }`.
@@ -571,6 +575,478 @@ export function chartSvgFor(model, width, height) {
   return seriesSvg(model, visible, boxW, boxH);
 }
 
+/* ---------------- map: a self-drawn offline basemap + the exported track ---------------- */
+
+/**
+ * The original Overview map is **LuciadRIA 2026.0.07** (WebGPU + wasm, commercial licence) and is
+ * not in this repo — `03_分析/06_Graph应用.md` §6.7 lists the layers it draws (track coloured by
+ * position type, event icons, flags, hover marker, time marker). Rebuilding Luciad is out of scope
+ * and fetching Google/OSM tiles is not allowed (the whole suite has to run offline), so what the
+ * stage gets is a **graticule basemap drawn in this file**: a degree grid labelled on both edges, a
+ * metric scale bar, a north arrow, the horizontal 1σ circle from `Position SD.csv`, and the track
+ * from `2D Trajectory.csv` — the same five fixes `clean.kml` carries. Nothing is invented: no
+ * coastline, no roads, no imagery. One visible line says so (`.gp-map-note`), not a tooltip.
+ *
+ * Projection: equirectangular about the view's centre latitude — x ∝ (lon − lon₀)·cos φ,
+ * y ∝ −(lat − lat₀) — with **one metre scale for both axes**, so the scale bar and the 1σ circle are
+ * true and the aspect ratio is the real one. Over the ~24 m box this track needs that is
+ * indistinguishable from Web Mercator, and it never needs a tile server.
+ */
+
+/** The trajectory CSV (and the two columns) the map draws — the same file `clean.kml` was exported from. */
+export const MAP_FILE = '2D Trajectory.csv';
+export const MAP_LON_COLUMN = 'Longitude';
+export const MAP_LAT_COLUMN = 'Latitude';
+/** `Position SD.csv` gives the per-epoch 1σ in metres: circle around the first fix. */
+export const MAP_SD_FILE = 'Position SD.csv';
+export const MAP_SD_LAT_COLUMN = 'Latitude SD';
+export const MAP_SD_LON_COLUMN = 'Longitude SD';
+/** `Height.csv` supplies the ellipsoidal height the cursor chip prints. */
+export const MAP_HEIGHT_FILE = 'Height.csv';
+
+/** `clean.kml` `<Style id="PathSINGLE">` is `ffe74a3c` (AABBGGRR) → `#3c4ae7`. */
+export const MAP_TRACK_COLOR = '#3c4ae7';
+
+export const MAP_MIN_SPAN_M = 0.4;
+export const MAP_MAX_SPAN_M = 20_000_000;
+/** A stationary track still needs a readable box; fit lands on this when every fix coincides. */
+export const MAP_MIN_FIT_SPAN_M = 24;
+
+const DEGREE = Math.PI / 180;
+
+/** Metres per degree at a latitude (WGS84 mean radius); longitude shrinks with cos φ. */
+export function metersPerDegree(lat) {
+  const phi = Math.max(-89.5, Math.min(89.5, Number(lat) || 0)) * DEGREE;
+  return { lat: 111132.9, lon: Math.max(1, 111320.3 * Math.cos(phi)) };
+}
+
+/** Round a raw step **up** to the 1-2-5 ladder (grid spacing, tick spacing). */
+export function niceStep(raw) {
+  const value = Math.abs(Number(raw));
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const exponent = Math.floor(Math.log10(value));
+  const base = value / 10 ** exponent;
+  const ladder = base <= 1 ? 1 : base <= 2 ? 2 : base <= 5 ? 5 : 10;
+  return ladder * 10 ** exponent;
+}
+
+/** Round a raw value **down** to the 1-2-5 ladder (scale bar length). */
+export function niceFloor(raw) {
+  const value = Math.abs(Number(raw));
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const exponent = Math.floor(Math.log10(value));
+  const base = value / 10 ** exponent;
+  const ladder = base >= 5 ? 5 : base >= 2 ? 2 : 1;
+  return ladder * 10 ** exponent;
+}
+
+/** Graticule step for a degree span: about `target` lines across, on the 1-2-5 ladder. */
+export function degreeStep(spanDeg, target = 6) {
+  const span = Math.abs(Number(spanDeg));
+  if (!Number.isFinite(span) || span <= 0) return 0.001;
+  return niceStep(span / Math.max(1, target));
+}
+
+/** Every multiple of `step` inside `[min, max]`. */
+export function tickValues(min, max, step) {
+  const values = [];
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !(step > 0)) return values;
+  const first = Math.ceil(min / step - 1e-9) * step;
+  const count = Math.floor((max - first) / step + 1e-6);
+  for (let index = 0; index <= count; index += 1) values.push(first + index * step);
+  return values;
+}
+
+/** Decimals that make a step readable: 2° → 0, 0.02° → 2, 0.0002° → 4. */
+export function stepDecimals(step) {
+  const size = Math.abs(Number(step));
+  if (!Number.isFinite(size) || size <= 0) return 0;
+  return Math.max(0, Math.min(7, Math.ceil(-Math.log10(size))));
+}
+
+export function formatDegrees(value, step) {
+  const decimals = stepDecimals(step);
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  const text = number.toFixed(decimals);
+  return Number(text) === 0 ? (0).toFixed(decimals) : text;
+}
+
+/** `30.539975` → `30.539975°N`. */
+export function latLabel(lat, decimals = 6) {
+  const value = Number(lat) || 0;
+  return `${Math.abs(value).toFixed(decimals)}°${value >= 0 ? 'N' : 'S'}`;
+}
+
+/** `114.352811` → `114.352811°E`. */
+export function lonLabel(lon, decimals = 6) {
+  const value = Number(lon) || 0;
+  return `${Math.abs(value).toFixed(decimals)}°${value >= 0 ? 'E' : 'W'}`;
+}
+
+export function formatDistance(meters) {
+  const value = Math.abs(Number(meters) || 0);
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)} km`;
+  if (value >= 100) return `${value.toFixed(0)} m`;
+  if (value >= 10) return `${value.toFixed(1)} m`;
+  if (value >= 1) return `${value.toFixed(2)} m`;
+  if (value >= 0.01) return `${(value * 100).toFixed(0)} cm`;
+  return '0 m';
+}
+
+function scaleLabel(meters) {
+  if (meters >= 1000) return `${Math.round(meters / 1000)} km`;
+  if (meters >= 1) return `${Math.round(meters * 10) / 10} m`;
+  return `${Math.round(meters * 100)} cm`;
+}
+
+/** A round distance no wider than `maxPx` on screen. */
+export function scaleBar(pxPerMeter, maxPx = 132) {
+  const pxPerM = Number(pxPerMeter);
+  if (!Number.isFinite(pxPerM) || pxPerM <= 0) return { meters: 0, px: 0, label: '0 m' };
+  const meters = niceFloor(Math.max(1e-6, Number(maxPx) || 0) / pxPerM);
+  return { meters, px: meters * pxPerM, label: scaleLabel(meters) };
+}
+
+/**
+ * View → pixel/degree maths. `spanM` is the **width** of the view in metres; one metre is one
+ * `width / spanM` pixels on both axes, which is what makes the scale bar and the 1σ circle true.
+ */
+export function mapProjection(view, width, height) {
+  const w = Math.max(1, Math.round(Number(width) || 0));
+  const h = Math.max(1, Math.round(Number(height) || 0));
+  const centerLon = Number.isFinite(view && view.centerLon) ? Number(view.centerLon) : 0;
+  const centerLat = Number.isFinite(view && view.centerLat) ? Number(view.centerLat) : 0;
+  const spanM = Math.max(MAP_MIN_SPAN_M,
+    Math.min(MAP_MAX_SPAN_M, Number.isFinite(view && view.spanM) ? Number(view.spanM) : 100));
+  const per = metersPerDegree(centerLat);
+  const pxPerM = w / spanM;
+  const cosScale = per.lon * pxPerM;
+  const latScale = per.lat * pxPerM;
+  return {
+    width: w,
+    height: h,
+    centerLon,
+    centerLat,
+    spanM,
+    pxPerM,
+    metersPerDegree: per,
+    x: (lon) => w / 2 + (Number(lon) - centerLon) * cosScale,
+    y: (lat) => h / 2 - (Number(lat) - centerLat) * latScale,
+    lonAt: (px) => centerLon + (Number(px) - w / 2) / cosScale,
+    latAt: (py) => centerLat - (Number(py) - h / 2) / latScale,
+    degreesPerPixel: { lon: 1 / cosScale, lat: 1 / latScale },
+  };
+}
+
+/** Two `/api/graph/data` payloads (longitude column, latitude column) → `[{ t, lon, lat }]`. */
+export function trajectoryPoints(lonPayload, latPayload) {
+  const lon = (lonPayload && lonPayload.series && lonPayload.series.points) || [];
+  const lat = (latPayload && latPayload.series && latPayload.series.points) || [];
+  const count = Math.min(lon.length, lat.length);
+  const points = [];
+  for (let index = 0; index < count; index += 1) {
+    const longitude = Number(lon[index][1]);
+    const latitude = Number(lat[index][1]);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
+    points.push({ t: Number(lon[index][0]) || 0, lon: longitude, lat: latitude });
+  }
+  return points;
+}
+
+/** Flat-earth distance in metres — these tracks are metres, not flight paths. */
+export function pointDistance(a, b) {
+  if (!a || !b) return 0;
+  const per = metersPerDegree((Number(a.lat) + Number(b.lat)) / 2);
+  const east = (Number(b.lon) - Number(a.lon)) * per.lon;
+  const north = (Number(b.lat) - Number(a.lat)) * per.lat;
+  return Math.hypot(east, north);
+}
+
+/** Sum of the segment lengths, metres. A stationary track is honestly 0. */
+export function trackLength(points) {
+  if (!Array.isArray(points) || points.length < 2) return 0;
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    total += pointDistance(points[index - 1], points[index]);
+  }
+  return total;
+}
+
+export function trackExtent(points) {
+  if (!Array.isArray(points) || !points.length) return null;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const point of points) {
+    if (point.lon < minLon) minLon = point.lon;
+    if (point.lon > maxLon) maxLon = point.lon;
+    if (point.lat < minLat) minLat = point.lat;
+    if (point.lat > maxLat) maxLat = point.lat;
+  }
+  const centerLat = (minLat + maxLat) / 2;
+  const per = metersPerDegree(centerLat);
+  return {
+    minLon,
+    maxLon,
+    minLat,
+    maxLat,
+    centerLon: (minLon + maxLon) / 2,
+    centerLat,
+    eastM: (maxLon - minLon) * per.lon,
+    northM: (maxLat - minLat) * per.lat,
+  };
+}
+
+/** View that holds every fix with 15 % margin; coincident fixes land on `MAP_MIN_FIT_SPAN_M`. */
+export function mapFit(points, width, height) {
+  const w = Math.max(1, Number(width) || 0);
+  const h = Math.max(1, Number(height) || 0);
+  const extent = trackExtent(points);
+  if (!extent) return { centerLon: 0, centerLat: 0, spanM: MAP_MIN_FIT_SPAN_M };
+  const aspect = w / h;
+  const spanM = Math.max(MAP_MIN_FIT_SPAN_M, extent.eastM * 1.15, extent.northM * aspect * 1.15);
+  return {
+    centerLon: extent.centerLon,
+    centerLat: extent.centerLat,
+    spanM: Math.min(MAP_MAX_SPAN_M, spanM),
+  };
+}
+
+/** Index of the fix at `ratio` (0…1) of the track's time axis — the timeline cursor's map position. */
+export function indexForRatio(points, ratio) {
+  if (!Array.isArray(points) || !points.length) return -1;
+  const value = Math.min(1, Math.max(0, Number(ratio) || 0));
+  const first = Number(points[0].t) || 0;
+  const last = Number(points[points.length - 1].t) || 0;
+  if (!(last > first)) return Math.min(points.length - 1, Math.round(value * (points.length - 1)));
+  const target = first + (last - first) * value;
+  let picked = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    if ((Number(points[index].t) || 0) <= target + 1e-9) picked = index;
+    else break;
+  }
+  return picked;
+}
+
+/** `2442,463098.000` — the comment lines' form (`2442  463098.000` cells go through `parseGpsCell`). */
+export function parseGpsStamp(text) {
+  const match = /^\s*(\d{3,5})\s*[,\s]\s*([0-9]+(?:\.[0-9]+)?)\s*$/.exec(String(text == null ? '' : text));
+  if (!match) return null;
+  const week = Number(match[1]);
+  const seconds = Number(match[2]);
+  if (!Number.isFinite(week) || !Number.isFinite(seconds)) return null;
+  return week * 604_800 + seconds;
+}
+
+/** Every `<coordinates>` triple of a KML document, in document order (points and paths). */
+export function parseKmlCoordinates(kml) {
+  const out = [];
+  const pattern = /<coordinates>([\s\S]*?)<\/coordinates>/g;
+  let match = pattern.exec(String(kml == null ? '' : kml));
+  while (match) {
+    for (const chunk of match[1].trim().split(/\s+/)) {
+      if (!chunk) continue;
+      const [lon, lat, alt] = chunk.split(',').map(Number);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      out.push({ lon, lat, alt: Number.isFinite(alt) ? alt : null });
+    }
+    match = pattern.exec(String(kml == null ? '' : kml));
+  }
+  return out;
+}
+
+/**
+ * The basemap + track, as SVG. Pure: view + points in, markup out — the tests read the coordinates
+ * straight back out of it and compare them with the CSV. `data-*` attributes carry the same facts
+ * for the browser check: `data-points`, `data-span-m`, per-vertex `data-lon` / `data-lat`.
+ */
+export function mapSvg(model, width, height) {
+  const w = Math.max(200, Math.round(Number(width) || 0));
+  const h = Math.max(140, Math.round(Number(height) || 0));
+  const data = model || {};
+  const points = Array.isArray(data.points) ? data.points : [];
+  const view = data.view || { centerLon: 0, centerLat: 0, spanM: 100 };
+  const proj = mapProjection(view, w, h);
+  const sigmaM = Number.isFinite(data.sigmaM) ? Math.max(0, Number(data.sigmaM)) : 0;
+  const font = 'font-family="Consolas, monospace"';
+
+  const parts = [
+    `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="离线经纬网底图与轨迹（自绘，不是 Luciad）"`
+      + ` data-basemap="graticule" data-points="${points.length}"`
+      + ` data-span-m="${proj.spanM.toFixed(3)}"`
+      + ` data-center-lon="${proj.centerLon.toFixed(8)}"`
+      + ` data-center-lat="${proj.centerLat.toFixed(8)}">`,
+  ];
+
+  // Paper + vignette: the basemap has no imagery, so it must at least read as a drawing, not a hole.
+  parts.push(
+    '<defs><radialGradient id="gp-map-paper" cx="48%" cy="42%" r="78%">'
+      + '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>'
+      + '<stop offset="100%" stop-color="#dfe4d8" stop-opacity="0.75"/>'
+      + '</radialGradient></defs>',
+    `<rect width="${w}" height="${h}" fill="#eef1ea"/>`,
+    `<rect width="${w}" height="${h}" fill="url(#gp-map-paper)"/>`,
+  );
+
+  // Graticule: the only "geography" on the basemap, and it is exact.
+  const lonMin = Math.min(proj.lonAt(0), proj.lonAt(w));
+  const lonMax = Math.max(proj.lonAt(0), proj.lonAt(w));
+  const latMin = Math.min(proj.latAt(0), proj.latAt(h));
+  const latMax = Math.max(proj.latAt(0), proj.latAt(h));
+  const stepLon = degreeStep(lonMax - lonMin);
+  const stepLat = degreeStep(latMax - latMin);
+  const lonTicks = tickValues(lonMin, lonMax, stepLon);
+  const latTicks = tickValues(latMin, latMax, stepLat);
+
+  for (const lon of lonTicks) {
+    const x = proj.x(lon);
+    if (x < 1 || x > w - 1) continue;
+    parts.push(
+      `<line x1="${x.toFixed(1)}" y1="20" x2="${x.toFixed(1)}" y2="${h}" stroke="rgba(0,0,0,0.10)"/>`,
+      `<text x="${x.toFixed(1)}" y="14" font-size="10" fill="rgba(0,0,0,0.5)" text-anchor="middle" ${font}>`
+        + `${esc(formatDegrees(lon, stepLon))}°${lon >= 0 ? 'E' : 'W'}</text>`,
+    );
+  }
+  for (const lat of latTicks) {
+    const y = proj.y(lat);
+    if (y < 22 || y > h - 1) continue;
+    parts.push(
+      `<line x1="0" y1="${y.toFixed(1)}" x2="${w}" y2="${y.toFixed(1)}" stroke="rgba(0,0,0,0.10)"/>`,
+    );
+    // The scale bar owns the bottom-left corner: keep the last latitude label out of its way.
+    if (y < h - 42) {
+      parts.push(
+        `<text x="6" y="${(y - 4).toFixed(1)}" font-size="10" fill="rgba(0,0,0,0.5)" ${font}>`
+          + `${esc(formatDegrees(lat, stepLat))}°${lat >= 0 ? 'N' : 'S'}</text>`,
+      );
+    }
+  }
+  parts.push(`<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" fill="none" stroke="rgba(0,0,0,0.14)"/>`);
+
+  /* Metric grid, 1-2-5 metres relative to the first fix. This is the "site plan" layer that makes
+   * the interior of a 24 m box legible; it only appears while its spacing stays readable (36…200 px),
+   * and it is derived from the projection, not from any imagery. */
+  const origin = points.length ? points[0] : { lon: proj.centerLon, lat: proj.centerLat };
+  const meterStep = niceStep(72 / proj.pxPerM);
+  if (meterStep * proj.pxPerM >= 36 && meterStep * proj.pxPerM <= 200) {
+    const per = proj.metersPerDegree;
+    const eastMin = Math.min((proj.lonAt(0) - origin.lon) * per.lon, (proj.lonAt(w) - origin.lon) * per.lon);
+    const eastMax = Math.max((proj.lonAt(0) - origin.lon) * per.lon, (proj.lonAt(w) - origin.lon) * per.lon);
+    const northMin = Math.min((proj.latAt(0) - origin.lat) * per.lat, (proj.latAt(h) - origin.lat) * per.lat);
+    const northMax = Math.max((proj.latAt(0) - origin.lat) * per.lat, (proj.latAt(h) - origin.lat) * per.lat);
+    for (const east of tickValues(eastMin, eastMax, meterStep)) {
+      const x = proj.x(origin.lon + east / per.lon);
+      parts.push(`<line x1="${x.toFixed(1)}" y1="20" x2="${x.toFixed(1)}" y2="${h}"`
+        + ' stroke="rgba(0,0,0,0.075)" stroke-dasharray="1 3"/>');
+    }
+    for (const north of tickValues(northMin, northMax, meterStep)) {
+      const y = proj.y(origin.lat + north / per.lat);
+      if (y < 22) continue;
+      parts.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${w}" y2="${y.toFixed(1)}"`
+        + ' stroke="rgba(0,0,0,0.075)" stroke-dasharray="1 3"/>');
+    }
+  }
+
+  // 1σ circle from Position SD.csv, around the first fix.
+  if (points.length && sigmaM > 0) {
+    const radius = sigmaM * proj.pxPerM;
+    if (radius >= 4 && radius <= Math.max(w, h) * 1.5) {
+      const cx = proj.x(points[0].lon);
+      const cy = proj.y(points[0].lat);
+      parts.push(
+        `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${radius.toFixed(1)}"`
+          + ` fill="rgba(0,81,111,0.06)" stroke="rgba(0,81,111,0.5)" stroke-width="1"`
+          + ` stroke-dasharray="4 3" data-sigma-m="${sigmaM.toFixed(3)}"/>`,
+        `<text x="${(cx + radius + 5).toFixed(1)}" y="${(cy - radius + 2).toFixed(1)}" font-size="10"`
+          + ` fill="rgba(0,81,111,0.8)" ${font} paint-order="stroke" stroke="#ffffff" stroke-width="3">`
+          + `1σ ${sigmaM.toFixed(2)} m</text>`,
+      );
+    }
+  }
+
+  // Track: the exported path, in the colour `clean.kml` gives it.
+  if (points.length > 1) {
+    const coords = points
+      .map((point) => `${proj.x(point.lon).toFixed(1)},${proj.y(point.lat).toFixed(1)}`)
+      .join(' ');
+    parts.push(
+      `<polyline points="${coords}" fill="none" stroke="${MAP_TRACK_COLOR}" stroke-width="2.4"`
+        + ' stroke-opacity="0.85" stroke-linejoin="round" stroke-linecap="round"/>',
+    );
+  }
+
+  // Vertices. `data-i` / `data-lon` / `data-lat` let the browser check compare against the CSV.
+  const radius = points.length > 400 ? 2 : 3.2;
+  points.forEach((point, index) => {
+    parts.push(
+      `<circle cx="${proj.x(point.lon).toFixed(1)}" cy="${proj.y(point.lat).toFixed(1)}" r="${radius}"`
+        + ` fill="#ffffff" fill-opacity="0.92" stroke="${MAP_TRACK_COLOR}" stroke-width="1.6"`
+        + ` data-i="${index}" data-lon="${point.lon}" data-lat="${point.lat}"/>`,
+    );
+  });
+
+  const distinct = new Set(points.map((point) => `${point.lon.toFixed(8)},${point.lat.toFixed(8)}`)).size;
+  if (points.length > 1 && distinct === 1) {
+    // A stationary solution: 5 fixes on one pixel. Say it on the map instead of faking a track.
+    const cx = proj.x(points[0].lon);
+    const cy = proj.y(points[0].lat);
+    parts.push(
+      `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="7" fill="none"`
+        + ` stroke="${MAP_TRACK_COLOR}" stroke-width="1" stroke-dasharray="2 2"/>`,
+      `<text x="${(cx - 12).toFixed(1)}" y="${(cy + 4).toFixed(1)}" font-size="10" fill="rgba(0,0,0,0.65)"`
+        + ` text-anchor="end" ${font} paint-order="stroke" stroke="#ffffff" stroke-width="3">${points.length} 点重合</text>`,
+    );
+  } else if (points.length) {
+    const start = points[0];
+    const end = points[points.length - 1];
+    const sx = proj.x(start.lon);
+    const sy = proj.y(start.lat);
+    const ex = proj.x(end.lon);
+    const ey = proj.y(end.lat);
+    parts.push(
+      `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="5" fill="#ffffff" stroke="#2e8b57" stroke-width="2"/>`,
+      `<path d="M${ex.toFixed(1)} ${(ey - 5).toFixed(1)} l5 5 -5 5 -5 -5 z" fill="#d0021b"/>`,
+      `<text x="${(sx + 9).toFixed(1)}" y="${(sy + 4).toFixed(1)}" font-size="10" fill="rgba(0,0,0,0.7)" ${font}`
+        + ' paint-order="stroke" stroke="#ffffff" stroke-width="3">起点</text>',
+      `<text x="${(ex + 9).toFixed(1)}" y="${(ey + 4).toFixed(1)}" font-size="10" fill="rgba(0,0,0,0.7)" ${font}`
+        + ' paint-order="stroke" stroke="#ffffff" stroke-width="3">终点</text>',
+    );
+  }
+
+  // Scale bar, bottom-left: two-tone, its length is a round number of metres by construction.
+  const bar = scaleBar(proj.pxPerM, Math.min(150, Math.max(48, w * 0.26)));
+  if (bar.px > 4) {
+    const barY = h - 24;
+    const half = bar.px / 2;
+    parts.push(
+      `<g data-scale-m="${bar.meters}">`,
+      `<rect x="16" y="${barY}" width="${half.toFixed(1)}" height="6" fill="rgba(0,0,0,0.78)"/>`,
+      `<rect x="${(16 + half).toFixed(1)}" y="${barY}" width="${half.toFixed(1)}" height="6"`
+        + ' fill="#ffffff" stroke="rgba(0,0,0,0.78)"/>',
+      `<text x="16" y="${barY + 17}" font-size="10" fill="rgba(0,0,0,0.65)" ${font}>0</text>`,
+      `<text x="${(16 + bar.px).toFixed(1)}" y="${barY + 17}" font-size="10" fill="rgba(0,0,0,0.65)"`
+        + ` text-anchor="end" ${font}>${esc(bar.label)}</text>`,
+      '</g>',
+    );
+  }
+
+  // North arrow, bottom-right (the round compass in the control column is the orientation chip).
+  const nx = w - 26;
+  const ny = h - 30;
+  parts.push(
+    '<g data-north="up">',
+    `<path d="M${nx} ${ny - 16} l6.5 15 -6.5 -4.4 -6.5 4.4 z" fill="rgba(0,0,0,0.72)"/>`,
+    `<text x="${nx}" y="${ny + 12}" font-size="10" font-weight="700" fill="rgba(0,0,0,0.7)"`
+      + ` text-anchor="middle" ${font}>N</text>`,
+    '</g>',
+  );
+
+  parts.push('</svg>');
+  return parts.join('');
+}
+
 /* ---------------- markup ---------------- */
 
 const ICON_FLAG = '<svg class="gp-flag-icon" viewBox="0 0 24 24" aria-hidden="true">'
@@ -638,14 +1114,31 @@ const ICON_LAYERS = '<svg viewBox="0 0 112 112" aria-hidden="true">'
   + '<path d="M56 33.6 41.6 40 56 46.4 70.4 40 56 33.6Z" fill="#68b9dc"/></svg>';
 
 /**
- * Pane markup. Overview keeps the map stage (chart + playhead); the three chart tabs get one tile
- * per catalog plot; Project Information gets a single text card. Tiles start empty and are filled by
- * `paintCard()` once their CSV has been read.
+ * Pane markup. Overview is the map stage — the self-drawn basemap fills the stage, the chart sits in
+ * a docked strip along its bottom edge (collapsible, `[data-act="dock"]`) and the playhead rides on
+ * the docked chart. The three chart tabs get one tile per catalog plot; Project Information gets a
+ * single text card. Tiles start empty and are filled by `paintCard()` once their CSV has been read.
  */
 export function paneBody(tabId) {
   if (tabId === 'overview') {
-    return '<div class="gp-chart"></div>'
-      + '<div class="gp-playhead" hidden><span class="gp-playhead-dot"></span></div>';
+    return '<div class="gp-map" data-ref="map">'
+      + '<div class="gp-map-svg" data-ref="mapSvg"></div>'
+      + '<span class="gp-map-marker" data-ref="mapMarker" hidden></span>'
+      + '<span class="gp-map-marker-label" data-ref="mapMarkerLabel" hidden></span>'
+      + '<span class="gp-map-hover" data-ref="mapHover" hidden></span>'
+      + '<p class="gp-map-readout" data-ref="mapReadout" hidden></p>'
+      + '<p class="gp-map-note">本构建不是 Luciad 地图 · 底图是自绘经纬网（离线，无商业瓦片）</p>'
+      + '</div>'
+      + '<div class="gp-dock" data-ref="dock">'
+      + '<div class="gp-dock-head">'
+      + '<span class="gp-dock-title" data-ref="dockTitle">折线图</span>'
+      + '<button type="button" class="gp-dock-toggle" data-act="dock" aria-expanded="true"'
+      + ' aria-label="收起 / 展开折线图">' + ICON_CHEVRON + '</button>'
+      + '</div>'
+      + '<div class="gp-dock-body">'
+      + '<div class="gp-chart"></div>'
+      + '<div class="gp-playhead" hidden><span class="gp-playhead-dot"></span></div>'
+      + '</div></div>';
   }
   if (tabId === 'project') {
     return '<div class="gp-report" data-report="project">'
@@ -680,7 +1173,7 @@ function template() {
     + `${paneBody(tab.id)}</div>`).join('');
 
   return `
-<div class="graph-panel" data-view="home">
+<div class="graph-panel" data-view="home" data-dock="open">
   <section class="gp-home" aria-label="Graph 首页">
     <div class="gp-home-head">
       <div class="gp-home-left">
@@ -740,6 +1233,11 @@ function template() {
             <p class="gp-legend-meta" data-ref="meta"></p>
           </div>
           <div class="gp-legend-section">
+            <h4>地图</h4>
+            <p class="gp-legend-meta" data-ref="mapLegend">正在读取 2D Trajectory.csv…</p>
+            <p class="gp-legend-meta">自绘经纬网底图，不联网拉瓦片；本构建不是 Luciad。</p>
+          </div>
+          <div class="gp-legend-section">
             <h4>前 20 行</h4>
             <p class="gp-legend-meta" data-ref="tableNote"></p>
             <div class="gp-legend-table">
@@ -752,12 +1250,16 @@ function template() {
         </div>
       </div>
 
-      <div class="gp-mapcontrols" aria-hidden="true">
-        <span class="gp-mapbtn gp-compass">${ICON_COMPASS}</span>
-        <span class="gp-mapbtn gp-recenter">${ICON_RECENTER}</span>
-        <span class="gp-mapbtn gp-zoomin">${ICON_ZOOM_IN}</span>
-        <span class="gp-mapbtn gp-zoomout">${ICON_ZOOM_OUT}</span>
-        <span class="gp-mapbtn gp-fit">${ICON_FIT}</span>
+      <div class="gp-mapcontrols" role="group" aria-label="地图控件">
+        <span class="gp-mapbtn gp-compass" title="正北向上（本构建不旋转地图）">${ICON_COMPASS}</span>
+        <button type="button" class="gp-mapbtn gp-recenter" data-act="map-recenter"
+          title="回到轨迹中心" aria-label="回到轨迹中心">${ICON_RECENTER}</button>
+        <button type="button" class="gp-mapbtn gp-zoomin" data-act="map-zoomin"
+          title="放大" aria-label="放大">${ICON_ZOOM_IN}</button>
+        <button type="button" class="gp-mapbtn gp-zoomout" data-act="map-zoomout"
+          title="缩小" aria-label="缩小">${ICON_ZOOM_OUT}</button>
+        <button type="button" class="gp-mapbtn gp-fit" data-act="map-fit"
+          title="缩放到轨迹范围" aria-label="缩放到轨迹范围">${ICON_FIT}</button>
       </div>
 
       <div class="gp-notice" data-ref="notice" hidden></div>
@@ -839,6 +1341,15 @@ export function mount(root, ctx) {
     notice: $('notice'),
     chart: root.querySelector('.gp-chart'),
     playhead: root.querySelector('.gp-playhead'),
+    dock: $('dock'),
+    dockTitle: $('dockTitle'),
+    map: $('map'),
+    mapSvg: $('mapSvg'),
+    mapMarker: $('mapMarker'),
+    mapMarkerLabel: $('mapMarkerLabel'),
+    mapHover: $('mapHover'),
+    mapReadout: $('mapReadout'),
+    mapLegend: $('mapLegend'),
     exportMenu: $('exportMenu'),
     startTime: $('startTime'),
     endTime: $('endTime'),
@@ -869,6 +1380,8 @@ export function mount(root, ctx) {
     geometry: null,
     legendOpen: false,
     showEvents: false,
+    /* overview: the map + the docked chart */
+    dock: 'open',
     /* chart tabs */
     payloads: new Map(),
     models: new Map(),
@@ -893,6 +1406,7 @@ export function mount(root, ctx) {
     el.work.hidden = view !== 'work';
     if (view === 'work') {
       requestAnimationFrame(() => {
+        renderMap();
         if (state.tab === 'overview') drawChart();
         else paintTab(state.tab);
       });
@@ -911,7 +1425,11 @@ export function mount(root, ctx) {
       pane.hidden = pane.dataset.pane !== id;
     }
     if (id === 'overview') {
-      requestAnimationFrame(() => drawChart());
+      requestAnimationFrame(() => {
+        renderMap();
+        drawChart();
+        updatePlayhead();
+      });
       return;
     }
     ensureTab(id);
@@ -942,11 +1460,13 @@ export function mount(root, ctx) {
 
   /* ---- chart ---- */
 
+  /** The docked chart's own box: the Overview chart no longer owns the whole stage (the map does). */
   function paneBox() {
-    const pane = root.querySelector('.gp-pane[data-pane="overview"]');
-    if (!pane) return null;
-    const rect = pane.getBoundingClientRect();
-    return { width: Math.max(320, Math.round(rect.width)), height: Math.max(200, Math.round(rect.height)) };
+    const node = el.chart;
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) return null;
+    return { width: Math.max(320, Math.round(rect.width)), height: Math.max(120, Math.round(rect.height)) };
   }
 
   /**
@@ -1027,9 +1547,15 @@ export function mount(root, ctx) {
 
   function drawChart() {
     if (!el.chart || !state.alive) return;
+    if (state.dock !== 'open') return;
     const box = paneBox();
     if (!box) return;
     const data = state.data;
+    if (el.dockTitle) {
+      el.dockTitle.textContent = data
+        ? `${data.name}${data.column ? ` · ${data.column}` : ' · （无数值列）'}`
+        : '折线图';
+    }
     if (!data) {
       el.chart.innerHTML = '<div class="gp-chart-empty">正在读取 CSV…</div>';
       return;
@@ -1050,6 +1576,7 @@ export function mount(root, ctx) {
     if (!geometry || !state.span) {
       if (el.playhead) el.playhead.hidden = true;
       if (el.marker) el.marker.hidden = true;
+      updateMapCursor();
       return;
     }
     const ratio = Math.min(1, Math.max(0, state.current / state.span));
@@ -1064,6 +1591,329 @@ export function mount(root, ctx) {
       el.marker.hidden = false;
       el.marker.style.left = `calc(158px + (100% - 177px) * ${ratio.toFixed(4)})`;
     }
+    updateMapCursor();
+  }
+
+  /* ---- map: self-drawn offline basemap + track / cursor layers ---- */
+
+  /**
+   * Everything the map needs is already behind `/api/graph/*`: the fixes of `2D Trajectory.csv`, the
+   * per-epoch 1σ of `Position SD.csv`, the ellipsoidal height of `Height.csv`. The view is
+   * `{ centerLon, centerLat, spanM }` and lives here rather than in the SVG, so a wheel/pointer
+   * gesture is one state change plus one re-render of a few-dozen-element drawing. The cursor chip
+   * is a DOM element, not part of the SVG, because the timeline repaints it every animation frame.
+   */
+  const mapState = {
+    status: 'idle', // idle | loading | ready | error
+    error: '',
+    points: [],
+    sigmaM: 0,
+    heights: [],
+    view: null,
+    hover: null,
+    payload: null,
+  };
+
+  let mapDrag = null;
+
+  function mapBox() {
+    const node = el.map;
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) return null;
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  }
+
+  function updateMapLegend() {
+    if (!el.mapLegend) return;
+    if (mapState.status === 'error') {
+      el.mapLegend.textContent = `轨迹读取失败：${mapState.error}`;
+      return;
+    }
+    if (mapState.status !== 'ready') {
+      el.mapLegend.textContent = `正在读取 ${MAP_FILE}…`;
+      return;
+    }
+    const extent = trackExtent(mapState.points);
+    el.mapLegend.textContent = `自绘经纬网（离线） · 轨迹 ${mapState.points.length} 点`
+      + ` · 长度 ${formatDistance(trackLength(mapState.points))}`
+      + (extent ? ` · 跨度 ${formatDistance(Math.max(extent.eastM, extent.northM))}` : '');
+  }
+
+  function renderMap() {
+    if (!el.mapSvg || !state.alive) return;
+    if (mapState.status === 'idle' || mapState.status === 'loading') {
+      el.mapSvg.innerHTML = `<p class="gp-map-empty">正在读取 ${esc(MAP_FILE)}…</p>`;
+      if (el.mapReadout) el.mapReadout.hidden = true;
+      return;
+    }
+    if (mapState.status === 'error') {
+      el.mapSvg.innerHTML = `<p class="gp-map-empty">读不到轨迹：${esc(mapState.error)}</p>`;
+      if (el.mapReadout) el.mapReadout.hidden = true;
+      return;
+    }
+    const box = mapBox();
+    if (!box) return;
+    if (!mapState.view) mapState.view = mapFit(mapState.points, box.width, box.height);
+    el.mapSvg.innerHTML = mapSvg(
+      { points: mapState.points, view: mapState.view, sigmaM: mapState.sigmaM },
+      box.width,
+      box.height,
+    );
+    updateMapHud();
+    updateMapCursor();
+  }
+
+  function updateMapHud() {
+    if (!el.mapReadout) return;
+    if (mapState.status !== 'ready' || !mapState.view) {
+      el.mapReadout.hidden = true;
+      return;
+    }
+    el.mapReadout.hidden = false;
+    if (mapState.hover) {
+      const origin = mapState.points[0];
+      const distance = origin ? pointDistance(origin, mapState.hover) : 0;
+      el.mapReadout.textContent = `${latLabel(mapState.hover.lat)}  ${lonLabel(mapState.hover.lon)}`
+        + ` · 距首点 ${formatDistance(distance)}`;
+      return;
+    }
+    const extent = trackExtent(mapState.points);
+    const degenerate = extent ? Math.max(extent.eastM, extent.northM) < 1e-6 : false;
+    el.mapReadout.textContent = `${latLabel(mapState.view.centerLat)}  ${lonLabel(mapState.view.centerLon)}`
+      + ` · 视野 ${formatDistance(mapState.view.spanM)}`
+      + (degenerate ? ' · 轨迹退化为 1 点' : '');
+  }
+
+  function mapCursorLabel(index, point) {
+    const parts = [`#${index + 1}`];
+    const base = mapState.payload ? parseGpsStamp(mapState.payload.comments && mapState.payload.comments.startTime) : null;
+    if (base !== null && Number.isFinite(point.t)) parts.push(gpsWeekLabel(base + point.t));
+    else parts.push(`+${(Number(point.t) || 0).toFixed(1)} s`);
+    const height = mapState.heights[index];
+    if (Number.isFinite(height)) parts.push(`${height.toFixed(3)} m`);
+    return parts.join(' · ');
+  }
+
+  /** Timeline cursor → one fix on the map. Cheap enough to run every animation frame. */
+  function updateMapCursor() {
+    const marker = el.mapMarker;
+    const label = el.mapMarkerLabel;
+    const hide = () => {
+      if (marker) marker.hidden = true;
+      if (label) label.hidden = true;
+    };
+    if (!marker || !label || mapState.status !== 'ready' || !mapState.view || !mapState.points.length) {
+      hide();
+      return;
+    }
+    const box = mapBox();
+    if (!box) {
+      hide();
+      return;
+    }
+    const ratio = state.span > 0 ? Math.min(1, Math.max(0, state.current / state.span)) : 0;
+    const index = indexForRatio(mapState.points, ratio);
+    if (index < 0) {
+      hide();
+      return;
+    }
+    const point = mapState.points[index];
+    const projection = mapProjection(mapState.view, box.width, box.height);
+    const px = projection.x(point.lon);
+    const py = projection.y(point.lat);
+    const visible = px > -24 && px < box.width + 24 && py > -24 && py < box.height + 24;
+    marker.hidden = !visible;
+    label.hidden = !visible;
+    if (!visible) return;
+    marker.style.left = `${px.toFixed(1)}px`;
+    marker.style.top = `${py.toFixed(1)}px`;
+    label.style.left = `${px.toFixed(1)}px`;
+    label.style.top = `${py.toFixed(1)}px`;
+    label.textContent = mapCursorLabel(index, point);
+  }
+
+  function setMapView(view) {
+    mapState.view = {
+      centerLon: Math.max(-180, Math.min(180, view.centerLon)),
+      centerLat: Math.max(-85, Math.min(85, view.centerLat)),
+      spanM: Math.max(MAP_MIN_SPAN_M, Math.min(MAP_MAX_SPAN_M, view.spanM)),
+    };
+    renderMap();
+  }
+
+  /** Zoom by `factor` while keeping the geography under `(anchorX, anchorY)` pinned there. */
+  function zoomMap(factor, anchorX, anchorY) {
+    const box = mapBox();
+    if (!box || !mapState.view) return;
+    const ax = Number.isFinite(anchorX) ? anchorX : box.width / 2;
+    const ay = Number.isFinite(anchorY) ? anchorY : box.height / 2;
+    const before = mapProjection(mapState.view, box.width, box.height);
+    const lon = before.lonAt(ax);
+    const lat = before.latAt(ay);
+    const spanM = Math.max(MAP_MIN_SPAN_M, Math.min(MAP_MAX_SPAN_M, mapState.view.spanM * factor));
+    const after = mapProjection({ ...mapState.view, spanM }, box.width, box.height);
+    setMapView({
+      spanM,
+      centerLon: mapState.view.centerLon + (lon - after.lonAt(ax)),
+      centerLat: mapState.view.centerLat + (lat - after.latAt(ay)),
+    });
+  }
+
+  function panMap(dxPx, dyPx) {
+    const box = mapBox();
+    if (!box || !mapState.view) return;
+    const projection = mapProjection(mapState.view, box.width, box.height);
+    setMapView({
+      spanM: mapState.view.spanM,
+      centerLon: mapState.view.centerLon - dxPx * projection.degreesPerPixel.lon,
+      centerLat: mapState.view.centerLat + dyPx * projection.degreesPerPixel.lat,
+    });
+  }
+
+  function fitMap() {
+    const box = mapBox();
+    if (!box || !mapState.points.length) return;
+    mapState.view = mapFit(mapState.points, box.width, box.height);
+    renderMap();
+  }
+
+  function updateMapHover(px, py) {
+    if (!el.map || el.map.hidden) return;
+    const box = mapBox();
+    if (!box || !mapState.view || mapState.status !== 'ready') {
+      mapState.hover = null;
+      if (el.mapHover) el.mapHover.hidden = true;
+      updateMapHud();
+      return;
+    }
+    const projection = mapProjection(mapState.view, box.width, box.height);
+    mapState.hover = { lon: projection.lonAt(px), lat: projection.latAt(py) };
+    if (el.mapHover) {
+      el.mapHover.hidden = false;
+      el.mapHover.style.left = `${px.toFixed(1)}px`;
+      el.mapHover.style.top = `${py.toFixed(1)}px`;
+    }
+    updateMapHud();
+  }
+
+  function clearMapHover() {
+    mapState.hover = null;
+    if (el.mapHover) el.mapHover.hidden = true;
+    updateMapHud();
+  }
+
+  async function loadMap() {
+    mapState.status = 'loading';
+    updateMapLegend();
+    renderMap();
+    try {
+      const [lonPayload, latPayload] = await Promise.all([
+        fetchData(MAP_FILE, MAP_LON_COLUMN),
+        fetchData(MAP_FILE, MAP_LAT_COLUMN),
+      ]);
+      const points = trajectoryPoints(lonPayload, latPayload);
+      if (!points.length) throw new Error(`${MAP_FILE} 里没有可配对的经纬度列`);
+      mapState.points = points;
+      mapState.payload = latPayload;
+
+      // 1σ circle: Position SD.csv, first epoch, largest of the two horizontal axes.
+      const [sdLat, sdLon] = await Promise.all([
+        fetchData(MAP_SD_FILE, MAP_SD_LAT_COLUMN).catch(() => null),
+        fetchData(MAP_SD_FILE, MAP_SD_LON_COLUMN).catch(() => null),
+      ]);
+      const sdLatValue = sdLat && sdLat.series.points[0] ? Number(sdLat.series.points[0][1]) : 0;
+      const sdLonValue = sdLon && sdLon.series.points[0] ? Number(sdLon.series.points[0][1]) : 0;
+      mapState.sigmaM = Math.max(sdLatValue || 0, sdLonValue || 0);
+
+      const height = await fetchData(MAP_HEIGHT_FILE).catch(() => null);
+      mapState.heights = height && height.series && height.series.points
+        ? height.series.points.map((point) => Number(point[1]))
+        : [];
+
+      const box = mapBox();
+      mapState.view = mapFit(points, box ? box.width : 800, box ? box.height : 360);
+      mapState.status = 'ready';
+      updateMapLegend();
+      renderMap();
+    } catch (error) {
+      mapState.status = 'error';
+      mapState.error = error.message;
+      updateMapLegend();
+      renderMap();
+    }
+  }
+
+  function setDock(open) {
+    state.dock = open ? 'open' : 'closed';
+    host.dataset.dock = state.dock;
+    if (el.dock) el.dock.classList.toggle('is-collapsed', !open);
+    const toggle = root.querySelector('[data-act="dock"]');
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    requestAnimationFrame(() => {
+      renderMap();
+      if (open) drawChart();
+      updatePlayhead();
+    });
+  }
+
+  /* ---- map gestures ---- */
+
+  function onMapPointerDown(event) {
+    if (event.button !== 0 || mapState.status !== 'ready' || !el.map) return;
+    el.map.classList.add('is-dragging');
+    mapDrag = { x: event.clientX, y: event.clientY, moved: false };
+    try {
+      el.map.setPointerCapture(event.pointerId);
+    } catch {
+      /* older engines: dragging still works, it just loses the pointer outside the box */
+    }
+  }
+
+  function onMapPointerMove(event) {
+    if (!el.map) return;
+    const rect = el.map.getBoundingClientRect();
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    if (mapDrag) {
+      const dx = event.clientX - mapDrag.x;
+      const dy = event.clientY - mapDrag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 0.5) {
+        mapDrag.moved = true;
+        panMap(dx, dy);
+        mapDrag.x = event.clientX;
+        mapDrag.y = event.clientY;
+      }
+    }
+    updateMapHover(px, py);
+  }
+
+  function onMapPointerUp(event) {
+    mapDrag = null;
+    if (el.map) {
+      el.map.classList.remove('is-dragging');
+      try {
+        el.map.releasePointerCapture(event.pointerId);
+      } catch {
+        /* pointer capture was never taken */
+      }
+    }
+  }
+
+  function onMapWheel(event) {
+    if (!el.map || mapState.status !== 'ready') return;
+    event.preventDefault();
+    const rect = el.map.getBoundingClientRect();
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    zoomMap(event.deltaY > 0 ? 1 / 1.25 : 1.25, px, py);
+    updateMapHover(px, py);
+  }
+
+  function onMapDoubleClick(event) {
+    if (!el.map || mapState.status !== 'ready') return;
+    const rect = el.map.getBoundingClientRect();
+    zoomMap(1 / 1.8, event.clientX - rect.left, event.clientY - rect.top);
   }
 
   /* ---- chart tabs: PVT / Tracking & Measurements / Receiver Status / Project Information ---- */
@@ -1913,6 +2763,14 @@ ${svgMarkup}
       } else if (act === 'events') {
         state.showEvents = !state.showEvents;
         action.setAttribute('aria-checked', state.showEvents ? 'true' : 'false');
+      } else if (act === 'dock') {
+        setDock(state.dock !== 'open');
+      } else if (act === 'map-fit' || act === 'map-recenter') {
+        fitMap();
+      } else if (act === 'map-zoomin') {
+        zoomMap(1 / 1.6);
+      } else if (act === 'map-zoomout') {
+        zoomMap(1.6);
       }
       return;
     }
@@ -1945,6 +2803,7 @@ ${svgMarkup}
 
   function onResize() {
     if (state.view !== 'work') return;
+    renderMap();
     if (state.tab === 'overview') drawChart();
     else paintTab(state.tab);
   }
@@ -1955,6 +2814,15 @@ ${svgMarkup}
   if (el.fileSelect) el.fileSelect.addEventListener('change', onFileChange);
   if (el.columnSelect) el.columnSelect.addEventListener('change', onColumnChange);
   if (el.speed) el.speed.addEventListener('change', onSpeedChange);
+  if (el.map) {
+    el.map.addEventListener('pointerdown', onMapPointerDown);
+    el.map.addEventListener('pointermove', onMapPointerMove);
+    el.map.addEventListener('pointerup', onMapPointerUp);
+    el.map.addEventListener('pointercancel', onMapPointerUp);
+    el.map.addEventListener('pointerleave', clearMapHover);
+    el.map.addEventListener('wheel', onMapWheel, { passive: false });
+    el.map.addEventListener('dblclick', onMapDoubleClick);
+  }
 
   let observer = null;
   if (typeof ResizeObserver === 'function') {
@@ -1975,13 +2843,24 @@ ${svgMarkup}
     if (el.fileSelect) el.fileSelect.removeEventListener('change', onFileChange);
     if (el.columnSelect) el.columnSelect.removeEventListener('change', onColumnChange);
     if (el.speed) el.speed.removeEventListener('change', onSpeedChange);
+    if (el.map) {
+      el.map.removeEventListener('pointerdown', onMapPointerDown);
+      el.map.removeEventListener('pointermove', onMapPointerMove);
+      el.map.removeEventListener('pointerup', onMapPointerUp);
+      el.map.removeEventListener('pointercancel', onMapPointerUp);
+      el.map.removeEventListener('pointerleave', clearMapHover);
+      el.map.removeEventListener('wheel', onMapWheel);
+      el.map.removeEventListener('dblclick', onMapDoubleClick);
+    }
   };
 
   setView('home');
   setTab('overview');
   setLegend(false);
+  setDock(true);
   updateTimeline();
   void loadFiles();
+  void loadMap();
 }
 
 export function unmount(root) {
