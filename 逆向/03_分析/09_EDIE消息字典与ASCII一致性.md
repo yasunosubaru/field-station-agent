@@ -258,7 +258,11 @@ ASCII 写出默认 `requireValidCrc: true`（复现 Convert）。
 全字典 61 个 VLA 字段（涉及 56 条报文），前缀只有两种：`arrayLengthFieldSize = 4`（59 个）
 与完全没有前缀（2 个，`RXCONFIG` / `RXCONFIGUSER`，整个 payload 就是数据）。
 
-**副产品**：GRIT 频谱曲线的数据源（B2）不再是缺数据，而是缺这一处展开——现在能画真采样了。
+**副产品（顺带核实，别当成已完成的 GRIT 功能）**：ASCII / Convert 这条线现在能拿到 ITPSD 的
+1024 个采样。GRIT 频谱曲线走的是**另一条**解码路径——`data/repeat-layouts.json` 的 `1968` / `2063`
+（`blockStart 16`、`blockSize 2`、计数取 `noofSamples`）——那条早就声明了 `sample`，所以画不出曲线
+的原因**不是**这次修的数组展开，而是接收机上有没有实际开 ITPSD 日志、以及 app 有没有把帧喂进
+`spectrumViewer.ingest()`。这里不宣称 GRIT 已解决。
 
 ### ② `%m`：id → 名字，靠高位标志位选后缀
 
