@@ -926,8 +926,8 @@ select.nas-select,
  * 这里把原标签栏改造成同一条应用栏：非当前页隐藏，导航仍走 #app-menu 下拉。
  * ============================================================================================== */
 #tabs-list {
-  flex: 0 0 56px;
-  height: 56px;
+  flex: 0 0 34px;
+  height: 34px;
   background: #00516F;              /* 原版应用栏底色 */
   padding-left: 10px;
   align-items: center;
@@ -953,7 +953,7 @@ select.nas-select,
   padding: 0 14px 0 6px;
   color: #ffffff;
   font-family: OpenSans-Bold, sans-serif;
-  font-size: 19px;
+  font-size: 18px;
   letter-spacing: .01em;
 }
 
@@ -996,12 +996,15 @@ body[data-page="playback"] #gritGroupView {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-right: 8px;
-  height: 100%;
+  margin: 0 8px 0 0;
+  padding: 0;
+  height: 34px;
+  max-height: 34px;
 }
 
 .appbar-tools .nas-field {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   margin: 0;
@@ -1015,7 +1018,7 @@ body[data-page="playback"] #gritGroupView {
 }
 
 .appbar-tools select {
-  height: 26px;
+  height: 24px;
   min-width: 210px;
   max-width: 300px;
   padding: 0 6px;
@@ -1024,7 +1027,7 @@ body[data-page="playback"] #gritGroupView {
   background: rgba(255, 255, 255, 0.94);
   color: #212121;
   font-family: OpenSans-Regular, sans-serif;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .appbar-tools .nas-health {
@@ -1034,10 +1037,28 @@ body[data-page="playback"] #gritGroupView {
   white-space: nowrap;
 }
 
-/* Convert 卡片宽度与居中：原版整屏参照里卡片约 1064 CSS 宽（2560 物理 ÷1.5
- * 实测 397..1993），不是 style.css 里写的 1224（那是在 87% 缩放下量的）。 */
+/* Convert 卡片：原版整屏实测（2560×1600 @1.5）卡片外框在物理 357..2192
+ * = CSS 238..1461，宽 1223 —— 与 style.css 的 `.convert-screens{width:1224px}` 一致；
+ * 卡片上沿距应用栏 32 CSS。之前记的 1064 是卡片**内部**灰面板的宽度，不是卡片本身。
+ * 内容区因此要去掉左侧 58 px 的缩进（原版 Convert 内容从窗口左侧开始、卡片居中）。 */
+body[data-page="convert"] .nas-content {
+  padding: 0;
+}
+
+body[data-page="convert"] .folder-detail-heading {
+  display: none;
+}
+
+body[data-page="convert"] .app-panel {
+  margin-top: 0;
+}
+
+body[data-page="convert"] .convertLayout {
+  margin: 32px auto 24px;
+}
+
 body[data-page="convert"] .convert-screens {
-  max-width: 1064px;
+  max-width: 1224px;
   margin-left: auto;
   margin-right: auto;
 }
