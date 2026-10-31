@@ -16,7 +16,7 @@
 
 import { novatelCrc32 } from './crc.ts';
 import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
-import type { SbfFrame } from './framing.ts';
+import { SbfDeframer, type SbfFrame } from './framing.ts';
 
 /** `20`→`UNKNOWN`, `180`→`FINESTEERING` — `01_解包/app/model/bestpos.js` (`timeStatusJSON`). */
 export const TIME_STATUS_NAMES: Record<number, string> = {
@@ -106,10 +106,34 @@ function parseFormat(format: string | null | undefined): FormatSpec | undefined 
   };
 }
 
-function hex(value: number, width: number, upper: boolean): string {
-  const text = (value >>> 0).toString(16);
-  const padded = text.padStart(width, '0');
-  return upper ? padded.toUpperCase() : padded;
+function hex(value: number, width: number): string {
+  return (value >>> 0).toString(16).padStart(width, '0');
+}
+
+/**
+ * `%m` — a log id printed as a name: the dictionary's name plus a version suffix, chosen by the
+ * id's own flag bits.
+ *
+ * Measured on `golden-remote-23types.ASCII` (`LOGLISTA` lists 97 logs):
+ *
+ * | id                 | printed             |
+ * |--------------------|---------------------|
+ * | `41`               | `RAWEPHEMB`         |
+ * | `2097246` = 1<<21+94 | `RXSTATUSEVENTA`  |
+ * | `4194796` = 1<<22+492 | `TIMESYNC`       |
+ *
+ * So `1<<21` selects the ASCII flavour (`A`), `1<<22` selects the flavour that carries no suffix at
+ * all (`TIMESYNC`, `BESTPOS`, `RANGE`, `RXSTATUS`, `SATVIS2`, `HWMONITOR`, `GLOEPHEMERIS`), and a
+ * plain id is the binary log (`B`). Ids the dictionary does not know print `UNKNOWN<letter>`
+ * (`LOGLISTA` lists 2075, which is not a message).
+ */
+const ID_ASCII = 0x200000;
+const ID_PLAIN = 0x400000;
+
+function messageName(id: number, tables: EdieTables): string {
+  const base = id & ~(ID_ASCII | ID_PLAIN);
+  const suffix = id & ID_PLAIN ? '' : id & ID_ASCII ? 'A' : 'B';
+  return `${tables.messages[String(base)]?.name ?? 'UNKNOWN'}${suffix}`;
 }
 
 /**
@@ -288,6 +312,8 @@ function formatK(number: number, width: number, hasWidth: boolean, digits: numbe
 
 /** Render one scalar the way the suite's ASCII encoder does. */
 export function formatField(segment: EdieScalar, value: number | string, tables: EdieTables): string {
+  const format = parseFormat(segment.format);
+  if (format?.spec === 'm') return messageName(Number(value), tables);
   if (segment.enum) {
     const table = tables.enums[segment.enum];
     if (table && typeof value === 'number') {
@@ -300,7 +326,6 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     }
   }
   if (segment.type === 'bool') return value ? 'TRUE' : 'FALSE';
-  const format = parseFormat(segment.format);
   const number = Number(value);
   if (!format) return String(value);
   const { width, hasWidth, precision, spec } = format;
@@ -318,14 +343,18 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     case 'lld':
     case 'id':
       return integer(number);
+    // Hex prints lowercase whichever case the conversion string asks for: the dictionary spells
+    // ITDETECTSTATUS's three severity words `%08X`, and the suite writes `00000000,00000000,0000000f`
+    // (`golden-remote-23types.ASCII`) where uppercase would give `0000000F`. The two other `%08X`
+    // fields (RADARSTATUS) and the `%02XB`/`%XB` ones have only ever been seen carrying digits, so
+    // this rule is measured on ITDETECTSTATUS alone.
     case 'x':
-      return hex(number, width || 8, false);
     case 'X':
-      return hex(number, width || 8, true);
+      return hex(number, width || 8);
     case 'XB':
-      return hex(number & 0xff, width || 2, true);
+      return hex(number & 0xff, width || 2);
     case 'B':
-      return hex(number & 0xff, width || 2, false);
+      return hex(number & 0xff, width || 2);
     case 'UB':
       return String(Math.trunc(number) & 0xff);
     case 'f':
@@ -378,15 +407,42 @@ function readScalar(bytes: Uint8Array, type: string, at: number): number {
   }
 }
 
+/** Element-count prefix: u8/u16/u32, as `arrayLengthFieldSize` declares it. */
+function readCount(bytes: Uint8Array, at: number, size: number): number {
+  if (size === 1) return bytes[at] ?? 0;
+  if (size === 2) return readScalar(bytes, 'u16', at);
+  return readScalar(bytes, 'u32', at);
+}
+
 function renderSegments(
   bytes: Uint8Array,
   segments: EdieSegment[],
   base: number,
   tables: EdieTables,
   out: string[],
+  depth: number,
+  options: AsciiLogOptions,
 ): void {
   for (const segment of segments) {
     const at = base + segment.offset;
+    // `%R` — an embedded binary message, printed as its own finished ASCII line (`RXCONFIGA` wraps
+    // `#LOGA,…*<embedded crc>` and the outer CRC follows after it). Measured on
+    // `golden-remote-23types.ASCII`: the RXCONFIG payload is a complete SBF frame whose payload is
+    // `USB1,BESTPOSB,ONTIME,1.000000,0.000000,NOHOLD`.
+    //
+    // The embedded frame's own CRC field does not match (all four RXCONFIG frames in the capture
+    // fail the check) and the suite prints a CRC it computes itself, one's-complemented — see
+    // `AsciiLogOptions.invertCrc`. Hence `requireValidCrc: false, invertCrc: true` for it alone.
+    if (String(segment.format ?? '') === '%R') {
+      const start = segment.kind === 'array' ? at + (segment as EdieArray).countSize : at;
+      if (depth >= 4) continue;
+      for (const inner of new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(start))) {
+        if (inner.kind !== 'sbf') continue;
+        const layout = tables.messages[String(inner.header.messageId)];
+        if (layout) out.push(render(inner, layout, tables, { ...options, requireValidCrc: false, invertCrc: true }, depth + 1));
+      }
+      continue;
+    }
     if (segment.kind === 'string') {
       const raw = segment as EdieString;
       if (String(raw.format ?? '').endsWith('Z')) {
@@ -403,16 +459,19 @@ function renderSegments(
     }
     const array = segment as EdieArray;
     const stride = array.stride || 1;
+    const first = at + array.countSize;
+    const capacity = Math.floor(Math.max(0, bytes.byteLength - first) / stride);
+    // Three shapes: a fixed array prints no count; a counted array (`FIELD_ARRAY`, and
+    // `VARIABLE_LENGTH_ARRAY` with an `arrayLengthFieldSize`) prints its count first; a
+    // prefix-less variable array (RXCONFIG's `%R`, handled above) runs to the end of the payload.
     const declared = array.fixedCount !== undefined
       ? array.fixedCount
       : array.countSize
-        ? readScalar(bytes, 'u32', at)
-        : 0;
+        ? readCount(bytes, at, array.countSize)
+        : capacity;
     if (array.countSize) out.push(String(declared));
-    const first = at + array.countSize;
-    const capacity = Math.floor(Math.max(0, bytes.byteLength - first) / stride);
     const count = Math.max(0, Math.min(declared, capacity));
-    for (let i = 0; i < count; i++) renderSegments(bytes, array.elements, first + i * stride, tables, out);
+    for (let i = 0; i < count; i++) renderSegments(bytes, array.elements, first + i * stride, tables, out, depth, options);
   }
 }
 
@@ -425,6 +484,12 @@ export interface AsciiLogOptions {
    * the two subsystems differ on exactly this point (one RANGE frame in `broad-clean.gps`).
    */
   requireValidCrc?: boolean;
+  /**
+   * Write `~crc` instead of `crc`. Only `%R`'s embedded line does this: all eight lines measured
+   * (4 from `golden-remote-23types.ASCII`, 4 from a synthetic capture fed to the suite's own CLI)
+   * carry the complement of the NovAtel CRC over their sentence, i.e. CRC-32/POSIX.
+   */
+  invertCrc?: boolean;
 }
 
 /** Encode one decoded frame as the suite's ASCII log line (without line ending unless asked). */
@@ -434,11 +499,21 @@ export function encodeAsciiLog(
   tables: EdieTables,
   options: AsciiLogOptions = {},
 ): string {
+  return render(frame, layout, tables, options, 0);
+}
+
+function render(
+  frame: SbfFrame,
+  layout: EdieLayout,
+  tables: EdieTables,
+  options: AsciiLogOptions,
+  depth: number,
+): string {
   if (frame.kind !== 'sbf') return '';
   if ((options.requireValidCrc ?? true) && !frame.crcOk) return '';
   const { header, payload } = frame;
   const body: string[] = [];
-  renderSegments(payload, layout.fields, 0, tables, body);
+  renderSegments(payload, layout.fields, 0, tables, body, depth, options);
 
   const head = [
     `${layout.name}${options.versionLetter ?? 'A'}`,
@@ -448,12 +523,13 @@ export function encodeAsciiLog(
     TIME_STATUS_NAMES[header.timeStatus] ?? String(header.timeStatus),
     String(header.week),
     `${Math.floor(header.milliseconds / 1000)}.${String(header.milliseconds % 1000).padStart(3, '0')}`,
-    hex(header.receiverStatus, 8, false),
-    hex(header.reserved, 4, false),
+    hex(header.receiverStatus, 8),
+    hex(header.reserved, 4),
     String(header.softwareVersion),
   ].join(',');
 
   const sentence = `${head};${body.join(',')}`;
-  const crc = hex(novatelCrc32(new TextEncoder().encode(sentence)), 8, false);
+  const value = novatelCrc32(new TextEncoder().encode(sentence));
+  const crc = hex(options.invertCrc ? (value ^ 0xffffffff) >>> 0 : value, 8);
   return `#${sentence}*${crc}`;
 }

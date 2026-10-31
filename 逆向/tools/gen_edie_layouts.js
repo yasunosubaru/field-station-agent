@@ -10,6 +10,13 @@
 //   FIELD_ARRAY        -> 4-byte element count, then N elements of `stride` bytes
 //                         (RANGE 2204 = 4 + 50*44, RXSTATUS 88 = 4 + 4 + 5*16, BESTSATS 292 = 4 + 18*16)
 //   FIXED_LENGTH_ARRAY -> `arrayLength` elements, no count prefix
+//   VARIABLE_LENGTH_ARRAY -> `arrayLengthFieldSize` count prefix (absent for RXCONFIG/RXCONFIGUSER,
+//                         whose whole payload is the data), then N scalars of `dataType.length` bytes
+//
+// The last rule was missing until 2026-11-01 and cost 149 log lines: ITPSDFINAL/ITPSDDETECT carry
+// their 1024 power samples as a VARIABLE_LENGTH_ARRAY, and without it the field was emitted as one
+// `%hu` scalar, so the ASCII writer printed `...,97656.250,1024` where the suite prints 1024 samples
+// after that count (`samples/live-20261031/remote-23types.sbf` vs `golden-remote-23types.ASCII`).
 //
 // Output: 04_重实现/packages/protocol/data/edie-layouts.json
 const fs = require('fs');
@@ -80,6 +87,29 @@ function buildFields(fields) {
       segments.push(segment);
       // A fixed array's element count comes from the definition, so the payload cannot grow.
       offset += countPrefix + (segment.fixedCount ?? 0) * stride;
+    } else if (field.type === 'VARIABLE_LENGTH_ARRAY') {
+      // Repeated scalar: the count prefix width comes from `arrayLengthFieldSize` (4 everywhere it
+      // exists), and a missing one means "the rest of the payload" — RXCONFIG's payload is a whole
+      // embedded SBF frame with no length in front of it.
+      const width = scalarWidth(field);
+      const countPrefix = Number(field.arrayLengthFieldSize ?? 0);
+      const element = {
+        name: field.name,
+        kind: 'scalar',
+        offset: 0,
+        size: width,
+        type: TYPE[field.dataType?.name] ?? String(field.dataType?.name ?? 'u8').toLowerCase(),
+        format: field.conversionString ?? null,
+      };
+      segments.push({
+        name: field.name,
+        kind: 'array',
+        offset,
+        countSize: countPrefix,
+        stride: width,
+        elements: [element],
+      });
+      offset += countPrefix;
     } else {
       const width = scalarWidth(field);
       const segment = {
@@ -118,7 +148,7 @@ const segments = ids.reduce((n, id) => n + messages[id].fields.length, 0);
 console.log(`edie-layouts.json: ${ids.length} messages, ${Object.keys(enums).length} enums, ${segments} top-level segments, ${fs.statSync(out).size} bytes`);
 
 // sanity: payload sizes we have measured on the wire
-const expect = { 42: 72, 43: 2204, 72: 1044, 83: 7096, 93: 88, 99: 44, 963: 84, 1194: 292, 1043: 1296, 2065: 40, 101: 44 };
+const expect = { 42: 72, 43: 2204, 72: 1044, 83: 7096, 93: 88, 99: 44, 963: 84, 1194: 292, 1043: 1296, 2065: 40, 101: 44, 1968: 2064, 2063: 2064, 5: 4100 };
 function fixedSize(segments) {
   let n = 0;
   for (const s of segments) {

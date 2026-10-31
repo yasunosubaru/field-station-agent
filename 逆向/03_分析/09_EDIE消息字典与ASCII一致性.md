@@ -219,3 +219,102 @@ ASCII 写出默认 `requireValidCrc: true`（复现 Convert）。
 **端口分布**（顺带核实）：`0xA0`（SPECIAL，组首）只用来出星历；`0xBD`（SPECIAL_29）是这批抓包的
 常规日志口（BESTPOS/RANGE/RXSTATUS/RAWEPHEM/HWMONITOR/PORTSTATS）。这与 payload 首字节无关，
 纯粹是 SBF 长头第 7 字节的 port address。
+
+---
+
+## 9.x.5 23 类抓包的四个协议缺陷（2026-11-01 修完，189 行 → 0）
+
+素材：`samples/live-20261031/remote-23types.sbf`（2 018 852 B，远程机 DESKTOP-9POIV0O 上抓）
++ `golden-remote-23types.ASCII`（3 845 232 B，套件 CLI 产出）。1208 行 / 23 类。
+
+修复前 189 行不同（`cmp-lines.cjs` 多重集比对），分属四个根因，**四个都已闭合**：
+
+| # | 类型 | 行数 | 根因 | 修法 |
+|---|---|---:|---|---|
+| 1 | `ITPSDFINALA` / `ITPSDDETECTA` | 149 | 字典里 `samples` 是 `VARIABLE_LENGTH_ARRAY`（`arrayLengthFieldSize` = 4、元素 `%hu` 2 字节），生成器不认识这个 `type`，按普通标量处理，1024 个采样被截成「计数」一个数 | `tools/gen_edie_layouts.js` 新增 VLA 分支；`ascii-log.ts` 的计数前缀按 1/2/4 字节读，无前缀的 VLA（`RXCONFIG`）跑到 payload 末尾 |
+| 2 | `LOGLISTA` | 21 | `%m` 未实现，打的是裸数字 | `%m` 按 id 的高位标志位选后缀（见下） |
+| 3 | `ITDETECTSTATUSA` | 15 | 字典写 `%08X`，原版打小写 | 十六进制一律小写 |
+| 4 | `RXCONFIGA` | 4 | `%R` 未实现，打的是 payload 首字节 | `%R` = 内嵌二进制报文，按 ASCII 整行再输出一次 |
+
+### ① `VARIABLE_LENGTH_ARRAY`
+
+`messages_public.json` 里 ITPSDFINAL 只有 4 个字段，第 4 个是数组：
+
+```json
+{ "name": "samples", "type": "VARIABLE_LENGTH_ARRAY", "arrayLength": 1024,
+  "arrayLengthFieldSize": 4, "conversionString": "%hu",
+  "dataType": { "name": "USHORT", "length": 2 } }
+```
+
+实测 payload = **2064 B** = 4（状态字）+ 4（起始频率）+ 4（步进）+ 4（计数）+ 1024×2，
+与「4 字节计数 + N×2」完全吻合。ASCII 行因此变成 **6267 字符**：
+`...,1531.299,97656.250,1024,23511,22631,...,23039`（1024 个采样）。我们原来把 `samples`
+当标量，读出低 2 字节正好也是 1024，所以只显出「少了一串数字」而不报错——**这种"碰巧对上"的
+错误只有逐字节 oracle 才抓得住**。
+
+全字典 61 个 VLA 字段（涉及 56 条报文），前缀只有两种：`arrayLengthFieldSize = 4`（59 个）
+与完全没有前缀（2 个，`RXCONFIG` / `RXCONFIGUSER`，整个 payload 就是数据）。
+
+**副产品**：GRIT 频谱曲线的数据源（B2）不再是缺数据，而是缺这一处展开——现在能画真采样了。
+
+### ② `%m`：id → 名字，靠高位标志位选后缀
+
+`LOGLISTA` 的 97 条日志里同一个数字要按上下文打印成不同后缀，实测三种：
+
+| id | 二进制 | 打印 |
+|---:|---|---|
+| `41` | `0x29` | `RAWEPHEMB` |
+| `2097246` | `0x20005E` | `RXSTATUSEVENTA` |
+| `4194796` | `0x4001EC` | `TIMESYNC` |
+| `2075` | `0x081B` | `UNKNOWNB`（字典里没有这条） |
+
+规则：`1<<21` → ASCII 版加 `A`；`1<<22` → 不加后缀（`TIMESYNC`、`BESTPOS`、`RANGE`、
+`RXSTATUS`、`SATVIS2`、`HWMONITOR`、`GLOEPHEMERIS` 这 7 条）；其余 → 二进制版加 `B`。
+`0x400000` 这一档共 7 条，全部实测对上。
+
+### ③ `%08X` 打小写
+
+字典把 `ITDETECTSTATUS` 的三个 severity 字写成 `%08X`，原版却打 `00000000,00000000,0000000f`。
+全字典只有 2 条报文用 `%08X`（另一条 `RADARSTATUS` 抓不到），`%02XB`/`%XB` 的字段至今只见过
+纯数字，所以**这条只在 ITDETECTSTATUS 上被证明**，实现取「十六进制一律小写」并在注释里写明边界。
+
+### ④ `%R`：内嵌报文 + 一个被取反的 CRC
+
+`RXCONFIG` 的 payload **就是一整个 SBF 帧**（长头 28 + payload 32 + CRC 4 = 64 B），
+`%R` 把它按 ASCII 再输出一次，放在外层的 body 里：
+
+```
+#RXCONFIGA,...,18278;#LOGA,SPECIAL_30,0,72.0,COARSESTEERING,2442,563598.156,03801800,92b2,18278;USB1,BESTPOSB,ONTIME,1.000000,0.000000,NOHOLD*8fbf58c8*18feb321
+```
+
+两处实测细节：
+
+1. **内嵌帧自己的 CRC 字段是坏的**（4 条 RXCONFIG 全部 `crcOk=false`），但原版照样打印，
+   说明它不校验、而是自己重算。
+2. **内嵌行的 CRC 是取反的**：`~novatelCrc32(sentence)`，也就是 CRC-32/POSIX
+   （poly `0xEDB88320`、init 0、**xorout `0xFFFFFFFF`**）。外层 CRC 仍是 NovAtel 原式。
+   这条不是从内容推的，是拿 **8 条样本**拟合出来的：4 条真机行 + 4 条我合成后喂给套件 CLI
+   的探针（`gen-rxconfig.ts`，改 `on_time`、改 `%m` 的 id、故意把内嵌 CRC 改坏），8/8 全中。
+   顺带确认：内嵌 CRC 与内嵌帧里存的 CRC 值无关，只与打印出来的那行文字有关。
+
+### 修完的复验数字
+
+```
+$ node packages/cli/src/convert.ts ../../00_来源/samples/live-20261031/remote-23types.sbf --to ASCII --out <tmp>
+input     : remote-23types.sbf (2018852 bytes, 1208 records)
+output    : .../remote-23types.ASCII (3845232 bytes)   ← 与 oracle 同字节数
+dropped   : 0 (bad CRC)
+
+$ node cmp-lines.cjs <oracle.ASCII> <ours.ASCII>
+oracle 行 1208；ours 行 1208
+ours 中不在 oracle 里的行: 0
+oracle 多出的行: 0
+
+SHA-256  893D135E3E548F92779B1C40C7552764B11539BE6270716C1723C4DF2901BCAB（两侧相同）
+```
+
+回归：四份老 golden（`broad-clean.ASCII` 5 567 000 B、`clean-9600.ASCII` 489 205 B、
+`clean-9600.ABBREV_ASCII` 567 576 B、`clean-9600_BESTPOS.KML`、BINARY）**逐字节不变**；
+RINEX 三版只差已知的两行（时间戳 + `APPROX POSITION XYZ` ≤8 mm）。
+测试 `node --test "packages/*/test/*.test.ts"` → **500 / 500**（新增
+`packages/protocol/test/live-23types.test.ts` 5 项，把上面四件事逐条钉住）。
