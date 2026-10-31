@@ -983,3 +983,53 @@ body[data-page="convert"] .nas-content,
 body[data-page="playback"] .nas-content {
   padding-top: 8px;
 }
+
+/* 原版 Convert / Playback 没有左侧窄轨（只有 Manage / GRIT 这类"设备"应用才有），
+ * 抓参照图时确认：Convert 与 Playback 的内容从窗口左侧开始。 */
+body[data-page="convert"] #gritGroupView,
+body[data-page="playback"] #gritGroupView {
+  display: none;
+}
+
+/* 抓包选择与健康状态移到应用栏右侧（原版内容区没有这一块；放在应用栏不占垂直空间）。 */
+.appbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 8px;
+  height: 100%;
+}
+
+.appbar-tools .nas-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.appbar-tools-label {
+  color: rgba(255, 255, 255, 0.75);
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.appbar-tools select {
+  height: 26px;
+  min-width: 210px;
+  max-width: 300px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #212121;
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 13px;
+}
+
+.appbar-tools .nas-health {
+  color: rgba(255, 255, 255, 0.8);
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 12px;
+  white-space: nowrap;
+}

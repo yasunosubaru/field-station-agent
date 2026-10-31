@@ -39,6 +39,13 @@
   <li class="right-section">
     <nav class="navbar" role="navigation">
       <ul class="nav sidebar-nav navbar-nav home-menu-right-layout">
+        <li class="appbar-tools">
+          <label class="nas-field" for="capture-select">
+            <span class="appbar-tools-label">抓包</span>
+            <select id="capture-select"></select>
+          </label>
+          <span class="nas-health" id="health-text">正在连接本地服务…</span>
+        </li>
         <li class="sidebar-nav-item menu-highlight">
           <a class="sidebar-nav-subitem-title menubar-items settings" id="settings-banner" role="button"
              tabindex="0" aria-label="设置" title="设置 (Setup)"></a>
@@ -89,13 +96,6 @@
   <main class="nas-content">
     <div class="folder-detail-heading">
       <span class="device-text" id="page-title">Convert</span>
-      <div class="device-tools">
-        <label class="nas-field" for="capture-select">
-          <span>抓包（samples，只读）</span>
-          <select id="capture-select"></select>
-        </label>
-        <span class="nas-health" id="health-text">正在连接本地服务…</span>
-      </div>
     </div>
     <p class="receiver-count" id="page-subtitle">把抓包转成 ASCII / BINARY / KML，产物只留在内存</p>
 
