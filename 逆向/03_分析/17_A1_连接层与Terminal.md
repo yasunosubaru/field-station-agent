@@ -79,3 +79,36 @@ $ curl -X POST /api/live/connect -d '{"kind":"serial","path":"COM9"}'
 5. **真机验证**：接收机在 DESKTOP-9POIV0O 的 COM8/9/10 上；本机 app 连不到那串口。
    办法是**把 app 跑在远程机**（Node 在那台机器上有）或给远程机起一条 TCP/串口桥。
    这一步做完才能对 14 个页面做「发命令 → 接收机应答 → 页面变化」的真机验收。
+
+---
+
+## 17.5 14 个配置页怎么装进浏览器：已核实的方案（还没动手）
+
+**为什么不能直接 `<script>` 引进来**：`packages/app/src/web/panels/*.js` 是手写 ESM，浏览器直接跑；
+而 `packages/view/src/config/*` 是 TypeScript，且 `import` 关系跨包，没有打包步骤就没法给浏览器。
+仓库的约束是「零依赖、不 npm install」，所以不引入 esbuild。
+
+**结论：改成服务端渲染 + 事件回传（HTML over the wire），不打包。** 依据是这些模块本来
+就是「在 mini-DOM 上驱动原版 shipped 片段」的控制器：
+
+| 事实 | 出处 |
+|---|---|
+| `ConfigPageContext` 要的是 `document` / `fragments` / `clock` / `store` / `sendBinary?` `sendRaw?` `sendAsciiFrame?` 这些**接口**，不是浏览器全局 | `packages/view/src/config/types.ts:126-154` |
+| `minidom` 就是「零依赖 DOM 子集（Node 里跑真实 shipped 片段）」 | `packages/view/README.md`、`packages/view/src/minidom.ts` |
+| 14 个页面已在 Node 里对 shipped 片段 mount / 更新并被 304 项 view 测试覆盖 | `packages/view/test/config*.test.ts` |
+| `ConfigBundle.mount(tab, {features, target})` 负责按机型挑模板，`updateFromLog` 喂报文 | `packages/view/src/config/index.ts:325`、`CONFIG_PAGE_NAMES`（14 条） |
+
+于是装配层只需要三件事：
+
+1. **页面**：`GET /api/config/:page?tab=…` → 用 minidom 建文档、`bundle.mount()`、
+   返回序列化后的 HTML（片段来自 `01_解包/app/view`，和 view 测试用的是同一份）；
+2. **事件**：`POST /api/config/:page/event`（`{selector, value|checked|clicked}`）→ 在同一个
+   minidom 文档上触发，控制器会把要发的命令交给 `sendRaw/sendBinary/sendAsciiFrame`，
+   这三个钩子直接接到 `LiveLink.send()` / `session.sendBytes()`；
+3. **回灌**：`LiveLink` 的每条解码记录顺手喂 `bundle.updateFromLog(msgId, fields)`，
+   下次 `GET` 拿到的就是接收机的最新状态。
+
+工作量按页面看：8 个 OEM7 配置页（position / ports / logging / align / span / radio / gnss /
+spoofing）+ 3 个 Settings 页（networking / general / language）+ 2 个 Longhorn 页 + SPAN 安装页。
+控制器逻辑不用重写，缺的是这一层适配和每页的 HTML 往返，以及 `.cfg` / Terminal / Events 的入口。
+
