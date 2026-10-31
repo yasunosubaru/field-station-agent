@@ -27,9 +27,20 @@
  * no "抓包" heading above the dashboard, its band spans the full width, and the file tab has to
  * sit in the app bar. They are written as `body[data-page="playback"] …` so no other page moves.
  *
+ * Geometry (measured on `ref-ui/playback-150.png`, 2560×1600 at 150 % → CSS = physical / 1.5,
+ * y relative to the client area under the OS title bar; every number in px CSS):
+ *
+ *   app bar            0…70 (shell), then the black event bar 70…120 (50)
+ *   status band        120…256 (135 grey + 1 px #B6B6B6 rule), content left 265,
+ *                      Positioning columns 265 / 598, Device columns 858.67 / 1177.33,
+ *                      vertical liner 830
+ *   tab strip          "Positioning" box 230…358, 2 px #115C7C underline at 299.3…301.3
+ *   tiles              left 230 / 648, each 392 wide, 26 gap → column 810, top border 329.3
+ *   black bar bell     26 px box, right 37, top 11.3; cyan "0" chip 18×17 at right 29 / top 6
+ *
  * Layout-only deviations: float → flex/grid, `position:fixed` for the Timeline dock (the suite
- * pins it to the viewport too), and the band/tile column is a max-width grid instead of the
- * original's 392 px floated tiles.
+ * pins it to the viewport too), and the 810 px column is placed at 13.48 % instead of the
+ * original's centred 1280 px `.status-bar` + 392 px floated tiles.
  * ========================================================================== */
 
 .playback-panel {
@@ -133,34 +144,49 @@
 /* ---- status band (§2) --------------------------------------------------- */
 
 .pb-bandwrap {
+  height: 136px; /* 135 px grey + the 1 px rule, measured 214…417 physical on the 150 % shot */
   background: var(--pb-band);
   border-bottom: 1px solid var(--pb-band-rule);
+  /* A long Time (UTC) value (nowrap) would otherwise push the whole page into horizontal scroll
+   * below ~1330 px, where the fixed 1043 px band no longer fits the 84.5 % of the window. */
+  overflow: hidden;
 }
 
 /* S:3421 `.status-bar { width:1280px; margin:5px auto }` — the grey background is full-bleed,
- * the content is a centred column that lines up with the tiles below. */
+ * the content is the dashboard column: 265…1308, split at the liner (830) into Positioning
+ * (265…830) and Device (858.67…1308). The proportion keeps the page in one piece on narrower
+ * windows; the px width is the measured one. */
 .pb-band {
   display: flex;
   align-items: stretch;
-  max-width: 1064px;
-  margin: 0 auto;
-  padding: 8px 24px 12px;
+  width: 1043px;
+  max-width: calc(84.5% - 8px); /* never spill out of the window on the 1100…1200 px range */
+  height: 100%;
+  margin-left: 15.41%;
+  padding: 10px 0 0;
 }
 
 .pb-band-half {
-  flex: 1 1 50%;
   min-width: 0;
-  padding-right: 18px;
+  padding-right: 0;
+}
+
+/* Positioning 265…830, Device 858…1308 (measured): the first half is the fixed 567 px up to the
+ * liner, the second takes whatever is left so the grid never overflows the band. */
+.pb-band-half:first-child {
+  flex: 0 0 567px;
 }
 
 .pb-band-half + .pb-band-half {
+  flex: 1 1 0;
+  min-width: 0;
   padding-right: 0;
 }
 
 .pb-band-split {
   flex: 0 0 1px;
   align-self: stretch;
-  margin: 2px 18px 2px 0;
+  margin: 2px 27px 2px 0;
   background: #bababa; /* S:3433 `.vertical-liner` */
 }
 
@@ -168,7 +194,7 @@
 .pb-band-head {
   display: flex;
   align-items: baseline;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
 }
 
 .pb-band-title {
@@ -178,18 +204,23 @@
   color: var(--pb-ink);
 }
 
+/* The badge box sits 2 px above / 4 px below the 18 px heading's ink (134…157.3 measured); on the
+ * baseline row it lands 3.7 px too high, so it is nudged down. */
 .pb-band-head .pb-badge {
+  position: relative;
+  top: 3.5px;
   margin-left: 12px;
   align-self: center;
 }
 
 /* Position / Latitude / Longitude in the first column, Height (MSL) on the Latitude row.
  * Every cell is placed explicitly: CSS grid would otherwise auto-place Latitude into row 1 of the
- * second column (the Height cell is explicitly placed, so the cursor skips back to the free cell). */
+ * second column (the Height cell is explicitly placed, so the cursor skips back to the free cell).
+ * Column starts measured on `ref-ui/playback-150.png`: labels 265 / 598, row pitch 26.7 px. */
 .pb-band-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: repeat(3, minmax(24px, auto));
+  grid-template-columns: 333px minmax(0, 1fr);
+  grid-template-rows: repeat(3, 26.7px);
   align-items: start;
 }
 
@@ -202,16 +233,43 @@
 .pb-band-row {
   display: flex;
   align-items: baseline;
-  line-height: 24px;
+  line-height: 26.7px;
   min-width: 0;
 }
 
-/* S:3456 `.status-bar li span.title/.value` 16 px; S:3473 value is SemiBold 600 */
+/* S:3456 `.status-bar li span.title/.value` 16 px; S:3473 value is SemiBold 600.
+ * The label box is 111 px so values start at 376 (first column) / — Height (MSL) is the one row
+ * whose value starts 138 px in (736), the original's col-md-7 title there. */
 .pb-band-label {
-  flex: 0 0 46%;
+  flex: 0 0 111px;
   font-family: var(--pb-sans);
   font-size: 16px;
   color: var(--pb-ink);
+}
+
+.pb-band-fields .pb-band-r2c2 .pb-band-label {
+  flex: 0 0 138px;
+}
+
+/* Height (MSL) is the original's second `.status-data-fields1` <li>: that row starts ~5 px above
+ * the Latitude row (measured 193.3 vs 198.7 on the reference). */
+.pb-band-fields:not(.pb-band-fields-device) .pb-band-r2c2 {
+  margin-top: -5px;
+}
+
+/* Device half: labels at 858.67 / 1177.33, values at 976 / 1300, row pitch 27.5 px. */
+.pb-band-fields-device {
+  grid-template-columns: 318.67px minmax(0, 1fr);
+  grid-template-rows: repeat(3, 27.5px);
+}
+
+.pb-band-fields-device .pb-band-label {
+  flex: 0 0 117.33px;
+}
+
+.pb-band-fields-device .pb-band-r1c2 .pb-band-label,
+.pb-band-fields-device .pb-band-r2c2 .pb-band-label {
+  flex: 0 0 122.67px;
 }
 
 .pb-band-value {
@@ -235,7 +293,7 @@
 
 .playback-panel .pb-badge {
   display: inline-block;
-  padding: 0 14px 2px;
+  padding: 0 17.5px 2px;
   border-radius: 3px;
   font-family: var(--pb-semi);
   font-size: 13px;
@@ -290,36 +348,43 @@
 
 /* ---- tab strip (§3) ----------------------------------------------------- */
 
+/* The dashboard column: measured 230…1040 (810 wide) on the 150 % reference. 13.48 % of 1706.67
+ * is the same 230 px; the max-width keeps the column inside the window on narrower screens. */
 .pb-page {
-  max-width: 1064px;
-  margin: 0 auto;
-  padding: 0 24px 110px;
+  width: 810px;
+  max-width: 86.5%;
+  margin-left: 13.48%;
+  padding: 0 0 110px;
 }
 
+/* The original tab is a 128 px box (230…358) with the label centred and a 2 px #115C7C underline
+ * at 299.3…301.3; the tiles start 28 px below it. */
 .pb-tabstrip {
   display: flex;
-  align-items: stretch;
-  margin: 18px 0 18px;
-  border-bottom: 1px solid #dcdcdc;
+  align-items: flex-end;
+  margin: 21.6px 0 0;
+  border-bottom: 0;
 }
 
-/* S:14554 `.active-tab { border-bottom: 3px solid #00516F }` */
+/* S:14554 `.active-tab { border-bottom: 3px solid #00516F }` — 3 physical px at 150 %, i.e. 2 px
+ * CSS, and the sampled colour is #115C7C.
+ * `.playback-panel .pb-tab` */
 .playback-panel .pb-tab {
   appearance: none;
-  padding: 0 4px 8px;
+  padding: 0 21.6px 2.7px;
   margin-right: 26px;
   border: 0;
-  border-bottom: 3px solid transparent;
+  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--pb-ink);
   font-family: var(--pb-sans);
-  font-size: 17px;
-  line-height: 26px;
+  font-size: 16px;
+  line-height: 19px;
   cursor: pointer;
 }
 
 .playback-panel .pb-tab.active-tab {
-  border-bottom-color: var(--pb-teal);
+  border-bottom-color: var(--pb-teal-dark);
   font-family: var(--pb-semi);
   font-weight: 600;
 }
@@ -331,11 +396,14 @@
 
 /* ---- tiles (§4) --------------------------------------------------------- */
 
+/* S:379 `.tile` is 392 px wide with `margin: 10px 16px 16px 10px`, so two tiles are
+ * 392 + 26 + 392 = the 810 px column (measured 230…621.33 / 648…1039.33). */
 .pb-cards {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: 392px 392px;
+  gap: 26px;
   align-items: stretch;
+  margin-top: 28px;
 }
 
 /* S:379 `.tile` */
@@ -365,6 +433,17 @@
   margin-bottom: 12px;
 }
 
+/* Measured: the card badges stop 4 px short of the tile's inner right edge (602 vs 606). */
+.pb-card-head .pb-badge {
+  margin-right: 4px;
+}
+
+/* The Positioning tile's 8 rows start at 384.7 (the Device tile's at 395.3), i.e. its heading block
+ * is 10 px tighter than the shared one. */
+.pb-cards .pb-card:first-child .pb-card-head {
+  margin-bottom: 2.8px;
+}
+
 /* S:3330 `.heading` */
 .playback-panel .heading {
   margin: 0;
@@ -380,6 +459,17 @@
   align-items: baseline;
   padding: 3px 0;
   min-width: 0;
+}
+
+/* Measured row pitch on the Positioning tile: 24.1 px (8 rows, 384.7 → 553.3). */
+.pb-kv-row {
+  padding: 2.5px 0;
+  line-height: 19px;
+}
+
+/* The 23.3 px badge sets the Device row height; 2 px padding keeps the measured 28 px pitch. */
+.pb-device-row {
+  padding: 2px 0;
 }
 
 .pb-kv-label {
@@ -409,13 +499,22 @@
   color: var(--pb-ink);
 }
 
+/* Measured on the reference: the device-row badges are the same 69.3×23.3 box as the tile's own
+ * badge, right edge 1020 (4 px inside the tile). */
 .pb-device-row .pb-badge {
   flex: 0 0 auto;
   margin-left: 10px;
-  min-width: 64px;
-  font-size: 12px;
-  line-height: 18px;
-  padding: 0 8px 1px;
+  margin-right: 4px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  padding: 0 17.5px 2px;
+}
+
+/* Measured: the Positioning tile's values start 199 px in (444.7 from 245.7), the Device tile's
+ * 166.5 px in (830 from 664) — so only the first tile gets the wider label column. */
+.pb-cards .pb-card:first-child .pb-kv-label {
+  flex: 0 0 55%;
 }
 
 /* S:3295 `.need-help` (absolute, bottom-left) + S:3306 link + S:19720 "?" disc */
@@ -462,8 +561,9 @@
 
 /* ---- Satellite View (§5) ------------------------------------------------ */
 
+/* The two 350 px tiles end at 678.7; the Satellite View tile starts at 705.3 (measured). */
 .playback-panel .pb-sat {
-  margin-top: 16px;
+  margin-top: 26px;
   padding-bottom: 44px;
 }
 
@@ -473,17 +573,21 @@
   gap: 12px;
 }
 
+/* Measured on the reference: the legend/row column is 300 px wide and the sky plot sits in a
+ * 410 px column that starts at 558 (disc centre 763.7, top 860) — i.e. 55 px of the 810 px tile
+ * stay empty on the right. */
 .pb-sat-left {
-  flex: 1 1 60%;
+  flex: 0 0 300px;
   min-width: 0;
 }
 
 .pb-sat-right {
-  flex: 1 1 40%;
+  flex: 0 0 410px;
+  max-width: 410px;
   min-width: 0;
   display: flex;
   justify-content: center;
-  padding-top: 6px;
+  padding-top: 93px;
 }
 
 /* S:13051 `.satelliteview-legend` — grey "Tracked" plate, green/amber chips, red Missing tag. */
@@ -683,7 +787,7 @@
 .pb-sky-svg {
   display: block;
   width: 100%;
-  max-width: 400px;
+  max-width: 412px;
   height: auto;
 }
 
@@ -1310,20 +1414,49 @@
 /* ---- narrow viewport ---------------------------------------------------- */
 
 @media (max-width: 1100px) {
+  .pb-page {
+    width: auto;
+    max-width: none;
+    margin-left: 0;
+    padding: 0 16px 110px;
+  }
+
   .pb-cards {
     grid-template-columns: minmax(0, 1fr);
+    margin-top: 24px;
+  }
+
+  /* The band's fixed 136 px / proportioned column only makes sense at the reference width; below
+   * 1100 px it stacks and grows with its content again. */
+  .pb-bandwrap {
+    height: auto;
   }
 
   .pb-band {
     flex-direction: column;
+    width: auto;
+    max-width: none;
+    height: auto;
+    margin-left: 0;
+    padding: 10px 16px 12px;
   }
 
   .pb-band-split {
     display: none;
   }
 
-  .pb-band-half {
+  .pb-band-half,
+  .pb-band-half:first-child,
+  .pb-band-half + .pb-band-half {
+    flex: 0 0 auto;
+    width: 100%;
     padding-right: 0;
+  }
+
+  .pb-band-fields,
+  .pb-band-fields-device {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: repeat(3, 26.7px);
   }
 
   .pb-sat-body {
@@ -1370,4 +1503,51 @@ body[data-page="playback"] .app-panel {
 /* The injected file tab exists on every page (the app bar is shared), so it is pinned to this one. */
 body[data-page="playback"] #tabs-list li.pb-filetabs:not([hidden]) {
   display: flex;
+}
+
+/* ==============================================================================
+ * 应用栏与状态带之间的满宽纯黑带（只有加载态有，空态没有）
+ *
+ * 实测 `ref-ui/playback-150.png`（2560×1600 @150%）：物理 y=139..213，高 75 物理 = 50 CSS，
+ * 颜色纯黑 #000，宽度撑满内容区。带右端是白色铃铛 + 青色 "0" 徽标（物理 2473..2515），
+ * 换算成 CSS：铃铛图标 26×26、right 37 / top 11.3（白铃铛笔画 1649..1665 × 85..104），
+ * 徽标 18×17、right 29 / top 6、圆角 3 px、底色 #17a2b8。原版 style.css:29581 的
+ * `right:53px / top:21px` 是相对它自己的容器，这里按截图上量到的位置放。
+ *
+ * 图标来自 `逆向/01_解包/app/view/images/Notifications_On.svg` 的铃铛路径：原文件在 24×24 的
+ * viewBox 里带一块 #00516F 的圆角底板，而黑带上实测只有白铃铛、周围是纯黑（2473..2515 像素取样
+ * 无 #00516F），所以 `icons/Notifications_On.svg` 是同一条路径去掉底板后的版本。
+ * ============================================================================ */
+
+.pb-eventbar {
+  position: relative;
+  height: 50px;
+  margin: 0;
+  padding: 0;
+  background: #000000;
+}
+
+.pb-bell {
+  position: absolute;
+  right: 37px;
+  top: 11.3px;
+  width: 26px;
+  height: 26px;
+  background: url('/icons/Notifications_On.svg') center / 24px 24px no-repeat;
+}
+
+.pb-bell-count {
+  position: absolute;
+  right: 29px;
+  top: 6px;
+  min-width: 18px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #17a2b8;
+  color: #fff;
+  font-family: var(--pb-semi);
+  font-size: 12px;
+  line-height: 17px;
+  text-align: center;
 }

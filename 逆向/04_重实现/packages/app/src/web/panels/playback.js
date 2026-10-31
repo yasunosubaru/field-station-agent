@@ -261,6 +261,15 @@ function template(speedOptions) {
 
 <div class="pb-loaded" data-el="loaded" hidden>
 
+  <!-- 原版加载后的状态在应用栏与状态带之间有一条满宽纯黑带（ref-ui/playback-150.png 实测：
+       物理 y=139..213，75 物理 = 50 CSS 高，纯黑 #000），空态没有。来源未查明（不是
+       statusBar.html 的灰条，style.css 里也没有对应的黑色背景规则），这里按实测高度与颜色
+       复刻；带右端是通知铃铛 + 青色计数徽标（原版 .event-notifications-on，style.css:29581）。 -->
+  <div class="pb-eventbar" aria-hidden="true">
+    <span class="pb-bell"></span>
+    <span class="pb-bell-count">0</span>
+  </div>
+
   <div class="pb-bandwrap">
     <div class="pb-band">
       <div class="pb-band-half">
