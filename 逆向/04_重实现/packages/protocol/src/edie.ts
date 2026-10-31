@@ -76,19 +76,34 @@ function readScalar(dv: DataView, type: string, at: number): number | string {
   if (at < 0 || at >= dv.byteLength) return 0;
   switch (type) {
     case 'u8':
+    // `CHAR`, `HEXBYTE`: one byte. `%B` prints its hex, so the unsigned read is what the ASCII
+    // writer needs (a negative CHAR and its low byte are the same hex digits).
+    case 'char':
+    case 'hexbyte':
       return dv.getUint8(at);
     case 'u16':
-      return dv.getUint16(at, true);
+    case 'ushort':
+      return at + 2 > dv.byteLength ? 0 : dv.getUint16(at, true);
+    case 'short':
+      return at + 2 > dv.byteLength ? 0 : dv.getInt16(at, true);
     case 'u32':
     case 'enum':
     case 'satid':
+    case 'uint':
+    case 'ulong':
       return at + 4 > dv.byteLength ? 0 : dv.getUint32(at, true);
     case 'i32':
+    case 'int':
+    case 'long':
       return at + 4 > dv.byteLength ? 0 : dv.getInt32(at, true);
     case 'f32':
       return at + 4 > dv.byteLength ? 0 : dv.getFloat32(at, true);
     case 'f64':
       return at + 8 > dv.byteLength ? 0 : dv.getFloat64(at, true);
+    case 'longlong':
+      return at + 8 > dv.byteLength ? 0 : Number(dv.getBigInt64(at, true));
+    case 'ulonglong':
+      return at + 8 > dv.byteLength ? 0 : Number(dv.getBigUint64(at, true));
     case 'bool':
       return at + 4 > dv.byteLength ? 0 : dv.getUint32(at, true);
     default:

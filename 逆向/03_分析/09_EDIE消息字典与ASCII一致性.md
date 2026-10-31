@@ -322,7 +322,8 @@ SHA-256  893D135E3E548F92779B1C40C7552764B11539BE6270716C1723C4DF2901BCAB（两�
 
 回归：四份老 golden（`broad-clean.ASCII` 5 567 000 B、`clean-9600.ASCII` 489 205 B、
 `clean-9600.ABBREV_ASCII` 567 576 B、`clean-9600_BESTPOS.KML`、BINARY）**逐字节不变**；
-RINEX 三版只差已知的两行（时间戳 + `APPROX POSITION XYZ` ≤8 mm）。
+RINEX 三版与 golden 的差别只剩写入时间戳（由 `--at` 决定），`APPROX POSITION XYZ` 也已逐字节
+（取最后一条 BESTPOS，见 `10_RINEX输出规格.md` §2）。
 测试 `node --test "packages/*/test/*.test.ts"` → **500 / 500**（新增
 `packages/protocol/test/live-23types.test.ts` 5 项，把上面四件事逐条钉住）。
 
@@ -496,3 +497,104 @@ oracle 多出的行: 0
 
 回归：`broad-clean.ASCII` 5 567 000 B **逐字节不变**，`clean-9600.ABBREV_ASCII`、KML、BINARY 同；
 RINEX 仍只差已知两行。测试 **511 / 511**（新增 `live-b1.test.ts` 4 项）。
+
+---
+
+## 9.x.9 B1 第三批（b3）：30 类 / 1726 行逐字节一致，逼出两条**读字段**的规则（2026-11-01）
+
+### 怎么抓的
+
+脚本 `tools/remote/b3-capture.ps1`（纯 ASCII），样本 `samples/live-20261031/b3-20261101.sbf`
+（3 375 904 B / 30 s），golden 是本机套件 CLI 出的 `golden-b3-20261101.ASCII`
+（6 137 463 B / 1726 行）。
+
+选型全部先**探测**再抓，不靠猜。脚本带 `-ProbeOnly`：一条一条发 `LOG … ONCE`，把回显的可打印
+部分写进报告，`<OK` 是收下，`<ERROR:Message is invalid for this model` 是这台机器根本没有。
+
+| 结论 | 报文 |
+|---|---|
+| 收下且**出了记录**（24 类，本批新增） | UPTIME、IPSTATS、J1939STATUS、SAFEMODESTATUS、TIMESYNC、GLOCLOCK、BDSCLOCK、GALALMANAC、BDSALMANAC、GALIONO、BDSIONO、GLORAWEPHEM、BDSRAWNAVSUBFRAME、RAWGPSSUBFRAME、RAWGPSWORD、PSRDOP2、PSRTIME、PSRSATS、PSRVEL、BESTVELX、SATXYZ2、NAVIGATE、BDSBCNAV2EPHEMERIS、GALINAVEPHEMERIS |
+| 拒绝（7） | FILESYSTEMSTATUS、FILESYSTEMCAPACITY、FILESTATUS、FILETRANSFERSTATUS、RTKDOP、RTKDOP2、MATCHEDSATS |
+| 收下但 30 s 内一条不出（9，ONCE/ONTIME/ONNEW 都试过） | GLORAWFRAME、GLORAWSTRING、GALCLOCK、REFSTATION、RXSTATUSEVENT、BDSBCNAV1EPHEMERIS、GALFNAVEPHEMERIS、GPSCNAVRAWMESSAGE、SBASALMANAC |
+
+样本里最终 30 类：上面 24 类，加上接收机自己一直在发的 RANGE、BESTPOS、RAWEPHEM、PORTSTATS、
+HWMONITOR、RXSTATUS（这 6 类是顺带回归，不是本批目标）。
+
+**运维坑（新）**：一个口能挂的 LOG 有上限（约 32 条，那 6 条"别人留下"的也算），**超出的 LOG 命令
+照样回 `<OK`，然后永不触发**。第一次 30 s 抓包里，第十二条之后的 ONCE 全部无声无息——不是模型
+不支持，是槽位满了。现在脚本分三段：两组 ONCE 各配一次 `UNLOGALL`，再挂周期组。
+判别方法很朴素：某类明明 `<OK` 却一条记录都没有，就去看它是不是排在列表尾部。
+
+### 结果：1726 行全在，先 40 行内容不对，归成 2 条根因
+
+第一轮（24 类）只差 1 行（GLOCLOCK）；扩到 30 类后 39 行（GALINAVEPHEMERIS 27 +
+RAWGPSSUBFRAME 12）。两条根因都在**读字段**这一层，不在转换串：
+
+**① 字典的整数拼写有八种，读字段的表只认识四种（27 行）**
+
+字典把整数写成 `UCHAR / USHORT / SHORT / ULONG / INT / UINT / ULONG64 / LONGLONG`，
+抽取出来的布局表原样保留了拼写，而 `readScalar` 只列了 `u8/u16/u32/i32`，其余全落到
+`default: getUint8`——**只读 1 个字节**。偏移是绝对偏移，所以后面的字段不会跟着错位，只有
+"值超出 1 字节"的字段才看得出：
+
+```
+#GALINAVEPHEMERISA,…;…,81600,…     ← oracle（toe，UINT，4 字节）
+#GALINAVEPHEMERISA,…;…,192,…       ← ours（0x81600 的低字节 0xC0）
+```
+
+BDSCLOCK 的 `SHORT` 也在同一张表里，但它的时差是小数值，1 字节读出来照样对，所以上一轮没暴露。
+修法：`readScalar` / `decodeEdie` 按拼写给宽度（`char`/`hexbyte` 1、`short`/`ushort` 2、
+`int`/`uint`/`ulong`/`long` 4、`longlong`/`ulonglong` 8）。
+
+**② 布局表是"紧排"的，线上是 `pack(4)`（13 行）**
+
+`edie-layouts.json` 的偏移是生成器**按字段宽度累加**出来的，而 SBF 结构体按 4 字节对齐：
+`USHORT` 落 2 字节边界，`ULONG`/`DOUBLE`/`ULONG64` 落 4 字节边界。两处实测：
+
+| 报文 | 现象 | 线上布局 |
+|---|---|---|
+| GLOCLOCK（1 行） | `tau_gps` 打印 `0.000000000`，oracle 是 `3.725290298e-09`（= 2⁻²⁸） | `n4` 收在 22 → `tau_gps` 24（不是 22）、`na` 32、`tau_c` 36…`kp` 60，**payload 61 而不是 57** |
+| RAWGPSSUBFRAME（12 行） | `signal_channel_number` 打印 `1179648`（0x00120000），oracle 是 `18` | 30 字节 `%Z` 收在 42 → `ULONG` 44，**payload 48 而不是 46** |
+
+难点是**不能无脑套对齐**：把 `pack(4)` 规则一股脑套到全部 608 条布局上，会有 28 条偏移变化，
+而其中 RAWEPHEM、SETNAV、GPGGARTK 等在诚实样本里明明是紧排的（payload = 紧排长度，逐字节一致）。
+所以规则写成"**只在记录自己证明时才用**"：算出该布局的紧排长度与对齐长度，**当 payload 恰好等于
+对齐长度（且两者不等）**才改偏移，否则原样不动。GLOCLOCK 61、RAWGPSSUBFRAME 48 正好落进条件；
+其余报文 payload 都等于紧排长度，一条都不动——六份老 golden 因此逐字节不变。
+
+### 修完的复验数字
+
+```
+$ node packages/cli/src/convert.ts b3-20261101.sbf --to ASCII -o <tmp>
+oracle 行 1726；ours 行 1726
+ours 中不在 oracle 里的行: 0
+oracle 多出的行: 0
+6 137 463 B，SHA-256 = C6A678CD…4F94F4B8（两侧相同）
+```
+
+六份老 golden 复跑（直接 `convert.ts` + SHA-256 比对）：
+
+```
+broad-clean    IDENTICAL 5 567 000 B
+clean-9600     IDENTICAL   489 205 B
+live-nav       IDENTICAL 2 798 307 B
+live-nav2      IDENTICAL 2 657 890 B
+remote-23types IDENTICAL 3 845 232 B
+b1             IDENTICAL 5 088 882 B
+b2             DIFFERENT 4 931 973 → 4 931 990（仍只有 IPSTATUSA 那 1 行）
+```
+
+测试 **599 / 599**（新增 `live-b3.test.ts` 5 项：整份 golden 逐字节、30 类清单、整数宽度、
+对齐只在 payload 证明时生效、两处实测 payload 长度）。
+
+### 剩余
+
+- ❌ **IPSTATUSA 变长字符串数组（b2 的 1 行，仍旧）**：`IPSTATUS` 的第二个数组
+  `dns_server` 在布局表里被放在 `off=4`（生成器不知道前面那个"变长字符串数组"到底占多少），
+  而条目里是三条 `STRING`，实际长度随内容变。要修得让渲染器在**变长数组之后**按实际消耗的
+  字节续排后续字段，属于布局模型改造，牵动 ICOMCONFIG / SETNAV / DNSCONFIG 等已逐字节一致的报文，
+  没有样本逼迫之前不动。
+- ❌ **ULONG64 / LONGLONG 仍无样本**：唯一用到 `%llu` 的 FILESYSTEMCAPACITY 被这台模型拒绝，
+  `%lld` 只在 INSPVACMP（SPAN，无 IMU）里。宽度表已按声明实现，但没有真机数据背书。
+- ⚠️ `%P`（29 条 PASS*）依旧无样本：需要外部串口往接收机灌数据；本轮 `%Z` + 数组的组合只能靠
+  RAWGPSSUBFRAME / GLORAWEPHEM 覆盖。

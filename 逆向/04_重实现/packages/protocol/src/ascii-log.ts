@@ -413,6 +413,83 @@ function escapePassThrough(bytes: Uint8Array, at: number, length: number): strin
   return out;
 }
 
+/**
+ * Alignment the wire puts in front of a field of this width.
+ *
+ * The offsets in `edie-layouts.json` are **dense**: the generator summed the declared field widths
+ * (`gen_edie_layouts.js`, lost with the extracted app), and the dictionary lists no padding members.
+ * The wire is not dense — SBF packs with `pack(4)`, so a `USHORT` starts on a 2-byte boundary and a
+ * `DOUBLE`/`ULONG64` on a 4-byte one. `GLOCLOCK` (id 719) is the first log where the difference is
+ * visible: `n4` ends at 22, so `tau_gps` moves 22 → 24, and `na` ends at 34, so `tau_c` moves
+ * 32 → 36 … 56 → 60, which makes the payload 61 bytes instead of the layout's 57. Measured on the
+ * one GLOCLOCK record of `b3-20261101.sbf`: the suite prints `3.725290298e-09` (2^-28, the bytes at
+ * 24..31) where the dense offset reads zero.
+ *
+ * Applying the rule everywhere would move twelve other layouts (`PTPDELTATIME`, `HEADINGEXT`,
+ * `INSPVACMP`, `SURVEYPOSITION`, `USERI2C*`, `USERCAN*`, `SBAS17/26/27`), none of which we have a
+ * record for, and some of which would be read differently for no evidence. So it is applied only
+ * when the record itself proves it: see `wireFields`.
+ *
+ * `RAWGPSSUBFRAME` (id 25) is the second measured case and pins the width rule down: its 30-byte
+ * `%Z` blob runs 12..41, so the `ULONG` `signal_channel_number` sits at 44, not 42 — the payload is
+ * 48 bytes, and reading at 42 gives `1179648` (0x00120000) where the suite prints `18`.
+ */
+function alignment(size: number): number {
+  if (size >= 4) return 4;
+  if (size === 2) return 2;
+  return 1;
+}
+
+/** Fixed payload size of a segment list, dense and `pack(4)`-aligned; null when it is variable. */
+function packedFixedSize(segments: EdieSegment[]): { dense: number; aligned: number } | null {
+  let dense = 0;
+  let aligned = 0;
+  for (const segment of segments) {
+    if (segment.kind === 'array') {
+      const array = segment as EdieArray;
+      if (array.fixedCount === undefined) return null;
+      const inner = packedFixedSize(array.elements);
+      if (!inner) return null;
+      dense += (array.countSize || 0) + array.fixedCount * inner.dense;
+      aligned += (array.countSize || 0) + array.fixedCount * inner.aligned;
+      continue;
+    }
+    const align = alignment(segment.size);
+    if (aligned % align !== 0) aligned += align - (aligned % align);
+    dense += segment.size;
+    aligned += segment.size;
+  }
+  return { dense, aligned };
+}
+
+/**
+ * The field list with offsets the wire actually uses.
+ *
+ * Only top-level offsets are rewritten (that is where the padding was measured), and only when the
+ * layout's dense size is not its aligned size **and** the record's payload is exactly the aligned
+ * size. A record of any other length keeps the stored offsets, so every log with a payload we have
+ * never seen — and every variable-length one, for which `packedFixedSize` returns null — is read
+ * exactly as before.
+ */
+function wireFields(layout: EdieLayout, payloadLength: number): EdieSegment[] {
+  const sizes = packedFixedSize(layout.fields);
+  if (!sizes || sizes.aligned === sizes.dense || payloadLength !== sizes.aligned) return layout.fields;
+  let cursor = 0;
+  return layout.fields.map((segment) => {
+    const align = segment.kind === 'array' ? 1 : alignment(segment.size);
+    if (cursor % align !== 0) cursor += align - (cursor % align);
+    const offset = cursor;
+    if (segment.kind === 'array') {
+      const array = segment as EdieArray;
+      const inner = packedFixedSize(array.elements);
+      cursor += (array.countSize || 0) + (array.fixedCount ?? 0) * (inner?.aligned ?? array.stride);
+    } else {
+      cursor += segment.size;
+    }
+    return { ...segment, offset };
+  });
+}
+
 function decodeString(bytes: Uint8Array, at: number, size: number): string {
   let out = '';
   for (let i = 0; i < size; i++) {
@@ -423,27 +500,45 @@ function decodeString(bytes: Uint8Array, at: number, size: number): string {
   return out;
 }
 
-function readScalar(bytes: Uint8Array, type: string, at: number): number {
+function readScalar(bytes: Uint8Array, type: string, at: number, size: number): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const available = view.byteLength;
-  const need = type === 'f64' ? 8 : type === 'u8' ? 1 : type === 'u16' ? 2 : 4;
+  const need = size > 0 ? size : type === 'f64' ? 8 : type === 'u8' ? 1 : type === 'u16' ? 2 : 4;
   if (at < 0 || at + need > available) return 0;
   switch (type) {
+    // The dictionary spells its integers several ways and the extracted table kept the spelling:
+    // `UCHAR`/`HEXBYTE` are 1 byte, `USHORT`/`SHORT` 2, `ULONG`/`LONG`/`INT`/`UINT` 4,
+    // `ULONG64`/`LONGLONG` 8. Reading an unknown one as a byte is what made GALINAVEPHEMERIS print
+    // `192` where the suite prints `81600` (the low byte of `toe`), so the widths are explicit here
+    // rather than falling through to `getUint8`.
     case 'u8':
+    case 'char':
+    case 'hexbyte':
       return view.getUint8(at);
     case 'u16':
+    case 'ushort':
       return view.getUint16(at, true);
+    case 'short':
+      return view.getInt16(at, true);
     case 'u32':
     case 'enum':
     case 'satid':
     case 'bool':
+    case 'uint':
+    case 'ulong':
       return view.getUint32(at, true);
     case 'i32':
+    case 'int':
+    case 'long':
       return view.getInt32(at, true);
     case 'f32':
       return view.getFloat32(at, true);
     case 'f64':
       return view.getFloat64(at, true);
+    case 'longlong':
+      return Number(view.getBigInt64(at, true));
+    case 'ulonglong':
+      return Number(view.getBigUint64(at, true));
     default:
       return view.getUint8(at);
   }
@@ -452,8 +547,8 @@ function readScalar(bytes: Uint8Array, type: string, at: number): number {
 /** Element-count prefix: u8/u16/u32, as `arrayLengthFieldSize` declares it. */
 function readCount(bytes: Uint8Array, at: number, size: number): number {
   if (size === 1) return bytes[at] ?? 0;
-  if (size === 2) return readScalar(bytes, 'u16', at);
-  return readScalar(bytes, 'u32', at);
+  if (size === 2) return readScalar(bytes, 'u16', at, 2);
+  return readScalar(bytes, 'u32', at, 4);
 }
 
 /** Per-record bookkeeping for the `%R` rule above. */
@@ -518,7 +613,7 @@ function renderSegments(
       continue;
     }
     if (segment.kind === 'scalar') {
-      out.push(formatField(segment, readScalar(bytes, segment.type, at), tables));
+      out.push(formatField(segment, readScalar(bytes, segment.type, at, segment.size), tables));
       continue;
     }
     const array = segment as EdieArray;
@@ -608,7 +703,7 @@ function render(
   const { header, payload } = frame;
   const body: string[] = [];
   const state: RenderState = { unresolvedEmbedded: false };
-  renderSegments(payload, layout.fields, 0, tables, body, depth, options, state);
+  renderSegments(payload, wireFields(layout, payload.length), 0, tables, body, depth, options, state);
   // `%R` with nothing to print drops the record (see the note in `renderSegments`).
   if (state.unresolvedEmbedded) return '';
 
