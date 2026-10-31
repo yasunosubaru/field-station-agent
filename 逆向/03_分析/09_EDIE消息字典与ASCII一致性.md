@@ -129,3 +129,52 @@ ASCII 写出默认 `requireValidCrc: true`（复现 Convert）。
 | 字段语义与单位 | `00_来源/手册文本/OEM7-Commands-and-Logs-Reference-Manual.txt` §3.x |
 | 真机输出 | `00_来源/samples/convert/golden-broad-ascii/broad-clean/Converted_On_20261030_T1800/ASCII/broad-clean.ASCII` |
 | 原始抓包 | `00_来源/samples/convert/broad-clean.gps` |
+
+---
+
+## 9.x 无界面 oracle：套件自带的 convert CLI（2026-10-31）
+
+**重要方法论**：原版套件的 exe 就是 Electron 运行时，且 `main.js` 里有一条 CLI 分支
+（`checkIfCalledViaCLI(process.argv)` → `require("./view/convert/cli.js").executeCLI(...)`）。
+所以**不打开 GUI 也能用原版 Edie 引擎做转换**，这就是逐字节比对最可靠的 oracle：
+
+```powershell
+& "C:\Program Files\NovAtel Inc\NovAtel Application Suite\NovAtelApplicationSuite.exe" `
+    -a -o <纯 ASCII 输出目录> <纯 ASCII 输入文件>
+```
+
+实测：`clean-9600.gps` → `clean.gps.ASCII` = **489 205 B**，与仓库里的 golden 一致。
+
+两个坑：
+
+1. **参数里的路径必须纯 ASCII、无空格**。中文路径会让套件自己的参数解析读不到文件，
+   报 `Please provide a file to convert` 而不是报错。先 copy 到临时 ASCII 目录再跑。
+2. 它只认 `-a/-b/--abbrev/-k/-r3.0x` 这类短开关与位置参数；输出目录用 `-o`，
+   产物落在 `<out>\<name>\Converted_On_<YYYYMMDD>_T<HHMM>\ASCII\<name>.ASCII`，另有 `Summary_<name>.txt`。
+
+### 9.x.1 真机抓包第一次跑通（2026-10-31）
+
+接收机 OEM729-2.03，USB 虚拟串口 COM13/14/15（COM13 被套件占用，**我们一口气读 COM14/COM15**
+互不干扰，套件那边照常显示）。COM15 是 ASCII 模式，所以请求 `...B` 后缀的日志才能拿到二进制 SBF。
+
+两份抓包（`逆向/00_来源/samples/live-20261031/`，含 oracle 输出的 golden）：
+
+| 文件 | 大小 | 关键报文 |
+|---|---:|---|
+| `live-nav.sbf` | 1 643 003 | **GLOEPHEMERIS id 723 ×12**、RAWEPHEM ×8、BESTPOS/RANGE/RXSTATUS/PORTSTATS/HWMONITOR |
+| `live-nav2.sbf` | 1 563 194 | **BDSEPHEMERIS id 1696 ×39**、RAWEPHEM ×9、同上 |
+
+（报文名与 id 的对应取自套件自己的 `resources/app.asar.unpacked/Edie/messages_public.json`，
+608 条定义；`1696` = BDSEPHEMERIS，`723` = GLOEPHEMERIS。）
+
+### 9.x.2 比对结论
+
+逐行多重集比对（脚本 `opencode/cmp-lines.cjs`、`cmp-ascii.cjs`）：
+
+- **BESTPOSA / RANGEA / RXSTATUSA / PORTSTATSA / HWMONITORA / RAWEPHEMA / GLOEPHEMERISA / BDSEPHEMERISA
+  的行数一致**，其中前六类**逐字节相同**。
+- **GLOEPHEMERISA 与 BDSEPHEMERISA 全部 12 / 39 行不一致**，两个原因（详见下一节）：
+  端口字段 `SPECIAL` vs `SPECIAL_0`；浮点用指数计数法而我们用定点。
+- `SATVIS2A`（16 行）与 `TIMESYNCA`（2 行）**我们完全没有输出**——不是解码错，是
+  **抓包里这两类只以 ASCII 文本形式出现**，而我们只解析二进制 SBF 帧，套件的 Edie 两种输入都吃。
+  这条差异已在文档登记，属于"已知缺口"，不是静默失败。
