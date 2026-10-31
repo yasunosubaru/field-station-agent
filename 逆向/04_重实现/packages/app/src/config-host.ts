@@ -50,6 +50,18 @@ const CONFIG_PAGE_NAMES = [
 
 export type ConfigPageName = (typeof CONFIG_PAGE_NAMES)[number];
 
+/** Which configuration tab a page lives in (`ConfigTabName`); the settings pages have none. */
+const CONFIG_TAB_OF: Partial<Record<ConfigPageName, 'positioning' | 'ports' | 'logging' | 'align' | 'span' | 'radio' | 'gnss' | 'spoofing'>> = {
+  positionConfig: 'positioning',
+  portConfig: 'ports',
+  loggingConfig: 'logging',
+  alignConfig: 'align',
+  spanConfig: 'span',
+  radioConfig: 'radio',
+  gnssConfig: 'gnss',
+  spoofingConfiguration: 'spoofing',
+};
+
 export interface ConfigCommand {
   kind: 'binary' | 'raw' | 'ascii';
   /** Tab the controller addressed (`main-panel-tabs-3`), kept for logging. */
@@ -85,6 +97,7 @@ export class ConfigHost {
   private readonly doc: MiniDocument;
   private readonly manage: ReturnType<typeof createManage>;
   private readonly tab: string;
+  private readonly registry: { setHidden(tab: string, hidden: boolean): void };
   private readonly features: FeatureFlags;
   private commands: ConfigCommand[] = [];
   private readonly commandLimit: number;
@@ -129,6 +142,7 @@ export class ConfigHost {
     const features = () => this.features;
     const registry = createTabRegistry({});
     registry.buildShell(shell as never);
+    this.registry = registry as never;
     const tiles = createTileSystem({ root: () => this.doc.body as never, loader: fragments, features });
 
     const transport = {
@@ -162,6 +176,12 @@ export class ConfigHost {
       details: { type: 'eth' },
     });
     this.manage.buildPanels(this.tab);
+    // `buildPanels` builds the status dashboard; the configuration template is a separate call in
+    // the original (entering Configuration). Mount it here so the host always has both.
+    this.manage.configs.mount(this.tab as never, { features: this.features });
+    // `openTab` leaves every panel `hidden` (the shell activates one on click); a headless host
+    // always wants its panel visible, otherwise the serialised HTML renders as an empty page.
+    this.registry.setHidden(this.tab, false);
   }
 
   /** Module names the controller knows (14 pages, `ConfigBundle.pageNames()`). */
@@ -184,6 +204,19 @@ export class ConfigHost {
   /** The whole Manage tab as HTML (shipped ids preserved). */
   html(): string {
     return serializeNode(this.doc.body as never);
+  }
+
+  /**
+   * Activate the page's tab pane, the way clicking the tab does (`ConfigBundle.selectPage`).
+   * Without this the panes stay `hidden` and the browser shows an empty tab.
+   */
+  select(name: string): boolean {
+    const target = CONFIG_TAB_OF[name as ConfigPageName];
+    if (!target) return false;
+    // Same two calls the menu performs: switch the tab from Status to Configuration, then pick
+    // the page inside it.
+    this.manage.statusConfigClick('menuConfig', this.tab as never);
+    return this.manage.selectConfigPage(this.tab as never, target);
   }
 
   /** Every id in the current document — used by tests to prove the shipped markup came through. */

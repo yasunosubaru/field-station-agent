@@ -36,16 +36,20 @@ const options = () => ({
 
 test('the host mounts a shipped configuration page and returns its original markup', () => {
   const host = new ConfigHost(options());
-  const { html, mounted } = host.show('portConfig');
-  assert.equal(mounted, true, 'the page mounted on first use');
-  assert.ok(html.length > 2_000, `serialised document is ${html.length} bytes`);
-  // The shipped skeleton: tab pane + the two ids the page's Apply button and list live in.
+  // The constructor mounts the tab template, which already includes position/ports/logging/align/
+  // span/radio (the six the original opens with), so mounting those is a no-op.
+  const ports = host.show('portConfig');
+  assert.equal(ports.mounted, false, 'portConfig is part of the initial template');
+  assert.ok(ports.html.length > 2_000, `serialised document is ${ports.html.length} bytes`);
   assert.ok(host.ids().includes('config-ports-tabs-2'), 'the ports pane exists');
   assert.ok(host.ids().includes('portConfiguration'), 'the page body came from the fragment');
   assert.ok(host.ids().includes('desktop-portconfig-list'), 'the row list container exists');
   assert.ok(host.ids().includes('portConfig-apply'), 'the Apply button exists');
-  // Mounting twice must not duplicate the page.
-  assert.equal(host.show('portConfig').mounted, false);
+
+  // A page the template does not carry mounts on first use, and only once.
+  const spoofing = host.show('spoofingConfiguration');
+  assert.equal(spoofing.mounted, true, 'spoofingConfiguration mounts on first use');
+  assert.equal(host.show('spoofingConfiguration').mounted, false, 'and not again');
 });
 
 test('every page in the catalogue mounts (14 pages)', () => {
