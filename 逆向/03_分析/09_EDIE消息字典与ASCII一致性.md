@@ -173,8 +173,49 @@ ASCII 写出默认 `requireValidCrc: true`（复现 Convert）。
 
 - **BESTPOSA / RANGEA / RXSTATUSA / PORTSTATSA / HWMONITORA / RAWEPHEMA / GLOEPHEMERISA / BDSEPHEMERISA
   的行数一致**，其中前六类**逐字节相同**。
-- **GLOEPHEMERISA 与 BDSEPHEMERISA 全部 12 / 39 行不一致**，两个原因（详见下一节）：
-  端口字段 `SPECIAL` vs `SPECIAL_0`；浮点用指数计数法而我们用定点。
+- **GLOEPHEMERISA 12 行、BDSEPHEMERISA 39 行，修复后已逐字节一致**（原因与修法见 §9.x.3）。
 - `SATVIS2A`（16 行）与 `TIMESYNCA`（2 行）**我们完全没有输出**——不是解码错，是
   **抓包里这两类只以 ASCII 文本形式出现**，而我们只解析二进制 SBF 帧，套件的 Edie 两种输入都吃。
   这条差异已在文档登记，属于"已知缺口"，不是静默失败。
+
+### 9.x.3 星历 ASCII 的两处修正（2026-10-31）
+
+**① 端口名**：原实现用 `address - 0xA0`，在 0xA0 处差一，打出 `SPECIAL_0`。真实规则在 Edie 字典的
+`PortAddress` 枚举（1552 条）：每组占 32 个地址，`base+0` 是**组名本身**（`COM1`/`USB`/`SPECIAL`/`FILE`…），
+`base+n` 才是 `组名_n`；`0..31` 与 `5824..5845` 是 `*_ALL` 聚合名。`portName()` 改为按枚举建表，
+逐条比对 1552 条 0 处不一致。顺带修掉 `PORTSTATS`：`CommPort` 枚举只到 `SCOM4 = 52`，
+超出时原版打 `UNKNOWN`，我们原来打数字。
+
+**② 浮点**：原版按字段自带的 format 串走 C 的 `%e/%f`，宽度 W 决定定点窗口：
+
+| format 形态 | 定点条件 | 例 |
+|---|---|---|
+| `%W.Nlk`，W>0 | `10^-W <= \|v\| <= 10^W` | `%9.1lk`：1e9 → `1000000000.0`，1e10 → `1.0e+10` |
+| `%0.Nlk`（星历字段） | 窗口退化成 `\|v\| == 1`（只有 0 与 ±1 定点） | 1.5 → `1.5000000000e+00` |
+| `%.17lk`（GLO 位置/速度） | 恒指数 | `-1.71685703125000000e+07` |
+
+新增 `exactExponential()`：按精确二进制值做十进制展开 + round-half-even，指数强制 `e±NN` 两位，
+并保留 `-0.0` 的负号（`toExponential` 会丢）。
+
+诚实边界：原版拿 C 库 `pow(10,-W)` 比较，个别指数有 1 ulp 偏差（`1e-7`/`1e-9` 落在窗口外打指数、
+`1e-2` 落在窗口内打定点），而 `Math.pow` 是正确舍入——**恰好等于 `10^-W` 的值**理论上可能差一位。
+合成探针 104 行里只有这 2 行走在边界上，真实抓包与四份 golden 都没遇到。
+
+### 9.x.4 结果
+
+| 抓包 | oracle 行 | 我们 | 我们不在 oracle 里的行 |
+|---|---:|---:|---:|
+| live-nav | 617 | 538 | **14 → 0** |
+| live-nav2 | 593 | 519 | **41 → 0** |
+
+`GLOEPHEMERISA 12/12`、`BDSEPHEMERISA 39/39`、`PORTSTATSA 2/2`、`RAWEPHEMA 9/9` 逐字节相同。
+
+**已知缺口**：oracle 多出的 79 / 74 行全部是抓包里夹带的**文本记录**（`<RANGE`、`<BESTPOS`、
+`<SATVIS2`、`<TIMESYNC`、`#BESTPOSA`…）——同一物理口上同时开了二进制与文本 log，
+套件两种输入都吃，我们只解析二进制 SBF 帧。要做需新增 `packages/protocol/src/text-log.ts`
+（头行 10 个 token 换逗号、名字加 `A`、续行拼接、重算 CRC-32；`#…` 完整 ASCII 直接透传），
+再把文本帧按帧顺序插进 `convert.ts` 的输出，估计 3–5 小时。
+
+**端口分布**（顺带核实）：`0xA0`（SPECIAL，组首）只用来出星历；`0xBD`（SPECIAL_29）是这批抓包的
+常规日志口（BESTPOS/RANGE/RXSTATUS/RAWEPHEM/HWMONITOR/PORTSTATS）。这与 payload 首字节无关，
+纯粹是 SBF 长头第 7 字节的 port address。
