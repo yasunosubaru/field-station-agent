@@ -1,0 +1,947 @@
+/* ================================================================================================
+ * GRIT Monitor panel — rebuilt from `ref-ui/grit-open.png` (2560×1600 @150 % ⇒ 1706×1066 CSS).
+ *
+ * Every block quotes the reference measurements it was built to. The reference screenshot starts
+ * with the OS title bar (34 physical px = 22.67 CSS), so all reference `y` values below are the
+ * ones this page hits when the app-bar top is treated as y = 0:
+ *
+ *   app bar    0 … 70   (banner 36 + strip 34 — the shell already draws this)
+ *   menu bar  70 … 120  (50 px, #000)
+ *   status   120 … 255  (135 px, #E4E4E4, 1 px #B6B6B6 bottom)
+ *   tiles    274 … 649 / 676 … 1051  (392 px narrow column, 1211 px wide column, 26 px gutter)
+ *
+ * The original's own values are quoted where they exist:
+ *   GRIT/styles/gritStyles.css:2426 `.grit.status-bar` 1480 px wide, centred
+ *   GRIT/styles/gritStyles.css:2437 `.grit-receiverPanel` 136 px #E4E4E4 (this screen: 135)
+ *   css/style.css:379          `.tile` 392 px, 1 px #005170, #FCFCFC, padding 15/9/9/15
+ *   GRIT/styles/gritStyles.css:1250 tile titles 18 px / 700
+ *   GRIT/styles/gritStyles.css:2977 spectrum segmented buttons 24 px, 112 px min, radius 5/0
+ *   GRIT/styles/gritStyles.css:2520 signal matrix cell 43 px wide, min-height 27 px, 7 px squares
+ * ============================================================================================== */
+
+/* The panel is the whole page body: no heading, no left rail, no content padding.
+ * (`shell.css` only does this for convert/playback/graph, so it is done here for grit.) */
+body[data-page="grit"] #gritGroupView {
+  display: none;
+}
+body[data-page="grit"] .nas-content {
+  padding: 0;
+}
+body[data-page="grit"] .folder-detail-heading,
+body[data-page="grit"] .receiver-count {
+  display: none;
+}
+body[data-page="grit"] .app-panel {
+  margin-top: 0;
+}
+
+.grit-page {
+  --grit-teal: #00516f;
+  --grit-teal-deep: #115c7c;
+  --grit-cyan: #27a0bf;
+  --grit-ink: rgba(0, 0, 0, 0.87);
+  --grit-ink-60: rgba(0, 0, 0, 0.6);
+  --grit-rule: rgba(0, 0, 0, 0.12);
+  --grit-surface: #fcfcfc;
+  --grit-band: #e4e4e4;
+  --grit-good: #305703;
+  --grit-warn: #f5a623;
+  --grit-poor: #a00214;
+  --grit-sans: OpenSans-Regular, "Microsoft YaHei", "Segoe UI", sans-serif;
+  --grit-semi: OpenSans-SemiBold, "Microsoft YaHei", "Segoe UI", sans-serif;
+  --grit-bold: OpenSans-Bold, "Microsoft YaHei", "Segoe UI", sans-serif;
+
+  position: relative;
+  min-height: 100%;
+  background: #fff;
+  color: var(--grit-ink);
+  font-family: var(--grit-sans);
+  font-size: 16px;
+}
+
+/* ================================================================================================
+ * ① 黑色菜单条（原版 gritMenuBar，50 px）
+ * ============================================================================================== */
+.grit-menubar {
+  box-sizing: border-box;
+  height: 50px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  padding-left: 14px;
+  border-bottom: 1px solid #000;
+}
+.grit-menu-item {
+  height: 50px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 19px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: #f2f2f2;
+  font-family: var(--grit-sans);
+  font-size: 14px;
+  line-height: 50px;
+  cursor: pointer;
+}
+/* shell.css:79 的 `span { color: RGBA(0,0,0,.87) }` 会压住继承来的白色文字 —— 这里点名覆盖 */
+.grit-menu-label,
+.grit-dock-label {
+  color: #f2f2f2;
+}
+.grit-dock-label {
+  color: #e6e6e6;
+}
+.grit-menu-item:hover,
+.grit-menu-item.is-open {
+  background: rgba(255, 255, 255, 0.12);
+}
+/* 参考图：图标 26.67 … 42.67、图标后 6 px 接文字、文字后 20 px 接 ▾ */
+.grit-menu-dash {
+  padding-left: 20px;
+}
+.grit-menu-ico {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: #e8e8e8;
+}
+.grit-menu-ico svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.grit-caret {
+  display: inline-block;
+  width: 8px;
+  height: 5px;
+  margin-left: 14px;
+  color: #b0b0b0;
+}
+.grit-caret svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.grit-menubar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding-right: 35px;
+  position: relative;
+}
+/* 参考图：铃铛 1649…1672（22 px，距右边 34），青色徽标 1660…1677 × 100…113 */
+.grit-events {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #f2f2f2;
+  cursor: pointer;
+}
+.grit-events-ico {
+  display: block;
+  width: 22px;
+  height: 22px;
+  color: #f2f2f2;
+}
+.grit-events-ico svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+.grit-events-count {
+  position: absolute;
+  top: -7px;
+  left: 11px;
+  min-width: 17px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: #17a2b8;
+  color: #04222b;
+  font-family: var(--grit-semi);
+  font-size: 11px;
+  line-height: 13px;
+  text-align: center;
+  box-sizing: border-box;
+}
+.grit-menu-pop {
+  position: absolute;
+  top: 44px;
+  right: 6px;
+  z-index: 30;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: #1d1d1d;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: var(--grit-sans);
+  font-size: 13px;
+  line-height: 18px;
+}
+.grit-menu-pop[hidden] {
+  display: none;
+}
+
+/* ================================================================================================
+ * ② 灰色状态带（135 px）
+ * ============================================================================================== */
+.grit-band {
+  box-sizing: border-box;
+  height: 135px;
+  background: var(--grit-band);
+  border-bottom: 1px solid #b6b6b6;
+  padding-top: 14px;
+}
+/* 参考图：内容从 113 起（1480 px 居中），Positioning 文字 139，分隔线 819，Device 文字 845 */
+.grit-band-inner {
+  width: 1480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: stretch;
+}
+.grit-band-half {
+  box-sizing: border-box;
+  padding-left: 25px;
+  min-width: 0;
+}
+.grit-band-pos {
+  width: 706px;
+  flex: 0 0 706px;
+}
+.grit-band-dev {
+  flex: 1 1 auto;
+  padding-left: 21.3px;
+}
+.grit-band-split {
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: flex-start;
+  margin-top: 14px;
+  height: 125px;
+  background: #bababa;
+}
+.grit-band-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  height: 24px;
+}
+.grit-band-title {
+  font-family: var(--grit-bold);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--grit-ink);
+}
+/* 参考图：徽标 251…318 × 161…177（带顶 +18.7 起，22 px 高、圆角 3）*/
+.grit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  margin-top: 6px;
+  min-width: 67px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 3px;
+  font-family: var(--grit-semi);
+  font-size: 13px;
+  line-height: 22px;
+  color: #fff;
+}
+.grit-badge.is-good {
+  background: var(--grit-good);
+}
+.grit-badge.is-unknown {
+  background: #7a7a7a;
+}
+
+/* 参考图：行高 28，首行文字 197.3、次行 225.3、三行 252.7（band 顶 + 46 / 74 / 102） */
+.grit-band-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-rows: repeat(3, 28px);
+  align-items: center;
+  font-size: 16px;
+  line-height: 28px;
+}
+.grit-band-grid-pos {
+  grid-template-columns: 116px 233px 146px 1fr;
+}
+.grit-band-grid-dev {
+  grid-template-columns: 138px 242px 146px 1fr;
+}
+.grit-lbl {
+  font-family: var(--grit-sans);
+  color: var(--grit-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grit-val {
+  font-family: var(--grit-semi);
+  font-weight: 600;
+  color: var(--grit-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 「Position: Single」在原版带下划线（.grit_configuredPositions.activePosMode） */
+.grit-val-under {
+  justify-self: start;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding-right: 2px;
+}
+
+/* ================================================================================================
+ * ③ 四个瓦片：两列，左 392、右 1211、行距 26、上下留白 19/27
+ * ============================================================================================== */
+.grit-tiles {
+  padding: 19px 7px 0 70px;
+}
+.grit-row {
+  display: flex;
+  align-items: stretch;
+  gap: 26px;
+  margin-bottom: 27px;
+}
+.grit-row:last-child {
+  margin-bottom: 0;
+}
+.grit-tile {
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 392px;
+  width: 392px;
+  height: 375px;
+  padding: 15px 9px 9px 15px;
+  background: var(--grit-surface);
+  border: 1px solid var(--grit-teal);
+  overflow: hidden;
+}
+.grit-tile-wide {
+  flex: 1 1 auto;
+  width: auto;
+}
+.grit-tile-title {
+  margin: 0;
+  height: 24px;
+  font-family: var(--grit-sans);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--grit-ink);
+  white-space: nowrap;
+}
+/* 参考图：⋮ 在窄瓦片右上，点心在 434.3（瓦片右沿 461.3）*/
+.grit-tile-more {
+  position: absolute;
+  top: 18px;
+  right: 20.7px;
+  width: 14px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--grit-teal);
+  cursor: pointer;
+  line-height: 0;
+}
+.grit-tile-more svg {
+  display: block;
+  width: 4px;
+  height: 18px;
+  margin: 0 auto;
+}
+.grit-tile-more-inline {
+  position: static;
+  margin-left: 6px;
+}
+.grit-tile-tools {
+  position: absolute;
+  top: 12px;
+  right: 9px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.grit-icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--grit-teal);
+  cursor: pointer;
+  line-height: 0;
+}
+.grit-icon-btn svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 1px auto 0;
+}
+.grit-icon-btn:hover {
+  color: var(--grit-cyan);
+}
+
+/* ---- Mitigation Assistant：本抓包没有 ITK，正文就是原版的「Not detected」 ---- */
+.grit-mitigation {
+  padding: 51px 0 0 15px;
+}
+.grit-mitigation-value {
+  font-family: var(--grit-light, OpenSans-Regular), sans-serif;
+  font-size: 24px;
+  line-height: 30px;
+  color: var(--grit-ink);
+}
+
+/* ================================================================================================
+ * ④ Spectrum Viewer
+ * ============================================================================================== */
+.grit-seg {
+  display: flex;
+  /* 参考图：分段控件 1338…1557，右侧齿轮在 1640 —— 中间那 80 px 是原版隐藏的 Filters 链接位 */
+  margin-right: 71.3px;
+}
+.grit-seg-btn {
+  min-width: 112px;
+  height: 24px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid rgba(74, 74, 74, 0.27);
+  margin-right: -6px;
+  background: #fff;
+  color: var(--grit-ink);
+  font-family: var(--grit-sans);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 22px;
+  letter-spacing: 1.25px;
+  text-align: center;
+  cursor: pointer;
+}
+.grit-seg-btn:first-child {
+  border-radius: 5px 0 0 5px;
+}
+.grit-seg-btn:last-child {
+  border-radius: 0 5px 5px 0;
+  margin-right: 0;
+}
+.grit-seg-btn.is-active {
+  background: var(--grit-teal);
+  color: #fff;
+  border-color: var(--grit-teal);
+}
+/* 参考图：SVG 顶端（缩略图刻度）在瓦片内 y=46，宽 1185 → 高度 320 */
+.grit-spec {
+  position: absolute;
+  left: 16px;
+  right: 0;
+  top: 46px;
+  bottom: 0;
+  overflow: hidden;
+}
+.grit-spec-svg {
+  display: block;
+  width: 1185px;
+  max-width: 100%;
+  height: auto;
+}
+.grit-spec-note {
+  position: absolute;
+  left: 20px;
+  bottom: 8px;
+  font-size: 12px;
+  color: var(--grit-ink-60);
+}
+
+/* SVG 内部件 */
+.grit-spec-thumbbox {
+  fill: #fff;
+  stroke: #9b9b9b;
+  stroke-width: 1;
+}
+.grit-spec-break {
+  fill: none;
+  stroke: #9b9b9b;
+  stroke-width: 1;
+}
+.grit-spec-tick {
+  stroke: #bdbdbd;
+  stroke-width: 1;
+}
+.grit-spec-ticklabel {
+  fill: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 11px;
+}
+.grit-spec-chip {
+  fill: var(--grit-teal);
+}
+.grit-spec-chiplabel {
+  fill: #fff;
+  font-family: var(--grit-sans);
+  font-size: 11px;
+}
+.grit-spec-plot {
+  fill: #fff;
+  stroke: #9b9b9b;
+  stroke-width: 1;
+}
+.grit-spec-grid {
+  stroke: #eeeeee;
+  stroke-width: 1;
+}
+.grit-spec-axis {
+  fill: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 11px;
+}
+.grit-spec-band {
+  fill: #fff;
+  stroke: #9dbfd0;
+  stroke-width: 1;
+}
+.grit-spec-bandlabel {
+  fill: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 11px;
+}
+.grit-spec-empty {
+  fill: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 13px;
+}
+.grit-spec-ruler {
+  fill: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 12px;
+}
+
+/* ================================================================================================
+ * ⑤ Signal Matrix
+ * ============================================================================================== */
+.grit-matrix {
+  position: relative;
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  height: 300px;
+}
+.grit-matrix-main {
+  flex: 0 0 auto;
+  width: 262px;
+}
+.grit-matrix-head,
+.grit-matrix-row {
+  display: flex;
+  align-items: flex-start;
+  height: 37.33px;
+}
+.grit-matrix-head {
+  height: 19px;
+  align-items: flex-start;
+  line-height: 14px;
+  font-family: var(--grit-sans);
+  font-size: 14px;
+  color: var(--grit-ink);
+}
+/* 行名 54.67 宽，之后三格（43.33 宽、22.67 间距） */
+.grit-matrix-name,
+.grit-matrix-head > span:first-child {
+  flex: 0 0 54.67px;
+  width: 54.67px;
+  font-size: 14px;
+  line-height: 27px;
+  color: var(--grit-ink);
+  white-space: nowrap;
+}
+.grit-matrix-cells {
+  display: flex;
+  align-items: flex-start;
+  gap: 22.67px;
+}
+.grit-matrix-band {
+  flex: 0 0 43.33px;
+  width: 43.33px;
+  font-size: 14px;
+  text-align: center;
+  color: var(--grit-ink);
+  white-space: nowrap;
+}
+.grit-matrix-band:first-child {
+  margin-left: 0;
+}
+/* 参考图：格子 43.33 × 27（无信号时只有底色 rgba(0,0,0,.04)）*/
+.grit-cell {
+  flex: 0 0 43.33px;
+  width: 43.33px;
+  min-height: 27px;
+  box-sizing: border-box;
+  padding: 0.5px;
+  background: rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+/* 7×7 方块 + 0.5 margin = 8 px 步距，43 px 一行放 5 个 */
+.grit-sq {
+  width: 7px;
+  height: 7px;
+  margin: 0.5px;
+  background: var(--grit-good);
+  flex: 0 0 auto;
+}
+/* LBAND / SBAS 只有一格：参考图里分别在 172 和 202.67（相对瓦片内边）*/
+.grit-matrix-row[data-row="lband"] .grit-cell:not([data-cell="L1"]),
+.grit-matrix-row[data-row="sbas"] .grit-cell:not([data-cell="L1"]) {
+  display: none;
+}
+.grit-matrix-row[data-row="lband"] .grit-cell[data-cell="L1"] {
+  margin-left: 101.3px;
+}
+.grit-matrix-row[data-row="sbas"] .grit-cell[data-cell="L1"] {
+  margin-left: 131.3px;
+}
+
+/* 分隔线 x=278（瓦片内），图例从 290 起 */
+.grit-matrix-split {
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: stretch;
+  margin: 0 10px 0 0;
+  background: #dddddd;
+}
+.grit-matrix-legend {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 1px;
+}
+.grit-legend-title {
+  font-family: var(--grit-sans);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.4px;
+  color: var(--grit-ink);
+}
+.grit-legend-group {
+  margin-top: 14px;
+}
+.grit-legend-sub {
+  display: block;
+  font-family: var(--grit-sans);
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 1px;
+  color: rgba(0, 81, 111, 0.6);
+  white-space: nowrap;
+}
+.grit-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--grit-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--grit-ink);
+  margin-top: 5px;
+}
+.grit-legend-box {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  background: var(--grit-good);
+}
+.grit-legend-box.is-warn {
+  background: var(--grit-warn);
+}
+.grit-legend-box.is-poor {
+  background: var(--grit-poor);
+}
+.grit-legend-box.is-interf {
+  width: 18px;
+  height: 12px;
+  background: #f3f3f3;
+  border: 1px solid var(--grit-warn);
+}
+.grit-legend-box.is-empty {
+  width: 18px;
+  height: 12px;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ================================================================================================
+ * ⑥ Position Overview
+ * ============================================================================================== */
+.grit-pos-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.grit-pos-head .grit-tile-tools {
+  position: static;
+  margin-top: 1px;
+}
+.grit-poi-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.87);
+  font-family: var(--grit-sans);
+  font-size: 14px;
+  cursor: pointer;
+}
+.grit-poi-ico {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  color: rgba(0, 0, 0, 0.87);
+}
+.grit-poi-btn:hover {
+  background: rgba(0, 81, 111, 0.08);
+}
+.grit-poi-ico svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+/* 参考图：Map/Satellite 凸起标签 493…617 × 749…780（相对瓦片 5…129 × 50…81）*/
+.grit-pos-tabs {
+  position: absolute;
+  left: 5px;
+  top: 50px;
+  display: flex;
+  align-items: stretch;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+  z-index: 2;
+}
+.grit-pos-tab {
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 15px;
+  cursor: pointer;
+}
+.grit-pos-tab.is-active {
+  color: var(--grit-ink);
+  font-weight: 600;
+}
+.grit-pos-canvas {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 80px;
+  bottom: 0;
+  /* 原版地图没加载底图时露出的就是瓦片底色（#FCFCFC），不是纯白 */
+  background: transparent;
+  border-top: 1px solid #e6e6e6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.grit-pos-note {
+  margin: 0;
+  padding: 0 24px;
+  font-family: var(--grit-sans);
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.38);
+  text-align: center;
+}
+.grit-pos-note[hidden] {
+  display: none;
+}
+
+/* ================================================================================================
+ * ⑦ Timeline ▲ 折叠条（右下角，同 Playback 的 dock 思路）
+ * ============================================================================================== */
+.grit-dock {
+  position: fixed;
+  right: 6px;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.grit-drawer {
+  width: 520px;
+  padding: 10px 14px 12px;
+  box-sizing: border-box;
+  background: #212121;
+  color: rgba(255, 255, 255, 0.87);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
+}
+.grit-drawer[hidden] {
+  display: none;
+}
+.grit-drawer-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--grit-sans);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.grit-drawer-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+.grit-drawer-gap {
+  margin-left: 10px;
+}
+.grit-drawer-strong {
+  font-family: var(--grit-semi);
+  font-weight: 600;
+  color: #fff;
+}
+.grit-drawer-note {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.5);
+}
+.grit-dock-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: #212121;
+  color: #e6e6e6;
+  font-family: var(--grit-sans);
+  font-size: 17px;
+  cursor: pointer;
+}
+.grit-dock-btn:hover {
+  background: #2c2c2c;
+}
+.grit-dock-caret {
+  display: inline-block;
+  width: 10px;
+  height: 6px;
+  color: #e6e6e6;
+  transition: transform 0.15s ease;
+}
+.grit-dock-caret svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ================================================================================================
+ * ⑧ 应用栏补件：文件页签 + Add Device（挂载时插进 index.html 的 #tabs-list）
+ * ============================================================================================== */
+#tabs-list li.grit-appbar-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 31px;
+  max-height: 31px;
+  margin: 3px 0 0 89px;
+  padding: 0 10px 0 12px;
+  box-sizing: border-box;
+  background: #000a0e;
+  border-radius: 3px 3px 0 0;
+  color: #fff;
+  font-family: var(--grit-bold, OpenSans-Bold, sans-serif);
+  font-size: 14px;
+  line-height: 31px;
+  cursor: default;
+}
+#tabs-list li.grit-appbar-file .grit-appbar-name {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: OpenSans-SemiBold, sans-serif;
+  font-weight: 600;
+}
+#tabs-list li.grit-appbar-file .grit-appbar-count {
+  font-family: OpenSans-Regular, sans-serif;
+  color: rgba(255, 255, 255, 0.9);
+}
+#tabs-list li.grit-appbar-file .grit-appbar-close {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+  line-height: 16px;
+  cursor: pointer;
+}
+#tabs-list li.grit-appbar-file .grit-appbar-close:hover {
+  color: var(--grit-warn, #f5a623);
+}
+#tabs-list li.grit-appbar-add {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  max-height: 34px;
+  margin: 0 0 0 14px;
+  padding: 0;
+  background: transparent;
+}
+.grit-appbar-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #7fd3e8;
+  font-family: OpenSans-Regular, sans-serif;
+  font-size: 15px;
+  cursor: pointer;
+}
+.grit-appbar-plus {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  color: #7fd3e8;
+}
+.grit-appbar-plus svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+/* 只在 GRIT 页显示这两件 —— 其它页签开着的时候它们不能留在应用栏里 */
+body:not([data-page="grit"]) #tabs-list li.grit-appbar-file,
+body:not([data-page="grit"]) #tabs-list li.grit-appbar-add {
+  display: none;
+}
+
+/* ------------------------------------------------------------------------------
+ * 应用栏文件页签里的文字必须显式 inherit。
+ * shell.css 里 `#tabs-list li span` 一类规则会把文件名刷成近黑色（rgba(0,0,0,.87)），
+ * 而页签底色是近黑 #212121 —— 结果是页签里只剩 "(0) ✕"，文件名看不见。
+ * （Manage 面板的菜单条踩过同一个坑，见 manage.css 末尾。）
+ * ---------------------------------------------------------------------------- */
+#tabs-list li.grit-appbar-file .grit-appbar-name,
+#tabs-list li.grit-appbar-file .grit-appbar-count,
+#tabs-list li.grit-appbar-file .grit-appbar-close {
+  color: inherit;
+}
