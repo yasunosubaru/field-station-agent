@@ -1068,3 +1068,8 @@ body[data-page="convert"] .convert-screens {
   margin-left: auto;
   margin-right: auto;
 }
+
+/* Graph 在套件里是独立进程（没有左窄轨）；GRIT / Manage 才有。 */
+body[data-page="graph"] #gritGroupView {
+  display: none;
+}
