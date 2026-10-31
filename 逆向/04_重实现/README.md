@@ -16,7 +16,7 @@ packages/
     src/decode.ts    字段解码（ENUM/DOUBLE/…/ustringvariable，越界返回 0）
     src/time.ts      GPS 周/秒 ↔ UTC（保留原实现的缺陷版本供对照）
     data/            由应用自身数据表生成的目录（勿手改，见 tools/gen_*.js）
-    test/            66 项
+    test/            120 项
   session/           有 I/O 的会话层
     src/transport.ts TCP / UDP / 串口（串口工厂注入，不硬依赖 serialport）
     src/session.ts   ReceiverSession：状态机、心跳、日志订阅、命令下发
@@ -102,7 +102,8 @@ node tools/gen_repeat_layouts.js
 - P1：Manage 视图层（tab/瓦片/连接流程/14 个 status 组件）已完成核心路径；
   14 个配置页的三态、命令组帧、应答计数、三套模板装配与通用配置弹窗也已完成核心路径。
   Device Details/Export/Update/Restart、标准 OEM `.cfg` 交换、Terminal 与 Events 已接通。
-  当前 356 项回归全绿；剩余顺序为 GRIT 专属面板、Plotly 像素对照、Longhorn
+  当前 507 项回归全绿（protocol 120 / app 15 / playback 13 / graph 38 / view 304 /
+  session 11 / desktop 6）；剩余顺序为 GRIT 专属面板、Plotly 像素对照、Longhorn
   update/config PIMTP 状态机、非 status 消息的完整枚举/展示派生。
 - P2：Convert 的 9 种格式、Graph 应用、安装与更新。
 
