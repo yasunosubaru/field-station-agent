@@ -15,6 +15,14 @@ import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { CONVERT_FORMATS, convertCapture, FORMAT_LABELS, FORMAT_NOTES, isConvertFormat, type ConvertFormat } from './convert.ts';
 import { loadCapture, tables } from './capture.ts';
+import {
+  applyConfigEvent,
+  configPageDocument,
+  configPageList,
+  configStylesheet,
+  isConfigPage,
+  readConfigAsset,
+} from './config-http.ts';
 import { LiveLink, type LiveTarget } from './live.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, summarizeLogs } from './logs.ts';
@@ -656,6 +664,68 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/live/command') {
         await handleLiveCommand(req, res, method);
+        return;
+      }
+      if (path === '/api/config/pages') {
+        sendJson(res, 200, { ok: true, pages: configPageList() }, method);
+        return;
+      }
+      if (path.startsWith('/config/')) {
+        const name = path.slice('/config/'.length);
+        if (!isConfigPage(name)) throw new HttpError(404, `未知配置页：${name}`);
+        sendText(res, 200, configPageDocument(name), 'text/html; charset=utf-8');
+        return;
+      }
+      if (path.startsWith('/view/')) {
+        const relative = decodeURIComponent(path.slice('/view/'.length));
+        const asset = readConfigAsset(relative);
+        if (!asset) throw new HttpError(404, `无此文件：/view/${relative}`);
+        const type = configStylesheet(relative)?.type ?? 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=3600' });
+        res.end(asset);
+        return;
+      }
+      if (path.startsWith('/images/') || path.startsWith('/media/')) {
+        // The shipped fragments reference these absolutely (`<img src="/images/…">`), so serve
+        // them from the unpacked view tree as well.
+        const relative = decodeURIComponent(path.slice(1));
+        const asset = readConfigAsset(relative);
+        if (!asset) throw new HttpError(404, `无此文件：${path}`);
+        const type = configStylesheet(relative)?.type ?? 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=3600' });
+        res.end(asset);
+        return;
+      }
+      if (path.startsWith('/api/config/') && path.endsWith('/event')) {
+        if (method !== 'POST') throw new HttpError(405, '/api/config/:page/event 只接受 POST');
+        const name = path.slice('/api/config/'.length, -'/event'.length);
+        if (!isConfigPage(name)) throw new HttpError(404, `未知配置页：${name}`);
+        const body = await readJsonBody(req);
+        const selector = typeof body.selector === 'string' ? body.selector : '';
+        if (!selector) throw new HttpError(400, 'selector 不能为空');
+        const result = applyConfigEvent(name, selector, {
+          value: body.value,
+          checked: typeof body.checked === 'boolean' ? body.checked : undefined,
+          click: body.click === true ? true : undefined,
+        });
+        // Anything the controller framed goes out over the live session, exactly as a menu click
+        // would; without a session the commands are dropped and the response says so.
+        const queued = result.commands;
+        const status = liveLink().status();
+        if (status.connected) {
+          for (const command of queued) {
+            if (command.kind === 'raw' && command.text) liveLink().send(command.text);
+            else if (command.kind === 'ascii' && command.text) liveLink().send(command.text);
+            else if (command.kind === 'binary' && command.bytes) liveLink().sendBinary(command.bytes);
+          }
+        }
+        sendJson(res, 200, {
+          ok: true,
+          shell: result.shell,
+          applied: result.applied,
+          commands: queued.length,
+          sent: status.connected ? queued.length : 0,
+        }, method);
         return;
       }
       if (path === '/api/playback/info') {

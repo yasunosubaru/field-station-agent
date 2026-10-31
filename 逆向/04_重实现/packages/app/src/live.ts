@@ -316,6 +316,21 @@ export class LiveLink {
     return this.status();
   }
 
+  /** Send raw framed bytes (a binary command the configuration pages built). */
+  sendBinary(bytes: Uint8Array): LiveStatus {
+    if (!this.session) {
+      this.lastError = 'not connected';
+      return this.status();
+    }
+    try {
+      this.session.sendBytes(bytes);
+      this.lastError = null;
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+    }
+    return this.status();
+  }
+
   /** Entries newer than `after` (0 = everything currently buffered). */
   logs(after = 0): { cursor: number; entries: LiveEntry[] } {
     const entries = after > 0 ? this.buffer.filter((entry) => entry.seq > after) : [...this.buffer];
