@@ -105,6 +105,52 @@ export interface LiveInterference {
   entries: LiveInterferenceEntry[];
 }
 
+/**
+ * The `status word` of ITPSDFINAL / ITPSDDETECT — OEM7 Commands and Logs Reference Manual,
+ * ITPSDFINAL §"Spectral analysis status word". It describes the *configuration* of the sweep; it
+ * carries no sequence number (that lives in the binary header, see `LiveSpectrum.sequence`).
+ */
+export interface LiveSpectrumStatus {
+  /** The word verbatim, so nothing below can be mistaken for the wire value. */
+  word: number;
+  /** Bits 0-3 — `ITSPECTRALANALYSIS` frequency index (0 GPSL1 · 5 GPSL5 · 6 LBAND · …). */
+  frequency: number;
+  /** Bits 4-7 — data source (0 OFF · 1 PREDECIMATION · 2 POSTDECIMATION · 3 POSTFILTER). */
+  dataSource: number;
+  /** Bits 8-10 — FFT size index (0 = 1K … 6 = 64K). */
+  fftSize: number;
+  /** Bits 11-15 — integration window. */
+  integrationWindow: number;
+  /** Bits 16-19 — time-averaging window, seconds. */
+  timeAverage: number;
+}
+
+/**
+ * ITPSDFINAL #1968 / ITPSDDETECT #2063 — one chunk of a PSD sweep, in dBm.
+ *
+ * The manual caps one log at 1024 samples: "if the number of samples is larger than 1024, more
+ * than one ITPSDFINAL log is needed … The output logs can be grouped together through the sequence
+ * number of the log header." Measured in `samples/live-20261031/b1-20261101.sbf`: every
+ * ITPSDDETECT sweep is two frames — header sequence 1 with 1024 samples at 1531.2866 MHz, then
+ * header sequence 0 with the remaining 341 samples at 1606.2866 MHz (= start + 1024 × RBW), both
+ * stamped with the same millisecond and the same status word. So `sequence` here is the **header**
+ * field at byte 10 (`header.sequence`), and it counts down to 0 on the last chunk.
+ */
+export interface LiveSpectrum {
+  kind: 'itpsd';
+  /** `final` = ITPSDFINAL (1968), `detect` = ITPSDDETECT (2063). Both share this shape. */
+  log: 'final' | 'detect';
+  /** Header word at byte 10; `0` marks the last chunk of a sweep. */
+  sequence: number;
+  status: LiveSpectrumStatus;
+  /** MHz — frequency of sample 0. */
+  frequencyStart: number;
+  /** Hz — resolution bandwidth, i.e. the spacing of one bin. */
+  stepSize: number;
+  /** dBm — `raw / 256 − 200`, the manual's two conversion steps, applied per sample. */
+  samples: number[];
+}
+
 /** VERSION #37 — the Device tile's Model. */
 export interface LiveVersion {
   kind: 'version';
@@ -126,7 +172,8 @@ export type LiveData =
   | LiveRange
   | LiveInterference
   | LiveVersion
-  | LiveSatvis;
+  | LiveSatvis
+  | LiveSpectrum;
 
 export interface LiveEntry {
   /** Monotonic cursor; the UI passes the last one back as `after`. */
@@ -165,9 +212,11 @@ const SERIAL_OPEN_DELAY_MS = 200;
 /** A RANGE with 84 observations in a capture; 256 leaves room for a bigger constellation set. */
 const OBSERVATION_LIMIT = 256;
 const SATELLITE_LIMIT = 256;
+/** One ITPSDFINAL log is capped at 1024 samples, but a 64K FFT can ask for far more per sweep. */
+const SAMPLE_LIMIT = 65536;
 
 /** Message ids whose payload `decodeEdie` turns into a `LiveData` projection. */
-const TELEMETRY_IDS = new Set([37, 42, 43, 963, 1043, 2065]);
+const TELEMETRY_IDS = new Set([37, 42, 43, 963, 1043, 1968, 2063, 2065]);
 
 export class LiveLink {
   private session?: ReceiverSession;
@@ -500,6 +549,39 @@ export class LiveLink {
           satellites.push({ id, elevation, azimuth, health: number(`sat_vis_list[${index}].sat_health`) ?? 0 });
         }
         return { kind: 'satvis', system: text('system_type'), satellites };
+      }
+
+      case 1968:
+      case 2063: {
+        /* Both logs share the layout: status word, frequency start (MHz), resolution bandwidth
+         * (Hz), sample count, then that many little-endian u16 samples at H+16. The ASCII twin of
+         * this decoding is in the golden file, e.g.
+         * `04020920,1531.299,97656.250,1024,22587,22865,…` → status 0x04020920, 1531.2988 MHz,
+         * 97.656 kHz RBW, 1024 samples, the first one 22587/256−200 = −111.7695 dBm. */
+        const word = number('status_word') ?? 0;
+        const declared = count('samples.count', SAMPLE_LIMIT);
+        const samples: number[] = [];
+        for (let index = 0; index < declared; index += 1) {
+          const raw = number(`samples[${index}].samples`);
+          if (raw === null) continue;
+          samples.push(raw / 256 - 200);
+        }
+        return {
+          kind: 'itpsd',
+          log: log.messageId === 1968 ? 'final' : 'detect',
+          sequence: log.header.kind === 'long' ? log.header.sequence : 0,
+          status: {
+            word,
+            frequency: word & 0xf,
+            dataSource: (word >>> 4) & 0xf,
+            fftSize: (word >>> 8) & 0x7,
+            integrationWindow: (word >>> 11) & 0x1f,
+            timeAverage: (word >>> 16) & 0xf,
+          },
+          frequencyStart: number('frequency_start_m_hz') ?? 0,
+          stepSize: number('step_size_hz') ?? 0,
+          samples,
+        };
       }
 
       case 2065: {

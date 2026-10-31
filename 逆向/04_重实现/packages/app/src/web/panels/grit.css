@@ -176,7 +176,7 @@ body[data-page="grit"] .app-panel {
   top: 44px;
   right: 6px;
   z-index: 30;
-  max-width: 320px;
+  max-width: 360px;
   padding: 10px 12px;
   background: #1d1d1d;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -448,20 +448,25 @@ body[data-page="grit"] .app-panel {
   left: 16px;
   right: 0;
   top: 46px;
-  bottom: 0;
+  /* the caption (`specNote`) owns the strip below the plot, so it never sits on the axis labels */
+  bottom: 42px;
   overflow: hidden;
 }
 .grit-spec-svg {
   display: block;
-  width: 1185px;
+  width: auto;
+  height: 100%;
   max-width: 100%;
-  height: auto;
 }
 .grit-spec-note {
   position: absolute;
   left: 20px;
-  bottom: 8px;
+  right: 12px;
+  bottom: 4px;
+  max-height: 36px;
+  overflow: hidden;
   font-size: 12px;
+  line-height: 17px;
   color: var(--grit-ink-60);
 }
 
@@ -526,6 +531,128 @@ body[data-page="grit"] .app-panel {
   fill: var(--grit-ink-60);
   font-family: var(--grit-sans);
   font-size: 12px;
+}
+/* the real trace: one point per merged PSD sample (see `spectrumPlotSvg` in grit.js) */
+.grit-spec-trace {
+  fill: none;
+  stroke: var(--grit-teal-deep);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.grit-spec-fill {
+  fill: rgba(39, 160, 191, 0.16);
+  stroke: none;
+}
+/* waterfall raster (canvas → <image>, stretched over the plot area) */
+.grit-spec-svg image {
+  image-rendering: auto;
+}
+
+/* ================================================================================================
+ * ④b 菜单弹出层（Settings / Tools / Help）
+ * ============================================================================================== */
+.grit-pop-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 250px;
+}
+.grit-pop-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--grit-sans);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.grit-pop-item:hover,
+.grit-pop-item:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+.grit-pop-hint {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.grit-pop-note {
+  margin: 8px 0 0;
+  max-width: 300px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 17px;
+  white-space: normal;
+}
+.grit-pop-note[hidden] {
+  display: none;
+}
+.grit-pop-panel {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 258px;
+}
+.grit-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+}
+.grit-field > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.grit-input {
+  width: 124px;
+  flex: 0 0 124px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 2px;
+  background: #2b2b2b;
+  color: #fff;
+  font-family: var(--grit-sans);
+  font-size: 12px;
+}
+.grit-input:focus-visible {
+  outline: 1px solid var(--grit-cyan);
+}
+.grit-pop-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.grit-pop-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--grit-cyan);
+  border-radius: 2px;
+  background: var(--grit-cyan);
+  color: #04222b;
+  font-family: var(--grit-semi);
+  font-size: 12px;
+  cursor: pointer;
+}
+.grit-pop-btn.is-ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+.grit-pop-note code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  color: var(--grit-cyan);
 }
 
 /* ================================================================================================

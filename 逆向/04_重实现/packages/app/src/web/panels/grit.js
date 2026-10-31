@@ -33,9 +33,27 @@
  *
  * Blocks that are deliberately empty on this build, because the data is not in the capture:
  *   Interference / Jamming / Mitigation Assistant → `Not detected` (no ITK in any sample)
- *   Spectrum Viewer                                → axes + band chips + the note
- *                                                    "No spectrum data in this capture"
  *   Position Overview                              → blank canvas (no basemap renderer here)
+ *
+ * Spectrum Viewer / Waterfall — the one tile that is **live-only**, and the reason is on screen
+ * when it is empty rather than a guess:
+ *
+ *   - the samples come from `ITPSDFINAL` (#1968) / `ITPSDDETECT` (#2063), which the receiver only
+ *     emits while an `ITSPECTRALANALYSIS` sweep is running. `/api/live/logs` carries them in
+ *     `entry.data` (see `LiveSpectrum` in `src/live.ts`), so this panel polls
+ *     `/api/live/status` + `/api/live/logs?after=<cursor>` exactly like `panels/manage.js` does;
+ *   - one sweep can span several logs (max 1024 samples each). They are grouped by the **OEM7
+ *     header sequence word** — buffered while `sequence !== 0`, merged when `sequence === 0`, which
+ *     is the manual's rule ("grouped together through the sequence number of the log header") and
+ *     what `sample-b1` shows: one 1365-sample ITPSDDETECT sweep = sequence 1 (1024) + sequence 0
+ *     (341);
+ *   - the curve plots every merged sample in dBm (`raw/256 − 200`); the waterfall rasterises the
+ *     ten most recent merged sweeps on a matching frequency grid, with the original's colour map
+ *     (−135 dBm purple … −30 dBm red).
+ *
+ * A capture cannot feed this tile: a 1024-sample frame is 1028 decoded fields and
+ * `/api/records` truncates at 800 (`logs.ts` `FIELD_LIMIT`), so the panel says so instead of
+ * drawing a spectrum whose tail is missing.
  *
  * Contract: `mount(root, ctx)` / `unmount(root)`, ctx = { api, capture, onCaptureChange }.
  */
@@ -47,6 +65,38 @@ const CSS_ID = 'nas-panel-grit-css';
 const BESTPOS = 42;
 const RANGE = 43;
 const HWMONITOR = 963;
+/** Spectrum: the processed PSD of a sweep, and the detection view of the same sweep. */
+const ITPSD_FINAL = 1968;
+const ITPSD_DETECT = 2063;
+
+/** How many merged sweeps the waterfall keeps (the original's waterfall is a rolling strip). */
+const WATERFALL_FRAMES = 10;
+/** One poll of `/api/live/status` + `/api/live/logs`; `manage.js` uses 900 ms for the same pair. */
+const LIVE_POLL_MS = 900;
+
+/** `ITSPECTRALANALYSIS` enums, OEM7 manual — 0..23, the word's bits 0-3 carry this value. */
+const SPECTRUM_FREQUENCIES = [
+  'GPSL1', 'GPSL2', 'GLONASSL1', 'GLONASSL2', 'Reserved', 'GPSL5', 'LBAND', 'GALILEOE1',
+  'GALILEOE5A', 'GALILEOE5B', 'GALILEOALTBOC', 'BEIDOUB1', 'BEIDOUB2', 'QZSSL1', 'QZSSL2',
+  'QZSSL5', 'QZSSL6', 'GALILEOE6', 'BEIDOUB3', 'GLONASSL3', 'NAVICL5', 'BEIDOUB1C', 'BEIDOUB2A',
+  'BEIDOUB2B',
+];
+const SPECTRUM_DATA_SOURCES = ['OFF', 'PREDECIMATION', 'POSTDECIMATION', 'POSTFILTER'];
+const SPECTRUM_FFT_SIZES = [1, 2, 4, 8, 16, 32, 64];
+
+/** The original's waterfall colour map: −135 dBm … −30 dBm, `spectrumPlot.js:2795-2806`. */
+const WATERFALL_STOPS = [
+  [-135, [105, 41, 196]],
+  [-120, [17, 146, 232]],
+  [-105, [17, 146, 232]],
+  [-90, [25, 128, 56]],
+  [-75, [130, 173, 50]],
+  [-60, [245, 166, 35]],
+  [-45, [255, 131, 43]],
+  [-30, [218, 30, 40]],
+];
+const WATERFALL_MIN = WATERFALL_STOPS[0][0];
+const WATERFALL_MAX = WATERFALL_STOPS[WATERFALL_STOPS.length - 1][0];
 
 /** `system` = `(c_status >> 16) & 7` — the same three bits `packages/graph/src/range-charts.ts`
  *  and `panels/playback.js` use. */
@@ -93,6 +143,32 @@ function esc(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** Fallback API for a standalone panel import (the shell always passes its own `ctx.api`). */
+function defaultApi() {
+  const request = async (method, path, body, params) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value === undefined || value === null) continue;
+      query.set(key, String(value));
+    }
+    const text = query.toString();
+    const init = { method, headers: { Accept: 'application/json' } };
+    if (body !== undefined) {
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(body);
+    }
+    const response = await fetch(text ? `${path}?${text}` : path, init);
+    const type = response.headers.get('content-type') ?? '';
+    const data = type.includes('application/json') ? await response.json() : { error: await response.text() };
+    if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+    return data;
+  };
+  return {
+    get: (path, params) => request('GET', path, undefined, params),
+    post: (path, body) => request('POST', path, body),
+  };
 }
 
 function baseName(path) {
@@ -224,13 +300,12 @@ function matrixTiles() {
 }
 
 /**
- * Spectrum Viewer plot. Coordinates are the reference's own CSS px, in an SVG whose origin sits
- * at tile-relative (16, 46): the thumbnail strip occupies y 31..48, the plot y 74..300, and the
- * x axis labels y 304..314. Two panels with a break at x 592, left 1150..1305 MHz and right
- * 1535..1625 MHz — the original draws the L1 window zoomed 2.3× relative to the L5/L2 window,
- * which is why the tick pitches differ.
+ * Empty state — the reference screenshot's frame: a thumbnail strip, two windows with a break at
+ * x 592 (1150..1305 MHz and 1535..1625 MHz), band chips. It is drawn only while no ITPSD sample
+ * has arrived; `renderSpectrum` replaces it with `spectrumPlotSvg`/`waterfallSvg` as soon as the
+ * receiver sends one, and `specNote` always carries the reason this frame is still showing.
  */
-function spectrumSvg() {
+function placeholderSpectrumSvg() {
   const W = 1185;
   const H = 320;
   const top = 74;
@@ -346,7 +421,7 @@ function spectrumSvg() {
 
   /* ---- the honest note: this capture has no spectrum samples ---- */
   parts.push(
-    `<text x="${((leftMin + rightMax) / 2).toFixed(1)}" y="${(dbToY(-88) + 4).toFixed(1)}" class="grit-spec-empty" text-anchor="middle">No spectrum data in this capture</text>`,
+    `<text x="${((leftMin + rightMax) / 2).toFixed(1)}" y="${(dbToY(-88) + 4).toFixed(1)}" class="grit-spec-empty" text-anchor="middle">No spectrum data</text>`,
   );
 
   /* ---- constellation ruler on the right, clipped by the tile like the original ---- */
@@ -388,9 +463,12 @@ function template() {
         <span class="grit-events-ico">${ICON.bell}</span>
         <span class="grit-events-count" data-el="eventsCount">0</span>
       </button>
-      <div class="grit-menu-pop" data-el="menuPop" hidden></div>
     </div>
   </div>
+
+  <!-- The popover lives on the page, not inside .grit-menubar-right (a positioned box at the right
+       end of the bar): its left must be measured from .grit-page. -->
+  <div class="grit-menu-pop" data-el="menuPop" hidden></div>
 
   <div class="grit-band">
     <div class="grit-band-inner">
@@ -446,7 +524,7 @@ function template() {
           <button type="button" class="grit-icon-btn" data-el="specGear" aria-label="Spectrum settings">${ICON.gear}</button>
           <button type="button" class="grit-tile-more grit-tile-more-inline" aria-label="More">${ICON.dots}</button>
         </div>
-        <div class="grit-spec" data-el="spectrum">${spectrumSvg()}</div>
+        <div class="grit-spec" data-el="spectrum">${placeholderSpectrumSvg()}</div>
         <div class="grit-spec-note" data-el="specNote" hidden></div>
       </section>
     </div>
@@ -550,7 +628,6 @@ async function readStatus(ctx, capture) {
     time: null,
     device: null,
     matrix: null,
-    spectrum: null,
     info: null,
   };
 
@@ -647,9 +724,350 @@ async function readStatus(ctx, capture) {
     if (record) out.device = readDevice(record);
   }
 
-  /* ---- spectrum: only when a capture actually carries an ITK/spectrum log ---- */
-  out.spectrum = await readSpectrum(ctx, capture, types);
+  /* Spectrum is **not** read from the capture: it comes from the live ITPSD stream (see the
+     file header) — `readStatus` therefore leaves `out.spectrum` alone. */
   return out;
+}
+
+/* ---------------- spectrum store (live ITPSD) ---------------- */
+
+function emptySpectrumStore() {
+  return {
+    /** Chunks of a sweep that has not finished yet, per log (`sequence !== 0`). */
+    pending: { final: [], detect: [] },
+    /** Merged sweeps, oldest first; at most `WATERFALL_FRAMES`. */
+    frames: [],
+    /** The newest merged sweep, what the curve draws. */
+    latest: null,
+    /** Counters the note and the export read, so nothing here is inferred. */
+    chunks: 0,
+    sweeps: 0,
+    duplicates: 0,
+    skipped: 0,
+    lastError: '',
+  };
+}
+
+/**
+ * Fold one live entry into the store. Returns true when the drawing changed.
+ *
+ * Grouping rule: the receiver caps one log at 1024 samples and numbers the chunks with the OEM7
+ * header word at byte 10 — every chunk but the last has a non-zero sequence, the last one has 0
+ * ("The output logs can be grouped together through the sequence number of the log header",
+ * ITPSDFINAL). A chunk already held under the same sequence is dropped, which is what the
+ * original's `processITPSDFinalData` does with a repeated `sequenceId`.
+ */
+function ingestSpectrum(store, entry) {
+  const data = entry?.data;
+  if (!data || data.kind !== 'itpsd') return false;
+  const log = data.log === 'detect' ? 'detect' : 'final';
+  const samples = Array.isArray(data.samples) ? data.samples : [];
+  store.lastError = '';
+  if (!samples.length) {
+    // A payload the ring buffer truncated (or a layout with no samples): say so, draw nothing.
+    store.lastError = `${entry.name || 'ITPSD'} #${entry.messageId} carried no samples`;
+    return true;
+  }
+  const chunk = {
+    log,
+    sequence: Number(data.sequence) || 0,
+    frequencyStart: Number(data.frequencyStart),
+    stepSize: Number(data.stepSize),
+    samples,
+    status: data.status ?? null,
+    time: entry.time ?? '',
+    milliseconds: Number(entry.milliseconds) || 0,
+  };
+  store.chunks += 1;
+
+  const pending = store.pending[log];
+  if (chunk.sequence !== 0) {
+    /* A new millisecond means a new sweep: whatever is still buffered belongs to a sweep the
+     * receiver never finished sending. */
+    if (pending.length && pending[pending.length - 1].milliseconds !== chunk.milliseconds) pending.length = 0;
+    if (pending.some((item) => item.sequence === chunk.sequence && item.frequencyStart === chunk.frequencyStart)) {
+      store.duplicates += 1;
+      return false;
+    }
+    pending.push(chunk);
+    if (pending.length > 8) pending.shift();
+    return true;
+  }
+
+  const group = pending.splice(0, pending.length);
+  group.push(chunk);
+  const frame = mergeChunks(group);
+  if (!frame) {
+    store.lastError = 'the chunks of this sweep do not line up on one frequency grid';
+    return true;
+  }
+  store.skipped += frame.skipped;
+  store.frames.push(frame);
+  if (store.frames.length > WATERFALL_FRAMES) store.frames.splice(0, store.frames.length - WATERFALL_FRAMES);
+  store.latest = frame;
+  store.sweeps += 1;
+  return true;
+}
+
+/** Sort the chunks by frequency and concatenate them when they are contiguous. */
+function mergeChunks(chunks) {
+  const sorted = chunks.slice().sort((a, b) => a.frequencyStart - b.frequencyStart);
+  const head = sorted[0];
+  if (!head) return null;
+  const samples = [];
+  const parts = [];
+  let expected = head.frequencyStart;
+  let skipped = 0;
+  for (const chunk of sorted) {
+    const bin = chunk.stepSize / 1e6;
+    const tolerance = bin > 0 ? bin / 2 : 1e-6;
+    if (chunk.stepSize !== head.stepSize || Math.abs(chunk.frequencyStart - expected) > tolerance) {
+      skipped += 1;
+      continue;
+    }
+    for (let index = 0; index < chunk.samples.length; index += 1) samples.push(chunk.samples[index]);
+    parts.push({ sequence: chunk.sequence, samples: chunk.samples.length });
+    expected = chunk.frequencyStart + (chunk.samples.length * chunk.stepSize) / 1e6;
+  }
+  if (!samples.length) return null;
+  return {
+    log: head.log,
+    frequencyStart: head.frequencyStart,
+    stepSize: head.stepSize,
+    samples,
+    parts,
+    skipped,
+    status: head.status,
+    time: head.time,
+    milliseconds: head.milliseconds,
+  };
+}
+
+/** Sweeps the waterfall can stack: the ones sharing the newest sweep's frequency grid. */
+function waterfallFrames(store) {
+  const base = store.latest;
+  if (!base) return [];
+  return store.frames.filter(
+    (frame) =>
+      frame.frequencyStart === base.frequencyStart &&
+      frame.stepSize === base.stepSize &&
+      frame.samples.length === base.samples.length,
+  );
+}
+
+function spectrumRange(frame) {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const value of frame.samples) {
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return { low: -130, high: -40 };
+  let bottom = Math.floor((low - 5) / 10) * 10;
+  let top = Math.ceil((high + 5) / 10) * 10;
+  if (top - bottom < 20) {
+    bottom -= 5;
+    top += 5;
+  }
+  return { low: bottom, high: top };
+}
+
+/** Frequency ticks: a round step, at most `max` of them across the sweep. */
+function frequencyTicks(from, to, max) {
+  const span = to - from;
+  const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50, 100];
+  const step = steps.find((candidate) => span / candidate <= max) ?? 100;
+  const out = [];
+  for (let value = Math.ceil(from / step) * step; value <= to; value += step) out.push(Number(value.toFixed(3)));
+  return { tick: step, values: out };
+}
+
+/** Metadata line under the plot — every number comes from the frame itself. */
+function spectrumCaption(frame) {
+  if (!frame) return '';
+  const n = frame.samples.length;
+  const span = (n * frame.stepSize) / 1e6;
+  const from = frame.frequencyStart;
+  const to = from + span;
+  const rbw = frame.stepSize >= 1000 ? `${(frame.stepSize / 1000).toFixed(2)} kHz` : `${frame.stepSize.toFixed(0)} Hz`;
+  const log = frame.log === 'detect' ? 'ITPSDDETECT' : 'ITPSDFINAL';
+  const chunks = frame.parts.length > 1 ? ` · ${frame.parts.length} logs (sequence ${frame.parts.map((part) => part.sequence).join(' → ')})` : '';
+  return `${log} · ${from.toFixed(3)}–${to.toFixed(3)} MHz · RBW ${rbw} · ${n} samples${chunks} · ${frame.time ? frame.time.replace('T', ' ').replace('Z', '') + ' UTC' : '--'}`;
+}
+
+/**
+ * The real plot: one point per merged sample, x from the frame's own `frequencyStart`/`stepSize`,
+ * y auto-scaled around the data in 10 dB steps (the original's `calculateYRangeWithBuffer`).
+ */
+function spectrumPlotSvg(frame) {
+  const W = 1185;
+  const H = 300;
+  const x0 = 64;
+  const x1 = W - 16;
+  const yTop = 20;
+  const yBottom = H - 38;
+  const n = frame.samples.length;
+  const from = frame.frequencyStart;
+  const to = from + (n * frame.stepSize) / 1e6;
+  const { low, high } = spectrumRange(frame);
+  const px = (mhz) => x0 + ((mhz - from) / (to - from)) * (x1 - x0);
+  const py = (dbm) => yBottom - ((dbm - low) / (high - low)) * (yBottom - yTop);
+
+  const parts = [
+    `<svg class="grit-spec-svg" viewBox="0 0 ${W} ${H}" role="img" ` +
+      `aria-label="Spectrum ${from.toFixed(2)} to ${to.toFixed(2)} MHz, ${n} samples, ${low} to ${high} dBm" ` +
+      `data-points="${n}" data-from="${from.toFixed(4)}" data-step="${frame.stepSize}">`,
+    `<rect x="${x0}" y="${yTop}" width="${x1 - x0}" height="${yBottom - yTop}" class="grit-spec-plot"/>`,
+  ];
+
+  for (let dbm = high; dbm >= low; dbm -= 10) {
+    const y = py(dbm).toFixed(1);
+    parts.push(`<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" class="grit-spec-grid"/>`);
+    parts.push(`<text x="${x0 - 6}" y="${(Number(y) + 3.4).toFixed(1)}" class="grit-spec-axis" text-anchor="end">${dbm}</text>`);
+  }
+
+  const ticks = frequencyTicks(from, to, 10);
+  for (const mhz of ticks.values) {
+    const x = px(mhz).toFixed(1);
+    parts.push(`<line x1="${x}" y1="${yBottom}" x2="${x}" y2="${yBottom + 4}" class="grit-spec-tick"/>`);
+    const label = ticks.tick >= 1 ? mhz.toFixed(0) : mhz.toFixed(1);
+    parts.push(`<text x="${x}" y="${yBottom + 17}" class="grit-spec-axis" text-anchor="middle">${label}</text>`);
+  }
+  parts.push(`<text x="${x1}" y="${H - 6}" class="grit-spec-ruler" text-anchor="end">MHz</text>`);
+
+  let trace = '';
+  for (let index = 0; index < n; index += 1) {
+    const x = px(from + (index * frame.stepSize) / 1e6).toFixed(1);
+    const y = py(frame.samples[index]).toFixed(1);
+    trace += `${index ? 'L' : 'M'}${x} ${y}`;
+  }
+  const area =
+    `M${px(from).toFixed(1)} ${yBottom}L${trace.slice(1)}L${px(from + ((n - 1) * frame.stepSize) / 1e6).toFixed(1)} ${yBottom}Z`;
+  parts.push(`<path d="${area}" class="grit-spec-fill"/>`);
+  parts.push(`<path d="${trace}" class="grit-spec-trace" data-points="${n}"/>`);
+
+  /* The band the status word names, as a chip in the corner. */
+  const status = frame.status ?? null;
+  const bandName = status ? SPECTRUM_FREQUENCIES[status.frequency] ?? `#${status.frequency}` : '';
+  const sourceName = status ? SPECTRUM_DATA_SOURCES[status.dataSource] ?? `${status.dataSource}` : '';
+  if (bandName) {
+    parts.push(`<rect x="${x0 + 8}" y="${yTop + 8}" width="${bandName.length * 6.4 + 14}" height="17" rx="3" class="grit-spec-chip"/>`);
+    parts.push(
+      `<text x="${x0 + 15}" y="${yTop + 20}" class="grit-spec-chiplabel" text-anchor="start">${esc(bandName)}</text>`,
+    );
+  }
+  if (sourceName) {
+    parts.push(
+      `<text x="${x1 - 6}" y="${yTop + 20}" class="grit-spec-axis" text-anchor="end">${esc(sourceName)}</text>`,
+    );
+  }
+  parts.push('</svg>');
+  return parts.join('');
+}
+
+function waterfallColor(dbm) {
+  if (!Number.isFinite(dbm)) return [0, 0, 0];
+  const clamped = Math.min(WATERFALL_MAX, Math.max(WATERFALL_MIN, dbm));
+  for (let index = 1; index < WATERFALL_STOPS.length; index += 1) {
+    const [value, colour] = WATERFALL_STOPS[index];
+    const [prevValue, prevColour] = WATERFALL_STOPS[index - 1];
+    if (clamped <= value) {
+      const t = value === prevValue ? 0 : (clamped - prevValue) / (value - prevValue);
+      return [
+        Math.round(prevColour[0] + (colour[0] - prevColour[0]) * t),
+        Math.round(prevColour[1] + (colour[1] - prevColour[1]) * t),
+        Math.round(prevColour[2] + (colour[2] - prevColour[2]) * t),
+      ];
+    }
+  }
+  return WATERFALL_STOPS[WATERFALL_STOPS.length - 1][1];
+}
+
+/**
+ * Waterfall: newest sweep on top, one pixel per (sweep, bin). Rasterised on a canvas and embedded
+ * as an `<image>`, because 10 × 1365 `<rect>`s would be tens of thousands of DOM nodes.
+ */
+function waterfallSvg(rows) {
+  const base = rows[rows.length - 1];
+  const n = base.samples.length;
+  const W = 1185;
+  const H = 300;
+  const x0 = 64;
+  const x1 = W - 16;
+  const yTop = 20;
+  const yBottom = H - 38;
+  const from = base.frequencyStart;
+  const to = from + (n * base.stepSize) / 1e6;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, n);
+  canvas.height = Math.max(1, rows.length);
+  const context = canvas.getContext('2d');
+  let href = '';
+  if (context) {
+    const image = context.createImageData(canvas.width, canvas.height);
+    for (let row = 0; row < rows.length; row += 1) {
+      const samples = rows[rows.length - 1 - row].samples; // newest first
+      for (let col = 0; col < n; col += 1) {
+        const [r, g, b] = waterfallColor(samples[col]);
+        const at = (row * n + col) * 4;
+        image.data[at] = r;
+        image.data[at + 1] = g;
+        image.data[at + 2] = b;
+        image.data[at + 3] = 255;
+      }
+    }
+    context.putImageData(image, 0, 0);
+    href = canvas.toDataURL('image/png');
+  }
+
+  const parts = [
+    `<svg class="grit-spec-svg" viewBox="0 0 ${W} ${H}" role="img" ` +
+      `aria-label="Waterfall of ${rows.length} sweeps, ${from.toFixed(2)} to ${to.toFixed(2)} MHz" ` +
+      `data-frames="${rows.length}" data-points="${n}">`,
+    `<rect x="${x0}" y="${yTop}" width="${x1 - x0}" height="${yBottom - yTop}" class="grit-spec-plot"/>`,
+  ];
+  if (href) {
+    parts.push(
+      `<image href="${href}" x="${x0}" y="${yTop}" width="${x1 - x0}" height="${yBottom - yTop}" preserveAspectRatio="none"/>`,
+    );
+  } else {
+    parts.push(
+      `<text x="${(x0 + x1) / 2}" y="${(yTop + yBottom) / 2}" class="grit-spec-empty" text-anchor="middle">Waterfall needs a canvas — this browser did not provide one</text>`,
+    );
+  }
+
+  const ticks = frequencyTicks(from, to, 10);
+  for (const mhz of ticks.values) {
+    const x = (x0 + ((mhz - from) / (to - from)) * (x1 - x0)).toFixed(1);
+    parts.push(`<line x1="${x}" y1="${yBottom}" x2="${x}" y2="${yBottom + 4}" class="grit-spec-tick"/>`);
+    const label = ticks.tick >= 1 ? mhz.toFixed(0) : mhz.toFixed(1);
+    parts.push(`<text x="${x}" y="${yBottom + 17}" class="grit-spec-axis" text-anchor="middle">${label}</text>`);
+  }
+  parts.push(`<text x="${x1}" y="${H - 6}" class="grit-spec-ruler" text-anchor="end">MHz</text>`);
+  parts.push(`<text x="${x0 - 6}" y="${yTop + 10}" class="grit-spec-axis" text-anchor="end">newest</text>`);
+  parts.push(`<text x="${x0 - 6}" y="${yBottom}" class="grit-spec-axis" text-anchor="end">oldest</text>`);
+
+  /* Colour legend: the same −135 … −30 dBm map the raster uses, on a pale plate so it stays
+     readable over the raster it sits on. */
+  const legendX = x1 - 150;
+  const legendY = yTop + 6;
+  parts.push(
+    `<rect x="${legendX - 8}" y="${legendY - 5}" width="172" height="26" rx="2" fill="#ffffff" fill-opacity="0.86"/>`,
+  );
+  for (let step = 0; step < 60; step += 1) {
+    const dbm = WATERFALL_MIN + ((WATERFALL_MAX - WATERFALL_MIN) * step) / 59;
+    const [r, g, b] = waterfallColor(dbm);
+    parts.push(
+      `<rect x="${legendX + step * 2}" y="${legendY}" width="2" height="8" fill="rgb(${r},${g},${b})"/>`,
+    );
+  }
+  parts.push(
+    `<text x="${legendX}" y="${legendY + 20}" class="grit-spec-axis" text-anchor="start">${WATERFALL_MIN} dBm</text>`,
+    `<text x="${legendX + 120}" y="${legendY + 20}" class="grit-spec-axis" text-anchor="start">${WATERFALL_MAX} dBm</text>`,
+  );
+  parts.push('</svg>');
+  return parts.join('');
 }
 
 /**
@@ -669,33 +1087,31 @@ function readDevice(record) {
 }
 
 /**
- * Spectrum samples. No sample capture in this repo carries ITK / spectrum logs, so this returns
- * `null` and the plot keeps its "No spectrum data in this capture" note. It only produces
- * points when a record exposes paired frequency/amplitude arrays, which is what an ITK
- * `SPECTRUM` payload would look like once the parser knows it.
+ * Why the Spectrum tile is empty. Every branch is something this build can actually check; none
+ * of them guesses. The order is "what the user just did" first, so the sentence names the fix.
  */
-async function readSpectrum(ctx, capture, types) {
-  const candidate = (types ?? []).find((type) => /spectrum|itk/i.test(String(type.name ?? '')));
-  if (!candidate) return null;
-  try {
-    const data = await ctx.api.get('/api/records', {
-      capture: capture || undefined,
-      msgId: candidate.id,
-      offset: 0,
-      limit: 1,
-    });
-    const record = data?.records?.[0];
-    const fields = record?.fields ?? [];
-    const freqs = fields.filter((field) => /freq/i.test(field.path));
-    const powers = fields.filter((field) => /(psd|power|amplitude|dbm)/i.test(field.path));
-    if (!freqs.length || !powers.length) return null;
-    const points = freqs
-      .map((field, index) => [Number(field.value), Number(powers[index]?.value)])
-      .filter(([hz, dbm]) => Number.isFinite(hz) && Number.isFinite(dbm));
-    return points.length > 1 ? points : null;
-  } catch {
-    return null;
+function spectrumReason(state) {
+  const live = state.live;
+  if (live.connected) {
+    return (
+      `Connected to ${live.target || 'the receiver'} — no ITPSDFINAL/ITPSDDETECT yet. ` +
+      'The spectrum only arrives while a sweep runs: Settings → Spectrum Analysis (or ' +
+      '`ITSPECTRALANALYSIS predecimation gpsl1 1000 1K 10 5` from Manage → Terminal).'
+    );
   }
+  if (live.everConnected) {
+    return `Live session closed${live.disconnectedAt ? ` at ${live.disconnectedAt.replace('T', ' ').replace('Z', '')} UTC` : ''} — no spectrum is drawn from a dead link.`;
+  }
+  if (live.lastError) return `Live link error: ${live.lastError}`;
+  const name = state.capture ? baseName(state.capture) : '';
+  return (
+    'No spectrum data — this tile reads the receiver’s live ITPSDFINAL/ITPSDDETECT stream ' +
+    '(Manage → Terminal → Connect, then Settings → Spectrum Analysis).' +
+    (name
+      ? ` The capture ${name} is not used here: one of its 1024-sample frames is 1028 decoded fields and ` +
+        '/api/records truncates at 800, so its spectrum could not be drawn whole.'
+      : '')
+  );
 }
 
 /* ---------------- render ---------------- */
@@ -740,7 +1156,15 @@ function renderBand(root, state) {
 
   setText(root, 'devModel', state.device?.model ?? '--');
   setText(root, 'devCpu', state.device?.cpu ?? '--');
-  setText(root, 'devTime', state.time ?? '--:--:--');
+  /* A live session's own last record wins over the capture's clock; when it closes the band falls
+     back to the capture's last solution (see `pollLive`). */
+  setText(
+    root,
+    'devTime',
+    state.live?.connected && state.live.lastRecordAt
+      ? hhmmss(state.live.lastRecordAt)
+      : state.time ?? '--:--:--',
+  );
   /* No ITK data in these captures — the original prints `Not detected`, never a number.
      Interference / Jamming / Mitigation Assistant all come from the same (absent) ITK stream. */
   setText(root, 'devInterference', 'Not detected');
@@ -754,21 +1178,49 @@ function renderBand(root, state) {
   }
 }
 
+/**
+ * Draw whichever view is selected. `state.spectrum` is the live store from `mount`; nothing here
+ * invents a curve — with no merged sweep the placeholder frame stays and the note says why.
+ */
 function renderSpectrum(root, state) {
-  const note = root.querySelector('[data-el="specNote"]');
   const plot = root.querySelector('[data-el="spectrum"]');
+  const note = root.querySelector('[data-el="specNote"]');
   if (!plot) return;
-  const empty = plot.querySelector('.grit-spec-empty');
-  if (state.spectrum?.length) {
-    if (empty) empty.remove();
+  const store = state.spectrum;
+  const frame = store?.latest ?? null;
+
+  if (!frame) {
+    if (!plot.querySelector('.grit-spec-svg')) plot.innerHTML = placeholderSpectrumSvg();
+    const empty = plot.querySelector('.grit-spec-empty');
+    if (empty) empty.style.display = '';
     if (note) {
       note.hidden = false;
-      note.textContent = `${state.spectrum.length} spectrum samples`;
+      note.textContent = store?.lastError ? `${spectrumReason(state)} (${store.lastError})` : spectrumReason(state);
     }
     return;
   }
-  if (empty) empty.style.display = '';
-  if (note) note.hidden = true;
+
+  const rows = waterfallFrames(store);
+  if (state.view === 'waterfall') {
+    plot.innerHTML = rows.length ? waterfallSvg(rows) : placeholderSpectrumSvg();
+    if (!rows.length) {
+      const empty = plot.querySelector('.grit-spec-empty');
+      if (empty) empty.textContent = 'Waterfall needs two sweeps on one frequency grid';
+    }
+  } else {
+    plot.innerHTML = spectrumPlotSvg(frame);
+  }
+
+  if (note) {
+    note.hidden = false;
+    const base = spectrumCaption(frame);
+    note.textContent =
+      state.view === 'waterfall'
+        ? `${base} · waterfall ${rows.length}/${WATERFALL_FRAMES} sweeps`
+        : store.lastError
+          ? `${base} · ${store.lastError}`
+          : base;
+  }
 }
 
 function renderDock(root, state) {
@@ -846,6 +1298,7 @@ export function mount(root, ctx = {}) {
   ensureCss();
   root.innerHTML = template();
 
+  const api = ctx.api && typeof ctx.api.get === 'function' ? ctx.api : defaultApi();
   const page = root.querySelector('[data-el="page"]');
   const state = {
     capture: '',
@@ -855,9 +1308,25 @@ export function mount(root, ctx = {}) {
     time: null,
     device: null,
     matrix: null,
-    spectrum: null,
     info: null,
     events: 0,
+    /** `spectrum` | `waterfall` — which renderer the tile draws. */
+    view: 'spectrum',
+    /** Live ITPSD sweeps, see `ingestSpectrum`. */
+    spectrum: emptySpectrumStore(),
+    live: {
+      connected: false,
+      everConnected: false,
+      session: '',
+      target: '',
+      disconnectedAt: '',
+      lastError: '',
+      lastRecordAt: '',
+      cursor: 0,
+      records: 0,
+      busy: false,
+      timer: 0,
+    },
   };
 
   let token = 0;
@@ -881,7 +1350,96 @@ export function mount(root, ctx = {}) {
     }
   };
 
-  /* ---- Timeline dock (collapsed by default, exactly like the original's `Timeline ▲`) ---- */
+  /* ---------------- live session: the only source of spectrum samples ---------------- */
+
+  /**
+   * One poll for the whole panel: `/api/live/status` decides whether the link is up, then the log
+   * cursor feeds `ingestSpectrum`. A reconnect (`connectedAt` changed) starts a new sweep history,
+   * so a stale curve never survives a different session.
+   */
+  async function pollLive() {
+    if (disposed || state.live.busy) return;
+    state.live.busy = true;
+    try {
+      await pollLiveOnce();
+    } finally {
+      state.live.busy = false;
+    }
+  }
+
+  async function pollLiveOnce() {
+    if (disposed) return;
+    let status;
+    try {
+      status = await api.get('/api/live/status');
+    } catch (error) {
+      if (disposed) return;
+      if (state.live.connected || !state.live.lastError) {
+        state.live.connected = false;
+        state.live.lastError = `API error: ${error.message}`;
+        renderSpectrum(root, state);
+      }
+      return;
+    }
+    if (disposed) return;
+
+    const connected = Boolean(status.connected);
+    state.live.target = status.target || state.live.target;
+    state.live.lastError = status.lastError || '';
+    state.live.disconnectedAt = status.disconnectedAt || state.live.disconnectedAt;
+
+    if (connected) {
+      state.live.everConnected = true;
+      state.live.disconnectedAt = '';
+      if (state.live.session !== (status.connectedAt || '')) {
+        state.live.session = status.connectedAt || '';
+        state.live.cursor = 0;
+        state.spectrum = emptySpectrumStore();
+        renderSpectrum(root, state);
+      }
+      try {
+        const page = await api.get('/api/live/logs', { after: state.live.cursor });
+        if (disposed) return;
+        state.live.cursor = Number(page.cursor) || state.live.cursor;
+        let changed = false;
+        for (const entry of page.entries ?? []) {
+          state.live.records += 1;
+          if (entry.time) state.live.lastRecordAt = entry.time;
+          if (ingestSpectrum(state.spectrum, entry)) changed = true;
+        }
+        if (changed) renderSpectrum(root, state);
+        if (state.live.lastRecordAt) setText(root, 'devTime', hhmmss(state.live.lastRecordAt));
+      } catch (error) {
+        if (disposed) return;
+        state.live.lastError = error.message;
+      }
+    }
+
+    const wasConnected = state.live.connected;
+    state.live.connected = connected;
+    if (wasConnected !== connected) {
+      /* The band's clock follows the live records while a session is up, and falls back to the
+         capture's own last solution when it closes. */
+      if (!connected) renderBand(root, state);
+      renderSpectrum(root, state);
+    }
+  }
+
+  function startLive() {
+    stopLive();
+    state.live.timer = setInterval(() => {
+      void pollLive();
+    }, LIVE_POLL_MS);
+    void pollLive();
+  }
+  function stopLive() {
+    if (state.live.timer) {
+      clearInterval(state.live.timer);
+      state.live.timer = 0;
+    }
+  }
+
+  /* ---------------- Timeline dock (collapsed by default, like the original's `Timeline ▲`) ---------------- */
   const dock = root.querySelector('[data-el="dock"]');
   const drawer = root.querySelector('[data-el="drawer"]');
   const dockToggle = root.querySelector('[data-el="dockToggle"]');
@@ -918,26 +1476,284 @@ export function mount(root, ctx = {}) {
   };
   for (const tab of tabs) tab.addEventListener('click', onTab);
 
-  /* ---- Spectrum / Waterfall segment: same plot, the waterfall raster needs samples ---- */
+  /* ---- Spectrum / Waterfall: two renderers over the same merged sweeps ---- */
   const segs = Array.from(root.querySelectorAll('[data-spec]'));
   const onSeg = (event) => {
+    const view = event.currentTarget.getAttribute('data-spec');
+    state.view = view === 'waterfall' ? 'waterfall' : 'spectrum';
     for (const seg of segs) {
       const on = seg === event.currentTarget;
       seg.classList.toggle('is-active', on);
       seg.setAttribute('aria-selected', on ? 'true' : 'false');
     }
+    renderSpectrum(root, state);
   };
   for (const seg of segs) seg.addEventListener('click', onSeg);
 
-  /* ---- menu bar dropdowns: the original's items have no implementation behind them in this
-     build (Terminal, Networking, Map settings, Help file), so the popover states that. ---- */
+  /* ---------------- menus ---------------- */
+
   const menuPop = root.querySelector('[data-el="menuPop"]');
   const menuButtons = Array.from(root.querySelectorAll('[data-grit-menu]'));
-  const MENU_TEXT = {
-    settings: 'Networking · Map — 原版打开 Settings 面板；这一版没有实现。',
-    tools: 'Terminal — 原版打开终端面板；这一版没有实现。',
-    help: 'Help — 原版打开离线帮助文件；这一版没有实现。',
+  const specGear = root.querySelector('[data-el="specGear"]');
+
+  /** Advanced spectrum settings, as the original's `advSettings` object. */
+  const adv = { mode: 'PREDECIMATION', frequency: 'GPSL1', updateRate: 1, resolution: 1, timeAverage: 10, sensitivity: 5 };
+
+  /** Prefill from the newest status word when the receiver already told us the configuration. */
+  function prefillFromStatus() {
+    const status = state.spectrum.latest?.status;
+    if (!status) return;
+    const name = SPECTRUM_FREQUENCIES[status.frequency];
+    if (name && name !== 'Reserved') adv.frequency = name;
+    if (SPECTRUM_DATA_SOURCES[status.dataSource] && status.dataSource !== 0) adv.mode = SPECTRUM_DATA_SOURCES[status.dataSource];
+    if (Number.isFinite(status.fftSize) && SPECTRUM_FFT_SIZES[status.fftSize]) adv.resolution = SPECTRUM_FFT_SIZES[status.fftSize];
+    if (Number.isFinite(status.timeAverage)) adv.timeAverage = status.timeAverage;
+    if (Number.isFinite(status.integrationWindow) && status.integrationWindow > 0) adv.sensitivity = status.integrationWindow;
+  }
+
+  function statusWordLine() {
+    const status = state.spectrum.latest?.status;
+    if (!status) return 'No status word yet — the receiver has not sent ITPSDFINAL/ITPSDDETECT.';
+    return (
+      `Receiver status word 0x${(status.word >>> 0).toString(16).padStart(8, '0')}: ` +
+      `${SPECTRUM_FREQUENCIES[status.frequency] ?? status.frequency} · ` +
+      `${SPECTRUM_DATA_SOURCES[status.dataSource] ?? status.dataSource} · ` +
+      `${SPECTRUM_FFT_SIZES[status.fftSize] ?? '?'}K FFT · avg ${status.timeAverage} s · window ${status.integrationWindow}`
+    );
+  }
+
+  function settingsPanel() {
+    prefillFromStatus();
+    const modeOptions = SPECTRUM_DATA_SOURCES.map(
+      (name) => `<option value="${name}"${name === adv.mode ? ' selected' : ''}>${name}</option>`,
+    ).join('');
+    const frequencyOptions = SPECTRUM_FREQUENCIES.map(
+      (name) => `<option value="${name}"${name === adv.frequency ? ' selected' : ''}>${name}</option>`,
+    ).join('');
+    const resolutionOptions = SPECTRUM_FFT_SIZES.map(
+      (size) => `<option value="${size}"${size === adv.resolution ? ' selected' : ''}>${size}K</option>`,
+    ).join('');
+    const form = document.createElement('div');
+    form.className = 'grit-pop-panel';
+    form.innerHTML = `
+      <p class="grit-pop-note">${esc(statusWordLine())}</p>
+      <label class="grit-field"><span>Mode</span><select class="grit-input" data-adv="mode">${modeOptions}</select></label>
+      <label class="grit-field"><span>Frequency</span><select class="grit-input" data-adv="frequency">${frequencyOptions}</select></label>
+      <label class="grit-field"><span>Update Rate (s)</span><input class="grit-input" type="number" min="0.05" max="100" step="0.05" data-adv="updateRate" value="${adv.updateRate}"></label>
+      <label class="grit-field"><span>Spectrum Resolution (K)</span><select class="grit-input" data-adv="resolution">${resolutionOptions}</select></label>
+      <label class="grit-field"><span>Time Averaging (s)</span><input class="grit-input" type="number" min="0" max="50" step="1" data-adv="timeAverage" value="${adv.timeAverage}"></label>
+      <label class="grit-field"><span>Detection Sensitivity (bins)</span><input class="grit-input" type="number" min="1" max="30" step="1" data-adv="sensitivity" value="${adv.sensitivity}"></label>
+      <div class="grit-pop-actions">
+        <button type="button" class="grit-pop-btn" data-adv-apply>Apply</button>
+        <button type="button" class="grit-pop-btn is-ghost" data-adv-off>Turn Off</button>
+      </div>
+      <p class="grit-pop-note" data-adv-status>Sent as <code>ITSPECTRALANALYSIS …</code> over the live link.</p>
+    `;
+
+    const status = form.querySelector('[data-adv-status]');
+    const readNumber = (name) => Number(form.querySelector(`[data-adv="${name}"]`).value);
+    const readForm = () => {
+      adv.mode = form.querySelector('[data-adv="mode"]').value;
+      adv.frequency = form.querySelector('[data-adv="frequency"]').value;
+      adv.resolution = Number(form.querySelector('[data-adv="resolution"]').value);
+      adv.updateRate = readNumber('updateRate');
+      adv.timeAverage = readNumber('timeAverage');
+      adv.sensitivity = readNumber('sensitivity');
+    };
+
+    /** The manual's limits: 50…100000 ms, and the FFT size raises the floor (32K → 100, 64K → 200). */
+    const validate = () => {
+      if (!Number.isFinite(adv.updateRate) || adv.updateRate < 0.05 || adv.updateRate > 100) return 'Update Rate must be 0.05 – 100 s.';
+      if (!Number.isFinite(adv.timeAverage) || adv.timeAverage < 0 || adv.timeAverage > 50) return 'Time Averaging must be 0 – 50 s.';
+      if (!Number.isFinite(adv.sensitivity) || adv.sensitivity < 1 || adv.sensitivity > 30) return 'Detection Sensitivity must be 1 – 30 bins.';
+      const period = Math.round(adv.updateRate * 1000);
+      if (period < 50) return 'Update Rate must be at least 0.05 s (50 ms).';
+      if (adv.resolution >= 32 && period < 100) return 'A 32K FFT needs an update period of at least 100 ms.';
+      if (adv.resolution >= 64) {
+        if (period < 200) return 'A 64K FFT needs an update period of at least 200 ms.';
+        if (adv.mode === 'POSTDECIMATION' || adv.mode === 'POSTFILTER') return 'The 64K FFT is not available in post-decimation or post-filter mode.';
+      }
+      return '';
+    };
+
+    const send = async (line) => {
+      if (!status) return;
+      status.textContent = `Sending ${line} …`;
+      try {
+        const result = await api.post('/api/live/command', { line });
+        const ok = Boolean(result.connected) && result.commands?.at(-1)?.ok !== false;
+        status.textContent = ok
+          ? `Sent: ${line}`
+          : `Not sent — ${result.lastError || 'no live session'}. The command is logged and can be typed in Manage → Terminal.`;
+      } catch (error) {
+        status.textContent = `Failed: ${error.message}`;
+      }
+    };
+
+    form.querySelector('[data-adv-apply]').addEventListener('click', () => {
+      readForm();
+      const problem = validate();
+      if (problem) {
+        status.textContent = problem;
+        return;
+      }
+      const period = Math.round(adv.updateRate * 1000);
+      void send(
+        `ITSPECTRALANALYSIS ${adv.mode} ${adv.frequency} ${period} ${adv.resolution}K ${adv.timeAverage} ${adv.sensitivity}`,
+      );
+    });
+    form.querySelector('[data-adv-off]').addEventListener('click', () => {
+      void send('ITSPECTRALANALYSIS OFF');
+    });
+    return form;
+  }
+
+  function downloadCsv() {
+    const frame = state.spectrum.latest;
+    if (!frame) return 'No spectrum to export yet.';
+    const rows = ['frequency_mhz,psd_dbm'];
+    const span = (frame.samples.length * frame.stepSize) / 1e6;
+    for (let index = 0; index < frame.samples.length; index += 1) {
+      const mhz = frame.frequencyStart + (index * frame.stepSize) / 1e6;
+      rows.push(`${mhz.toFixed(6)},${frame.samples[index].toFixed(3)}`);
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `grit-spectrum-${frame.log}-${frame.frequencyStart.toFixed(3)}MHz.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    return `Exported ${frame.samples.length} samples (${frame.frequencyStart.toFixed(3)}–${(frame.frequencyStart + span).toFixed(3)} MHz).`;
+  }
+
+  function popItem(label, act, hint) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'grit-pop-item';
+    button.dataset.act = act;
+    button.innerHTML = `<span>${esc(label)}</span>${hint ? `<span class="grit-pop-hint">${esc(hint)}</span>` : ''}`;
+    return button;
+  }
+
+  const MENUS = {
+    settings: () => [
+      popItem('Spectrum Analysis…', 'spectrum-settings', 'ITSPECTRALANALYSIS'),
+      popItem('Networking…', 'networking', 'not in this build'),
+      popItem('Map…', 'map', 'not in this build'),
+    ],
+    tools: () => [
+      popItem('Terminal', 'terminal', 'opens Manage'),
+      popItem('Clear spectrum buffers', 'clear', `${state.spectrum.sweeps} sweeps held`),
+      popItem('Export spectrum (CSV)', 'export', state.spectrum.latest ? `${state.spectrum.latest.samples.length} samples` : 'no data'),
+    ],
+    help: () => [
+      popItem('About GRIT Monitor', 'about', 'build + decoder facts'),
+      popItem('Help file', 'helpfile', 'not bundled'),
+    ],
   };
+
+  const PLACEHOLDER = {
+    networking: 'Networking settings are the receiver’s IP configuration; this build has that page under Configuration, not inside GRIT — the menu entry keeps the original’s position.',
+    map: 'Map settings configure the basemap layer (Luciad in the original). No basemap renderer ships here, so there is nothing to configure.',
+    helpfile: 'The original opens its offline helpFile.html (680 KB of GRIT documentation). That file is not part of this reimplementation; the tile captions and the About panel carry what is known.',
+  };
+
+  /** Replace the popover body; `keepOpen` so clicking an item inside does not close it. */
+  function showMenu(key) {
+    menuPop.innerHTML = '';
+    const items = MENUS[key] ? MENUS[key]() : [];
+    const list = document.createElement('div');
+    list.className = 'grit-pop-list';
+    for (const item of items) list.appendChild(item);
+    menuPop.appendChild(list);
+    menuPop.dataset.for = key || '';
+    menuPop.hidden = false;
+
+    const note = document.createElement('p');
+    note.className = 'grit-pop-note';
+    note.hidden = true;
+    menuPop.appendChild(note);
+    menuPop.__note = note;
+    clampPop();
+  }
+
+  async function runMenuAction(act) {
+    const note = menuPop.__note;
+    if (act === 'spectrum-settings') {
+      const existing = menuPop.querySelector('.grit-pop-panel');
+      if (existing) existing.remove();
+      else menuPop.appendChild(settingsPanel());
+      clampPop();
+      return;
+    }
+    if (act === 'terminal') {
+      const tab = document.querySelector('[data-tab="manage"]');
+      if (tab) tab.click();
+      if (note) {
+        note.hidden = false;
+        note.textContent = 'Switched to Manage — its Terminal drawer is where a connection is opened and commands are typed.';
+      }
+      return;
+    }
+    if (act === 'clear') {
+      state.spectrum = emptySpectrumStore();
+      renderSpectrum(root, state);
+      if (note) {
+        note.hidden = false;
+        note.textContent = 'Cleared the sweeps held in this page (the server’s 400-record ring buffer is untouched).';
+      }
+      showMenu('tools');
+      return;
+    }
+    if (act === 'export') {
+      if (note) {
+        note.hidden = false;
+        note.textContent = downloadCsv();
+      }
+      return;
+    }
+    if (act === 'about') {
+      if (note) {
+        note.hidden = false;
+        let health = null;
+        try {
+          health = await api.get('/api/health');
+        } catch {
+          health = null;
+        }
+        note.textContent =
+          `GRIT Monitor — NovAtel Application Suite reimplementation. ` +
+          `Spectrum: ITPSDFINAL #1968 / ITPSDDETECT #2063, sample = raw/256 − 200 dBm, ` +
+          `chunks grouped by the OEM7 header sequence word (0 = last chunk). ` +
+          `Waterfall: newest ${WATERFALL_FRAMES} sweeps, −135 … −30 dBm. ` +
+          (health ? `Server ${health.version ?? '--'} on Node ${health.node ?? '--'}.` : 'Server build info unavailable.');
+      }
+      return;
+    }
+    if (note && PLACEHOLDER[act]) {
+      note.hidden = false;
+      note.textContent = PLACEHOLDER[act];
+    }
+  }
+
+  /** Put the popover under the control that opened it (`.grit-page` is the offset parent). */
+  function anchorPop(element) {
+    if (!element) return;
+    const host = page.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    menuPop.style.left = `${Math.round(rect.left - host.left)}px`;
+    menuPop.style.right = 'auto';
+  }
+
+  /** Keep the popover inside the page: a panel that overflows would scroll the layout sideways. */
+  function clampPop() {
+    const host = page.getBoundingClientRect();
+    const width = menuPop.offsetWidth || 300;
+    const left = Number.parseFloat(menuPop.style.left || '0') || 0;
+    const max = host.width - width - 8;
+    if (left > max) menuPop.style.left = `${Math.max(8, Math.round(max))}px`;
+  }
+
   const onMenu = (event) => {
     const key = event.currentTarget.getAttribute('data-grit-menu');
     const open = menuPop.hidden || menuPop.dataset.for !== key;
@@ -951,16 +1767,37 @@ export function mount(root, ctx = {}) {
       menuPop.dataset.for = '';
       return;
     }
-    menuPop.dataset.for = key || '';
-    menuPop.textContent = MENU_TEXT[key] ?? '';
-    menuPop.hidden = false;
+    anchorPop(event.currentTarget);
+    showMenu(key);
   };
   for (const button of menuButtons) button.addEventListener('click', onMenu);
+
+  const onMenuClick = (event) => {
+    const item = event.target instanceof Element ? event.target.closest('[data-act]') : null;
+    if (!item || !menuPop.contains(item)) return;
+    void runMenuAction(item.getAttribute('data-act'));
+  };
+  menuPop.addEventListener('click', onMenuClick);
+
+  /* The gear inside the Spectrum tile opens the same settings form the Settings menu does. */
+  const onGear = () => {
+    anchorPop(specGear);
+    showMenu('settings');
+    menuPop.dataset.for = 'settings';
+    for (const button of menuButtons) {
+      const on = button.getAttribute('data-grit-menu') === 'settings';
+      button.setAttribute('aria-expanded', on ? 'true' : 'false');
+      button.classList.toggle('is-open', on);
+    }
+    void runMenuAction('spectrum-settings');
+  };
+  if (specGear) specGear.addEventListener('click', onGear);
 
   const onDocumentClick = (event) => {
     if (!menuPop || menuPop.hidden) return;
     if (menuPop.contains(event.target)) return;
     if (event.target instanceof Element && event.target.closest('[data-grit-menu]')) return;
+    if (event.target instanceof Element && event.target.closest('[data-el="specGear"]')) return;
     menuPop.hidden = true;
     menuPop.dataset.for = '';
     for (const button of menuButtons) {
@@ -975,14 +1812,19 @@ export function mount(root, ctx = {}) {
   root.__gritCleanup = () => {
     disposed = true;
     token += 1;
+    stopLive();
     offCapture?.();
     document.removeEventListener('click', onDocumentClick);
+    menuPop.removeEventListener('click', onMenuClick);
+    if (specGear) specGear.removeEventListener('click', onGear);
     dockToggle.removeEventListener('click', onDock);
     for (const tab of tabs) tab.removeEventListener('click', onTab);
     for (const seg of segs) seg.removeEventListener('click', onSeg);
     for (const button of menuButtons) button.removeEventListener('click', onMenu);
   };
 
+  renderSpectrum(root, state);
+  startLive();
   load();
   return page;
 }
