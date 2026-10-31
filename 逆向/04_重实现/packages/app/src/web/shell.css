@@ -956,3 +956,30 @@ select.nas-select,
   font-size: 19px;
   letter-spacing: .01em;
 }
+
+/* ================================================================================================
+ * 内容区去掉大标题（2026-10-31 复核原版整屏后）
+ *
+ * 原版 Convert / Playback 的内容区直接从卡片开始，没有 "Convert" 大标题 + 副标题那一块；
+ * 我们原来这块占了约 230 px，导致第二步要滚动。这里只保留右上角的抓包选择与健康状态。
+ * Manage 仍保留标题（原版 Manage 有 "All devices"）。
+ * ============================================================================================== */
+body[data-page="convert"] .folder-detail-heading,
+body[data-page="playback"] .folder-detail-heading {
+  justify-content: flex-end;
+  min-height: 32px;
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+body[data-page="convert"] .folder-detail-heading .device-text,
+body[data-page="playback"] .folder-detail-heading .device-text,
+body[data-page="convert"] .receiver-count,
+body[data-page="playback"] .receiver-count {
+  display: none;
+}
+
+body[data-page="convert"] .nas-content,
+body[data-page="playback"] .nas-content {
+  padding-top: 8px;
+}

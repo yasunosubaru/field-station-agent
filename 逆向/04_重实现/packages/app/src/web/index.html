@@ -339,6 +339,7 @@
   function selectPage(name) {
     if (!PAGES[name]) return;
     currentPage = name;
+    document.body.setAttribute('data-page', name);
 
     var tabs = document.querySelectorAll('#tabs-list li.app-tab');
     for (var i = 0; i < tabs.length; i++) {
