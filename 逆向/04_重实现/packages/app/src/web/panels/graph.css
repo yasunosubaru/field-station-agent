@@ -825,37 +825,241 @@ body[data-page="graph"] #panel-graph {
   display: block;
 }
 
-/* ---- 其余页签：诚实占位 ---- */
+/* ---- chart tabs: PVT / Tracking & Measurements / Receiver Status / Project Information ----
+ * The original `/process` is a `react-grid-layout` wall of chart tiles inside the same black
+ * menubar shell. The Legend floater and the map control column belong to the map only, so they are
+ * hidden on every tab but Overview; each tab then scrolls its own tile grid.
+ */
 
-.gp-placeholder {
-  max-width: 560px;
-  margin: 0;
-  padding: 120px 40px 40px 24px;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--gp-ink);
+.graph-panel:not([data-tab="overview"]) .gp-mapcontrols,
+.graph-panel:not([data-tab="overview"]) .gp-legend {
+  display: none;
 }
 
-.gp-placeholder h3 {
-  margin: 0 0 10px;
+.gp-report {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.gp-chart-card {
+  /* 原版导出报表 `.chart-container`：白底、1px #00516F 边框、padding 20 —— 这里按面板缩到 0 */
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #ffffff;
+  border: 1px solid var(--gp-teal);
+  border-radius: 1px;
+}
+
+.gp-chart-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 6px;
+}
+
+.gp-chart-title {
+  margin: 0;
   font-family: var(--gp-sans-bold);
-  font-size: 18px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--gp-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gp-chart-units {
+  margin-left: 6px;
+  font-family: var(--gp-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--gp-ink-60);
+}
+
+.gp-chart-meta {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--gp-ink-60);
+  white-space: nowrap;
+}
+
+.gp-chart-box {
+  height: 240px;
+  padding: 0 4px;
+}
+
+.gp-chart-box svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 图例 chips —— 原版 `.floating-legend`：16 px 方框、2 px 边框、勾选后填色、max-height 100 滚动 */
+.gp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--gp-rule);
+  max-height: 118px; /* 5 chip rows (16 px line + 4 px gap) + 8/10 padding — the export's 100 px cap */
+  overflow-y: auto;
+}
+
+.gp-chip-group {
+  flex: 0 0 100%;
+  margin-top: 4px;
+  font-family: var(--gp-sans-bold);
+  font-size: 11px;
+  letter-spacing: 0.4px;
   color: var(--gp-teal);
 }
 
-.gp-placeholder p {
-  margin: 0 0 10px;
+.gp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--gp-ink);
+  text-align: left;
 }
 
-.gp-placeholder-hint {
+.gp-chip:hover .gp-chip-text {
+  text-decoration: underline;
+}
+
+.gp-chip-box {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--gp-chip-color, #999999);
+  background: var(--gp-chip-color, #999999);
+}
+
+.gp-chip[aria-pressed="false"] .gp-chip-box {
+  background: transparent;
+}
+
+.gp-chip[aria-pressed="false"] .gp-chip-text {
+  color: var(--gp-ink-60);
+  text-decoration: line-through;
+}
+
+.gp-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gp-chart-note {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--gp-ink-60);
+}
+
+.gp-chart-table {
+  margin: 0 12px 12px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--gp-rule);
+  border-radius: 2px;
+}
+
+.gp-chart-table table {
+  border-collapse: collapse;
+  font-family: var(--gp-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.gp-chart-table th,
+.gp-chart-table td {
+  padding: 3px 8px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  text-align: left;
+}
+
+.gp-chart-table th {
+  position: sticky;
+  top: 0;
+  background: #f4f8fa;
+  color: var(--gp-teal);
+}
+
+.gp-report-foot {
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--gp-ink-60);
 }
 
-.gp-placeholder code {
-  font-family: var(--gp-mono);
-  font-size: 12px;
+/* ---- Project Information: the export's `.receiver-info-tile` (label 40 % / value 60 %) ---- */
+
+.gp-info-card {
+  grid-column: 1 / -1;
+  padding: 14px 18px 18px;
+  border-color: var(--gp-rule);
+}
+
+.gp-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 4px;
+  max-width: 760px;
+}
+
+.gp-info-row {
+  display: flex;
+  width: 100%;
+}
+
+.gp-info-label {
+  width: 40%;
+  font-family: var(--gp-sans-bold);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gp-ink);
+}
+
+.gp-info-value {
+  width: 60%;
+  font-size: 13px;
+  color: var(--gp-ink);
+  word-break: break-word;
+}
+
+.gp-info-sub {
+  margin: 18px 0 6px;
+  font-family: var(--gp-sans-bold);
+  font-size: 14px;
+  color: var(--gp-teal);
+}
+
+.gp-info-card .gp-chart-table {
+  margin: 0;
+  max-width: 760px;
+  max-height: none;
 }
 
 /* ================================= timeline ================================== */

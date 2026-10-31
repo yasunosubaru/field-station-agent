@@ -21,8 +21,17 @@
  *   real      `/api/graph/files` + `/api/graph/data` (the CSVs Graph already exported), the CSV /
  *             column pickers, the 20-row table, the line chart, the timeline playhead (rAF, Speed
  *             multiplier), the Export menu (CSV · HTML · KML · PDF — see `exportAs()`)
- *   honest    PVT / Tracking & Measurements / Receiver Status / Project Information: this build only
- *             implements Overview, the tabs say so instead of inventing charts
+ *   real      the four tabs under Overview — PVT / Tracking & Measurements / Receiver Status /
+ *             Project Information. Every tile is one plot of `06_Graph应用-附录/C_图表目录.json`
+ *             whose CSV this project actually exported (12 of the catalog's 16), and every series
+ *             is one column of one CSV read through `/api/graph/data?file=&column=`. Titles, plot
+ *             kinds and y-axis units are the catalog's, verbatim; `chartSvgFor()` draws the same
+ *             axes/grid/typography as the Overview chart, only repeated per tile.
+ *   honest    a tile whose CSV is missing, whose column cannot be read, or whose rows
+ *             `/api/graph/data` truncates prints `--` plus the reason instead of a curve;
+ *             `Project Information` shows no message counts because `DataSummary.json` is not behind
+ *             `/api/graph/*`, and the catalog's Heading & Attitude / Velocity plots have no tab or
+ *             tile because this project (`clean`) exported no INS data
  *             the map itself: there is no Luciad in this repo, the stage shows the chart and the
  *             control column is decoration (`aria-hidden`, no handlers)
  *
@@ -115,13 +124,6 @@ function defaultApi() {
   };
 }
 
-function fmtNum(value) {
-  if (!isFinite(value)) return '—';
-  const abs = Math.abs(value);
-  if (abs !== 0 && (abs >= 1e6 || abs < 1e-4)) return value.toExponential(2);
-  return String(Math.round(value * 1000) / 1000);
-}
-
 function pad2(value) {
   return String(Math.abs(Math.trunc(value))).padStart(2, '0');
 }
@@ -176,6 +178,397 @@ function projectNameOf(data, directory) {
   const tail = String(directory || '').replace(/[\\/]+$/, '');
   const base = tail.slice(tail.lastIndexOf('/') + 1);
   return base.replace(/^export-?/, '') || 'Graph project';
+}
+
+/* ---------------- series colours ---------------- */
+
+/**
+ * Ten colours, cycled by column index. The first two are the Overview chart's own stroke and marker
+ * (`#00516F` / `#00ABC8`), `#D0021B` is the suite's flag / playhead red, the rest are the muted hues
+ * Convert and Playback already use. Deliberately **not** the original `stringToColor`: that hash is
+ * recoverable from `index-B86bHcCD.js @567200` (and was ported here first), but spreading the 74
+ * `C/No` series of one CSV over fluorescent greens and purples makes neighbours indistinguishable at
+ * 2 px and puts colours on screen that appear nowhere else in the suite.
+ */
+const SERIES_COLOURS = [
+  '#00516f', '#00abc8', '#d0021b', '#e09b00', '#2e8b57',
+  '#7b4fa8', '#c2185b', '#3a6ea5', '#8d6e63', '#4e7a0d',
+];
+
+/** Constellation order the original uses (`CONSTELLATION_ORDER` in the shipped bundle). */
+const CONSTELLATIONS = ['GPS', 'GLONASS', 'GALILEO', 'BEIDOU', 'QZSS', 'LBAND', 'SBAS', 'NAVIC'];
+
+/** Cycled palette entry for a column index. */
+export function seriesColor(index) {
+  const at = Math.abs(Math.trunc(Number(index) || 0)) % SERIES_COLOURS.length;
+  return SERIES_COLOURS[at];
+}
+
+/** `BEIDOU_B1I_D2_1` → `BEIDOU`, `Signals_GPS_L2_PY` → `GPS`, `Height` → ``. */
+export function constellationOf(name) {
+  for (const token of String(name == null ? '' : name).split(/[_\s]+/)) {
+    if (CONSTELLATIONS.includes(token)) return token;
+  }
+  return '';
+}
+
+/* ---------------- chart catalog (附录 C) ---------------- */
+
+/**
+ * One entry per tab, holding the plots of `C_图表目录.json` that this project exported a CSV for.
+ * `catalog` is the tab's **full** catalog list — the plots with no CSV are named in the tab footer
+ * instead of being drawn as empty tiles, which is what the original does (`PlotSummary` decides
+ * whether a `ChartControls` exists at all).
+ *
+ *   kind  line      numeric series, one polyline per column
+ *         bar       numeric series drawn as bars, y axis hidden (`show: chartType !== "bar"`)
+ *         category  the value column is an enum label, drawn as one band per sample
+ *         geomap    longitude on x, latitude on y (`GeoMapChart` @15713064)
+ *   units   the plot's `yAxisUnits`, verbatim from the catalog
+ *   minYZero the catalog's `minYZero`, verbatim
+ */
+export const CHART_GROUPS = [
+  {
+    id: 'pvt',
+    label: 'PVT',
+    catalog: ['Position Type', 'Position Status', 'Position SD', 'Solution Statistics',
+      '2D Trajectory', 'Height', 'Velocity'],
+    charts: [
+      { id: 'position-type', title: 'Position Type', file: 'Position Type.csv', kind: 'category' },
+      { id: 'position-status', title: 'Position Status', file: 'Position Status.csv', kind: 'category' },
+      { id: 'position-sd', title: 'Position SD', file: 'Position SD.csv', kind: 'line', units: '(m)' },
+      { id: 'solution-statistics', title: 'Solution Statistics', file: 'Solution Statistics.csv', kind: 'line' },
+      { id: 'trajectory', title: '2D Trajectory', file: '2D Trajectory.csv', kind: 'geomap',
+        xColumn: 'Longitude', yColumn: 'Latitude' },
+      { id: 'height', title: 'Height', file: 'Height.csv', kind: 'line', units: '(m)' },
+    ],
+  },
+  {
+    id: 'tracking',
+    label: 'Tracking & Measurements',
+    catalog: ['GNSS Signal Strength', 'Satellites and Signals', 'Tracking Time'],
+    charts: [
+      { id: 'signal-strength', title: 'GNSS Signal Strength', file: 'GNSS Signal Strength.csv',
+        kind: 'line', units: 'C/No (dB-Hz)' },
+      { id: 'satellites', title: 'Satellites and Signals', file: 'Satellites and Signals.csv',
+        kind: 'line', minYZero: true },
+      { id: 'tracking-time', title: 'Tracking Time', file: 'Tracking Time.csv',
+        kind: 'line', units: '(s)', minYZero: true },
+    ],
+  },
+  {
+    id: 'receiver',
+    label: 'Receiver Status',
+    catalog: ['Receiver Status', 'CPU Usage', 'HW Monitor Status'],
+    charts: [
+      { id: 'receiver-status', title: 'Receiver Status', file: 'Receiver Status.csv',
+        kind: 'bar', rowsAsSeries: true, intervalTable: true },
+      { id: 'cpu-usage', title: 'CPU Usage', file: 'CPU Usage.csv',
+        kind: 'line', units: '(%)', minYZero: true },
+      { id: 'hw-monitor', title: 'HW Monitor Status', file: 'HW Monitor Status.csv',
+        kind: 'line', minYZero: true },
+    ],
+  },
+];
+
+/** Chart tiles per tab id, for the panes that are not Overview / Project Information. */
+export function chartsOf(tabId) {
+  const group = CHART_GROUPS.find((item) => item.id === tabId);
+  return group ? group.charts : [];
+}
+
+/* ---------------- axis helpers ---------------- */
+
+const PAD = { left: 72, right: 26, top: 34, bottom: 48 };
+
+/** `"2442  463098.000"` → absolute GPS seconds. Mirrors `parseGpsCell` in `graphcsv.ts`. */
+export function parseGpsCell(cell) {
+  const match = /^\s*(\d{3,5})\s+([0-9]+(?:\.[0-9]+)?)\s*$/.exec(String(cell == null ? '' : cell));
+  if (!match) return null;
+  const week = Number(match[1]);
+  const seconds = Number(match[2]);
+  if (!Number.isFinite(week) || !Number.isFinite(seconds)) return null;
+  return week * 604_800 + seconds;
+}
+
+/** `W2442 463098.000` — the same label `graphcsv.ts` puts on a series' first / last sample. */
+export function gpsWeekLabel(absoluteSeconds) {
+  if (!Number.isFinite(absoluteSeconds)) return '';
+  const week = Math.floor(absoluteSeconds / 604_800);
+  return `W${week} ${(absoluteSeconds - week * 604_800).toFixed(3)}`;
+}
+
+/**
+ * `count + 1` evenly spaced ticks across `[min, max]`, first and last exactly on the axis ends —
+ * the reading rule the Overview chart already draws (`i / 4`), kept so the tiles look like it.
+ */
+export function chartTicks(min, max, count = 4) {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !(max > min)) {
+    return { step: 0, values: Number.isFinite(min) ? [min] : [] };
+  }
+  const step = (max - min) / count;
+  const values = [];
+  for (let i = 0; i <= count; i += 1) values.push(min + step * i);
+  return { step, values };
+}
+
+/** Decimals follow the step, so a 0.02 m span still prints five places and a 700 s span prints none. */
+export function formatTick(value, step) {
+  if (!Number.isFinite(value)) return '—';
+  const size = Math.abs(step);
+  const decimals = size > 0 && Number.isFinite(size)
+    ? Math.max(0, Math.min(6, 2 - Math.floor(Math.log10(size))))
+    : 0;
+  let text = value.toFixed(decimals);
+  if (text.includes('.')) text = text.replace(/0+$/, '').replace(/\.$/, '');
+  return text === '-0' ? '0' : text;
+}
+
+function plotFrame(width, height) {
+  return {
+    pad: PAD,
+    plotW: Math.max(20, width - PAD.left - PAD.right),
+    plotH: Math.max(20, height - PAD.top - PAD.bottom),
+  };
+}
+
+function xDomain(series) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const item of series) {
+    for (const point of item.points) {
+      if (point[0] < min) min = point[0];
+      if (point[0] > max) max = point[0];
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  // One sample (HWMONITOR answers once) has no width; give the axis one second to the right rather
+  // than inventing negative time.
+  if (max === min) return [min, min + 1];
+  return [min, max];
+}
+
+/** Integer ticks only: an `index` x axis has no meaning between two rows. */
+function indexTicks(min, max) {
+  const values = [];
+  for (let value = Math.ceil(min); value <= Math.floor(max) + 1e-9; value += 1) values.push(value);
+  if (!values.length) values.push(Math.round(min));
+  return { step: 1, values };
+}
+
+function yDomain(series) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const item of series) {
+    for (const point of item.points) {
+      if (point[1] < min) min = point[1];
+      if (point[1] > max) max = point[1];
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  return [min, max];
+}
+
+function rangeLabel(model) {
+  const base = String(model.xLabel || '');
+  if (!model.xStartLabel && !model.xEndLabel) return base;
+  return `${base} · ${model.xStartLabel || '?'} → ${model.xEndLabel || '?'}`;
+}
+
+/* ---------------- chart renderers (pure: model + size → SVG string) ---------------- */
+
+/**
+ * Line / bar tile. Markup, padding, grid colours, tick fonts and stroke widths are the Overview
+ * chart's (`chartSvg`), so a tile and the Overview chart are visually the same instrument.
+ */
+function seriesSvg(model, series, width, height) {
+  const [xMinRaw, xMaxRaw] = xDomain(series);
+  let [yMin, yMax] = yDomain(series);
+  const xMin = xMinRaw;
+  const xMax = xMaxRaw;
+  if (model.minYZero) yMin = Math.min(0, yMin);
+  if (yMax === yMin) {
+    yMax = yMin + 1;
+    yMin -= 1;
+  }
+  const { pad, plotW, plotH } = plotFrame(width, height);
+  const px = (x) => pad.left + ((x - xMin) / (xMax - xMin)) * plotW;
+  const py = (y) => pad.top + plotH - ((y - yMin) / (yMax - yMin)) * plotH;
+  const yTicks = chartTicks(yMin, yMax, 4);
+  const xIsIndex = model.xKind === 'index';
+  const xTicks = xIsIndex ? indexTicks(xMin, xMax) : chartTicks(xMin, xMax, 4);
+  const xLabel = (value) => (xIsIndex ? `#${Math.round(value) + 1}` : formatTick(value, xTicks.step));
+  const bars = model.kind === 'bar';
+  const parts = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(model.title || '图表')}">`];
+
+  if (!bars) {
+    for (const value of yTicks.values) {
+      const pos = py(value);
+      parts.push(
+        `<line x1="${pad.left}" y1="${pos.toFixed(1)}" x2="${width - pad.right}" y2="${pos.toFixed(1)}" stroke="rgba(0,0,0,0.12)"/>`,
+        `<text x="${pad.left - 10}" y="${(pos + 3.5).toFixed(1)}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="end" font-family="Consolas, monospace">${esc(formatTick(value, yTicks.step))}</text>`,
+      );
+    }
+  } else {
+    const base = py(Math.max(yMin, Math.min(0, yMax)));
+    parts.push(
+      `<line x1="${pad.left}" y1="${base.toFixed(1)}" x2="${width - pad.right}" y2="${base.toFixed(1)}" stroke="rgba(0,0,0,0.12)"/>`,
+    );
+  }
+
+  for (const value of xTicks.values) {
+    const pos = px(value);
+    parts.push(
+      `<line x1="${pos.toFixed(1)}" y1="${pad.top}" x2="${pos.toFixed(1)}" y2="${pad.top + plotH}" stroke="rgba(0,0,0,0.08)"/>`,
+      `<text x="${pos.toFixed(1)}" y="${pad.top + plotH + 18}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="middle" font-family="Consolas, monospace">${esc(xLabel(value))}</text>`,
+    );
+  }
+
+  parts.push(
+    `<line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
+    `<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
+  );
+
+  let total = 0;
+  for (const item of series) total += item.points.length;
+
+  if (bars) {
+    const barW = Math.max(1.5, Math.min(20, (plotW / Math.max(1, total)) * 0.6));
+    const base = py(Math.max(yMin, Math.min(0, yMax)));
+    for (const item of series) {
+      for (const point of item.points) {
+        const top = py(point[1]);
+        const x = px(point[0]) - barW / 2;
+        const y = Math.min(top, base);
+        const h = Math.max(1, Math.abs(base - top));
+        parts.push(
+          `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${esc(item.color)}"/>`,
+        );
+      }
+    }
+  } else {
+    for (const item of series) {
+      parts.push(
+        `<polyline fill="none" stroke="${esc(item.color)}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="${item.points
+          .map((point) => `${px(point[0]).toFixed(1)},${py(point[1]).toFixed(1)}`)
+          .join(' ')}"/>`,
+      );
+    }
+    if (total <= 120) {
+      for (const item of series) {
+        parts.push(
+          item.points
+            .map((point) => `<circle cx="${px(point[0]).toFixed(1)}" cy="${py(point[1]).toFixed(1)}" r="2.2" fill="${esc(item.color)}"/>`)
+            .join(''),
+        );
+      }
+    }
+  }
+
+  parts.push(
+    `<text x="${pad.left}" y="${height - 10}" font-size="11" fill="rgba(0,0,0,0.6)">${esc(rangeLabel(model))}</text>`,
+  );
+  parts.push('</svg>');
+  return parts.join('');
+}
+
+/** Enum column → one band per sample, y axis hidden (the original's bar-plus-hidden-y reading). */
+function categorySvg(model, series, width, height) {
+  const [xMin, xMax] = xDomain(series);
+  const { pad, plotW, plotH } = plotFrame(width, height);
+  const px = (x) => pad.left + ((x - xMin) / (xMax - xMin)) * plotW;
+  const xTicks = chartTicks(xMin, xMax, 4);
+  const samples = [];
+  for (const item of series) for (const point of item.points) samples.push({ x: point[0], color: item.color });
+  samples.sort((a, b) => a.x - b.x);
+  // Band width is a **pixel** measurement: the median gap between samples, scaled by the axis.
+  let band = Math.min(plotW, 40);
+  if (samples.length > 1 && xMax > xMin) {
+    const gaps = [];
+    for (let i = 1; i < samples.length; i += 1) gaps.push(samples[i].x - samples[i - 1].x);
+    gaps.sort((a, b) => a - b);
+    band = Math.max(2, ((gaps[Math.floor(gaps.length / 2)] || 0) / (xMax - xMin)) * plotW * 0.8);
+  }
+  const top = pad.top + 6;
+  const parts = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(model.title || '图表')}">`];
+  for (const value of xTicks.values) {
+    const pos = px(value);
+    parts.push(
+      `<line x1="${pos.toFixed(1)}" y1="${pad.top}" x2="${pos.toFixed(1)}" y2="${pad.top + plotH}" stroke="rgba(0,0,0,0.08)"/>`,
+      `<text x="${pos.toFixed(1)}" y="${pad.top + plotH + 18}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="middle" font-family="Consolas, monospace">${esc(formatTick(value, xTicks.step))}</text>`,
+    );
+  }
+  for (const sample of samples) {
+    const left = Math.max(pad.left, px(sample.x) - band / 2);
+    const right = Math.min(pad.left + plotW, px(sample.x) + band / 2);
+    parts.push(
+      `<rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${Math.max(1, right - left).toFixed(1)}" height="${(pad.top + plotH - top).toFixed(1)}" fill="${esc(sample.color)}" fill-opacity="0.85"/>`,
+    );
+  }
+  parts.push(
+    `<line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
+    `<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
+    `<text x="${pad.left}" y="${height - 10}" font-size="11" fill="rgba(0,0,0,0.6)">${esc(rangeLabel(model))}</text>`,
+    '</svg>',
+  );
+  return parts.join('');
+}
+
+/** `GeoMapChart` @15713064: longitude on x, latitude on y, transparent line, 5 px points `#5464f8`. */
+function geomapSvg(model, series, width, height) {
+  const [xMin, xMax] = xDomain(series);
+  const [yMin, yMax] = yDomain(series);
+  const padX = xMax === xMin ? 0.0001 : 0;
+  const padY = yMax === yMin ? 0.0001 : 0;
+  const { pad, plotW, plotH } = plotFrame(width, height);
+  const px = (x) => pad.left + ((x - (xMin - padX)) / ((xMax + padX) - (xMin - padX))) * plotW;
+  const py = (y) => pad.top + plotH - ((y - (yMin - padY)) / ((yMax + padY) - (yMin - padY))) * plotH;
+  const xTicks = chartTicks(xMin - padX, xMax + padX, 4);
+  const yTicks = chartTicks(yMin - padY, yMax + padY, 4);
+  const parts = [`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(model.title || '图表')}">`];
+  for (const value of yTicks.values) {
+    const pos = py(value);
+    parts.push(
+      `<line x1="${pad.left}" y1="${pos.toFixed(1)}" x2="${width - pad.right}" y2="${pos.toFixed(1)}" stroke="rgba(0,0,0,0.12)"/>`,
+      `<text x="${pad.left - 10}" y="${(pos + 3.5).toFixed(1)}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="end" font-family="Consolas, monospace">${esc(formatTick(value, yTicks.step))}</text>`,
+    );
+  }
+  for (const value of xTicks.values) {
+    const pos = px(value);
+    parts.push(
+      `<line x1="${pos.toFixed(1)}" y1="${pad.top}" x2="${pos.toFixed(1)}" y2="${pad.top + plotH}" stroke="rgba(0,0,0,0.08)"/>`,
+      `<text x="${pos.toFixed(1)}" y="${pad.top + plotH + 18}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="middle" font-family="Consolas, monospace">${esc(formatTick(value, xTicks.step))}</text>`,
+    );
+  }
+  parts.push(
+    `<line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
+    `<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
+  );
+  for (const item of series) {
+    parts.push(
+      item.points
+        .map((point) => `<circle cx="${px(point[0]).toFixed(1)}" cy="${py(point[1]).toFixed(1)}" r="4" fill="${esc(item.color)}"/>`)
+        .join(''),
+    );
+  }
+  parts.push(
+    `<text x="${pad.left}" y="${height - 10}" font-size="11" fill="rgba(0,0,0,0.6)">${esc(rangeLabel(model))}</text>`,
+    '</svg>',
+  );
+  return parts.join('');
+}
+
+/** Any tile model → SVG markup (or an honest `--` block). Exported so the tests can read it. */
+export function chartSvgFor(model, width, height) {
+  if (!model || !Array.isArray(model.series)) return '';
+  const visible = model.series.filter((item) => !item.hidden && item.points && item.points.length);
+  const empty = `<div class="gp-chart-empty">${esc((model && model.emptyText) || '没有可绘制的数据点。')}</div>`;
+  if (!visible.length) return empty;
+  const boxW = Math.max(160, Math.round(Number(width) || 0));
+  const boxH = Math.max(120, Math.round(Number(height) || 0));
+  if (model.kind === 'geomap') return geomapSvg(model, visible, boxW, boxH);
+  if (model.kind === 'category') return categorySvg(model, visible, boxW, boxH);
+  return seriesSvg(model, visible, boxW, boxH);
 }
 
 /* ---------------- markup ---------------- */
@@ -244,6 +637,28 @@ const ICON_LAYERS = '<svg viewBox="0 0 112 112" aria-hidden="true">'
   + '<path d="M24 64.4 56 78.4l32-14v7.6L56 86 24 72v-7.6Z" fill="#12242e"/>'
   + '<path d="M56 33.6 41.6 40 56 46.4 70.4 40 56 33.6Z" fill="#68b9dc"/></svg>';
 
+/**
+ * Pane markup. Overview keeps the map stage (chart + playhead); the three chart tabs get one tile
+ * per catalog plot; Project Information gets a single text card. Tiles start empty and are filled by
+ * `paintCard()` once their CSV has been read.
+ */
+export function paneBody(tabId) {
+  if (tabId === 'overview') {
+    return '<div class="gp-chart"></div>'
+      + '<div class="gp-playhead" hidden><span class="gp-playhead-dot"></span></div>';
+  }
+  if (tabId === 'project') {
+    return '<div class="gp-report" data-report="project">'
+      + '<div class="gp-chart-card gp-info-card" data-chart="project/info"></div>'
+      + '</div>';
+  }
+  const cards = chartsOf(tabId)
+    .map((spec) => `<div class="gp-chart-card" data-chart="${tabId}/${spec.id}"></div>`)
+    .join('');
+  return `<div class="gp-report" data-report="${tabId}">${cards}`
+    + `<p class="gp-report-foot" data-foot="${tabId}"></p></div>`;
+}
+
 function template() {
   const tabs = TABS.map(
     (tab, index) =>
@@ -260,22 +675,9 @@ function template() {
 
   const speeds = SPEEDS.map((value) => `<option value="${value}">X${value}</option>`).join('');
 
-  const panes = TABS.map((tab, index) => {
-    if (tab.id === 'overview') {
-      return '<div class="gp-pane" data-pane="overview" role="tabpanel" aria-labelledby="gp-tab-overview">'
-        + '<div class="gp-chart"></div>'
-        + '<div class="gp-playhead" hidden><span class="gp-playhead-dot"></span></div>'
-        + '</div>';
-    }
-    return `<div class="gp-pane" data-pane="${tab.id}" role="tabpanel" aria-labelledby="gp-tab-${tab.id}" hidden>`
-      + '<div class="gp-placeholder">'
-      + `<h3>${esc(tab.label)}</h3>`
-      + '<p>本构建仅实现 <strong>Overview</strong>。'
-      + `${esc(tab.label)} 的解析器与图表没有移植，这个页签没有数据可画，也不拿别的列冒充。</p>`
-      + '<p class="gp-placeholder-hint">数据仍来自 <code>/api/graph/*</code>；'
-      + '切回 Overview 可以看折线、列选择与前 20 行。</p>'
-      + '</div></div>';
-  }).join('');
+  const panes = TABS.map((tab, index) => `<div class="gp-pane" data-pane="${tab.id}" `
+    + `role="tabpanel" aria-labelledby="gp-tab-${tab.id}"${index === 0 ? '' : ' hidden'}>`
+    + `${paneBody(tab.id)}</div>`).join('');
 
   return `
 <div class="graph-panel" data-view="home">
@@ -467,6 +869,13 @@ export function mount(root, ctx) {
     geometry: null,
     legendOpen: false,
     showEvents: false,
+    /* chart tabs */
+    payloads: new Map(),
+    models: new Map(),
+    started: new Set(),
+    chipOff: new Set(),
+    filesLoaded: false,
+    deferredTab: '',
   };
 
   /* ---- small UI helpers ---- */
@@ -482,11 +891,17 @@ export function mount(root, ctx) {
     host.dataset.view = view;
     el.home.hidden = view !== 'home';
     el.work.hidden = view !== 'work';
-    if (view === 'work') requestAnimationFrame(() => drawChart());
+    if (view === 'work') {
+      requestAnimationFrame(() => {
+        if (state.tab === 'overview') drawChart();
+        else paintTab(state.tab);
+      });
+    }
   }
 
   function setTab(id) {
     state.tab = id;
+    host.dataset.tab = id;
     for (const button of root.querySelectorAll('[data-worktab]')) {
       const active = button.dataset.worktab === id;
       button.classList.toggle('is-active', active);
@@ -495,7 +910,12 @@ export function mount(root, ctx) {
     for (const pane of root.querySelectorAll('.gp-pane')) {
       pane.hidden = pane.dataset.pane !== id;
     }
-    if (id === 'overview') requestAnimationFrame(() => drawChart());
+    if (id === 'overview') {
+      requestAnimationFrame(() => drawChart());
+      return;
+    }
+    ensureTab(id);
+    requestAnimationFrame(() => paintTab(id));
   }
 
   function closeExport() {
@@ -562,24 +982,26 @@ export function mount(root, ctx) {
     const parts = [
       `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(series.label || '折线图')}">`,
     ];
+    const yStep = (yMax - yMin) / 4;
+    const xStep = (xMax - xMin) / 4;
     for (let i = 0; i <= 4; i += 1) {
-      const yValue = yMin + ((yMax - yMin) * i) / 4;
+      const yValue = yMin + yStep * i;
       const yPos = py(yValue);
       parts.push(
         `<line x1="${pad.left}" y1="${yPos.toFixed(1)}" x2="${width - pad.right}" y2="${yPos.toFixed(1)}" stroke="rgba(0,0,0,0.12)"/>`,
       );
       parts.push(
-        `<text x="${pad.left - 10}" y="${(yPos + 3.5).toFixed(1)}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="end" font-family="Consolas, monospace">${esc(fmtNum(yValue))}</text>`,
+        `<text x="${pad.left - 10}" y="${(yPos + 3.5).toFixed(1)}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="end" font-family="Consolas, monospace">${esc(formatTick(yValue, yStep))}</text>`,
       );
     }
     for (let k = 0; k <= 4; k += 1) {
-      const xValue = xMin + ((xMax - xMin) * k) / 4;
+      const xValue = xMin + xStep * k;
       const xPos = px(xValue);
       parts.push(
         `<line x1="${xPos.toFixed(1)}" y1="${pad.top}" x2="${xPos.toFixed(1)}" y2="${pad.top + plotH}" stroke="rgba(0,0,0,0.08)"/>`,
       );
       parts.push(
-        `<text x="${xPos.toFixed(1)}" y="${pad.top + plotH + 18}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="middle" font-family="Consolas, monospace">${esc(fmtNum(xValue))}</text>`,
+        `<text x="${xPos.toFixed(1)}" y="${pad.top + plotH + 18}" font-size="11" fill="rgba(0,0,0,0.6)" text-anchor="middle" font-family="Consolas, monospace">${esc(formatTick(xValue, xStep))}</text>`,
       );
     }
     parts.push(
@@ -642,6 +1064,438 @@ export function mount(root, ctx) {
       el.marker.hidden = false;
       el.marker.style.left = `calc(158px + (100% - 177px) * ${ratio.toFixed(4)})`;
     }
+  }
+
+  /* ---- chart tabs: PVT / Tracking & Measurements / Receiver Status / Project Information ---- */
+
+  /**
+   * `/api/graph/data` returns **one** numeric column per call (`?column=`), so a tile with N series
+   * is N calls against the same file. The server parses each CSV once (its own file cache), so every
+   * call after the first is just JSON. Results are memoised per `file` and per `file#column`, and the
+   * probe call (no `column`) is reused as the payload of the column it defaulted to.
+   */
+  const pending = new Map();
+
+  function fetchData(file, column) {
+    const key = column ? `${file}#${column}` : file;
+    if (state.payloads.has(key)) return Promise.resolve(state.payloads.get(key));
+    if (pending.has(key)) return pending.get(key);
+    const promise = api
+      .get('/graph/data', column ? { file, column } : { file })
+      .then((body) => {
+        state.payloads.set(key, body);
+        pending.delete(key);
+        return body;
+      })
+      .catch((error) => {
+        pending.delete(key);
+        throw error;
+      });
+    pending.set(key, promise);
+    return promise;
+  }
+
+  /** The Tracking tab needs ~175 column fetches; cap the fan-out so the pane stays responsive. */
+  async function mapLimit(items, limit, worker) {
+    const out = new Array(items.length);
+    let cursor = 0;
+    const runners = [];
+    const width = Math.max(1, Math.min(limit, items.length));
+    for (let i = 0; i < width; i += 1) {
+      runners.push((async () => {
+        while (cursor < items.length) {
+          const index = cursor;
+          cursor += 1;
+          out[index] = await worker(items[index], index);
+        }
+      })());
+    }
+    await Promise.all(runners);
+    return out;
+  }
+
+  function categoryModel(spec, probe) {
+    const timeIndex = probe.columns.findIndex((column) => /timestamp/i.test(column));
+    const valueIndex = probe.columns.findIndex((_, index) => index !== timeIndex);
+    const rows = (probe.table && probe.table.rows) || [];
+    if (!rows.length) return { status: 'empty', reason: `${probe.name} 没有数据行` };
+    if (probe.rows > rows.length) {
+      return {
+        status: 'empty',
+        reason: `这张图要逐行读分类列，但 /api/graph/data 只给前 ${rows.length} 行（共 ${probe.rows} 行），画出来会缺样本`,
+      };
+    }
+    const base = timeIndex >= 0 ? parseGpsCell(rows[0][timeIndex]) : null;
+    const samples = rows.map((row, index) => {
+      const absolute = timeIndex >= 0 ? parseGpsCell(row[timeIndex]) : null;
+      return {
+        x: absolute !== null && base !== null ? Math.round((absolute - base) * 1000) / 1000 : index,
+        label: row[valueIndex] || '—',
+      };
+    });
+    const names = [];
+    for (const sample of samples) if (!names.includes(sample.label)) names.push(sample.label);
+    const series = names.map((name, index) => ({
+      name,
+      color: seriesColor(index),
+      points: samples.filter((sample) => sample.label === name).map((sample) => [sample.x, 1]),
+    }));
+    const lastAbsolute = timeIndex >= 0 ? parseGpsCell(rows[rows.length - 1][timeIndex]) : null;
+    return {
+      status: 'ready',
+      kind: 'category',
+      title: spec.title,
+      units: '',
+      series,
+      xLabel: timeIndex >= 0 ? '时间（相对首帧，s）' : '行序号',
+      xKind: timeIndex >= 0 ? 'time' : 'index',
+      xStartLabel: timeIndex >= 0 && base !== null ? gpsWeekLabel(base) : '#1',
+      xEndLabel: timeIndex >= 0 && lastAbsolute !== null ? gpsWeekLabel(lastAbsolute) : `#${rows.length}`,
+      rows: probe.rows,
+      columns: 1,
+      file: probe.name,
+    };
+  }
+
+  async function geomapModel(spec, probe) {
+    const numeric = probe.numericColumns.map((column) => column.name);
+    const lonName = numeric.includes(spec.xColumn) ? spec.xColumn : numeric[1];
+    const latName = numeric.includes(spec.yColumn) ? spec.yColumn : numeric[0];
+    if (!lonName || !latName) {
+      return { status: 'empty', reason: `${probe.name} 里没有经度 / 纬度两列` };
+    }
+    const [lon, lat] = await Promise.all([
+      fetchData(spec.file, lonName).catch(() => null),
+      fetchData(spec.file, latName).catch(() => null),
+    ]);
+    if (!lon || !lat) {
+      return { status: 'empty', reason: `读不到 ${probe.name} 的 ${lonName} / ${latName} 列` };
+    }
+    const east = lon.series.points;
+    const north = lat.series.points;
+    if (east.length !== north.length) {
+      return {
+        status: 'empty',
+        reason: `经度与纬度行数不一致（${east.length} / ${north.length}），无法配成点`,
+      };
+    }
+    const points = east.map((point, index) => [point[1], north[index][1]]);
+    if (!points.length) return { status: 'empty', reason: `${probe.name} 没有可配对的经纬度点` };
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    for (const point of points) {
+      if (point[0] < xMin) xMin = point[0];
+      if (point[0] > xMax) xMax = point[0];
+    }
+    return {
+      status: 'ready',
+      kind: 'geomap',
+      title: spec.title,
+      units: '',
+      series: [{ name: `${lonName} / ${latName}`, color: '#5464f8', points }],
+      xLabel: 'Longitude (degrees) · Latitude (degrees)',
+      xStartLabel: xMin.toFixed(5),
+      xEndLabel: xMax.toFixed(5),
+      rows: probe.rows,
+      columns: 2,
+      file: probe.name,
+      note: points.length < 2
+        ? `只有 ${points.length} 个点（所有样本经纬度相同），所以画面是一个点、不是一条轨迹。`
+        : '',
+    };
+  }
+
+  async function buildChart(spec) {
+    if (!state.files.some((file) => file.name === spec.file)) {
+      return { status: 'empty', reason: `导出目录里没有 ${spec.file}` };
+    }
+    const probe = await fetchData(spec.file);
+    if (spec.kind === 'category') return categoryModel(spec, probe);
+    if (spec.kind === 'geomap') return geomapModel(spec, probe);
+
+    // One series per row, named by the row's first cell — what `Receiver Status` needs, because its
+    // CSV is a list of conditions rather than a time series.
+    if (spec.rowsAsSeries) {
+      const rows = (probe.table && probe.table.rows) || [];
+      if (!rows.length) return { status: 'empty', reason: `${probe.name} 没有数据行` };
+      if (probe.rows > rows.length) {
+        return {
+          status: 'empty',
+          reason: `这张图要逐行取条件名，但 /api/graph/data 只给前 ${rows.length} 行（共 ${probe.rows} 行）`,
+        };
+      }
+      const series = [];
+      rows.forEach((row, index) => {
+        const value = Number(row[row.length - 1]);
+        if (!Number.isFinite(value)) return;
+        series.push({ name: row[0], color: seriesColor(index), points: [[index, value]] });
+      });
+      if (!series.length) return { status: 'empty', reason: `${probe.name} 的 value 列读不出数字` };
+      return {
+        status: 'ready',
+        kind: spec.kind || 'bar',
+        title: spec.title,
+        units: spec.units || '',
+        series,
+        xLabel: '行序号',
+        xKind: 'index',
+        xStartLabel: '#1',
+        xEndLabel: `#${rows.length}`,
+        rows: probe.rows,
+        columns: 1,
+        file: probe.name,
+        table: spec.intervalTable && probe.table ? probe.table : null,
+        note: '这张 CSV 的表结构是「条件 → 区间」（name,start,end,value），没有时间列，'
+          + '所以横轴是行序号、纵轴是 value；每个条件的 start/end 见下表。',
+      };
+    }
+
+    const names = spec.columns && spec.columns.length
+      ? spec.columns.slice()
+      : probe.numericColumns.map((column) => column.name);
+    if (!names.length) {
+      return {
+        status: 'empty',
+        reason: `${spec.file} 没有数值列，只能看表格（Legend → 前 20 行）`,
+      };
+    }
+    const payloads = await mapLimit(names, 10, (name) => fetchData(spec.file, name).catch(() => null));
+    const series = [];
+    for (let index = 0; index < names.length; index += 1) {
+      const payload = payloads[index];
+      if (!payload || !payload.series || !payload.series.points.length) continue;
+      series.push({ name: names[index], color: seriesColor(index), points: payload.series.points });
+    }
+    if (!series.length) return { status: 'empty', reason: `${spec.file} 的数值列都读不到` };
+    const first = payloads.find((payload) => payload && payload.series);
+    const notes = [];
+    if (spec.intervalTable) notes.push('这张 CSV 的表结构是「条件 → 区间」（name,start,end,value），没有时间列。');
+    if (probe.rows < 2) {
+      notes.push(`只有 1 行样本（这份 CSV 只回了一次报文），每列只有一个点，连不成线，但数是真的。`);
+    }
+    return {
+      status: 'ready',
+      kind: spec.kind,
+      title: spec.title,
+      units: spec.units || '',
+      minYZero: Boolean(spec.minYZero),
+      series,
+      xLabel: first.series.xLabel,
+      xKind: first.series.xKind,
+      xStartLabel: first.series.xStartLabel,
+      xEndLabel: first.series.xEndLabel,
+      rows: probe.rows,
+      columns: names.length,
+      file: probe.name,
+      table: spec.intervalTable && probe.table ? probe.table : null,
+      note: notes.join(' '),
+    };
+  }
+
+  /* ---- tiles ---- */
+
+  function tileHead(model) {
+    const units = model.units ? `<span class="gp-chart-units">${esc(model.units)}</span>` : '';
+    const facts = [model.file];
+    if (model.columns > 1) facts.push(`${model.columns} 列`);
+    facts.push(`${model.rows} 行`);
+    return '<div class="gp-chart-card-head">'
+      + `<h3 class="gp-chart-title">${esc(model.title)}${units}</h3>`
+      + `<p class="gp-chart-meta">${esc(facts.join(' · '))}</p>`
+      + '</div>';
+  }
+
+  /** >8 series get constellation sub-heads, the way the original's legend groups them. */
+  function groupChips(series) {
+    if (series.length <= 8) return [{ label: '', items: series }];
+    const order = [];
+    const buckets = new Map();
+    for (const item of series) {
+      const key = constellationOf(item.name);
+      if (!buckets.has(key)) {
+        buckets.set(key, []);
+        order.push(key);
+      }
+      buckets.get(key).push(item);
+    }
+    order.sort((a, b) => (a === '' ? 1 : 0) - (b === '' ? 1 : 0));
+    return order.map((key) => ({ label: key, items: buckets.get(key) }));
+  }
+
+  function chipRow(key, model, hiddenNames) {
+    const parts = [];
+    for (const group of groupChips(model.series)) {
+      if (group.label) parts.push(`<span class="gp-chip-group">${esc(group.label)}</span>`);
+      for (const item of group.items) {
+        const off = hiddenNames.has(item.name);
+        parts.push(
+          `<button type="button" class="gp-chip" data-chip="${esc(key)}" data-chip-name="${esc(item.name)}" `
+          + `aria-pressed="${off ? 'false' : 'true'}" style="--gp-chip-color:${esc(item.color)}">`
+          + '<span class="gp-chip-box"></span>'
+          + `<span class="gp-chip-text">${esc(item.name)}</span></button>`,
+        );
+      }
+    }
+    return `<div class="gp-chips">${parts.join('')}</div>`;
+  }
+
+  function intervalTableMarkup(model) {
+    const columns = (model.table && model.table.columns) || [];
+    const rows = (model.table && model.table.rows) || [];
+    if (!rows.length) return '';
+    return '<div class="gp-chart-table"><table><thead><tr>'
+      + columns.map((column) => `<th>${esc(column)}</th>`).join('')
+      + '</tr></thead><tbody>'
+      + rows.map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')
+      + '</tbody></table></div>';
+  }
+
+  function paintCard(key) {
+    const card = root.querySelector(`[data-chart="${key}"]`);
+    if (!card) return;
+    const entry = state.models.get(key);
+    if (!entry) return;
+
+    if (entry.status === 'loading') {
+      card.innerHTML = `<div class="gp-chart-card-head"><h3 class="gp-chart-title">${esc(entry.spec.title)}</h3>`
+        + `<p class="gp-chart-meta">${esc(entry.spec.file)}</p></div>`
+        + '<div class="gp-chart-empty">正在通过 /api/graph/data 读取…</div>';
+      return;
+    }
+    if (entry.status !== 'ready' || !entry.model) {
+      card.innerHTML = `<div class="gp-chart-card-head"><h3 class="gp-chart-title">${esc(entry.spec.title)}</h3>`
+        + `<p class="gp-chart-meta">${esc(entry.spec.file)}</p></div>`
+        + `<div class="gp-chart-empty"><strong>--</strong> ${esc(entry.reason || '没有数据')}</div>`;
+      return;
+    }
+
+    const model = entry.model;
+    const hiddenNames = new Set();
+    for (const item of model.series) if (state.chipOff.has(`${key}##${item.name}`)) hiddenNames.add(item.name);
+    const view = { ...model, series: model.series.map((item) => ({ ...item, hidden: hiddenNames.has(item.name) })) };
+
+    card.innerHTML = tileHead(model)
+      + '<div class="gp-chart-box"></div>'
+      + chipRow(key, model, hiddenNames)
+      + (model.note ? `<p class="gp-chart-note">${esc(model.note)}</p>` : '')
+      + (model.table ? intervalTableMarkup(model) : '');
+
+    const box = card.querySelector('.gp-chart-box');
+    if (!box) return;
+    const width = Math.round(box.getBoundingClientRect().width);
+    if (width < 120) {
+      box.innerHTML = '<div class="gp-chart-empty">等待布局…</div>';
+      return;
+    }
+    const height = Math.round(box.getBoundingClientRect().height) || 240;
+    box.innerHTML = chartSvgFor(view, width, height);
+  }
+
+  function paintFoot(tabId) {
+    const foot = root.querySelector(`[data-foot="${tabId}"]`);
+    if (!foot) return;
+    const group = CHART_GROUPS.find((item) => item.id === tabId);
+    if (!group) {
+      foot.textContent = '';
+      return;
+    }
+    if (!state.files.length) {
+      foot.textContent = '没有读到 /api/graph/files，无法确认哪些 CSV 存在。';
+      return;
+    }
+    const drawn = new Set(group.charts.map((chart) => chart.title));
+    const missing = group.catalog.filter((title) => !drawn.has(title));
+    foot.textContent = missing.length
+      ? `附录 C 的图表目录里 ${group.label} 有 ${group.catalog.length} 张图，`
+        + `${state.directory || '导出目录'} 里只有 ${group.charts.length} 张的 CSV；`
+        + `${missing.join(' / ')} 没有对应文件，所以这里不画（也不拿别的列顶替）。`
+      : `附录 C 的图表目录里 ${group.label} 的 ${group.catalog.length} 张图都有 CSV，全部画出来了。`;
+  }
+
+  function paintTab(tabId) {
+    if (!state.alive || tabId === 'overview') return;
+    if (tabId === 'project') {
+      renderProject();
+      return;
+    }
+    for (const spec of chartsOf(tabId)) paintCard(`${tabId}/${spec.id}`);
+  }
+
+  function ensureTab(tabId) {
+    if (tabId === 'overview') return;
+    if (state.started.has(tabId)) {
+      if (tabId === 'project') renderProject();
+      return;
+    }
+    if (!state.files.length && !state.filesLoaded) {
+      state.deferredTab = tabId;
+      return;
+    }
+    state.started.add(tabId);
+    if (tabId === 'project') {
+      renderProject();
+      return;
+    }
+    for (const spec of chartsOf(tabId)) {
+      const key = `${tabId}/${spec.id}`;
+      state.models.set(key, { status: 'loading', spec, key });
+      paintCard(key);
+      void (async () => {
+        try {
+          const result = await buildChart(spec);
+          if (!state.alive) return;
+          state.models.set(key, {
+            spec,
+            key,
+            status: result.status,
+            model: result.status === 'ready' ? result : null,
+            reason: result.reason || '',
+          });
+        } catch (error) {
+          state.models.set(key, { spec, key, status: 'empty', reason: `读取失败：${error.message}` });
+        }
+        paintCard(key);
+      })();
+    }
+    paintFoot(tabId);
+  }
+
+  function renderProject() {
+    const card = root.querySelector('[data-chart="project/info"]');
+    if (!card) return;
+    const data = state.data;
+    const comments = (data && data.comments) || {};
+    const rows = [
+      ['Project Name', comments.projectName],
+      ['Project Directory', comments.projectDirectory],
+      ['Data File Name', comments.dataFileName],
+      ['Start Time (GPS)', comments.startTime],
+      ['End Time (GPS)', comments.endTime],
+      ['Duration', comments.duration],
+      ['Start Time (UTC)', gpsIsoLabel(comments.startTime)],
+    ];
+    const facts = rows
+      .map(([label, value]) => '<div class="gp-info-row">'
+        + `<span class="gp-info-label">${esc(label)}</span>`
+        + `<span class="gp-info-value">${esc(value || '--')}</span></div>`)
+      .join('');
+
+    const files = state.files.length
+      ? '<div class="gp-chart-table"><table><thead><tr><th>CSV</th><th>行</th><th>列</th><th>大小</th></tr></thead><tbody>'
+        + state.files.map((file) => '<tr>'
+          + `<td>${esc(file.name)}</td><td>${file.rows}</td><td>${file.columns}</td>`
+          + `<td>${esc(bytesText(file.bytes))}</td></tr>`).join('')
+        + '</tbody></table></div>'
+      : '<p class="gp-chart-note">-- 没有读到 /api/graph/files。</p>';
+
+    card.innerHTML = '<h3 class="gp-chart-title">Project Information</h3>'
+      + '<p class="gp-chart-meta">六项取自当前 CSV 的注释头（每个工程的所有导出都带同一份）</p>'
+      + `<div class="gp-info-list">${facts}</div>`
+      + '<h4 class="gp-info-sub">Message Summary</h4>'
+      + '<p class="gp-chart-note"><strong>--</strong> 数据层只暴露 CSV；报文名与条数在工程的 '
+      + 'DataSummary.json 里，不在 /api/graph/* 的返回里，所以这里不填数字。</p>'
+      + `<h4 class="gp-info-sub">数据源（/api/graph/files，${esc(state.directory || '导出目录')}）</h4>`
+      + files;
   }
 
   /* ---- data ---- */
@@ -707,6 +1561,14 @@ export function mount(root, ctx) {
     fillPicker();
   }
 
+  /** Files are what tell a tile whether its CSV exists, so a tab opened before this returns waits here. */
+  function resumeDeferred() {
+    state.filesLoaded = true;
+    const tab = state.deferredTab;
+    state.deferredTab = '';
+    if (tab) ensureTab(tab);
+  }
+
   async function loadFiles() {
     try {
       const body = await api.get('/graph/files');
@@ -720,10 +1582,12 @@ export function mount(root, ctx) {
         renderCards();
         el.homeStatus.textContent = `未在 ${state.directory || 'samples/graph'} 下找到 CSV。`;
       }
+      resumeDeferred();
     } catch (error) {
       renderCards();
       el.homeStatus.textContent = `读取 CSV 列表失败：${error.message}`;
       showNotice(`读取 CSV 列表失败：${error.message}`);
+      resumeDeferred();
     }
   }
 
@@ -997,6 +1861,16 @@ ${svgMarkup}
       return;
     }
 
+    const chip = target.closest('[data-chip]');
+    if (chip) {
+      const key = chip.dataset.chip;
+      const id = `${key}##${chip.dataset.chipName || ''}`;
+      if (state.chipOff.has(id)) state.chipOff.delete(id);
+      else state.chipOff.add(id);
+      paintCard(key);
+      return;
+    }
+
     const exportItem = target.closest('[data-export]');
     if (exportItem) {
       exportAs(exportItem.dataset.export);
@@ -1070,8 +1944,9 @@ ${svgMarkup}
   }
 
   function onResize() {
-    if (state.view !== 'work' || state.tab !== 'overview') return;
-    drawChart();
+    if (state.view !== 'work') return;
+    if (state.tab === 'overview') drawChart();
+    else paintTab(state.tab);
   }
 
   root.addEventListener('click', onRootClick);
