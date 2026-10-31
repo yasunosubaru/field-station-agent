@@ -1,0 +1,505 @@
+@charset "utf-8";
+/*
+ * 深色主题 + 顶栏的主题切换入口
+ *
+ * 原版两套主题的真实写法（不是猜的）：
+ *   浅色：body 上**没有**任何 class，style.css 里也没有 light 专用选择器；
+ *   深色：body 加一个 class —— 逆向/01_解包/app/view/html/index.html:1071-1073
+ *         `if (userStore.userStoreJSON.theme == "dark-theme") { $('body').addClass("darkMode"); }`
+ *         选择器因此是 `body.darkMode`（style.css:23313-23315）与 `.darkMode ...` 一族
+ *         （style.css:23245 起的 "Dark Mode styles" 段，28044 起还有一段下拉菜单补充）。
+ *   设置菜单里的两项是 `<li id="light-theme">` / `<li id="dark-theme">`（index.html:278-285），
+ *   它们只是 localStorage(userStore) 里 theme 字段的切换按钮，本身不带样式含义。
+ *
+ * 下面每一处颜色都抄自 style.css（下文简称 S）并在注释里标了行号，
+ * 与 theme.js 里 body.classList.toggle('darkMode') 一一对应；没有一处是手编的。
+ * 未列出的原版规则（.banner-img 渐变、#tabs-list 底色等）在 S 的 Dark Mode 段里也没有覆盖，
+ * 保持原样即为「与原版一致」，注释里单独说明。
+ *
+ * 注意：本次任务不允许改 index.html / server.ts，而 server.ts 的静态白名单只有
+ * `/shell.css`、`/panels/`、`/fonts/`，所以 /theme.css 与 /theme.js 目前**只能运行时注入**
+ * （自测就是这么做的）。等 index.html 允许引入后，把这两行加进 <head> 即可：
+ *   <link rel="stylesheet" href="/theme.css">
+ *   <script type="module" src="/theme.js"></script>
+ */
+
+/* ================================================================
+   ① 文档底色与正文
+   ================================================================ */
+
+body.darkMode {
+  /* S:23313-23315 body.darkMode { background: #121212 } */
+  background: #121212;
+  /* S:23246-23248 .darkMode label { color: RGBA(255,255,255,0.87) } */
+  color: RGBA(255, 255, 255, 0.87);
+}
+
+/* shell.css:57-60 的 `span { color: RGBA(0,0,0,0.87) }` 的深色镜像 */
+body.darkMode span {
+  color: RGBA(255, 255, 255, 0.87); /* S:23247 */
+}
+
+/* S:23279-23281 轨道 / S:23287-23291 滑块（滑块本身两套主题都是 RGB(155,155,155)） */
+body.darkMode ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+body.darkMode ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.12);
+}
+body.darkMode ::-webkit-scrollbar-thumb {
+  background: RGB(155, 155, 155);
+  border-radius: 4px;
+  border: 0px solid #ffffff;
+}
+
+/* ================================================================
+   ② 顶栏
+   ================================================================ */
+
+/*
+ * .banner-img 的 155.01° 渐变（S:2623-2638：#00ABC8 → #00526F）在两套主题里是同一个值——
+ * S 的 Dark Mode 段里根本没有 .banner-img / .navigation.banner-img 的覆盖规则，
+ * 所以这里刻意不写，保持原版的彩色顶栏。
+ * 顶栏上的图标 hover（RGBA(255,255,255,0.24)，S:1444-1446）同理不变。
+ */
+
+/* 顶栏下拉面板：浅色白底（shell.css:206）→ S:24964-24970 的 var(--dark-dropdown-bg) =
+ * RGBA(46,46,46,1)（S:31），阴影取 S:24968 的三层黑色。 */
+body.darkMode .dropdown-menu {
+  background-color: RGBA(46, 46, 46, 1);
+  box-shadow: 0 4px 5px 0 RGBA(0, 0, 0, 0.5), 0 1px 10px 0 RGBA(0, 0, 0, 0.5),
+    0 2px 4px -1px RGBA(0, 0, 0, 0.5);
+}
+
+/* 应用菜单是更暗的一层：S:26371-26374 .darkMode .app-menu */
+body.darkMode .app-menu {
+  background-color: RGB(18, 18, 18);
+  box-shadow: 0 4px 5px 0 RGBA(0, 0, 0, 0.5), 0 1px 10px 0 RGBA(0, 0, 0, 0.5),
+    0 2px 4px -1px RGBA(0, 0, 0, 0.5);
+}
+/* S:26376-26379 .darkMode .app-menu li */
+body.darkMode .app-menu-item {
+  color: RGBA(255, 255, 255, 0.87);
+  background-color: transparent;
+}
+/* S:26381-26383 .darkMode .app-menu li a（套件名那一行，浅色是 #115C7C） */
+body.darkMode .app-menu-item.suite {
+  color: RGBA(255, 255, 255, 0.87);
+}
+/* S:26385-26387 .darkMode .app-menu li:hover */
+body.darkMode .app-menu-item:hover {
+  background-color: RGBA(255, 255, 255, 0.12);
+}
+
+/* 右侧设置/帮助下拉（原版 .right-side-menu）：S:26389-26397 */
+body.darkMode .right-side-menu {
+  background-color: RGB(18, 18, 18);
+  box-shadow: 0 4px 5px 0 RGBA(0, 0, 0, 0.5), 0 1px 10px 0 RGBA(0, 0, 0, 0.5),
+    0 2px 4px -1px RGBA(0, 0, 0, 0.5);
+}
+body.darkMode .right-side-menu li {
+  color: RGBA(255, 255, 255, 0.87);
+  background-color: RGB(18, 18, 18);
+}
+body.darkMode .right-side-menu li a {
+  color: RGBA(255, 255, 255, 0.87);
+}
+/* S:26404-26406 .darkMode .navigation .right-side-menu li:hover */
+body.darkMode .right-side-menu li:hover {
+  background-color: RGBA(255, 255, 255, 0.12);
+}
+
+/* ================================================================
+   ③ 应用标签栏（#tabs-list）
+   ================================================================ */
+
+/* 底色 RGB(0,81,111)（shell.css:283 / S:1923）在深色下不覆盖——S 的 Dark Mode 段没有这条。 */
+/* S:26347-26349 .darkMode #tabs-list li { background-color: #8e8e8e } */
+body.darkMode #tabs-list li {
+  background-color: #8e8e8e;
+}
+/* S:26343-26345 .darkMode #tabs-list li.ui-tabs-active { background: RGB(18,18,18) } */
+body.darkMode #tabs-list li.ui-tabs-active,
+body.darkMode #tabs-list li.ui-tabs-active:hover {
+  background: RGB(18, 18, 18);
+}
+/* S:26355-26357 .darkMode #tabs-list li.ui-tabs-active .conn-name-title { color: #ffffff } */
+body.darkMode #tabs-list li.ui-tabs-active a {
+  color: #ffffff;
+}
+
+/* ================================================================
+   ④ 左侧窄轨（#gritGroupView / .gritSideNav）
+   ================================================================ */
+
+/* S:23409-23411 .darkMode #sideView, .darkMode .folders_content { background: #484848 } */
+body.darkMode #gritGroupView,
+body.darkMode .gritSideNav,
+body.darkMode .gritSideNav .folders_content {
+  background: #484848;
+}
+
+/* S:23476-23478 .darkMode .add_folder-btn .add-group { color: RGB(255,255,255) } */
+body.darkMode .gritSideNav .add_folder-btn .add-group {
+  color: RGB(255, 255, 255);
+}
+
+/* S:23479-23481 .darkMode .sideNav .active-folder { background: RGB(128,221,240) } */
+body.darkMode .gritSideNav .active-folder {
+  background: RGB(128, 221, 240);
+}
+
+/* S:23495-23497 .darkMode .sideNav .folders_list .folder_text { color: RGB(0,0,0) }
+ * （深色下未选中的分组图标是浅蓝 #27A0BF 系，文字因此反过来用黑色） */
+body.darkMode .gritSideNav .folders_list .folder_text {
+  color: RGB(0, 0, 0);
+}
+/* S:23489-23491 .darkMode .sideNav .folders_list .active-folder .folder_text { color: RGB(255,255,255) } */
+body.darkMode .gritSideNav .folders_list .active-folder .folder_text {
+  color: RGB(255, 255, 255);
+}
+
+/* ================================================================
+   ⑤ 内容区底与标题
+   ================================================================ */
+
+/* S:23313-23315（body）/ S:23400-23405（.darkMode #tabs-1.ui-tabs-panel 与 #tabs .main-view）*/
+body.darkMode .nas-content {
+  background: #121212;
+}
+
+/* S:23412-23414 .darkMode span.device-text { color: RGBA(255,255,255,0.87) } */
+body.darkMode .device-text {
+  color: RGBA(255, 255, 255, 0.87);
+}
+/* 副标题同标题色：S:23851-23853 .darkMode .heading */
+body.darkMode .receiver-count {
+  color: RGBA(255, 255, 255, 0.87);
+}
+
+/* 次要文字：S:23336 .darkMode .application-container .connectionsCount 用的 RGBA(255,255,255,0.6) */
+body.darkMode .nas-field > span,
+body.darkMode .nas-health,
+body.darkMode .app-panel .hint,
+body.darkMode .app-panel .muted,
+body.darkMode .app-panel .field > span,
+body.darkMode .app-panel .code-empty,
+body.darkMode .app-panel .empty-row td {
+  color: RGBA(255, 255, 255, 0.6);
+}
+
+/* 空态（原版 .no-devices-data）：S:23498-23500 的信息色 RGB(128,221,240) */
+body.darkMode .panel-state-title {
+  color: RGB(128, 221, 240);
+}
+body.darkMode .panel-state-text {
+  color: RGBA(255, 255, 255, 0.6); /* S:23336 */
+}
+
+/* ================================================================
+   ⑥ 输入框 / 下拉（原版 input、textarea、.dropdown-toggle）
+   ================================================================ */
+
+/* S:23269-23274 .darkMode textarea, .darkMode input：
+ *   border-bottom: var(--dark-textbox-border-btm) = 1px solid RGBA(255,255,255,0.87)（S:42）
+ *   color: RGBA(255,255,255,0.87)
+ * 底色用 S:40 var(--dark-textbox-bg) = RGBA(46,46,46,1)。 */
+body.darkMode .nas-field select,
+body.darkMode .app-panel select,
+body.darkMode .app-panel input[type="search"],
+body.darkMode .app-panel input[type="number"] {
+  color: RGBA(255, 255, 255, 0.87);
+  background-color: RGBA(46, 46, 46, 1);
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.87);
+}
+/* hover：S:41 var(--dark-textbox-bg-hover) = RGBA(54,54,54,1)，边框 S:47 同 1px RGBA(255,255,255,0.87) */
+body.darkMode .nas-field select:hover,
+body.darkMode .app-panel select:hover,
+body.darkMode .app-panel input:hover {
+  background-color: RGBA(54, 54, 54, 1);
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.87);
+}
+/* focus：S:43 var(--dark-textbox-bg-focus) = RGBA(71,71,71,1)
+ *         S:46 var(--dark-textbox-focused-border-btm) = 2px solid RGB(39,160,191) */
+body.darkMode .nas-field select:focus,
+body.darkMode .app-panel select:focus,
+body.darkMode .app-panel input:focus {
+  background-color: RGBA(71, 71, 71, 1);
+  border-bottom: 2px solid RGB(39, 160, 191);
+  caret-color: RGB(39, 160, 191); /* S:23272 */
+}
+
+/* ================================================================
+   ⑦ 卡片（原版 #tabs-1 .all-device-tile，S:3928-3934 的 #FCFCFC）
+   ================================================================ */
+
+/* S:23415-23418 .darkMode #tabs-1 .all-device-tile {
+ *   background: RGBA(255,255,255,0.12); border: 1px solid #27A0BF } */
+body.darkMode .app-panel .card {
+  background-color: RGBA(255, 255, 255, 0.12);
+  border: 1px solid #27A0BF;
+}
+
+/* 卡片标题浅色是 #115C7C（S:3869 .all-device-tile 的文字色）→ 深色 S:23425-23427
+ * .darkMode ... .all-device-tile span { color: RGBA(255,255,255,0.87) } */
+body.darkMode .app-panel .card-head h2,
+body.darkMode .app-panel .card-head h3 {
+  color: RGBA(255, 255, 255, 0.87);
+}
+
+/* ================================================================
+   ⑧ 表格（原版 .TableStyle-Standard）
+   ================================================================ */
+
+/* 容器边框改用 S:25892-25894 的 RGBA(255,255,255,0.12)，底色透明（落在卡片上） */
+body.darkMode .app-panel .table-scroll {
+  background: transparent;
+  border: 1px solid RGBA(255, 255, 255, 0.12);
+}
+/* 表头：S:25949-25954 .darkMode .TableStyle-Standard-Head*-Column1-Header1 { background: RGB(29,29,29) }
+ * 分隔线：S:25892-25894 的 RGBA(255,255,255,0.12)（浅色是 S:15420 的 #9B9B9B） */
+body.darkMode .app-panel thead th {
+  background: RGB(29, 29, 29);
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.12);
+  color: RGBA(255, 255, 255, 0.6); /* S:23336 */
+}
+/* 正文单元格：S:25889-25891 .darkMode .TableStyle-Standard-BodyE-Column1-Body1 { border-color: RGBA(255,255,255,0.12) } */
+body.darkMode .app-panel tbody td {
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.12);
+  color: RGBA(255, 255, 255, 0.87); /* S:23247 */
+}
+/* 行 hover / 选中：青系叠加，浅色 RGBA(0,81,111,0.04) / RGBA(0,171,200,0.12) →
+ * 深色 S:23461 与 S:24375 的 RGBA(39,160,191,0.04)、S:24883 的 RGBA(39,160,191,0.12) */
+body.darkMode .app-panel tbody tr.clickable:hover td {
+  background: RGBA(39, 160, 191, 0.04);
+}
+body.darkMode .app-panel tbody tr.selected td {
+  background: RGBA(39, 160, 191, 0.12);
+}
+
+/* ================================================================
+   ⑨ 按钮 / 徽标 / 提示条
+   ================================================================ */
+
+/* 次按钮 = 原版 .whiteBtn：S:24869-24872（底色 RGB(29,29,29)、1px RGBA(255,255,255,0.12)、字 RGB(60,170,200)） */
+body.darkMode .app-panel .btn,
+body.darkMode .panel-state .btn {
+  background: RGB(29, 29, 29);
+  border: 1px solid RGBA(255, 255, 255, 0.12);
+  color: RGB(60, 170, 200);
+}
+/* hover：S:24875-24877 底色 RGBA(39,160,191,0.04) + S:24879-24885 边框 RGBA(39,160,191) */
+body.darkMode .app-panel .btn:hover,
+body.darkMode .panel-state .btn:hover {
+  background-color: RGBA(39, 160, 191, 0.04);
+  border: 1px solid RGBA(39, 160, 191);
+  color: RGB(60, 170, 200);
+}
+/* 主按钮 = 原版 .darkBtn：S:24892-24895；hover S:24897-24899 */
+body.darkMode .app-panel .btn.primary {
+  background-color: RGB(39, 160, 191);
+  border: 1px solid RGB(39, 160, 191);
+  color: RGB(0, 0, 0);
+}
+body.darkMode .app-panel .btn.primary:hover {
+  background-color: rgb(48, 177, 210);
+  border-color: rgb(48, 177, 210);
+  color: RGB(0, 0, 0);
+}
+
+/* 徽标：浅色 RGBA(0,81,111,·) → 深色用 S:24883 / S:24884 的 RGBA(39,160,191,·)，字 S:24872 的 RGB(60,170,200) */
+body.darkMode .app-panel .badge {
+  background-color: RGBA(39, 160, 191, 0.12);
+  border: 1px solid RGBA(39, 160, 191);
+  color: RGB(60, 170, 200);
+}
+
+/* 提示条：深色面板底取 S:24910-24911 的 RGB(29,29,29)，描边取 S:24871 的 RGBA(255,255,255,0.12)；
+ * 语义色（错误 #A00214 / 信息 #00516F / 警告 #417505）原版没有深色版本，保持不变。 */
+body.darkMode .app-panel .notice {
+  background: RGB(29, 29, 29);
+  border: 1px solid RGBA(255, 255, 255, 0.12);
+  color: RGBA(255, 255, 255, 0.87);
+}
+
+/* ================================================================
+   ⑩ 面板内部（manage / convert / playback）
+   ================================================================
+ * 三块面板各自带着 convert.css / manage.css / playback.css，那些文件只定义浅色 token
+ * （每个面板根上的一套 --nas-*）并把少数底色写死成 #fff / #eee。
+ * index.html 与 panels/ 都不在本次可改范围内，所以深色只在 theme.css 里补：
+ * 先把 token 翻成原版深色的对应值，再覆盖那几处写死的白底。
+ * 面板根类名：.manage-panel / .convertLayout / .playback-panel。 */
+body.darkMode .manage-panel,
+body.darkMode .convertLayout,
+body.darkMode .playback-panel {
+  --nas-ink: RGBA(255, 255, 255, 0.87); /* S:23246-23248 */
+  --nas-ink-60: RGBA(255, 255, 255, 0.6); /* S:23336 */
+  --nas-ink-38: RGBA(255, 255, 255, 0.38); /* S:23429 */
+  --nas-surface: RGBA(255, 255, 255, 0.12); /* S:23415-23418 */
+  --nas-rule: RGBA(255, 255, 255, 0.12); /* S:25892-25894 */
+  --nas-rule-strong: RGBA(255, 255, 255, 0.12); /* S:25892-25894 */
+  --nas-grey-panel: RGB(39, 39, 39); /* S:26232-26234 设置侧栏那一层灰 */
+  --nas-teal: RGB(60, 170, 200); /* S:24377-24381 .darkMode .whiteBtn 的字色 */
+  --nas-teal-hover: rgb(48, 177, 210); /* S:24897-24899 */
+  --nas-teal-dark: RGB(60, 170, 200); /* S:24377-24381 */
+}
+
+/* 卡片 / 面板框：浅色 #FCFCFC + 1px #005170（S:3928-3934 / S:3866）
+ * → 深色 RGBA(255,255,255,0.12) + 1px #27A0BF（S:23415-23418） */
+body.darkMode .manage-panel .tile,
+body.darkMode .playback-panel .tile,
+body.darkMode .convertLayout .convert-screens {
+  background-color: RGBA(255, 255, 255, 0.12);
+  border: 1px solid #27A0BF;
+}
+body.darkMode .playback-panel .selected-file-info {
+  background: RGBA(255, 255, 255, 0.12);
+  border: 1px dashed #27A0BF;
+}
+
+/* 输入框 / 下拉：白底 → S:40 var(--dark-textbox-bg) RGBA(46,46,46,1)，
+ * 下边线 → S:42 var(--dark-textbox-border-btm) 1px RGBA(255,255,255,0.87) */
+body.darkMode .manage-panel select,
+body.darkMode .manage-panel input[type="search"],
+body.darkMode .convertLayout .convert-capture,
+body.darkMode .playback-panel select {
+  background: RGBA(46, 46, 46, 1);
+  border-color: RGBA(255, 255, 255, 0.12);
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.87);
+  color: RGBA(255, 255, 255, 0.87); /* S:23273 */
+}
+
+/* 次按钮：S:24869-24872（RGB(29,29,29) 底、RGBA(255,255,255,0.12) 描边、RGB(60,170,200) 字） */
+body.darkMode .manage-panel .btn,
+body.darkMode .convertLayout .btn,
+body.darkMode .convertLayout .lightBtn,
+body.darkMode .playback-panel .btn {
+  background: RGB(29, 29, 29);
+  border: 1px solid RGBA(255, 255, 255, 0.12);
+  color: RGB(60, 170, 200);
+}
+/* 主按钮 .darkBtn：S:24892-24895 青底黑字 */
+body.darkMode .playback-panel .btn.darkBtn,
+body.darkMode .manage-panel .btn.darkBtn,
+body.darkMode .convertLayout .btn.darkBtn {
+  background-color: RGB(39, 160, 191);
+  border: 1px solid RGB(39, 160, 191);
+  color: RGB(0, 0, 0);
+}
+/* hover 叠加：S:23461 / S:24375 的 RGBA(39,160,191,0.04) */
+body.darkMode .manage-panel .btn.whiteBtn:hover,
+body.darkMode .manage-panel .btn.lightBtn:hover,
+body.darkMode .convertLayout .btn:hover,
+body.darkMode .playback-panel .btn:hover {
+  background-color: RGBA(39, 160, 191, 0.04);
+  color: RGB(60, 170, 200);
+}
+
+/* 表格：容器白底 → 透明（描边由 --nas-rule 变成 RGBA(255,255,255,0.12)），
+ * 表头白底 → S:25949-25954 的 RGB(29,29,29) */
+body.darkMode .manage-table-wrap,
+body.darkMode .playback-panel .pb-frame-table-wrap {
+  background: transparent;
+}
+body.darkMode .manage-panel .g3-devicedetails-table tr > th {
+  background: RGB(29, 29, 29);
+}
+body.darkMode .manage-panel .log-message-table tbody tr {
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.12);
+}
+/* 隔行浅底 #fafafa / #fbfbfb / #f7f7f7 → S:14 var(--dark-radiobutton-bg) = RGBA(255,255,255,0.04) */
+body.darkMode .manage-panel .record-head-table th {
+  background: RGB(29, 29, 29);
+}
+body.darkMode .manage-panel .field-table tbody tr:nth-child(even),
+body.darkMode .playback-panel .pb-frame-table tbody tr:nth-child(even) {
+  background: RGBA(255, 255, 255, 0.04);
+}
+body.darkMode .convertLayout .preview-line .ln {
+  background: RGB(39, 39, 39);
+}
+/* 行选中 / hover 的青系叠加：浅色 rgba(0,81,111,.04) / rgba(0,171,200,.1)
+ * → S:24375 的 RGBA(39,160,191,0.04) 与 S:24883 的 RGBA(39,160,191,0.12) */
+body.darkMode .manage-panel .log-message-table tbody tr.clickable:hover,
+body.darkMode .convertLayout .format-entry:hover {
+  background: RGBA(39, 160, 191, 0.04);
+}
+body.darkMode .manage-panel .log-message-table tbody tr.selected,
+body.darkMode .convertLayout .format-entry.active {
+  background: RGBA(39, 160, 191, 0.12);
+}
+/* 时间/目标路径这类浅灰输入块 → S:40 var(--dark-textbox-bg) */
+body.darkMode .convertLayout .time-input,
+body.darkMode .playback-panel .pb-field input {
+  background-color: RGBA(46, 46, 46, 1);
+  color: RGBA(255, 255, 255, 0.87);
+}
+body.darkMode .convertLayout .destination-selection-layout input.destination-folder-path {
+  background-color: RGBA(255, 255, 255, 0.04) !important;
+  color: RGBA(255, 255, 255, 0.87);
+}
+/* 错误提示条 #fdf3f3（粉白）→ 深色面板底 S:24910-24911，红字保留 */
+body.darkMode .convertLayout .notice,
+body.darkMode .playback-panel .notice,
+body.darkMode .manage-panel .notice {
+  background: RGB(29, 29, 29);
+  border: 1px solid #a00214;
+  color: #a00214;
+}
+
+/* Convert 的结果/预览：灰块 #eee → S:26233 的 RGB(39,39,39)，
+ * 预览白纸 → S:24910-24911 的 RGB(29,29,29)，隔行底色取 S:14 var(--dark-radiobutton-bg) */
+body.darkMode .convertLayout .conversion-summary-formats {
+  background-color: RGB(39, 39, 39);
+}
+body.darkMode .convertLayout .convert-preview {
+  background: RGB(29, 29, 29);
+}
+body.darkMode .convertLayout .preview-line:nth-child(even) {
+  background: RGBA(255, 255, 255, 0.04);
+}
+body.darkMode .convertLayout .format-row {
+  border-bottom: 1px solid RGBA(255, 255, 255, 0.12);
+}
+/* 青字：浅色 #00516f → S:24872 的 RGB(60,170,200)（原版浅色就带 !important，这里照抄） */
+body.darkMode .convertLayout .single-file-view .single-file-msg,
+body.darkMode .convertLayout .summary-details-tabs a {
+  color: RGB(60, 170, 200) !important;
+}
+body.darkMode .playback-panel .single-file-view .single-file-msg {
+  color: RGB(60, 170, 200);
+}
+
+/* 播放器那条深色横条：S:4694-4696 .darkMode .player { background-color: #393939 !important } */
+body.darkMode .playback-panel .player {
+  background-color: #393939 !important;
+}
+
+/* ================================================================
+   ⑪ 顶栏右上角的主题切换按钮（JS 插入，见 theme.js）
+   ================================================================
+ * 几何照抄原版齿轮 .settings（S:1432-1443：23×19、margin-left 15px、图标 19px），
+ * hover 白 24% 叠加照抄 S:1444-1446，与旁边的齿轮/问号一致；
+ * 类名沿用原版菜单项的 sidebar-nav-subitem-title / menubar-items 两件套。
+ * 图标用内联 SVG（原版没有太阳/月亮资源：它只有设置菜单里的两个单选项 id="light-theme"/"dark-theme"）。 */
+.theme-toggle {
+  display: block;
+  width: 23px;
+  height: 19px;
+  margin-left: 15px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><path d='M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.7 8.7 0 1 0 10.7 10.7z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 18px 18px;
+  cursor: pointer;
+  border-radius: 2px; /* S:161 / S:1459 的 hover 圆角 */
+}
+.theme-toggle:hover {
+  background-color: RGBA(255, 255, 255, 0.24); /* S:1444-1446 */
+}
+/* 深色状态下换成太阳，点一下回浅色 */
+body.darkMode .theme-toggle {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4.2'/><path d='M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6'/></svg>");
+}

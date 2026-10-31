@@ -1,0 +1,211 @@
+@charset "utf-8";
+/*
+ * 原版图标接线层（icons.css）
+ * ============================================================================
+ * 壳的骨架与配色在 shell.css 里已经照抄原版，但图标一直借服务端的
+ * /assets/images/（⇒ 逆向/01_解包/app/view/images，需要解包目录在场）或者干脆没画。
+ * 这份文件把外壳里所有应当出现图标的位置改成本仓库自带的副本：
+ *
+ *   icons/<与原版完全相同的文件名>
+ *
+ * 每个图标都是从 逆向/01_解包/app/view/images/ 原样拷贝（只有一个例外：
+ * 注释里单独说明），文件名一个字符都不改，方便对着原版 CSS 回查。下面每条规则的
+ * 注释都写着它的来源文件与原版 style.css / gritStyles.css 的行号。
+ *
+ * 载入顺序：本文件必须排在 shell.css 之后（同名选择器靠后覆盖）。
+ * 服务端要能把 /icons/ 当成静态目录（与 /panels/、/fonts/ 同一条规则），
+ * 否则下面所有 url() 都会 404。
+ *
+ * 图标总体积：11 个文件 237,010 字节（约 231 KB），其中 GraphingLogo.png
+ * 214,675 字节是原版 Graph 的 1024×1024 应用图标，其余 10 个合计约 22 KB。
+ *
+ * ── 关于「卡片徽标」（Positioning / Device 的 Good / Warning）─────────────
+ * 原版这里既不是图标也不是纯色小圆点，而是**纯 CSS 画的胶囊标签**：
+ *   逆向/01_解包/app/view/positionStatus/positionStatus.html:6-10
+ *     <div class="statustiles-traffic positionStatus">
+ *       <span class="yellow-status positionStatusAmber Positioning">Warning</span>
+ *       <span class="red-status positionStatusRed Positioning">Error</span>
+ *       <span class="green-status">Good</span>
+ *     </div>
+ *   style.css:19868 `.green-status`  实心 #305703 胶囊、白字
+ *   style.css:19754 `.yellow-status` 实心 #F5A623 胶囊、黑字、右上角 CSS 画的 "i" 圈
+ *   style.css:19804 `.red-status`    实心 #A00214 胶囊、白字、右上角白色 "i" 圈
+ *   style.css:19892 `.statustiles-traffic .{green,yellow,red}-status { display:none }`
+ *           同一组里一次只显示一个（面板 JS 给当前那个加 .is-on）
+ * 也就是说徽标位没有任何 image 资源可用，硬贴图标反而是改写原版。这一套已由
+ * panels/manage.css:145-231 按上面行号逐条复刻，所以本文件对徽标**不加任何图片**，
+ * 只留这段说明，避免以后有人再来这里「补图标」。
+ */
+
+/* ==========================================================================
+   ① 顶栏（.navigation.banner-img.home-menu）
+   ========================================================================== */
+
+/* 九宫格：原版 style.css:1462-1473 `.menu-img` → images/app_menu.svg（16px，白色九宫格）
+ * 用在 index.html 的 #menu-home-banner（下拉「应用菜单」的开合按钮）。 */
+.menu-img {
+  background-image: url('/icons/app_menu.svg');
+}
+
+/* 齿轮：原版 style.css:1432-1443 `.settings` → images/menubar_settings.svg
+ * 用在顶栏右侧 #settings-banner。 */
+.settings {
+  background-image: url('/icons/menubar_settings.svg');
+}
+
+/* 问号：原版 style.css:1450-1461 `.help` → images/app_help.svg
+ * 用在顶栏右侧 #menu-help。 */
+.help {
+  background-image: url('/icons/app_help.svg');
+}
+
+/* ==========================================================================
+   ② 应用菜单（#app-menu 下拉里的 5 行）
+   ========================================================================== */
+
+/* Manage：原版 style.css:6282-6301 `.sm-menu-icon` → images/new_s&micon.png
+ * 用在 #app-menu 的 Manage 行（.sm-menu-icon）以及无专用类时的 .feature-menu-icon 兜底。 */
+.sm-menu-icon,
+.feature-menu-icon {
+  background-image: url('/icons/new_s&micon.png');
+}
+
+/* Playback：原版 style.css:6303-6305 `.pl-menu-icon` → images/new_playbackicon.png */
+.pl-menu-icon {
+  background-image: url('/icons/new_playbackicon.png');
+}
+
+/* Convert：原版 style.css:262-263 `.convert-menu-icon` → images/new_converticon.png */
+.convert-menu-icon {
+  background-image: url('/icons/new_converticon.png');
+}
+
+/* 套件首页（NovAtel Application Suite）：原版 style.css:6306-6308
+ * `.home-menu-icon` → images/new_nas_icon.png（48×48） */
+.home-menu-icon {
+  background-image: url('/icons/new_nas_icon.png');
+}
+
+/* Graph：原版 images 里 Graph 的应用图标只有一个 —— images/GraphingLogo.png
+ * （1024×1024 蓝色圆角底 + 三层黑色叠层），原版 style.css:30597-30599
+ * `.graphApp .app-inner-box, .app-icon.graphSurvey { background-image: url(../images/GraphingLogo.png) }`。
+ * index.html 的 Graph 菜单行只写了 <span class="feature-menu-icon"></span>，没有专用类，
+ * 所以这里按 data-tab 定位，把兜底的 new_s&micon.png 换成 Graph 自己的图标。 */
+.app-menu-item[data-tab="graph"] .feature-menu-icon {
+  background-image: url('/icons/GraphingLogo.png');
+  background-size: 23px 23px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* ==========================================================================
+   ③ 应用标签栏（#tabs-list 的四个页签）
+   --------------------------------------------------------------------------
+   原版标签栏每格是「24 px 图标 + 文字」，图标来自 .tabImg + 应用图标类：
+     html/setUpMonitor.html:4-9   <li class="tab-title-list">
+                                    <span class="tabImg default-icon"></span> …
+     style.css:1870-1873 .tabImg { position:absolute; top:6px }
+     style.css:1875-1877 .sm-title { padding-left: 42px !important }
+   index.html 的页签里没有 .tabImg 的 span，所以图标用 ::before 画在文字左侧，
+   位置和留白照原版那一对数值（图标 top 6 px、文字左内边距 42 px）。
+   ========================================================================== */
+
+#tabs-list li.app-tab a {
+  position: relative;
+  padding-left: 42px;
+}
+
+#tabs-list li.app-tab a::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 24px;
+  height: 24px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  pointer-events: none;
+}
+
+/* Manage 页签：images/new_s&micon.png（同 style.css:6247-6257 `.default-icon`） */
+#tabs-list li.app-tab[data-tab="manage"] a::before {
+  background-image: url('/icons/new_s&micon.png');
+}
+
+/* Playback 页签：images/new_playbackicon.png（同 style.css:6258-6269 `.pl-default-icon`） */
+#tabs-list li.app-tab[data-tab="playback"] a::before {
+  background-image: url('/icons/new_playbackicon.png');
+}
+
+/* Convert 页签：images/new_converticon.png（同 style.css:6270-6281 `.convert-default-icon`） */
+#tabs-list li.app-tab[data-tab="convert"] a::before {
+  background-image: url('/icons/new_converticon.png');
+}
+
+/* Graph 页签：images/GraphingLogo.png（原版 Graph 应用图标，见 ② 里的出处） */
+#tabs-list li.app-tab[data-tab="graph"] a::before {
+  background-image: url('/icons/GraphingLogo.png');
+}
+
+/* 兼容 .tabImg 写法：如果页签改回原版的 <span class="tabImg xxx-icon">，
+ * 这四个类拿到的是同一套本地文件（数值仍由 shell.css 的 .default-icon 等给）。 */
+.default-icon {
+  background-image: url('/icons/new_s&micon.png');
+}
+.pl-default-icon {
+  background-image: url('/icons/new_playbackicon.png');
+}
+.convert-default-icon {
+  background-image: url('/icons/new_converticon.png');
+}
+.grit-default-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-image: url('/icons/GraphingLogo.png');
+  background-size: cover;
+  background-repeat: no-repeat;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   ④ 左侧窄轨（#gritGroupView / .gritSideNav）
+   --------------------------------------------------------------------------
+   原版 GRIT/html/gritLandingPage.html:3-17 的 HTML 就是两张 <img>：
+     <li class="all-folder-selected active-folder">
+       <div class="folder-all folder_device"><img src="..\images\folder_blue.svg">
+     <li class="add_folder-btn">
+       <div class="add_network add_folder"><img src="..\images\add_circle_blue.svg">
+   index.html 的 <img src="/assets/images/..."> 不方便改，所以用 `content:url(...)`
+   把 <img> 的内容换成 icons/ 里的副本（shell.css 已经用同一招换 active 态图标）。 */
+.gritSideNav .add_network img {
+  /* + Add group 的圆钮：原始文件 images/add_circle_blue.svg（24×24，#00516F） */
+  content: url('/icons/add_circle_blue.svg');
+}
+
+.gritSideNav .folders_list .folder_device img {
+  /* All 的文件夹：原始文件 images/folder_blue.svg（未选中，#00516F） */
+  content: url('/icons/folder_blue.svg');
+}
+
+/* 选中分组：原始文件 images/folder_white.svg（#FFFFFF），对应
+ * GRIT/styles/gritStyles.css:721-726 `.gritSideNav .active-folder img` */
+.gritSideNav .folders_list .active-folder .folder_device img,
+.gritSideNav .active-folder img {
+  content: url('/icons/folder_white.svg');
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * 深色主题（body.darkMode，原版 style.css:23313 起）
+ * 原版用 images/darkMode/ 下另一套图标：
+ *   选中项  darkMode/folder_black.svg  （浅蓝底 rgb(128,221,240) 上的黑色文件夹）
+ *   未选中  darkMode/folder_blue.svg
+ * ------------------------------------------------------------------------------------------- */
+body.darkMode .gritSideNav .folders_list .active-folder .folder_device img,
+body.darkMode .gritSideNav .active-folder img {
+  content: url('/icons/folder_black.svg');
+}
+body.darkMode .gritSideNav .folders_list .folder_device img {
+  content: url('/icons/folder_blue_dark.svg');
+}

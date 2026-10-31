@@ -10,9 +10,17 @@
  */
 
 /* ---------- 字体：S:184-216 的 @font-face 表 ----------
- * 字体文件从 01_解包/app/view/fonts 裁成 latin-1 + 标点/箭头子集（4 个共 161 KB）；
- * 原版整份 Open Sans 每款约 215 KB，4 款 660 KB 会超出「500 KB 内」的预算。
- * 中文仍落到系统字体（Open Sans 本身没有 CJK 字形）。 */
+ * 原版 8 条 @font-face（S:185-216）依次是 OpenSans-Bold / Italic / Light / LightItalic /
+ * Regular / SemiBold / Roboto-Regular / Akkurat-Regular，被 style.css 的 font-family 引用的
+ * 只有前六款（Roboto-Regular 仅 3 处、Akkurat 仅 4 处，外壳一处都没有，故不补）。
+ * 外壳实际用到的六个面：Light / Regular / SemiBold / Bold，以及这两个家族的**真斜体**
+ * （convert 面板里有 <em>Download</em>，没有斜体面时浏览器只会做倾斜合成）。
+ * 全部从 01_解包/app/view/fonts 裁成与原来同一套字形（latin-1 + 标点/箭头，401 个码位，
+ * 原版整份 883 个），6 个文件共 214 KB；原版整份每款约 215 KB，全套 1.3 MB 会超预算。
+ * 斜体面挂在原家族名下（font-style: italic），不必改任何 font-family 规则即可生效。
+ * 中文仍落到系统字体（Open Sans 本身没有 CJK 字形，原版也一样）。
+ * 原版没有图标字体文件（app/view/fonts 下只有这 8 个 .ttf，图标全是 images/*.svg），
+ * 所以这里也没有 .eot/.woff 可补。 */
 @font-face {
   font-family: OpenSans-Light;
   src: url('./fonts/OpenSans-Light.ttf') format('truetype');
@@ -31,6 +39,20 @@
 @font-face {
   font-family: OpenSans-Bold;
   src: url('./fonts/OpenSans-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+/* S:189-192 OpenSans-Italic —— 挂在 OpenSans-Regular 家族名下，吃掉 <em>/font-style:italic */
+@font-face {
+  font-family: OpenSans-Regular;
+  font-style: italic;
+  src: url('./fonts/OpenSans-Italic.ttf') format('truetype');
+  font-display: swap;
+}
+/* S:197-200 OpenSans-LightItalic —— 挂在 OpenSans-Light 家族名下 */
+@font-face {
+  font-family: OpenSans-Light;
+  font-style: italic;
+  src: url('./fonts/OpenSans-LightItalic.ttf') format('truetype');
   font-display: swap;
 }
 

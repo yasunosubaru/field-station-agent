@@ -522,7 +522,8 @@ const server = createServer((req, res) => {
         handleAsset(path.slice('/assets/'.length), res, method);
         return;
       }
-      if (path === '/shell.css' || path.startsWith('/panels/') || path.startsWith('/fonts/')) {
+      if (path === '/shell.css' || path === '/icons.css' || path === '/theme.css' || path === '/theme.js'
+        || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')) {
         handleWebFile(path.slice(1), res, method);
         return;
       }
