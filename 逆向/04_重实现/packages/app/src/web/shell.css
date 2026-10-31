@@ -917,3 +917,42 @@ select.nas-select,
     margin-top: 10px;
   }
 }
+
+/* ================================================================================================
+ * 应用栏对齐原版（2026-10-31 复核原版无滤镜截图后追加）
+ *
+ * 原版没有"四个页签并排"，而是：顶部浅青渐变条（九宫格 + 齿轮/问号）下面一条 #00516F 的
+ * **应用栏**，只显示当前应用（图标 + 名称，白色粗体），切换应用走九宫格下拉菜单。
+ * 这里把原标签栏改造成同一条应用栏：非当前页隐藏，导航仍走 #app-menu 下拉。
+ * ============================================================================================== */
+#tabs-list {
+  flex: 0 0 56px;
+  height: 56px;
+  background: #00516F;              /* 原版应用栏底色 */
+  padding-left: 10px;
+  align-items: center;
+  gap: 0;
+}
+
+#tabs-list li.app-tab {
+  display: none;                    /* 只显示当前应用，其余在九宫格菜单里 */
+  width: auto;
+  height: 100%;
+  border-radius: 0;
+  background: transparent;
+}
+
+#tabs-list li.app-tab.ui-tabs-active {
+  display: flex;
+}
+
+#tabs-list li.app-tab > a {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 14px 0 6px;
+  color: #ffffff;
+  font-family: OpenSans-Bold, sans-serif;
+  font-size: 19px;
+  letter-spacing: .01em;
+}
