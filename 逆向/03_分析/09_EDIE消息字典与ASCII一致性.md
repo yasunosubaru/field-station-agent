@@ -216,6 +216,9 @@ ASCII 写出默认 `requireValidCrc: true`（复现 Convert）。
 （头行 10 个 token 换逗号、名字加 `A`、续行拼接、重算 CRC-32；`#…` 完整 ASCII 直接透传），
 再把文本帧按帧顺序插进 `convert.ts` 的输出，估计 3–5 小时。
 
+> **2026-11-01 补记：这个缺口已闭合**（`text-log.ts` 已实现，79 / 74 → 0，两个文件逐字节一致）。
+> 实现细节与两条反直觉的实测结论见下面 §9.x.6。
+
 **端口分布**（顺带核实）：`0xA0`（SPECIAL，组首）只用来出星历；`0xBD`（SPECIAL_29）是这批抓包的
 常规日志口（BESTPOS/RANGE/RXSTATUS/RAWEPHEM/HWMONITOR/PORTSTATS）。这与 payload 首字节无关，
 纯粹是 SBF 长头第 7 字节的 port address。
@@ -318,3 +321,56 @@ SHA-256  893D135E3E548F92779B1C40C7552764B11539BE6270716C1723C4DF2901BCAB（两�
 RINEX 三版只差已知的两行（时间戳 + `APPROX POSITION XYZ` ≤8 mm）。
 测试 `node --test "packages/*/test/*.test.ts"` → **500 / 500**（新增
 `packages/protocol/test/live-23types.test.ts` 5 项，把上面四件事逐条钉住）。
+
+---
+
+## 9.x.6 文本记录（A3）：79 / 74 行补齐，两条反直觉结论（2026-11-01）
+
+`live-nav` / `live-nav2` 这两份抓包把同一台接收机的**两种输出混在一条流里**：二进制 SBF 走
+SPECIAL_29，缩写 ASCII 走 USB2，另外还有 11 / 10 条完整的 `#BESTPOSA` 文本行。套件的 Convert
+两种都吃，所以 oracle 比我们多 79 / 74 行。新增 `packages/protocol/src/text-log.ts`，按帧顺序把
+文本记录插进 `convert.ts` / `convert-ascii.ts` 的输出。
+
+### 三种形态
+
+| 形态 | 例 | 处理 |
+|---|---|---|
+| `<NAME …` 头行 | `<RANGE USB2 0 75.5 COARSESTEERING 2442 555611.000 03801800 5103 18278` | 名字加 `A`，后面 9 个 token 原样用逗号连起来 |
+| `<…` 续行 | `<     73 `、`<   4 0 20229880.713 …`、`<   SOL_COMPUTED SINGLE …`、`<   GPS TRUE TRUE 32` | 拼进 body |
+| `#NAME,…*crc` | `#BESTPOSA,USB2,…*9aa75286` | **原样透传**（11/11 与 oracle 逐字节相同，抓包里的 CRC 已经是最终值） |
+
+`<OK`（8 条）、`<?` 提示符、`[USB2]` 端口文本、裸 `<` 都**不产出日志行**——oracle 里对应 0 行。
+
+### 结论一：body 不是字符串拼接，而是「回读成字段再按字典重打」
+
+这是花了 21 行 diff 才发现的。HWMONITOR 的文本里 status 是 `100`、`f00`，oracle 打的却是
+`00000100`、`00000f00`——因为那是 `%x` 字段，`100` 是**十六进制**，回读成 0x100 再按 `%08x` 打出。
+完整规则：按布局顺序逐个 token 回读 → 枚举按名字反查值、十六进制字段按 16 进制解析、其余按十进制
+/浮点解析 → 再用同一套 `formatField` 打印。
+
+### 结论二：float32 字段回读后会被舍入，`75947.813` → `75947.812`
+
+RANGE 的第 740 个 token（`lock_time`，字典里是 `FLOAT` + `%7.3k`）文本写 `75947.813`，
+oracle 打 `75947.812`：`75947.813` 回读成 float32 恰好是 **75947.8125**，`printf` 对 3 位小数
+按半数取偶 → `.812`。740 个 token 里只有这 1 个不同，**纯文本复制永远对不上**，这条只有逐字节
+oracle 抓得住。f64 字段（如 RANGE 的 `adr` `%9.6lk`）回读无损，6 位小数原样保留。
+
+### 复验
+
+```
+$ node packages/cli/src/convert.ts live-nav.sbf  --to ASCII -o <tmp>
+$ node packages/cli/src/convert.ts live-nav2.sbf --to ASCII -o <tmp>
+oracle 行 617 / 593，ours 行 617 / 593
+ours 中不在 oracle 里的行: 0 / 0
+oracle 多出的行: 0 / 0
+SHA-256 两侧相同（2 798 307 B / 2 657 890 B）
+```
+
+文本行的构成（live-nav）：`RANGEA 22`、`BESTPOSA 22`、`SATVIS2A 16`、`RXSTATUSA 4`、
+`TIMESYNCA 2`、`HWMONITORA 2`、`#` 透传 11。
+
+测试：`packages/protocol/test/text-log.test.ts` 7 项（两份抓包整文件逐行比对 + 三条单测：
+`%x` 补零、float32 舍入、`#` 透传、`<OK` 不产行）。全量 **507 / 507**。
+
+**仍未覆盖**（写明而不是猜）：`%` 短 ASCII 与 `$` NMEA 文本记录没有样本，套件行为未测；
+`ABBREV_ASCII` 输出里的文本记录也没接线（现有 abbrev golden 不含文本行）。

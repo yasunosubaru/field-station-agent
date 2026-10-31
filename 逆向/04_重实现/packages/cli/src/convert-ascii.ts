@@ -12,8 +12,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { SbfDeframer } from '../../protocol/src/framing.ts';
+import { SbfDeframer, type Frame } from '../../protocol/src/framing.ts';
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
+import { textLogLines } from '../../protocol/src/text-log.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,10 +36,20 @@ function main(): void {
   const tables = JSON.parse(readFileSync(join(DATA, 'edie-layouts.json'), 'utf8')) as EdieTables;
   const bytes = new Uint8Array(readFileSync(capture));
 
+  const frames: Frame[] = [];
+  for (const frame of new SbfDeframer({ crcMode: 'mirror' }).push(bytes)) frames.push(frame);
+
+  // Text records (the receiver's own ASCII logs) are converted too, in capture order.
+  const textLines = textLogLines(frames, tables);
   const lines: string[] = [];
   let skippedUnknown = 0;
   let skippedCrc = 0;
-  for (const frame of new SbfDeframer({ crcMode: 'mirror' }).push(bytes)) {
+  for (const [index, frame] of frames.entries()) {
+    const text = textLines.get(index);
+    if (text !== undefined) {
+      lines.push(text);
+      continue;
+    }
     if (frame.kind !== 'sbf') continue;
     const layout = tables.messages[String(frame.header.messageId)];
     if (!layout) {

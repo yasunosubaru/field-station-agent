@@ -16,8 +16,9 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { SbfDeframer, type SbfFrame } from '../../protocol/src/framing.ts';
+import { SbfDeframer, type Frame, type SbfFrame } from '../../protocol/src/framing.ts';
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
+import { textLogLines } from '../../protocol/src/text-log.ts';
 import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbrev-log.ts';
 import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
 import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
@@ -62,7 +63,9 @@ function main(): void {
   const tables = JSON.parse(readFileSync(join(DATA, 'edie-layouts.json'), 'utf8')) as EdieTables;
 
   const all: SbfFrame[] = [];
+  const frames: Frame[] = [];
   for (const frame of new SbfDeframer({ crcMode: 'mirror' }).push(new Uint8Array(inputBytes))) {
+    frames.push(frame);
     if (frame.kind === 'sbf') all.push(frame);
   }
 
@@ -75,13 +78,22 @@ function main(): void {
   const yy = String(at.getFullYear() % 100).padStart(2, '0');
   const outputs: Array<{ name: string; data: Uint8Array | string }> = [];
   if (format === 'ASCII') {
+    // Text records (the receiver's own ASCII logs mixed into the capture) go out in capture order
+    // too, so the frame list — not `accepted` — drives the loop. See `protocol/src/text-log.ts`.
+    const textLines = textLogLines(frames, tables);
     const lines: string[] = [];
-    for (const frame of accepted) {
+    frames.forEach((frame, index) => {
+      const text = textLines.get(index);
+      if (text !== undefined) {
+        lines.push(text);
+        return;
+      }
+      if (frame.kind !== 'sbf' || !frame.crcOk) return;
       const layout = tables.messages[String(frame.header.messageId)];
-      if (!layout) continue;
+      if (!layout) return;
       const line = encodeAsciiLog(frame, layout, tables);
       if (line) lines.push(line);
-    }
+    });
     outputs.push({ name: `${base}.ASCII`, data: `${lines.join('\r\n')}\r\n` });
   } else if (format === 'ABBREV_ASCII') {
     const lines: string[] = [];
