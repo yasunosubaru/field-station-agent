@@ -4,9 +4,8 @@
  *   #<NAME><ver>,<port>,<seq>,<idle>,<timeStatus>,<week>,<ms>,<rxStatus>,<msgDefCrc>,<swVersion>;<fields>*<crc>
  *
  * Every piece is already in the data:
- *  - header fields come straight from the SBF long header (`header.ts`); the ASCII port is
- *    `SPECIAL_<n>` with `n = portAddress - 160` (188 → `SPECIAL_28`, 189 → `SPECIAL_29`, the two
- *    virtual log groups this capture used);
+ *  - header fields come straight from the SBF long header (`header.ts`); the ASCII port is the
+ *    name the dictionary's `PortAddress` enum gives that address (see `portName`);
  *  - the body is the EDIE field list, rendered with the dictionary's conversion strings;
  *  - the trailing CRC is the NovAtel CRC-32 (poly 0xEDB88320, init 0, xorout 0) over the sentence
  *    **without** the leading `#` and without `*crc` — verified against the golden file.
@@ -34,13 +33,62 @@ export const TIME_STATUS_NAMES: Record<number, string> = {
   200: 'SATTIME',
 };
 
+/**
+ * Port names, from the dictionary's `PortAddress` enum (`messages_public.json`, 1552 entries).
+ *
+ * It is a regular table, not an offset from 0xA0: every port group owns a block of 32 addresses,
+ * `base + 0` is the group itself (`COM1`, `USB`, `SPECIAL`, `FILE`, `USB2`, …) and `base + n` is
+ * `GROUP_n` (`SPECIAL_28` for 188, `SPECIAL_29` for 189). Addresses 0..31 are the sparse `*_ALL`
+ * aggregates, which do not follow the block rule. Everything else the suite prints as the number.
+ *
+ * Note the boundary: 160 (`0xA0`) is plain `SPECIAL`, **not** `SPECIAL_0`; `SPECIAL_n` starts at
+ * 161, i.e. the old `address - 0xA0` formula was off by one at exactly 0xA0.
+ */
+const PORT_GROUPS: Record<number, string> = {
+  32: 'COM1', 64: 'COM2', 96: 'COM3', 128: 'USB', 160: 'SPECIAL', 192: 'THISPORT', 224: 'FILE',
+  416: 'XCOM1', 672: 'XCOM2', 1440: 'USB1', 1696: 'USB2', 1952: 'USB3', 2208: 'AUX', 2464: 'XCOM3',
+  2976: 'COM4', 3232: 'ETH1', 3488: 'IMU', 4000: 'ICOM1', 4256: 'ICOM2', 4512: 'ICOM3',
+  4768: 'NCOM1', 5024: 'NCOM2', 5280: 'NCOM3', 5536: 'ICOM4', 5792: 'WCOM1',
+  6048: 'COM5', 6304: 'COM6', 6560: 'BT1', 6816: 'COM7', 7072: 'COM8', 7328: 'COM9', 7584: 'COM10',
+  7840: 'CCOM1', 8096: 'CCOM2', 8352: 'CCOM3', 8608: 'CCOM4', 8864: 'CCOM5', 9120: 'CCOM6',
+  9376: 'CCOM7', 9632: 'CCOM8', 9888: 'ICOM5', 10144: 'ICOM6', 10400: 'ICOM7',
+  10656: 'SCOM1', 10912: 'SCOM2', 11168: 'SCOM3', 11424: 'SCOM4',
+};
+
+/**
+ * Named single addresses that do not follow the block rule: the sparse `*_ALL` aggregates.
+ *
+ * 0..31 holds the first generation (COM1_ALL … WCOM1_ALL); the ports that were added later put
+ * their aggregates in a separate band, 5824..5845 (COM5_ALL … SCOM4_ALL).
+ */
+const PORT_EXACT_NAMES: Record<number, string> = {
+  0: 'NO_PORTS',
+  1: 'COM1_ALL', 2: 'COM2_ALL', 3: 'COM3_ALL', 4: 'USB_ALL', 6: 'THISPORT_ALL', 7: 'FILE_ALL',
+  8: 'ALL_PORTS', 9: 'XCOM1_ALL', 10: 'XCOM2_ALL', 13: 'USB1_ALL', 14: 'USB2_ALL', 15: 'USB3_ALL',
+  16: 'AUX_ALL', 17: 'XCOM3_ALL', 19: 'COM4_ALL', 20: 'ETH1_ALL', 21: 'IMU_ALL',
+  23: 'ICOM1_ALL', 24: 'ICOM2_ALL', 25: 'ICOM3_ALL', 26: 'NCOM1_ALL', 27: 'NCOM2_ALL',
+  28: 'NCOM3_ALL', 29: 'ICOM4_ALL', 30: 'WCOM1_ALL',
+  5824: 'COM5_ALL', 5825: 'COM6_ALL', 5826: 'BT1_ALL', 5827: 'COM7_ALL', 5828: 'COM8_ALL',
+  5829: 'COM9_ALL', 5830: 'COM10_ALL', 5831: 'CCOM1_ALL', 5832: 'CCOM2_ALL', 5833: 'CCOM3_ALL',
+  5834: 'CCOM4_ALL', 5835: 'CCOM5_ALL', 5836: 'CCOM6_ALL', 5837: 'CCOM7_ALL', 5838: 'CCOM8_ALL',
+  5839: 'ICOM5_ALL', 5840: 'ICOM6_ALL', 5841: 'ICOM7_ALL', 5842: 'SCOM1_ALL', 5843: 'SCOM2_ALL',
+  5844: 'SCOM3_ALL', 5845: 'SCOM4_ALL',
+};
+
 export function portName(address: number): string {
-  // 0xA0 + n: the receiver's virtual ports, which is what the suite labels SPECIAL_28 / SPECIAL_29.
-  return address >= 0xa0 ? `SPECIAL_${address - 0xa0}` : String(address);
+  const exact = PORT_EXACT_NAMES[address];
+  if (exact !== undefined) return exact;
+  const base = address - (address % 32);
+  const group = PORT_GROUPS[base];
+  if (group === undefined) return String(address);
+  const index = address % 32;
+  return index === 0 ? group : `${group}_${index}`;
 }
 
 interface FormatSpec {
   width: number;
+  /** False for `%.17lk` (no width token at all) — the `k` rule distinguishes that from `%0.2lk`. */
+  hasWidth: boolean;
   precision?: number;
   length: string;
   spec: string;
@@ -51,6 +99,7 @@ function parseFormat(format: string | null | undefined): FormatSpec | undefined 
   if (!match) return undefined;
   return {
     width: match[1] ? Number(match[1]) : 0,
+    hasWidth: match[1].length > 0,
     precision: match[2] === undefined ? undefined : Number(match[2]),
     length: match[3],
     spec: match[4],
@@ -146,6 +195,97 @@ function integer(value: number): string {
   return String(Math.trunc(value));
 }
 
+/**
+ * `printf("%.<digits>e", value)` on the exact binary value.
+ *
+ * Same decomposition as `exactFixed`: a double is `mantissa × 2^exp`, so its decimal expansion is
+ * finite and can be rounded exactly, half to even. `Number.toExponential` is not usable here — it
+ * drops the sign of `-0.0`, and the suite prints `-0.00000000000000000e+00` for a negative zero
+ * (GLO `gamma`), which costs nothing but is a byte.
+ *
+ * The exponent is always printed with an explicit sign and at least two digits (`e+07`, `e-09`),
+ * as C's `%e` does; `toExponential` would give `e+7` / `e-9`.
+ */
+export function exactExponential(value: number, digits: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  const { negative, mantissa, exp } = decompose(value);
+  const sign = negative ? '-' : '';
+
+  // Exact decimal form: whole part plus the fraction digits (trailing zeros trimmed — they carry
+  // no information and would only lengthen the significant-digit scan below).
+  let whole: bigint;
+  let fraction = '';
+  if (exp >= 0) {
+    whole = mantissa << BigInt(exp);
+  } else {
+    const k = -exp;
+    whole = mantissa >> BigInt(k);
+    const frac = mantissa - (whole << BigInt(k));
+    fraction = (frac * pow5(k)).toString().padStart(k, '0').replace(/0+$/, '');
+  }
+  const wholeText = whole.toString();
+
+  let exponent: number;
+  let significant: string;
+  if (whole > 0n) {
+    exponent = wholeText.length - 1;
+    significant = wholeText + fraction;
+  } else {
+    const first = fraction.search(/[1-9]/);
+    if (first < 0) return `${sign}0.${'0'.repeat(digits)}e+00`;
+    exponent = -(first + 1);
+    significant = fraction.slice(first);
+  }
+
+  let kept = roundHalfEven(significant, digits + 1);
+  if (kept.length > digits + 1) {
+    // All nines carried: 9.99 → 10.0, one more digit in the exponent.
+    exponent += 1;
+    kept = kept.slice(0, digits + 1);
+  }
+  const expSign = exponent < 0 ? '-' : '+';
+  const expDigits = String(Math.abs(exponent)).padStart(2, '0');
+  return `${sign}${kept.slice(0, 1)}${digits ? `.${kept.slice(1)}` : ''}e${expSign}${expDigits}`;
+}
+
+/**
+ * The `k` conversion, measured against the suite's own Convert (synthetic SBF captures swept
+ * through `NovAtelApplicationSuite.exe -a`, one value per frame):
+ *
+ *  - `%W.Nlk` with a width `W > 0` prints fixed while `10^-W <= |v| <= 10^W`, else `%e`: the value
+ *    is written out as long as it stays inside the field's declared magnitude window.
+ *    `%9.1lk` (GPSEPHEM `toe`): 1e9 → `1000000000.0`, 1e10 → `1.0e+10`; `%7.9lk` (GLO
+ *    `delta_tau`): 1e7 fixed, 1e8 exponent; `%2.11lk` (TIME `utc_offset`): 0.01 fixed, 0.001
+ *    exponent.
+ *  - `%0.Nlk` (flag form, `W` = 0 — every ephemeris field) collapses that window onto the single
+ *    value `|v| == 1`: only 0 and ±1 print fixed, everything else is `%e`. Confirmed with
+ *    `%0.2lk`, `%0.8lk`, `%0.9lk`, `%0.10lk` and `%0.16lk` over 0, ±1, 1.5, 2, 10, 0.5, 0.001,
+ *    1e-6 … 1e11.
+ *  - a conversion with no width at all (`%.17lk`, GLO position/velocity) is always `%e`, zero
+ *    included — the suite prints `0.00000000000000000e+00` there and `-0.00000000000000000e+00`
+ *    for a negative zero (GLO `gamma`).
+ *  - with a width, `|v| == 0` always prints fixed, so an empty field reads `0.00`, not `0.00e+00`.
+ *
+ * The previous rule here ("exponent below 1e-4, like `%g`") only fitted values far from 1 and
+ * printed the GLO ephemerides as fixed where the suite prints `-1.71685703125000000e+07`.
+ *
+ * Caveat, stated rather than papered over: the suite compares against its C library's
+ * `pow(10, -W)`, which lands one ulp away from the exact power for a few exponents (a literal
+ * `1e-7` and `1e-9` fall just outside its `%7` / `%9` window and print as exponents, while `1e-2`
+ * is just inside `%2`). `Math.pow` is correctly rounded, so a value sitting exactly on a boundary
+ * may differ in that single decision.
+ */
+function formatK(number: number, width: number, hasWidth: boolean, digits: number): string {
+  if (!Number.isFinite(number)) return String(number);
+  const magnitude = Math.abs(number);
+  let fixed: boolean;
+  if (!hasWidth) fixed = false;
+  else if (magnitude === 0) fixed = true;
+  else if (width === 0) fixed = magnitude === 1;
+  else fixed = magnitude >= 10 ** -width && magnitude <= 10 ** width;
+  return fixed ? exactFixed(number, digits) : exactExponential(number, digits);
+}
+
 /** Render one scalar the way the suite's ASCII encoder does. */
 export function formatField(segment: EdieScalar, value: number | string, tables: EdieTables): string {
   if (segment.enum) {
@@ -153,13 +293,17 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     if (table && typeof value === 'number') {
       const name = table.values[String(value)];
       if (name !== undefined) return name;
+      // Out-of-table values print as the dictionary's `UNKNOWN` member when the enum has one
+      // (PORTSTATS lists ports 53/65..68, past the end of `CommPort`, and the suite writes
+      // `UNKNOWN` for every one of them).
+      if (Object.values(table.values).includes('UNKNOWN')) return 'UNKNOWN';
     }
   }
   if (segment.type === 'bool') return value ? 'TRUE' : 'FALSE';
   const format = parseFormat(segment.format);
   const number = Number(value);
   if (!format) return String(value);
-  const { width, precision, spec } = format;
+  const { width, hasWidth, precision, spec } = format;
   switch (spec) {
     case 's':
       return `"${String(value)}"`;
@@ -188,17 +332,11 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     case 'lf':
       return exactFixed(number, precision ?? 6);
     case 'e':
-      return number.toExponential(precision ?? 6);
+      return exactExponential(number, precision ?? 6);
     case 'k':
     case 'lk':
-    case 'llk': {
-      // `%7.4lk` prints 0.0124 in fixed notation; below 1e-4 it switches to `5.221136984e-10`
-      // (the `%g` exponent rule). It does *not* depend on the decimal count: 5.26e-4 at 3 decimals
-      // still prints 0.001, not an exponent form.
-      const decimals = precision ?? 3;
-      if (number !== 0 && Math.abs(number) < 1e-4) return number.toExponential(decimals);
-      return exactFixed(number, decimals);
-    }
+    case 'llk':
+      return formatK(number, width, hasWidth, precision ?? 3);
     default:
       return String(value);
   }

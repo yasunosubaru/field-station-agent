@@ -21,7 +21,7 @@
  */
 
 import { novatelCrc32 } from './crc.ts';
-import { formatField } from './ascii-log.ts';
+import { formatField, portName } from './ascii-log.ts';
 import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
 import type { SbfFrame } from './framing.ts';
 
@@ -150,10 +150,6 @@ export function encodeAbbrevLines(frame: SbfFrame, layout: EdieLayout, tables: E
 
 function hexWord(value: number, width: number): string {
   return (value >>> 0).toString(16).padStart(width, '0');
-}
-
-function portName(address: number): string {
-  return address >= 0xa0 ? `SPECIAL_${address - 0xa0}` : String(address);
 }
 
 function timeStatusName(value: number): string {
