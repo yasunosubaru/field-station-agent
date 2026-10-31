@@ -1,44 +1,50 @@
 /* =============================================================================
- * manage.css — Manage panel (Positioning / Device tiles + log status table).
+ * manage.css — Manage page: the suite's **device status dashboard** plus the capture list.
  *
- * Every colour, size and radius below is quoted from the unpacked suite:
- *   逆向/01_解包/app/view/css/style.css   (line numbers in the comments)
- * Nothing here is a new palette: the panel reuses the suite's own tokens
- *   surface #FCFCFC  ·  panel border #005170  ·  text rgba(0,0,0,.87)
- *   accent (buttons) #00516F  ·  accent hover #3a7b91  ·  rules #c5c5c5 / #9b9b9b
- *   traffic lights #305703 (good) / #F5A623 (warning) / #A00214 (error)
+ * Every colour / size is quoted from the unpacked suite (`逆向/01_解包/app/view/css/style.css`,
+ * shortened to S) and from the 150 % reference shots (`ref-ui/manage-device-open.png`,
+ * `ref-ui/manage-clean.png`). Physical pixels / 1.5 = CSS px; the OS title bar is not part of the
+ * client area, so every y below starts at the app bar (0…70).
  *
- * Scope: everything hangs off `.manage-panel`, so the shell's own stylesheet can
- * never be reached from here (and this file never styles bare `body`, `table`,
- * `input`… selectors).
+ *   app bar            #00516F, 70 px (36 banner + 34 app bar), owned by the shell
+ *   black menu bar     50 px #000 at 70…120, active item underlined 2.5 px #fff
+ *   status band        135 px #E4E4E4 + 1 px #B6B6B6, content 1232 px centred, liner at 591
+ *   tab strip          tab 128 px wide, 2 px #115C7C underline, tiles 28 px below
+ *   tiles              392 px each, 28 px gutters → 1232 px column, top border 329.3
+ *   tile surface       #FCFCFC, 1 px #005170 border, no radius (S:379)
+ *   badges             green #305703 (S:19868) · amber #F5A623 (S:19754) · red #A00214 (S:19804)
+ *   satellite legend   In Use #417605 · Not Used #F5A623 dotted · Missing #CF021A dashed frame
+ *   sky plot           disc #DDDDDD, rings at 66.66 %/50 %, axes rgba(0,0,0,.87) (S:1104-1210)
  *
- * Deviations forced by the web target, all of them layout-only:
- *   - the suite lays out `.row` with the Bootstrap grid (`col-md-6`); Bootstrap is
- *     not shipped, so `.row` becomes a two-column flex line with the same gaps;
- *   - flex `gap` is avoided (Chromium 80 in Electron 8 has none) — margins instead.
+ * Scope: everything hangs off `.manage-panel`, plus a handful of `body[data-page="manage"]`
+ * rules at the bottom that only move *this* page (the shell renders a heading the original does
+ * not have, and the dashboard needs the full window width).
  * ========================================================================== */
 
 .manage-panel {
-  --nas-ink: rgba(0, 0, 0, 0.87);
-  --nas-ink-60: rgba(0, 0, 0, 0.6);
-  --nas-ink-38: rgba(0, 0, 0, 0.38);
-  --nas-teal: #00516f;
-  --nas-teal-hover: #3a7b91;
-  --nas-teal-dark: #115c7c;
-  --nas-surface: #fcfcfc;
-  --nas-rule: #c5c5c5;
-  --nas-rule-strong: #9b9b9b;
-  --nas-good: #305703;
-  --nas-warn: #f5a623;
-  --nas-bad: #a00214;
-  --nas-sans: Roboto, "Roboto-Regular", "Open Sans", "OpenSans-Regular", "Segoe UI", "Microsoft YaHei", sans-serif;
-  --nas-sans-bold: Roboto, "OpenSans-Bold", "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
-  --nas-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  --mg-ink: rgba(0, 0, 0, 0.87);
+  --mg-ink-60: rgba(0, 0, 0, 0.6);
+  --mg-ink-38: rgba(0, 0, 0, 0.38);
+  --mg-teal: #00516f;
+  --mg-teal-dark: #115c7c;
+  --mg-cyan: #00abc8;
+  --mg-band: #e4e4e4;
+  --mg-band-rule: #b6b6b6;
+  --mg-rule: #c5c5c5;
+  --mg-surface: #fcfcfc;
+  --mg-good: #305703;
+  --mg-warn: #f5a623;
+  --mg-bad: #a00214;
+  --mg-chip-good: #417605;
+  --mg-miss: #cf021a;
+  --mg-sans: OpenSans-Regular, "Microsoft YaHei", "Segoe UI", sans-serif;
+  --mg-semi: OpenSans-SemiBold, "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
+  --mg-bold: OpenSans-Bold, "Segoe UI Semibold", "Microsoft YaHei", sans-serif;
+  --mg-light: OpenSans-Light, "Segoe UI", "Microsoft YaHei", sans-serif;
 
-  color: var(--nas-ink);
-  font-family: var(--nas-sans);
+  color: var(--mg-ink);
+  font-family: var(--mg-sans);
   font-size: 14px;
-  line-height: 1.5;
   box-sizing: border-box;
 }
 
@@ -52,571 +58,1242 @@
   display: none !important;
 }
 
-/* ---- status band -------------------------------------------------------- */
+/* =============================================================================
+ * 1. black menu bar (Status · Configuration · Settings ▾ · Tools ▾ · Device ▾)
+ * ========================================================================== */
 
-.manage-band {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+.mg-menubar {
+  display: flex;
   align-items: stretch;
-  margin-bottom: 16px;
+  height: 50px;
+  padding: 0 0 0 27px;
+  background: #000000;
 }
 
-/* style.css:379 `.tile` — float/width/min-height dropped so the tile can flex. */
-.manage-panel .tile {
-  background-color: var(--nas-surface);
-  border: 1px solid #005170;
+.manage-panel .mg-menu-btn {
   position: relative;
-  padding: 15px 9px 9px 15px;
-  border-radius: 4px;
-  min-width: 0;
-}
-
-/* style.css:3330 `.heading` */
-.manage-panel .heading {
-  color: var(--nas-ink);
-  font-size: 18px;
-  font-family: var(--nas-sans-bold);
-  font-weight: 700;
-}
-
-/* style.css:3336 `.device-status .row, .position-status .row` */
-.manage-panel .position-status .row,
-.manage-panel .device-status .row {
-  clear: both;
-  padding: 0 5px;
-  display: flex;
-  align-items: baseline;
-  min-height: 24px;
-}
-
-/* style.css:846 `.title` — float dropped for the flex row. */
-.manage-panel .title {
-  font-size: 16px;
-  line-height: 1.5;
-  padding-left: 10px;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* style.css:854 `.value` */
-.manage-panel .value {
-  font-size: 16px;
-  font-weight: 700;
-  font-family: var(--nas-sans-bold);
-  text-align: right;
-  line-height: 1.5;
-  flex: 0 0 auto;
-  max-width: 62%;
-  word-break: break-all;
-}
-
-.manage-panel .status-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  min-height: 32px;
-  padding: 0 6px 6px 0;
-  border-bottom: 1px solid var(--nas-rule);
-  margin-bottom: 8px;
-}
-
-.manage-panel .status-tile-main-container {
-  padding: 4px 0 0;
-}
-
-.manage-panel .manage-note {
-  color: var(--nas-ink-38);
-  font-size: 12px;
-  line-height: 16px;
-  padding: 8px 10px 0;
-}
-
-/* style.css:19901 `.statustiles-traffic` (float/margins dropped: the header is flex) */
-.manage-panel .statustiles-traffic {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-}
-
-/* style.css:19893 `.statustiles-traffic .green-status …` — only the active one shows. */
-.manage-panel .statustiles-traffic > span {
-  display: none;
-  font-size: 14px;
-  min-width: 70px;
-  height: 24px;
-  text-align: center;
-  line-height: 22px;
-}
-
-.manage-panel .statustiles-traffic > span.is-on {
-  display: inline-block;
-}
-
-/* style.css:19868 `.green-status` */
-.manage-panel .green-status {
-  border: 1px solid var(--nas-good);
-  padding: 0 15px 2px;
-  background: var(--nas-good);
-  border-radius: 3px;
-  font-family: var(--nas-sans-bold);
-  font-size: 14px;
-  color: #fff !important;
-}
-
-/* style.css:19754 `.yellow-status` */
-.manage-panel .yellow-status {
-  border: 1px solid var(--nas-warn);
-  padding: 0 20px 0 7px;
-  background: var(--nas-warn);
-  border-radius: 3px;
-  font-family: var(--nas-sans-bold);
-  font-size: 14px;
-  padding-bottom: 2px;
-  color: var(--nas-ink);
-}
-
-.manage-panel .yellow-status::before {
-  display: inline;
-  position: absolute;
-  right: 4px;
-  top: 5px;
-  content: "i";
-  border-radius: 50%;
-  border: 1.2px solid #000;
-  width: 13px;
-  height: 13px;
-  line-height: 11px;
-  text-align: center;
-  color: #000 !important;
-  font-size: 9px;
-  font-family: var(--nas-sans-bold);
-}
-
-.manage-panel .yellow-status {
-  position: relative;
-}
-
-/* style.css:19804 `.red-status` */
-.manage-panel .red-status {
-  border: 1px solid var(--nas-bad);
-  padding: 0 20px 0 7px;
-  background: var(--nas-bad);
-  border-radius: 3px;
-  font-family: var(--nas-sans-bold);
-  font-size: 14px;
-  color: #fff !important;
-  position: relative;
-  padding-bottom: 2px;
-}
-
-.manage-panel .red-status::before {
-  display: inline;
-  position: absolute;
-  right: 4px;
-  top: 5px;
-  content: "i";
-  border-radius: 50%;
-  border: 1.2px solid #fff;
-  width: 13px;
-  height: 13px;
-  line-height: 11px;
-  text-align: center;
-  color: #fff !important;
-  font-size: 9px;
-  font-family: var(--nas-sans-bold);
-}
-
-/* style.css:19992 `.deviceinfo-field` — the per-row traffic light column. */
-.manage-panel .deviceinfo-field {
-  margin-left: 12px;
-  min-width: 70px;
-}
-
-.manage-panel .deviceinfo-field > span {
-  min-width: 70px;
-  height: 24px;
-  line-height: 22px;
-  padding: 0 12px 2px;
-}
-
-/* ---- log status tile ---------------------------------------------------- */
-
-.manage-log-tile,
-.manage-record-tile {
-  margin-bottom: 16px;
-}
-
-.manage-panel .log-status-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--nas-rule);
-  padding-bottom: 6px;
-  margin-bottom: 12px;
-}
-
-.manage-toolbar {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  margin-bottom: -10px;
-}
-
-.manage-toolbar > * {
-  margin: 0 10px 10px 0;
-}
-
-.manage-toolbar > *:last-child {
-  margin-right: 0;
-}
-
-.manage-field {
-  display: flex;
-  flex-direction: column;
-  min-width: 240px;
-  flex: 0 1 340px;
-}
-
-.manage-field.grow {
-  flex: 1 1 260px;
-  min-width: 200px;
-}
-
-.manage-field > span {
-  font-size: 12px;
-  line-height: 16px;
-  letter-spacing: 0.4px;
-  color: var(--nas-ink-60);
-  padding-bottom: 4px;
-  font-family: var(--nas-sans);
-}
-
-.manage-field > span em {
-  font-style: normal;
-  color: var(--nas-ink-38);
-}
-
-/* Text box / dropdown: the suite's boxes are 36 px tall with a hairline border
-   and a 2 px #00516F underline on focus (style.css:100 `.message-text-area:focus`). */
-.manage-panel select,
-.manage-panel input[type="search"] {
-  appearance: none;
-  width: 100%;
-  height: 36px;
-  border: 1px solid var(--nas-rule);
-  border-bottom: 1px solid var(--nas-rule-strong);
-  border-radius: 2px;
-  background: #fff;
-  color: var(--nas-ink);
-  font: 14px var(--nas-sans);
-  padding: 0 8px;
-}
-
-.manage-panel select:focus,
-.manage-panel input[type="search"]:focus {
-  outline: none;
-  border-bottom: 2px solid var(--nas-teal);
-}
-
-/* style.css:1705 `.whiteBtn,.lightBtn,.darkBtn` · 1751 `.darkBtn` · 1732 `.darkBtn:hover` */
-.manage-panel .btn {
-  appearance: none;
-  height: 36px;
-  min-width: 80px;
-  padding: 0 16px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  color: var(--nas-teal);
-  font-family: var(--nas-sans-bold);
-  font-size: 14px;
-  letter-spacing: 1.5px;
+  gap: 11px;
+  margin: 0;
+  padding: 0 20px 0 0;
+  border: 0;
+  background: none;
+  color: #d9d9d9;
+  font-family: var(--mg-sans);
+  font-size: 15px;
+  letter-spacing: 0.1px;
   cursor: pointer;
 }
 
-.manage-panel .btn.whiteBtn:hover,
-.manage-panel .btn.lightBtn:hover {
-  background-color: rgba(0, 81, 111, 0.04);
-  color: var(--nas-teal-dark);
+.manage-panel .mg-menu-btn:first-child {
+  margin-left: 0;
 }
 
-.manage-panel .btn.darkBtn {
-  background-color: var(--nas-teal);
-  color: #fff;
-  border: 1px solid var(--nas-teal);
-}
-
-.manage-panel .btn.darkBtn:hover {
-  background-color: var(--nas-teal-hover);
-}
-
-.manage-panel .btn:disabled {
-  opacity: 0.4;
+/* Only `Status` is a page in this build; the other four keep the original's look but say so in
+   their title (and are truly disabled, so they cannot pretend to do anything). */
+.manage-panel .mg-menu-btn.is-off {
+  color: #9a9a9a;
   cursor: default;
 }
 
-.manage-panel .btn:focus {
-  outline: 2px solid var(--nas-teal-dark);
-  outline-offset: 1px;
+.manage-panel .mg-menu-btn:not(.is-off):hover {
+  color: #ffffff;
 }
 
-.manage-meta {
-  color: var(--nas-ink-60);
+.manage-panel .mg-menu-btn:focus-visible {
+  outline: 1px solid #ffffff;
+  outline-offset: -3px;
+}
+
+.manage-panel .mg-menu-btn.is-current::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4.5px;
+  height: 2.5px;
+  background: #ffffff;
+}
+
+.manage-panel .mg-menu-icon {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.manage-panel .mg-menu-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.manage-panel .mg-menu-caret {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-left: 5.5px solid transparent;
+  border-right: 5.5px solid transparent;
+  border-top: 6.5px solid currentColor;
+}
+
+.manage-panel .mg-menu-spacer {
+  flex: 1 1 auto;
+}
+
+.manage-panel .mg-bell {
+  align-self: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  margin-right: 45px;
+  background: url('/icons/Notifications_On.svg') center / 24px 24px no-repeat;
+}
+
+.manage-panel .mg-bell-count {
+  align-self: center;
+  position: relative;
+  left: -37px;
+  top: -9px;
+  min-width: 18px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #17a2b8;
+  color: #ffffff;
+  font-family: var(--mg-semi);
   font-size: 12px;
-  line-height: 18px;
-  margin: 6px 0 10px;
+  line-height: 17px;
+  text-align: center;
 }
 
-/* ---- tables ------------------------------------------------------------- */
+/* =============================================================================
+ * 2. status band — 135 px grey, Positioning | Device
+ * ========================================================================== */
 
-.manage-table-wrap {
+.mg-band {
+  height: 136px;
+  background: var(--mg-band);
+  border-bottom: 1px solid var(--mg-band-rule);
+  overflow: hidden;
+}
+
+/* The 1232 px column is centred in the area left of the scrollbar: the reference window is
+   1706 CSS wide with a 15 px scrollbar, so the column lands on 230…1462. `--mg-gutter` carries
+   the 15 px this browser does not reserve when it draws overlay scrollbars (set from manage.js). */
+.mg-band-inner {
+  display: flex;
+  align-items: stretch;
+  width: 1232px;
   max-width: 100%;
-  overflow: auto;
-  border: 1px solid var(--nas-rule);
-  border-radius: 2px;
-  background: #fff;
+  height: 135px;
+  margin-left: calc(50% - 616px - var(--mg-gutter, 0px) / 2);
+  padding: 15px 0 0;
 }
 
-.manage-table-wrap .field-table-wrap {
-  max-height: 360px;
+.mg-band-half {
+  min-width: 0;
 }
 
-/* style.css:14855 `.g3-devicedetails-table tr>td / tr>th`, :14862 `tr:first-child`,
-   :14864 `td:first-child`, :14866 `tr>th` */
-.manage-panel .g3-devicedetails-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-  font-family: var(--nas-sans);
+.mg-band-left {
+  flex: 0 0 591px;
+  padding-left: 34px;
 }
 
-.manage-panel .g3-devicedetails-table tr > td,
-.manage-panel .g3-devicedetails-table tr > th {
-  padding-bottom: 7px;
-  padding-top: 4px;
-  padding-left: 10px;
-  padding-right: 10px;
-  color: var(--nas-ink);
-  text-align: left;
-  vertical-align: top;
+.mg-band-device {
+  flex: 1 1 auto;
+  padding-left: 37px;
 }
 
-.manage-panel .g3-devicedetails-table thead tr:first-child {
-  border-bottom: 1px solid var(--nas-rule-strong);
+.mg-band-split {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 2px 0;
+  background: #bababa; /* S:3433 `.vertical-liner` */
 }
 
-.manage-panel .g3-devicedetails-table tr > th {
-  color: var(--nas-teal);
-  font-family: var(--nas-sans-bold);
+.mg-band-head {
+  display: flex;
+  align-items: baseline;
+  margin: 0 0 11px;
+}
+
+.mg-band-title {
+  font-family: var(--mg-bold);
+  font-size: 18px;
   font-weight: 700;
+  line-height: 24px;
+  color: var(--mg-ink);
+}
+
+.mg-band-head .mg-badge {
+  position: relative;
+  top: 3.5px;
+  margin-left: 12px;
+  align-self: center;
+}
+
+/* Position / Latitude / Longitude in the first column, Height (MSL) on the Latitude row —
+   placed explicitly so grid auto-placement cannot put Latitude into the second column.
+   Column starts measured on the reference: labels 264 / 597.3, row pitch 27 px. */
+.mg-band-fields {
+  display: grid;
+  grid-template-columns: 333px minmax(0, 1fr);
+  grid-template-rows: repeat(3, 27px);
+  align-items: start;
+}
+
+.mg-band-fields-device {
+  grid-template-columns: 318px minmax(0, 1fr);
+}
+
+.mg-r1c1 { grid-area: 1 / 1; }
+.mg-r2c1 { grid-area: 2 / 1; }
+.mg-r3c1 { grid-area: 3 / 1; }
+.mg-r1c2 { grid-area: 1 / 2; }
+.mg-r2c2 { grid-area: 2 / 2; }
+
+.mg-band-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  line-height: 27px;
+}
+
+/* S:3456 `.status-bar li span.title` 16 px; S:3473 the value is SemiBold. */
+.mg-band-label {
+  flex: 0 0 112px;
+  font-family: var(--mg-sans);
+  font-size: 16px;
+  color: var(--mg-ink);
+}
+
+/* The label column is 112 px (values start at 376); `Height (MSL)` is the original's
+   col-md-7 title there, 138 px in. */
+.mg-band-fields .mg-r2c2 .mg-band-label {
+  flex: 0 0 138px;
+}
+
+.mg-band-fields-device .mg-band-label {
+  flex: 0 0 118px;
+}
+
+.mg-band-fields-device .mg-r1c2 .mg-band-label,
+.mg-band-fields-device .mg-r2c2 .mg-band-label {
+  flex: 0 0 124px;
+}
+
+.mg-band-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mg-semi);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--mg-ink);
   white-space: nowrap;
-  background: #fff;
 }
 
-.manage-panel .g3-devicedetails-table td:first-child {
-  font-family: var(--nas-sans-bold);
+/* `Single` is a link in the original status bar and tile. */
+.mg-underlined {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
-.manage-panel .log-message-table tbody tr {
-  border-bottom: 1px solid #ececec;
+/* =============================================================================
+ * 3. badges
+ * ========================================================================== */
+
+.manage-panel .mg-badge {
+  display: inline-block;
+  padding: 0 17.5px 2px;
+  border-radius: 3px;
+  font-family: var(--mg-semi);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.manage-panel .log-message-table tbody tr:last-child {
-  border-bottom: 0;
+.manage-panel .mg-badge-good {
+  background: var(--mg-good);
+  border: 1px solid var(--mg-good);
+  color: #ffffff;
 }
 
-.manage-panel .log-message-table tbody tr.clickable {
+.manage-panel .mg-badge-warn {
+  background: var(--mg-warn);
+  border: 1px solid var(--mg-warn);
+  color: var(--mg-ink);
+}
+
+.manage-panel .mg-badge-bad {
+  position: relative;
+  padding-right: 26px;
+  background: var(--mg-bad);
+  border: 1px solid var(--mg-bad);
+  color: #ffffff;
+}
+
+/* S:19848 `.red-status:before` — the little "i" disc that opens the reason. */
+.manage-panel .mg-badge-bad::after {
+  content: "i";
+  position: absolute;
+  right: 5px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border: 1.2px solid #ffffff;
+  border-radius: 50%;
+  font-family: sans-serif;
+  font-size: 9px;
+  line-height: 10px;
+  text-align: center;
+  color: #ffffff;
+}
+
+.manage-panel .mg-badge-unknown {
+  background: transparent;
+  border: 1px solid #9b9b9b;
+  color: #6d6d6d;
+}
+
+.manage-panel .mg-badge-off {
+  background: #dcdcdc;
+  border: 1px solid #c4c4c4;
+  color: #3a3a3a;
+}
+
+/* =============================================================================
+ * 4. page column, tab strip, tiles
+ * ========================================================================== */
+
+.mg-page {
+  width: 1232px;
+  max-width: 100%;
+  margin-left: calc(50% - 616px - var(--mg-gutter, 0px) / 2);
+  padding: 0 0 40px;
+}
+
+.mg-tabstrip {
+  display: flex;
+  align-items: flex-end;
+  margin: 16px 0 0;
+}
+
+/* S:14554 `.active-tab { border-bottom: 3px solid #00516F }` — 3 physical px at 150 %, i.e.
+   2 px CSS, and the sampled colour is #115C7C. The tab box is 128 px wide (230…358 measured). */
+.manage-panel .mg-tab {
+  appearance: none;
+  padding: 0 21.6px 6.7px;
+  margin-right: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--mg-ink);
+  font-family: var(--mg-sans);
+  font-size: 16px;
+  line-height: 20px;
   cursor: pointer;
 }
 
-.manage-panel .log-message-table tbody tr.clickable:hover {
-  background: rgba(0, 81, 111, 0.04);
+.manage-panel .mg-tab.is-active {
+  border-bottom-color: var(--mg-teal-dark);
+  font-family: var(--mg-semi);
+  font-weight: 600;
 }
 
-.manage-panel .log-message-table tbody tr.selected {
-  background: rgba(0, 171, 200, 0.1);
-  box-shadow: inset 3px 0 0 #00516f;
+.manage-panel .mg-tab.is-off {
+  color: #6d6d6d;
+  cursor: default;
 }
 
-.manage-panel .log-message-table tbody tr:focus {
-  outline: 2px solid var(--nas-teal);
-  outline-offset: -2px;
+.manage-panel .mg-tab:focus-visible {
+  outline: 1px solid var(--mg-cyan);
+  outline-offset: 2px;
 }
 
-.manage-panel .num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* 3 × 392 + 2 × 28 = the 1232 px column the band uses; the tiles start 28.7 px below the
+   tab strip's underline (measured 301.3 → 329.3). */
+.mg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 392px);
+  gap: 28px;
+  align-items: stretch;
+  margin-top: 28.63px;
 }
 
-.manage-panel .id-cell {
-  color: var(--nas-teal);
-  width: 64px;
+.mg-card-wide {
+  grid-column: 1 / span 2;
 }
 
-.manage-panel .type-name {
-  font-family: var(--nas-sans-bold);
+/* S:379 `.tile` — #FCFCFC, 1 px #005170, square corners. The heading ink sits 15.3 px below
+   the border and the first row 55.3 px, so the head block is 15 px in with an 8 px gap. */
+.manage-panel .mg-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 350px;
+  padding: 15px 15px 44px;
+  background-color: var(--mg-surface);
+  border: 1px solid #005170;
+  border-radius: 0;
 }
 
-.manage-panel .tag {
+.manage-panel .mg-card[data-area="satellite"] {
+  min-height: 300px;
+}
+
+.mg-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.mg-card-head .mg-badge {
+  margin-right: 4px;
+}
+
+/* S:3330 `.heading` */
+.manage-panel .mg-heading {
+  margin: 0;
+  color: var(--mg-ink);
+  font-family: var(--mg-bold);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+/* Tiles: 24.1 px row pitch, values at 55 % of the inner width (197 px measured). */
+.mg-kv-row,
+.mg-device-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  padding: 2.5px 0;
+  line-height: 19px;
+}
+
+.mg-device-row {
+  padding: 2px 0;
+}
+
+.mg-kv-label {
+  flex: 0 0 46%;
+  padding-right: 8px;
+  font-family: var(--mg-sans);
+  font-size: 14px;
+  color: var(--mg-ink);
+}
+
+.mg-card[data-area="positioning"] .mg-kv-label {
+  flex: 0 0 55%;
+}
+
+.mg-card[data-area="device"] .mg-kv-label {
+  flex: 0 0 50%;
+}
+
+.mg-kv-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mg-semi);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mg-ink);
+  overflow-wrap: anywhere;
+}
+
+.mg-device-row .mg-badge {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  margin-right: 4px;
+}
+
+/* The Device tile's rows start 4 px lower than the Positioning tile's (measured 583 vs 577). */
+.mg-card[data-area="device"] .mg-device-list {
+  margin-top: 9.5px;
+}
+
+.manage-panel .mg-interference {
+  margin: 0;
+  padding: 2.5px 0;
+  font-family: var(--mg-semi);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* S:3295 `.need-help` (absolute, bottom-left) + the 18 px "?" disc (S:19720). */
+.manage-panel .mg-help {
+  position: absolute;
+  left: 15px;
+  bottom: 9px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mg-teal);
+  font-family: var(--mg-semi);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.manage-panel .mg-help::before {
+  content: "?";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--mg-teal);
+  color: #ffffff;
+  font-family: sans-serif;
   font-size: 12px;
-  color: var(--nas-warn);
-  border: 1px solid var(--nas-warn);
-  border-radius: 2px;
-  padding: 0 4px;
+  line-height: 18px;
+  text-align: center;
 }
 
-.manage-panel .crc-ok {
-  color: var(--nas-ink-38);
+.manage-panel .mg-help:hover {
+  color: var(--mg-teal-dark);
+  text-decoration: underline;
 }
 
-.manage-panel .crc-fail {
-  color: var(--nas-bad);
-  font-family: var(--nas-sans-bold);
+/* =============================================================================
+ * 5. Satellite View tile — legend + 8 constellation rows + sky plot
+ * ========================================================================== */
+
+.mg-sat-body {
+  position: static;
+  display: flex;
+  align-items: flex-start;
+  min-height: 0;
+  margin-top: 8px;
 }
 
-.manage-panel .gps-window {
-  font-family: var(--nas-mono);
-  font-size: 12.5px;
-  white-space: nowrap;
+/* The legend row is wider than the constellation rows (245…599 measured), so the column is
+   355 px while the rows keep their 195 px of glyph + three chips. */
+.mg-sat-left {
+  flex: 0 0 355px;
+  min-width: 0;
 }
 
-.manage-panel .utc-window {
-  font-family: var(--nas-mono);
-  font-size: 11.5px;
-  color: var(--nas-ink-38);
-  white-space: nowrap;
+/* S:13051 `.satelliteview-legend` — grey "Tracked" plate, green/amber chips, red Missing tag. */
+.manage-panel .mg-sat-legend {
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 auto;
+  margin: 2px 0 14px;
 }
 
-.manage-panel .sample {
+.manage-panel .mg-tracked {
+  flex: 0 0 auto;
+  width: 235px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #dddddd;
+  padding: 6.7px 5px 6px 8px;
+}
+
+.manage-panel .mg-tracked p {
+  margin: 0 0 6px;
+  text-align: center;
+  font-family: var(--mg-bold);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--mg-ink);
+}
+
+.manage-panel .mg-tracked > div {
+  display: flex;
+}
+
+.manage-panel .mg-inuse,
+.manage-panel .mg-notused {
+  width: 105px;
+  height: 28px;
+  padding: 4px 12px;
+  font-family: var(--mg-bold);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.manage-panel .mg-inuse {
+  background-color: var(--mg-chip-good);
+  color: #ffffff;
+}
+
+.manage-panel .mg-notused {
+  margin-left: 8px;
+  border: 2px dotted #000000;
+  background-color: var(--mg-warn);
+  color: #000000;
+}
+
+.manage-panel .mg-missing {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 100px;
+  height: 25px;
+  margin: 26px 0 0 18px;
+  padding: 2px 12px;
+  background-color: var(--mg-miss);
+  color: #ffffff;
+  font-family: var(--mg-bold);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.manage-panel .mg-missing::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px dashed #ffffff;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.manage-panel .mg-missing::after {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  right: -4px;
+  bottom: -4px;
+  border: 2px solid #000000;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* S:1254 `.shapes>div.sat-shape { clear:both; height:4em }` — 4em of the suite's 16.7 px root,
+   i.e. 66.7 px per constellation row (measured 100 physical at 150 %). */
+.manage-panel .mg-sat-row {
+  display: flex;
+  align-items: flex-start;
+  height: 66.7px;
+  clear: both;
+}
+
+.manage-panel .mg-constel-shape {
+  flex: 0 0 47.2px;
+  width: 47.2px;
+  text-align: center;
+}
+
+/* S:1401 `.sat-legends` — 28×40 window into `sats-sprite.png` (S:1408-1426, 29691-29733). */
+.manage-panel .mg-sat-glyph {
   display: block;
-  font-family: var(--nas-mono);
-  font-size: 11.5px;
-  color: var(--nas-ink-60);
-  max-width: 320px;
+  width: 28px;
+  height: 40px;
+  margin: 0 auto;
+  background-image: url('/assets/images/sats-sprite.png');
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+
+.manage-panel .gps-legend { background-position: -150px -151px; }
+.manage-panel .glonass-legend { background-position: -150px -100px; }
+.manage-panel .galileo-legend { background-position: -150px -49px; }
+.manage-panel .bds-legend { background-position: -150px 0; }
+.manage-panel .qzss-legend { background-position: -150px -200px; }
+.manage-panel .navic-legend { background-position: -150px -248px; width: 38px; }
+.manage-panel .lband-legend { background-position: -151px -296px; width: 34px; height: 30px; margin-top: 8px; }
+.manage-panel .sbas-legend { background-position: -153px -331px; width: 32px; height: 32px; margin-top: 6px; }
+
+.manage-panel .mg-sat-name {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--mg-bold);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mg-ink);
+}
+
+/* S:1314 `.constellation-value` + the three 40×28 sprite chips */
+.manage-panel .mg-constel-value {
+  display: flex;
+  padding-top: 15px;
+}
+
+/* The three count chips are sprite windows; the red one sits inside the original's `.outer-div`
+   wrapper (which stays transparent), so it needs the same box on its own. */
+.manage-panel .mg-constel-value > div,
+.manage-panel .mg-bad-chip {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 28px;
+  background-image: url('/assets/images/sats-sprite.png');
+  background-repeat: no-repeat;
+  font-family: var(--mg-bold);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 28px;
+  text-align: center;
+}
+
+.manage-panel .mg-constel-value > div {
+  margin-right: 13px;
+}
+
+.manage-panel .mg-constel-value .mg-outer {
+  background-image: none;
+}
+
+.manage-panel .mg-good-chip {
+  background-position: -193px 0;
+  color: #ffffff;
+}
+
+.manage-panel .mg-idle-chip {
+  background-position: -194px -49px;
+  color: #000000;
+}
+
+.manage-panel .mg-bad-chip {
+  background-position: -194px -101px;
+  color: #ffffff;
+}
+
+.manage-panel .mg-sat-note {
+  width: 235px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--mg-ink-60);
+}
+
+/* Sky plot: the reference disc is a 227.3 px radius circle (least-squares fit of the chords at
+   1330…1530 physical: centre x 763.7, y 1111.3, r 340.9 physical) — the SVG's 300 px viewBox
+   holds a 148 px radius, so the box is 460.7 px, its top 173.6 px below the tile border. */
+.mg-sat-right {
+  position: absolute;
+  top: 151px;
+  right: 46.5px;
+  width: 460.7px;
+  pointer-events: none;
+}
+
+.manage-panel .mg-sky-svg {
+  display: block;
+  width: 460.7px;
+  height: 460.7px;
+}
+
+.manage-panel .mg-sky-disc {
+  fill: #dddddd;
+  stroke: rgba(0, 0, 0, 0.87);
+  stroke-width: 1.1;
+}
+
+.manage-panel .mg-sky-ring {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 1;
+}
+
+.manage-panel .mg-sky-axis {
+  stroke: rgba(0, 0, 0, 0.87);
+  stroke-width: 1.1;
+}
+
+.manage-panel .mg-sky-dir,
+.manage-panel .mg-sky-deg {
+  fill: rgba(0, 0, 0, 0.87);
+  font-family: var(--mg-sans);
+  font-size: 13px;
+}
+
+.manage-panel .mg-sky-deg {
+  font-size: 12px;
+}
+
+/* Symbolic PRN dots — RANGE has no azimuth/elevation, so they are only labelled, not positioned. */
+.manage-panel .mg-sky-dot circle {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 0.8;
+}
+
+.manage-panel .mg-sky-dot text {
+  fill: #ffffff;
+  font-family: var(--mg-bold);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.manage-panel .mg-sky-dot-gps circle { fill: #f0a02a; }
+.manage-panel .mg-sky-dot-glo circle { fill: #7b8a92; }
+.manage-panel .mg-sky-dot-gal circle { fill: #2f6fbf; }
+.manage-panel .mg-sky-dot-bds circle { fill: #3f8f2f; }
+.manage-panel .mg-sky-dot-qzss circle { fill: #8e5bb5; }
+.manage-panel .mg-sky-dot-navic circle { fill: #cf021a; }
+.manage-panel .mg-sky-dot-sbas circle { fill: #00abc8; }
+.manage-panel .mg-sky-dot-lband circle { fill: #6d6d6d; }
+
+/* PPP Corrections tile — the original is static text plus a link into Configuration. */
+.manage-panel .mg-ppp-link {
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mg-teal);
+  font-family: var(--mg-sans);
+  font-size: 14px;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.manage-panel .mg-ppp-link:hover {
+  color: var(--mg-teal-dark);
+}
+
+/* =============================================================================
+ * 6. capture list (no open file) — the original's "All devices" page
+ * ========================================================================== */
+
+.mg-list-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 6px;
+}
+
+/* S:1884-1892 — 34 px OpenSans-Regular page title. */
+.manage-panel .mg-list-title {
+  margin: 0;
+  font-family: var(--mg-light);
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 40px;
+  color: var(--mg-ink);
+}
+
+.manage-panel .mg-add-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid var(--mg-teal);
+  border-radius: 3px;
+  background: var(--mg-teal);
+  color: #ffffff;
+  font-family: var(--mg-semi);
+  font-size: 15px;
+  cursor: default;
+  opacity: 0.75;
+}
+
+.manage-panel .mg-plus {
+  position: relative;
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+}
+
+.manage-panel .mg-plus::before,
+.manage-panel .mg-plus::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+.manage-panel .mg-plus::before {
+  left: 0;
+  top: 5.5px;
+  width: 13px;
+  height: 2px;
+}
+
+.manage-panel .mg-plus::after {
+  left: 5.5px;
+  top: 0;
+  width: 2px;
+  height: 13px;
+}
+
+.manage-panel .mg-list-note {
+  margin: 6px 0 18px;
+  font-size: 13px;
+  color: var(--mg-ink-60);
+}
+
+.mg-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 232px));
+  gap: 6px;
+  align-items: start;
+}
+
+.manage-panel .mg-capture-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+  padding: 14px 16px 12px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+}
+
+.manage-panel .mg-capture-menu {
+  position: absolute;
+  right: 10px;
+  top: 6px;
+  color: var(--mg-ink-60);
+  font-size: 18px;
+  line-height: 18px;
+}
+
+.manage-panel .mg-capture-name {
+  margin: 0 0 12px;
+  padding-right: 18px;
+  font-family: var(--mg-semi);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--mg-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.manage-panel .empty-row td {
-  text-align: center;
-  color: var(--nas-ink-38);
-  padding: 22px 10px;
-  font-family: var(--nas-sans);
+.manage-panel .mg-capture-fields {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  row-gap: 4px;
+  font-size: 14px;
+  color: var(--mg-ink-60);
 }
 
-/* ---- field table -------------------------------------------------------- */
-
-.manage-pager {
-  display: flex;
+.manage-panel .mg-capture-open {
+  align-self: flex-end;
+  margin-top: auto;
+  display: inline-flex;
   align-items: center;
+  gap: 7px;
+  padding: 4px 0 0;
+  border: 0;
+  background: none;
+  color: var(--mg-teal);
+  font-family: var(--mg-semi);
+  font-size: 14px;
+  cursor: pointer;
 }
 
-.manage-pager > * + * {
-  margin-left: 10px;
+.manage-panel .mg-capture-open:hover {
+  color: var(--mg-teal-dark);
+  text-decoration: underline;
 }
 
-.manage-pager .btn {
-  min-width: 74px;
-  height: 32px;
-  letter-spacing: 1px;
-  font-size: 13px;
+.manage-panel .mg-link-glyph {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1.6px solid currentColor;
+  border-radius: 3px;
 }
 
-.manage-pager-index {
-  font-size: 13px;
-  color: var(--nas-ink-60);
-  font-variant-numeric: tabular-nums;
+.manage-panel .mg-link-glyph::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 9px;
+  height: 9px;
+  border: 1.6px solid currentColor;
+  border-radius: 3px;
+  background: #ffffff;
 }
 
-.manage-record-tile .status-header {
-  border-bottom: 0;
-  margin-bottom: 4px;
-}
-
-.manage-panel .record-head-table {
-  border: 1px solid var(--nas-rule);
-  margin-bottom: 12px;
-}
-
-.manage-panel .record-head-table th {
-  width: 1%;
-  background: #fafafa;
-  white-space: nowrap;
-  font-size: 12.5px;
-  color: var(--nas-ink-60);
-}
-
-.manage-panel .record-head-table td {
-  font-family: var(--nas-mono);
-  font-size: 12.5px;
-}
-
-.manage-field-tools {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.manage-field-tools input {
-  max-width: 320px;
-  margin-right: 12px;
-}
-
-.manage-field-tools .manage-meta {
+.manage-panel .mg-list-empty {
   margin: 0;
+  font-size: 14px;
+  color: var(--mg-ink-38);
 }
 
-.manage-panel .field-table td.idx,
-.manage-panel .field-table th.idx {
-  width: 52px;
-  text-align: right;
-  color: var(--nas-ink-38);
-  font-family: var(--nas-sans);
-  font-weight: 400;
-}
-
-.manage-panel .field-table td {
+.manage-panel .mg-list-help {
+  display: flex;
+  align-items: center;
+  margin: 22px 0 0;
   font-size: 13px;
+  color: var(--mg-ink-60);
 }
 
-.manage-panel .field-table td.path,
-.manage-panel .field-table td.shown,
-.manage-panel .field-table td.raw {
-  font-family: var(--nas-mono);
-  font-size: 12.5px;
-  word-break: break-all;
+.manage-panel .mg-list-help code {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
 }
 
-.manage-panel .field-table tbody tr:nth-child(even) {
-  background: #fbfbfb;
-}
-
-.manage-panel .field-table td.raw {
-  color: var(--nas-ink-38);
+.manage-panel .mg-help-disc {
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--mg-teal);
+  color: #ffffff;
+  font-family: sans-serif;
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
 }
 
 /* ---- alert -------------------------------------------------------------- */
 
-.manage-panel .notice {
+.manage-panel .mg-notice {
   border: 1px solid #e0a6a6;
-  border-left: 4px solid var(--nas-bad);
+  border-left: 4px solid var(--mg-bad);
   background: #fdf3f3;
-  color: var(--nas-bad);
+  color: var(--mg-bad);
   font-size: 13px;
   padding: 8px 12px;
-  margin-bottom: 16px;
+  margin: 12px 0;
 }
 
-/* ---- narrow viewport ---------------------------------------------------- */
+/* =============================================================================
+ * 7. app bar — open-file tab + "+ Add Device" (injected into the shell's #tabs-list)
+ * ========================================================================== */
 
-@media (max-width: 980px) {
-  .manage-band {
-    grid-template-columns: minmax(0, 1fr);
+/* The shell styles every `#tabs-list li` as a #666 card; the original file tab is a near-black
+   plate (#000A0E, 284…433 measured on the reference) with white text and a ✕ inside it,
+   followed by "+ Add Device". The plate starts 137.6 px after the app-name tab. */
+#tabs-list li.mg-filetabs {
+  display: none;
+  align-items: center;
+  flex: 0 0 auto;
+  width: auto;
+  height: 100%;
+  margin: 0 0 0 137.6px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--mg-sans);
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+#tabs-list li.mg-filetabs .mg-filetab-plate {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  width: 149.3px;
+  background: #000a0e;
+}
+
+#tabs-list li.mg-filetabs .mg-filetab {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 0 0 11.3px;
+  color: #ffffff;
+  font-family: var(--mg-sans);
+  font-size: 15px;
+  letter-spacing: 0.2px;
+  text-decoration: none;
+}
+
+#tabs-list li.mg-filetabs .mg-filetab-name {
+  color: #ffffff;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tabs-list li.mg-filetabs .mg-filetab-close {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 9px 0 4px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: var(--mg-sans);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#tabs-list li.mg-filetabs .mg-filetab-close:hover {
+  color: #ffffff;
+  background: #16232a;
+}
+
+#tabs-list li.mg-filetabs .mg-add-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  margin-left: 7px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #eff9fb;
+  font-family: var(--mg-sans);
+  font-size: 15px;
+  cursor: default;
+}
+
+#tabs-list li.mg-filetabs .mg-add-tab .mg-plus {
+  position: relative;
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+}
+
+#tabs-list li.mg-filetabs .mg-add-tab .mg-plus::before,
+#tabs-list li.mg-filetabs .mg-add-tab .mg-plus::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+#tabs-list li.mg-filetabs .mg-add-tab .mg-plus::before {
+  left: 0;
+  top: 4.5px;
+  width: 11px;
+  height: 2px;
+}
+
+#tabs-list li.mg-filetabs .mg-add-tab .mg-plus::after {
+  left: 4.5px;
+  top: 0;
+  width: 2px;
+  height: 11px;
+}
+
+/* =============================================================================
+ * 8. page-scoped shell adjustments (only `body[data-page="manage"]`, so nothing moves elsewhere)
+ * ========================================================================== */
+
+/* The shell prints "Manage" + a subtitle above every panel; the original device page starts with
+   the black menu bar and the capture list prints its own "All captures" title. */
+body[data-page="manage"] .folder-detail-heading .device-text,
+body[data-page="manage"] .receiver-count {
+  display: none;
+}
+
+/* The dashboard is full-bleed: menu bar and grey band span the window, the 1232 px column inside
+   them is centred (230…1462 measured on the 150 % reference). */
+body[data-page="manage"][data-manage-state="device"] .nas-content {
+  padding: 0;
+}
+
+body[data-page="manage"][data-manage-state="device"] .folder-detail-heading,
+body[data-page="manage"][data-manage-state="device"] .receiver-count,
+body[data-page="manage"][data-manage-state="device"] #gritGroupView {
+  display: none;
+}
+
+body[data-page="manage"][data-manage-state="device"] .app-panel {
+  margin-top: 0;
+}
+
+/* Classic scrollbar (the reference has one, and it is what makes the centred 1232 px column land
+   on 230…1462: 1706 − 15 → (1691 − 1232) / 2 = 229.5). */
+body[data-page="manage"][data-manage-state="device"] .nas-content::-webkit-scrollbar {
+  width: 15px;
+}
+
+body[data-page="manage"][data-manage-state="device"] .nas-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+body[data-page="manage"][data-manage-state="device"] .nas-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 0;
+}
+
+body[data-page="manage"][data-manage-state="device"] .nas-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* The injected app-bar items exist on every page (the bar is shared), so they are pinned here. */
+body[data-page="manage"] #tabs-list li.mg-filetabs:not([hidden]) {
+  display: flex;
+}
+
+/* =============================================================================
+ * 9. narrow viewport — the reference is a 1706 px window; below that the fixed 392 px tiles stop
+ * fitting, so the grid collapses instead of clipping.
+ * ========================================================================== */
+
+@media (max-width: 1300px) {
+  .mg-band-left {
+    flex: 0 0 52%;
+    padding-left: 20px;
   }
+
+  .mg-band-device {
+    padding-left: 24px;
+  }
+
+  .mg-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    width: auto;
+    padding: 0 20px;
+  }
+
+  .mg-card-wide {
+    grid-column: auto;
+  }
+
+  .mg-page,
+  .mg-band-inner {
+    width: auto;
+    max-width: none;
+    margin-left: 0;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .mg-sat-right {
+    position: static;
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .manage-panel .mg-sky-svg {
+    width: 100%;
+    max-width: 422px;
+    height: auto;
+  }
+}
+
+/* ------------------------------------------------------------------------------
+ * 菜单条文字/图标的颜色必须显式 inherit。
+ * shell.css 里有 `#panel-… span { color: rgba(0,0,0,.87) }` 这类规则，
+ * 单靠 `.mg-menu-btn { color:#d9d9d9 }` 压不住，结果是黑底黑字——菜单条看起来只有一条下划线。
+ * ---------------------------------------------------------------------------- */
+.manage-panel .mg-menu-btn .mg-menu-text,
+.manage-panel .mg-menu-btn .mg-menu-icon,
+.manage-panel .mg-menu-btn .mg-menu-caret {
+  color: inherit;
+}
+
+.manage-panel .mg-menu-btn .mg-menu-icon svg {
+  fill: currentColor;
+  color: inherit;
+}
+
+.manage-panel .mg-bell-count {
+  color: inherit;
 }

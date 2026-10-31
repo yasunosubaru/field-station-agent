@@ -1,40 +1,121 @@
 /**
- * Manage panel — the original Manage view (status tiles + log status + field table) rebuilt on top
- * of the local JSON API.
+ * Manage panel — the suite's **device status dashboard** (the screen the original shows once a
+ * receiver is connected), rebuilt on top of the local JSON API.
  *
- * Markup and class names are transcribed from the unpacked Application Suite:
- *   view/positionStatus/positionStatus.html   positioning tile
- *   view/deviceInfo/deviceInfo.html           device tile
- *   view/logStatus/logStatus.html             log status tile
- * and every colour / size in manage.css is quoted from view/css/style.css (line numbers there).
+ * Reference: `ref-ui/manage-device-open.png` (2560×1600 at 150 % → CSS = physical / 1.5, y measured
+ * from the client area, i.e. the OS title bar 22.67 px already removed by the shell).
  *
- * Contract with the shell (`src/web/shell.js`):
- *   mount(root, ctx)   root = <div id="panel-manage">
- *   unmount(root)
- *   ctx = { api: { get(path, params), post(path, body) }, capture, onCaptureChange(cb) }
+ * Blocks, in the original's stacking order:
  *
- * The panel keeps its own capture selection so it stays usable on its own; it follows the shell's
- * selection through `onCaptureChange` and never assumes it exists.
+ *   1. app bar            the shell's 70 px bar gains the open-file tab `clean-9600.gp… (0) ×`
+ *                         and a disabled `+ Add Device`, both injected from here (index.html is
+ *                         owned by the shell, so nothing there is edited)
+ *   2. black menu bar     50 px #000: Status (the only real page) · Configuration · Settings ▾ ·
+ *                         Tools ▾ · Device ▾, bell + "0" chip at the right end
+ *   3. status band        135 px #E4E4E4 + 1 px #B6B6B6 rule, liner at 591: Positioning [Good]
+ *                         (Position / Latitude / Longitude / Height (MSL)) | Device [Good]
+ *                         (Model / CPU Usage / Logging, Time (UTC) / Interference)
+ *   4. tab strip          Positioning (active, 2 px #115C7C underline) · Tracking
+ *   5. three tiles        Positioning (8 fields) · Device (4 rows, one badge each) · Interference
+ *   6. second row         Satellite View (2 columns: legend + 8 constellation rows + sky plot) ·
+ *                         PPP Corrections - Off
+ *
+ * Where the numbers come from (all of them from the local JSON API, nothing invented):
+ *   BESTPOS #42    first record      → band left half + Positioning tile
+ *   HWMONITOR #963 measurements[]    → Device tile + band right half; the status word's high byte
+ *                                      is the reading type (1 temperature · 2 antenna current ·
+ *                                      7 antenna voltage), its low byte the boundary limit
+ *   RANGE #43      sv_prn + c_status → constellation counts (`(c_status >> 16) & 7`, the same
+ *                                      table as `graph/src/range-charts.ts`); no azimuth/elevation
+ *                                      is carried by RANGE, so the sky dots are symbolic
+ *   ITK / ITDETECTSTATUS and VERSION / FILESTATUS are **not** in these captures: Interference
+ *   reads "Not detected" (as the original does when nothing is detected) and Model / CPU Usage /
+ *   Logging print `--` — the same honest gap Playback already prints.
+ *
+ * Without an open capture the panel falls back to the capture list (`ref-ui/manage-clean.png`):
+ * the original's "All devices" page with one card per capture and a Connect/Open action.
+ *
+ * Contract with the shell (`src/web/index.html`): `mount(root, ctx)` / `unmount(root)`,
+ * ctx = { api, capture, onCaptureChange }.
  */
 
 const CSS_URL = new URL('./manage.css', import.meta.url).href;
 const CSS_ID = 'nas-panel-manage-css';
 
-const POSITION_PATHS = [
-  ['solution_status', 'Operating Mode'],
-  ['position_type', 'Position Type'],
-  ['latitude', 'Latitude'],
-  ['longitude', 'Longitude'],
-  ['orthometric_height', 'Height (MSL)'],
-  ['height_std_dev', 'Height Accuracy'],
-  ['latitude_std_dev', 'Latitude SD'],
-  ['longitude_std_dev', 'Longitude SD'],
-  ['datum_id', 'Datum'],
-  ['num_soln_svs', 'Used SVs'],
-  ['diff_age', 'Differential Age'],
+const BESTPOS = 42;
+const RANGE = 43;
+const HWMONITOR = 963;
+
+/** `system` = `(c_status >> 16) & 7` — same table as `packages/graph/src/range-charts.ts`. */
+const SYSTEM_GPS = 0;
+const SYSTEM_GLO = 1;
+const SYSTEM_SBAS = 2;
+const SYSTEM_GAL = 3;
+const SYSTEM_BDS = 4;
+const SYSTEM_QZSS = 5;
+const SYSTEM_NAVIC = 6;
+
+/** Rows of the Satellite View tile, in the original's DOM order (`satelliteView.html:27-124`). */
+const CONSTELLATIONS = [
+  { key: 'gps', label: 'GPS', system: SYSTEM_GPS, icon: 'gps-legend', tone: 'gps' },
+  { key: 'glo', label: 'GLO', system: SYSTEM_GLO, icon: 'glonass-legend', tone: 'glo' },
+  { key: 'gal', label: 'GAL', system: SYSTEM_GAL, icon: 'galileo-legend', tone: 'gal' },
+  { key: 'bds', label: 'BDS', system: SYSTEM_BDS, icon: 'bds-legend', tone: 'bds' },
+  { key: 'qzss', label: 'QZSS', system: SYSTEM_QZSS, icon: 'qzss-legend', tone: 'qzss' },
+  { key: 'navic', label: 'NAVIC', system: SYSTEM_NAVIC, icon: 'navic-legend', tone: 'navic' },
+  { key: 'lband', label: 'LBAND', system: null, icon: 'lband-legend', tone: 'lband' },
+  { key: 'sbas', label: 'SBAS', system: SYSTEM_SBAS, icon: 'sbas-legend', tone: 'sbas' },
 ];
 
-/* ---------------- small helpers (kept local: the shell may load one panel at a time) ---------- */
+/**
+ * `HwMonitorStatusReadingType` → the row it feeds. The status word's high byte is the type, its
+ * low byte the boundary limit (0 acceptable · 1 lower warning · 2 lower error · 3 upper warning ·
+ * 4 upper error). Binary HWMONITOR carries no `idleTime`, so CPU Usage has no source here.
+ */
+const HW_TYPES = { temperature: [1, 22], antennaCurrent: [2], antennaVoltage: [7], cpuUsage: [] };
+
+/**
+ * The black bar under the app bar. Only `Status` is a real page in this build; the other four are
+ * rendered as the original's dropdowns (`▾`) but disabled, with the reason in `title` — the same
+ * honest marking Convert uses for its unwired formats.
+ */
+const MENU = [
+  { key: 'status', label: 'Status', icon: 'status', caret: false, wired: true },
+  { key: 'configuration', label: 'Configuration', icon: 'configuration', caret: false, wired: false },
+  { key: 'settings', label: 'Settings', icon: 'settings', caret: true, wired: false },
+  { key: 'tools', label: 'Tools', icon: 'tools', caret: true, wired: false },
+  { key: 'device', label: 'Device', icon: 'device', caret: true, wired: false },
+];
+
+const UNWIRED_NOTE =
+  'Not wired in this build: the local API only serves Status (this page) from a capture — ' +
+  'the other pages need a live receiver.';
+
+/* Material-style glyphs, 24×24 viewBox, drawn with `currentColor` so the bar can dim the
+ * unwired items. The gear is the same path the shell's app-bar settings icon uses
+ * (`icons/menubar_settings.svg`). */
+const ICONS = {
+  status:
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
+    '<path d="M12 12 L16.4 7.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+    '<path d="M12 3 A9 9 0 0 1 21 12" fill="none" stroke="currentColor" stroke-width="2.6"/>' +
+    '<circle cx="12" cy="12" r="1.7" fill="currentColor"/></svg>',
+  configuration:
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">' +
+    '<path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>',
+  settings:
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">' +
+    '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58C4.84 11.36 4.8 11.69 4.8 12s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>',
+  tools:
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">' +
+    '<path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>',
+  device:
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">' +
+    '<path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>',
+};
+
+/* ---------------- small helpers (local: one panel at a time is loaded) ---------- */
 
 function ensureCss() {
   if (document.getElementById(CSS_ID)) return;
@@ -90,24 +171,38 @@ function bytesText(bytes) {
   return `${(n / 1048576).toFixed(2)} MB`;
 }
 
-function utcText(iso) {
-  if (!iso) return '—';
-  return String(iso).replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
+function utcClock(iso) {
+  if (!iso) return '--:--:--';
+  const match = /T(\d{2}:\d{2}:\d{2})/.exec(String(iso));
+  return match ? match[1] : String(iso);
 }
 
 function fixed(value, digits) {
   const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+  return Number.isFinite(n) ? n.toFixed(digits) : '--';
 }
 
-function shownValue(field) {
-  if (!field) return '—';
+/** `SINGLE` prints as `Single`, `SOL_COMPUTED` stays as-is — the original's tooltips do the same. */
+function titleCase(text) {
+  const value = String(text ?? '');
+  if (!value) return '--';
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
+function baseName(path) {
+  const text = String(path ?? '');
+  const cut = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  return cut >= 0 ? text.slice(cut + 1) : text;
+}
+
+function shown(field) {
+  if (!field) return null;
   const text = field.text;
   if (text === undefined || text === null || text === '') return String(field.value);
   return String(text);
 }
 
-/** `data-el="field-filter"` becomes `el.fieldFilter`. */
+/** `data-el="band-lat"` becomes `el.bandLat`. */
 function collect(root) {
   const map = {};
   for (const node of root.querySelectorAll('[data-el]')) {
@@ -118,119 +213,262 @@ function collect(root) {
 
 /* ---------------- markup ---------------- */
 
-function statusRow(label, value, hint) {
+function kvRow(label, target, extra) {
   return (
-    '<div class="row">' +
-    `<span class="title">${esc(label)}</span>` +
-    `<span class="value posStats"${hint ? ` title="${esc(hint)}"` : ''}>${esc(value)}</span>` +
+    '<div class="mg-kv-row">' +
+    `<span class="mg-kv-label">${esc(label)}</span>` +
+    `<span class="mg-kv-value${extra ? ` ${extra}` : ''}" data-el="${target}">--</span>` +
     '</div>'
   );
 }
 
-/** One deviceInfo.html row: title | value | its own traffic light (`.deviceinfo-field`). */
-function deviceRow(label, value, good) {
+function deviceRow(label, valueTarget, badgeTarget) {
   return (
-    '<div class="row">' +
-    `<span class="title device-fields">${esc(label)}</span>` +
-    `<span class="value">${esc(value)}</span>` +
-    '<div class="statustiles-traffic deviceinfo-field">' +
-    `<span class="green-status${good ? ' is-on' : ''}">Good</span>` +
-    `<span class="yellow-status${good ? '' : ' is-on'}">Warning</span>` +
+    '<div class="mg-device-row">' +
+    `<span class="mg-kv-label">${esc(label)}</span>` +
+    `<span class="mg-kv-value" data-el="${valueTarget}">--</span>` +
+    `<span class="mg-badge mg-badge-unknown" data-el="${badgeTarget}" data-tone="unknown">--</span>` +
+    '</div>'
+  );
+}
+
+function satRow(item) {
+  /* The six GNSS glyphs in `sats-sprite.png` already carry their own name under the shape; only
+   * LBAND and SBAS are bare icons, so they get a text label (S:29712 `.lband-label`/`.sbas-label`). */
+  const needsLabel = item.key === 'lband' || item.key === 'sbas';
+  return (
+    `<div class="mg-sat-row" data-constellation="${item.key}">` +
+    '<div class="mg-constel-shape">' +
+    `<span class="mg-sat-glyph ${item.icon}" aria-hidden="true"></span>` +
+    (needsLabel ? `<span class="mg-sat-name">${esc(item.label)}</span>` : '') +
+    '</div>' +
+    '<div class="mg-constel-value">' +
+    `<div class="mg-good-chip" data-sat="${item.key}-use" title="In Use — distinct PRNs in the last RANGE epoch of this capture">0</div>` +
+    `<div class="mg-idle-chip" data-sat="${item.key}-idle" title="Not Used — PRNs seen earlier in this capture but not in the last epoch">0</div>` +
+    '<div class="mg-outer">' +
+    `<div class="mg-bad-chip" data-sat="${item.key}-missing" title="Missing — needs SATVIS2, which this capture does not contain">0</div>` +
+    '</div>' +
     '</div>' +
     '</div>'
   );
 }
 
-function badgeGroup(kind, state) {
-  const on = (name) => (state === name ? ' is-on' : '');
+/** Horizon, 30°/60° rings and the compass labels — drawn once, dots are added per capture. */
+function skySvg() {
+  const size = 300;
+  const c = size / 2;
   return (
-    `<div class="statustiles-traffic" data-badge="${kind}">` +
-    `<span class="green-status${on('good')}">Good</span>` +
-    `<span class="yellow-status${on('warn')}">Warning</span>` +
-    `<span class="red-status${on('bad')}">Error</span>` +
+    `<svg class="mg-sky-svg" viewBox="0 0 ${size} ${size}" role="img" ` +
+    'aria-label="Polar sky plot: horizon, 30 and 60 degree elevation rings; RANGE carries no azimuth or elevation, so the dots are symbolic">' +
+    `<circle class="mg-sky-disc" cx="${c}" cy="${c}" r="148"/>` +
+    `<circle class="mg-sky-ring" cx="${c}" cy="${c}" r="98"/>` +
+    `<circle class="mg-sky-ring mg-sky-ring-inner" cx="${c}" cy="${c}" r="74"/>` +
+    `<line class="mg-sky-axis" x1="2" y1="${c}" x2="${size - 2}" y2="${c}"/>` +
+    `<line class="mg-sky-axis" x1="${c}" y1="2" x2="${c}" y2="${size - 2}"/>` +
+    `<text class="mg-sky-dir" x="${c + 6}" y="14">N</text>` +
+    `<text class="mg-sky-dir" x="${size - 14}" y="${c + 5}">E</text>` +
+    `<text class="mg-sky-dir" x="4" y="${c + 5}">W</text>` +
+    `<text class="mg-sky-dir" x="${c + 6}" y="${size - 5}">S</text>` +
+    `<text class="mg-sky-deg" x="${c + 6}" y="${c - 94}">30&deg;</text>` +
+    `<text class="mg-sky-deg" x="${c + 6}" y="${c - 70}">60&deg;</text>` +
+    '<g class="mg-sky-sats" data-el="skySats"></g>' +
+    '</svg>'
+  );
+}
+
+function menuBar() {
+  const items = MENU.map((item) => {
+    const off = item.wired ? '' : ' is-off';
+    const title = item.wired ? `${item.label} — this page` : `${item.label}: ${UNWIRED_NOTE}`;
+    return (
+      `<button type="button" class="mg-menu-btn${off}${item.wired ? ' is-current' : ''}" ` +
+      `data-menu="${esc(item.key)}" role="menuitem" title="${esc(title)}" ` +
+      `${item.wired ? 'aria-current="page"' : 'aria-disabled="true" disabled'}>` +
+      `<span class="mg-menu-icon" aria-hidden="true">${ICONS[item.icon] ?? ''}</span>` +
+      `<span class="mg-menu-text">${esc(item.label)}</span>` +
+      (item.caret ? '<span class="mg-menu-caret" aria-hidden="true"></span>' : '') +
+      '</button>'
+    );
+  }).join('');
+  return (
+    '<div class="mg-menubar" role="menubar" aria-label="Device pages">' +
+    items +
+    '<span class="mg-menu-spacer"></span>' +
+    '<span class="mg-bell" aria-hidden="true"></span>' +
+    '<span class="mg-bell-count">0</span>' +
     '</div>'
   );
 }
 
 function template() {
   return `
-<div class="manage-band">
-  <div class="tile status-tile position-status">
-    <div class="position-status-header status-header">
-      <span class="heading">Positioning</span>
-      ${badgeGroup('position', 'good')}
-    </div>
-    <div class="status-tile-main-container">
-      <div class="oem-positionStatus" data-el="position-rows"></div>
-      <div class="manage-note" data-el="position-note"></div>
+<div class="mg-device" data-el="device" hidden>
+  ${menuBar()}
+
+  <div class="mg-band">
+    <div class="mg-band-inner">
+      <div class="mg-band-half mg-band-left">
+        <div class="mg-band-head">
+          <span class="mg-band-title">Positioning</span>
+          <span class="mg-badge mg-badge-good" data-el="bandPosBadge" data-tone="good">Good</span>
+        </div>
+        <div class="mg-band-fields">
+          <div class="mg-band-row mg-r1c1">
+            <span class="mg-band-label">Position</span>
+            <span class="mg-band-value mg-underlined" data-el="bandPosition">--</span>
+          </div>
+          <div class="mg-band-row mg-r2c1">
+            <span class="mg-band-label">Latitude</span>
+            <span class="mg-band-value" data-el="bandLat">--</span>
+          </div>
+          <div class="mg-band-row mg-r3c1">
+            <span class="mg-band-label">Longitude</span>
+            <span class="mg-band-value" data-el="bandLon">--</span>
+          </div>
+          <div class="mg-band-row mg-r2c2">
+            <span class="mg-band-label">Height (MSL)</span>
+            <span class="mg-band-value" data-el="bandHeight">--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mg-band-split" aria-hidden="true"></div>
+
+      <div class="mg-band-half mg-band-device">
+        <div class="mg-band-head">
+          <span class="mg-band-title">Device</span>
+          <span class="mg-badge mg-badge-good" data-el="bandDevBadge" data-tone="good">Good</span>
+        </div>
+        <div class="mg-band-fields mg-band-fields-device">
+          <div class="mg-band-row mg-r1c1">
+            <span class="mg-band-label">Model</span>
+            <span class="mg-band-value" data-el="bandModel">--</span>
+          </div>
+          <div class="mg-band-row mg-r2c1">
+            <span class="mg-band-label">CPU Usage</span>
+            <span class="mg-band-value" data-el="bandCpu">--</span>
+          </div>
+          <div class="mg-band-row mg-r3c1">
+            <span class="mg-band-label">Logging</span>
+            <span class="mg-band-value" data-el="bandLogging">--</span>
+          </div>
+          <div class="mg-band-row mg-r1c2">
+            <span class="mg-band-label">Time (UTC)</span>
+            <span class="mg-band-value" data-el="bandTime">--</span>
+          </div>
+          <div class="mg-band-row mg-r2c2">
+            <span class="mg-band-label">Interference</span>
+            <span class="mg-band-value" data-el="bandInterference">Not detected</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="tile status-tile device-status">
-    <div class="device-status-header status-header">
-      <span class="heading">Device</span>
-      ${badgeGroup('device', 'good')}
+  <div class="mg-page">
+    <div class="mg-tabstrip" role="tablist" aria-label="Status pages">
+      <button type="button" class="mg-tab is-active" role="tab" aria-selected="true">Positioning</button>
+      <button type="button" class="mg-tab is-off" role="tab" aria-selected="false" disabled
+              title="Tracking: ${esc(UNWIRED_NOTE)}">Tracking</button>
     </div>
-    <div class="status-tile-main-container" data-el="device-rows"></div>
-    <div class="manage-note" data-el="device-note"></div>
+
+    <div class="mg-grid">
+      <section class="mg-card" data-area="positioning">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Positioning</h2>
+          <span class="mg-badge mg-badge-good" data-el="cardPosBadge" data-tone="good">Good</span>
+        </div>
+        <div class="mg-kv">
+          ${kvRow('Operating Mode', 'posMode')}
+          ${kvRow('Position', 'posPosition', 'mg-underlined')}
+          ${kvRow('Latitude', 'posLat')}
+          ${kvRow('Longitude', 'posLon')}
+          ${kvRow('Height (MSL)', 'posHeight')}
+          ${kvRow('Height Accuracy', 'posHeightAcc')}
+          ${kvRow('2d-SD', 'pos2d')}
+          ${kvRow('Datum', 'posDatum')}
+        </div>
+        <button type="button" class="mg-help" data-help="positioning"
+                title="Positioning comes from the first BESTPOS (#42) record of the capture: Operating Mode is solution_status, Position is position_type, Height Accuracy is height_std_dev, 2d-SD is sqrt(latitude_std_dev² + longitude_std_dev²).">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="device">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Device</h2>
+        </div>
+        <div class="mg-kv mg-device-list">
+          ${deviceRow('CPU Usage', 'devCpu', 'devCpuBadge')}
+          ${deviceRow('Temperature', 'devTemp', 'devTempBadge')}
+          ${deviceRow('Antenna Voltage', 'devVoltage', 'devVoltageBadge')}
+          ${deviceRow('Antenna Current', 'devCurrent', 'devCurrentBadge')}
+        </div>
+        <button type="button" class="mg-help" data-help="device"
+                title="Device readings are HWMONITOR (#963) measurements[]: the status word's high byte is the reading type (1 temperature · 2 antenna current · 7 antenna voltage), the low byte the boundary limit the badge reports. The binary log carries no idleTime, so CPU Usage has no source and prints --.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="interference">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Interference</h2>
+          <span class="mg-badge mg-badge-good" data-tone="good">Good</span>
+        </div>
+        <p class="mg-interference" data-el="interference">Not detected</p>
+        <button type="button" class="mg-help" data-help="interference"
+                title="Interference needs ITDETECTSTATUS (#2065) / the ITK logs, which this capture does not contain. The original prints Not detected when the receiver reports no interference; no number is invented here.">Help</button>
+      </section>
+
+      <section class="mg-card mg-card-wide" data-area="satellite">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Satellite View</h2>
+          <span class="mg-badge mg-badge-unknown" data-el="satBadge" data-tone="unknown">--</span>
+        </div>
+        <div class="mg-sat-body">
+          <div class="mg-sat-left">
+            <div class="mg-sat-legend">
+              <div class="mg-tracked">
+                <p>Tracked</p>
+                <div>
+                  <div class="mg-inuse">In Use</div>
+                  <div class="mg-notused">Not Used</div>
+                </div>
+              </div>
+              <div class="mg-missing">Missing</div>
+            </div>
+            <div class="mg-shapes">${CONSTELLATIONS.map(satRow).join('')}</div>
+            <p class="mg-sat-note" data-el="satNote">Counting RANGE (#43) observations…</p>
+          </div>
+          <div class="mg-sat-right" data-el="sky">${skySvg()}</div>
+        </div>
+        <button type="button" class="mg-help" data-help="satellite"
+                title="Satellite View counts RANGE (#43) observations: system = (c_status >> 16) & 7 (0 GPS · 1 GLO · 2 SBAS · 3 GAL · 4 BDS · 5 QZSS · 6 NAVIC), In Use = distinct sv_prn in the last epoch of the capture, Not Used = PRNs seen in earlier epochs only. RANGE carries no azimuth/elevation, so the sky dots are symbolic; Missing needs SATVIS2, absent here.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="ppp">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">PPP Corrections - Off</h2>
+          <span class="mg-badge mg-badge-off" data-tone="off">Off</span>
+        </div>
+        <button type="button" class="mg-ppp-link" data-help="ppp"
+                title="PPP Corrections are switched on through Configuration › PPP, which needs a live receiver; this build reads a capture and cannot change receiver settings.">Switch on via configuration</button>
+      </section>
+    </div>
   </div>
 </div>
 
-<div class="notice" data-el="error" hidden></div>
-
-<div class="tile manage-log-tile">
-  <div class="log-status-header status-header">
-    <span class="heading">Log Status</span>
-    ${badgeGroup('log', 'good')}
+<div class="mg-list" data-el="list" hidden>
+  <div class="mg-list-head">
+    <h1 class="mg-list-title">All captures</h1>
+    <button type="button" class="mg-add-device" disabled
+            title="Add Device: this build reads captures from 逆向/00_来源/samples through the local API, it cannot talk to a receiver.">
+      <span class="mg-plus" aria-hidden="true"></span>Add Device</button>
   </div>
-  <div class="manage-toolbar">
-    <label class="manage-field"><span>Capture</span><select data-el="capture"></select></label>
-    <label class="manage-field grow"><span>Filter<em data-el="count"></em></span>
-      <input type="search" data-el="filter" placeholder="RANGE / 43 / #RANGEA" autocomplete="off">
-    </label>
-    <button class="btn btn-default darkBtn" type="button" data-el="refresh">Refresh</button>
-  </div>
-  <p class="manage-meta" data-el="meta">Reading capture list…</p>
-  <div class="manage-table-wrap">
-    <table class="g3-devicedetails-table log-message-table">
-      <thead>
-        <tr>
-          <th class="num">ID</th>
-          <th>Message</th>
-          <th class="num">Records</th>
-          <th class="num">CRC fail</th>
-          <th>GPS window</th>
-          <th>Sample</th>
-        </tr>
-      </thead>
-      <tbody data-el="rows"></tbody>
-    </table>
-  </div>
+  <p class="mg-list-note" data-el="listNote">Reading the capture list…</p>
+  <div class="mg-list-grid" data-el="listCards"></div>
+  <p class="mg-list-help"><span class="mg-help-disc" aria-hidden="true">?</span>
+    One card per capture under <code>逆向/00_来源/samples</code>. Open one to see the device
+    dashboard the original shows for a connected receiver.</p>
 </div>
 
-<div class="tile manage-record-tile" data-el="record" hidden>
-  <div class="status-header">
-    <span class="heading" data-el="record-title">Decoded fields</span>
-    <div class="manage-pager">
-      <button class="btn btn-default lightBtn" type="button" data-el="prev">Prev</button>
-      <span class="manage-pager-index" data-el="index">— / —</span>
-      <button class="btn btn-default lightBtn" type="button" data-el="next">Next</button>
-    </div>
-  </div>
-  <table class="g3-devicedetails-table record-head-table" data-el="record-head"></table>
-  <div class="manage-field-tools">
-    <input type="search" data-el="field-filter" placeholder="Filter fields (latitude, obs[3].psr)" autocomplete="off">
-    <span class="manage-meta" data-el="field-count"></span>
-  </div>
-  <div class="manage-table-wrap">
-    <table class="g3-devicedetails-table field-table">
-      <thead>
-        <tr><th class="num idx">#</th><th>Field path</th><th>Value</th><th>Raw</th></tr>
-      </thead>
-      <tbody data-el="field-rows"></tbody>
-    </table>
-  </div>
-</div>`;
+<div class="notice mg-notice" data-el="error" hidden></div>`;
 }
 
 /* ---------------- mount / unmount ---------------- */
@@ -251,400 +489,516 @@ export function mount(root, ctx = {}) {
   root.innerHTML = template();
   const el = collect(root);
 
+  /* The 1232 px column is centred in the area *left of the scrollbar* (the reference window has a
+   * 15 px one). Chromium draws overlay scrollbars in this environment, which reserve nothing, so
+   * the missing gutter is measured and passed to CSS instead of guessing. */
+  {
+    const scroller = document.querySelector('.nas-content');
+    const gutter = scroller ? scroller.offsetWidth - scroller.clientWidth : 0;
+    root.style.setProperty('--mg-gutter', `${gutter >= 8 ? 0 : 15}px`);
+  }
+
+  /** `gps-use` / `gps-idle` / `gps-missing` → the three count chips of every constellation row. */
+  const satCount = {};
+  for (const node of root.querySelectorAll('[data-sat]')) satCount[node.dataset.sat] = node;
+
+  /* The open-file tab and "+ Add Device" live in the shell's app bar (`index.html #tabs-list`),
+   * exactly like the original puts them next to the app name. Injected from here so the shell is
+   * not edited; CSS pins them to this page and removes them again in the cleanup below. */
+  const appBar = document.getElementById('tabs-list');
+  const appTab = appBar ? document.createElement('li') : null;
+  if (appTab) {
+    appTab.className = 'mg-filetabs';
+    appTab.setAttribute('role', 'presentation');
+    appBar.appendChild(appTab);
+  }
+
   const state = {
     alive: true,
     capture: typeof ctx.capture === 'string' ? ctx.capture : '',
     captures: [],
+    open: false,
     logs: null,
-    selectedId: null,
-    offset: 0,
-    detail: null,
-    fieldFilter: '',
     position: null,
     device: null,
-    rx: null,
+    range: null,
+    time: '',
+    /** Bumped per open; a slower response for an older capture never overwrites a newer one. */
+    token: 0,
   };
 
-  function badge(kind, value) {
-    const target = { good: 'green-status', warn: 'yellow-status', bad: 'red-status' }[value];
-    for (const span of root.querySelectorAll(`[data-badge="${kind}"] > span`)) {
-      span.classList.toggle('is-on', span.classList.contains(target));
-    }
+  /* ---- shared bits ---- */
+
+  function setBadge(node, tone, text) {
+    if (!node) return;
+    const labels = { good: 'Good', warn: 'Warning', bad: 'Error', off: 'Off', unknown: '--' };
+    node.className = `mg-badge mg-badge-${tone}`;
+    node.textContent = text ?? labels[tone] ?? '--';
+    node.dataset.tone = tone;
+  }
+
+  function setText(node, text) {
+    if (node) node.textContent = text;
   }
 
   function alert(message) {
-    if (!message) {
-      el.error.hidden = true;
-      el.error.textContent = '';
+    if (!el.error) return;
+    el.error.hidden = !message;
+    el.error.textContent = message || '';
+  }
+
+  function setBodyState() {
+    if (state.open) document.body.dataset.manageState = 'device';
+    else document.body.dataset.manageState = 'list';
+  }
+
+  /* ---- app bar file tab ---- */
+
+  function renderAppBar() {
+    if (!appTab) return;
+    if (!state.open) {
+      appTab.hidden = true;
+      appTab.innerHTML = '';
       return;
     }
-    el.error.hidden = false;
-    el.error.textContent = message;
+    appTab.hidden = false;
+    const name = baseName(state.capture);
+    const short = name.length > 12 ? `${name.slice(0, 12)}…` : name;
+    appTab.innerHTML =
+      '<span class="mg-filetab-plate">' +
+      `<a class="mg-filetab" href="#" title="${esc(state.capture)}">` +
+      `<span class="mg-filetab-name">${esc(short)} (0)</span></a>` +
+      '<button type="button" class="mg-filetab-close" aria-label="Close file">&times;</button>' +
+      '</span>' +
+      '<button type="button" class="mg-add-tab" disabled ' +
+      `title="${esc('Add Device: this build reads captures from the local API and cannot talk to a receiver.')}">` +
+      '<span class="mg-plus" aria-hidden="true"></span>Add Device</button>';
   }
 
-  /* ---- capture list ---- */
+  /* ---- capture list (no open file) ---- */
 
-  function fillCaptures() {
-    el.capture.innerHTML = state.captures.length
-      ? state.captures
-          .map((item) => `<option value="${esc(item.path)}">${esc(`${item.name} · ${item.path} · ${bytesText(item.bytes)}`)}</option>`)
-          .join('')
-      : '<option value="">(no capture under samples/)</option>';
-    if (state.capture && state.captures.some((item) => item.path === state.capture)) {
-      el.capture.value = state.capture;
-    } else if (state.captures.length) {
-      const preferred =
-        state.captures.find((item) => item.path === 'convert/clean-9600.gps') ||
-        state.captures.find((item) => item.name === 'clean-9600.gps') ||
-        state.captures[0];
-      state.capture = preferred.path;
-      el.capture.value = preferred.path;
-    }
-  }
-
-  /* ---- status tiles ---- */
-
-  function renderPosition(record) {
-    const rows = [];
-    if (!record) {
-      rows.push(statusRow('Operating Mode', 'no BESTPOS in capture'));
-      el.positionRows.innerHTML = rows.join('');
-      el.positionNote.textContent = 'Positioning comes from the first BESTPOS (#42) record.';
-      badge('position', 'warn');
+  function renderList() {
+    el.list.hidden = false;
+    el.device.hidden = true;
+    el.listNote.textContent = state.captures.length
+      ? `${state.captures.length} capture${state.captures.length === 1 ? '' : 's'} · pick one to open its dashboard`
+      : 'No capture under 逆向/00_来源/samples.';
+    if (!state.captures.length) {
+      el.listCards.innerHTML = '<p class="mg-list-empty">No capture found.</p>';
       return;
     }
-    for (const [path, label] of POSITION_PATHS) {
-      const field = record.fields.find((item) => item.path === path);
-      let value = shownValue(field);
-      if (field && typeof field.value === 'number' && !field.text) {
-        if (path === 'latitude' || path === 'longitude') value = `${fixed(field.value, 9)}°`;
-        else if (path === 'orthometric_height') value = `${fixed(field.value, 3)} m`;
-        else if (path.endsWith('_std_dev')) value = `${fixed(field.value, 4)} m`;
-        else if (path === 'diff_age') value = `${fixed(field.value, 3)} s`;
-      }
-      rows.push(statusRow(label, value, `BESTPOS.${path}`));
-    }
-    el.positionRows.innerHTML = rows.join('');
-    const solid = record.fields.find((item) => item.path === 'solution_status');
-    const computed = shownValue(solid) === 'SOL_COMPUTED';
-    badge('position', computed ? 'good' : 'warn');
-    el.positionNote.textContent = computed
-      ? 'SOL_COMPUTED — the receiver reports a valid position solution.'
-      : 'Solution not computed; the values above come from the last BESTPOS record.';
+    el.listCards.innerHTML = state.captures
+      .map((item) => {
+        const folder = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '.';
+        return (
+          `<article class="mg-capture-card" data-capture="${esc(item.path)}">` +
+          '<div class="mg-capture-menu" aria-hidden="true">⋮</div>' +
+          `<h2 class="mg-capture-name" title="${esc(item.path)}">${esc(item.name)}</h2>` +
+          '<div class="mg-capture-fields">' +
+          `<span>File</span><span>${esc(item.name)}</span>` +
+          `<span>Folder</span><span>${esc(folder)}</span>` +
+          `<span>Size</span><span>${esc(bytesText(item.bytes))}</span>` +
+          '</div>' +
+          `<button type="button" class="mg-capture-open" data-open="${esc(item.path)}">` +
+          '<span class="mg-link-glyph" aria-hidden="true"></span>Open</button>' +
+          '</article>'
+        );
+      })
+      .join('');
   }
 
-  function renderDevice(logs, hw, rx) {
-    const rows = [];
-    const rxError = rx ? shownValue(rx.fields.find((item) => item.path === 'rx_error')) : '—';
-    rows.push(
-      deviceRow(
-        'Receiver Status',
-        rxError === '00000000' ? 'OK (00000000)' : rxError,
-        rxError === '00000000',
-      ),
-    );
-    rows.push(deviceRow('Log Records', `${logs.accepted} / ${logs.totalRecords}`, logs.dropped === 0));
-    rows.push(deviceRow('CRC Failed', String(logs.dropped), logs.dropped === 0));
-    rows.push(deviceRow('Message Types', String(logs.types), true));
+  function renderDeviceShell() {
+    el.list.hidden = true;
+    el.device.hidden = false;
+  }
 
-    const measurement = (index) => {
-      if (!hw) return null;
-      return hw.fields.find((item) => item.path === `measurements[${index}].value`) ?? null;
+  /* ---- BESTPOS #42 → band left half + Positioning tile ---- */
+
+  function readPosition(record) {
+    if (!record) return null;
+    const fields = new Map();
+    for (const field of record.fields) if (!fields.has(field.path)) fields.set(field.path, field);
+    const get = (path) => fields.get(path);
+    const latDev = Number(get('latitude_std_dev')?.value);
+    const lonDev = Number(get('longitude_std_dev')?.value);
+    return {
+      mode: shown(get('solution_status')),
+      position: shown(get('position_type')),
+      latitude: Number(get('latitude')?.value),
+      longitude: Number(get('longitude')?.value),
+      height: Number(get('orthometric_height')?.value),
+      heightDev: Number(get('height_std_dev')?.value),
+      twoSigma: Number.isFinite(latDev) && Number.isFinite(lonDev) ? Math.sqrt(latDev * latDev + lonDev * lonDev) : NaN,
+      datum: shown(get('datum_id')),
+      solved: shown(get('solution_status')) === 'SOL_COMPUTED',
     };
-    const temp = measurement(0);
-    const volt = measurement(3);
-    rows.push(
-      deviceRow(
-        'Board Temperature',
-        temp ? `${fixed(temp.value, 2)} °C` : '—',
-        temp ? Number(temp.value) < 70 : false,
-      ),
-    );
-    rows.push(
-      deviceRow(
-        'Supply Voltage',
-        volt ? `${fixed(volt.value, 3)} V` : '—',
-        volt ? Number(volt.value) > 4.5 && Number(volt.value) < 5.5 : false,
-      ),
-    );
-    el.deviceRows.innerHTML = rows.join('');
-
-    const healthy = logs.dropped === 0 && (rxError === '00000000' || rxError === '—');
-    badge('device', healthy ? 'good' : 'warn');
-    el.deviceNote.textContent = hw
-      ? 'Temperature / voltage are HWMONITOR (#963) measurements[0] and [3].'
-      : 'No HWMONITOR record in this capture.';
   }
 
-  /* ---- message table ---- */
+  function renderPosition() {
+    const p = state.position;
+    const tone = p ? (p.solved ? 'good' : 'warn') : 'warn';
+    if (!p) {
+      setText(el.bandPosition, '--');
+      setText(el.bandLat, '--');
+      setText(el.bandLon, '--');
+      setText(el.bandHeight, '--');
+      for (const node of [el.posMode, el.posPosition, el.posLat, el.posLon, el.posHeight, el.posHeightAcc, el.pos2d, el.posDatum]) {
+        setText(node, '--');
+      }
+      setBadge(el.bandPosBadge, tone);
+      setBadge(el.cardPosBadge, tone);
+      return;
+    }
+    const position = p.position ? titleCase(p.position) : '--';
+    const lat = `${fixed(p.latitude, 7)}°`;
+    const lon = `${fixed(p.longitude, 7)}°`;
+    const height = `${fixed(p.height, 2)} m`;
 
-  function visibleGroups() {
-    if (!state.logs) return [];
-    const needle = el.filter.value.trim().toLowerCase();
-    if (!needle) return state.logs.groups;
-    return state.logs.groups.filter(
-      (group) =>
-        String(group.id).includes(needle) ||
-        group.name.toLowerCase().includes(needle) ||
-        group.sample.toLowerCase().includes(needle),
+    setText(el.bandPosition, position);
+    setText(el.bandLat, lat);
+    setText(el.bandLon, lon);
+    setText(el.bandHeight, height);
+
+    setText(el.posMode, p.mode ?? '--');
+    setText(el.posPosition, position);
+    setText(el.posLat, lat);
+    setText(el.posLon, lon);
+    setText(el.posHeight, height);
+    setText(el.posHeightAcc, `${fixed(p.heightDev, 2)} m`);
+    setText(el.pos2d, `${fixed(p.twoSigma, 2)} m`);
+    setText(el.posDatum, p.datum ?? '--');
+
+    setBadge(el.bandPosBadge, tone);
+    setBadge(el.cardPosBadge, tone);
+  }
+
+  /* ---- HWMONITOR #963 → Device tile + band right half ---- */
+
+  function readDevice(record) {
+    if (!record) return null;
+    const values = new Map();
+    for (const field of record.fields) {
+      const match = /^measurements\[(\d+)\]\.(value|status)$/.exec(field.path);
+      if (!match) continue;
+      const index = Number(match[1]);
+      if (!values.has(index)) values.set(index, {});
+      values.get(index)[match[2]] = field.value;
+    }
+    const byType = new Map();
+    for (const entry of values.values()) {
+      const status = Number(entry.status) || 0;
+      const type = (status >> 8) & 0xff;
+      if (!byType.has(type)) byType.set(type, { value: Number(entry.value), limit: status & 0xff });
+    }
+    const pick = (types) => {
+      for (const type of types) if (byType.has(type)) return byType.get(type);
+      return null;
+    };
+    return {
+      temperature: pick(HW_TYPES.temperature),
+      antennaCurrent: pick(HW_TYPES.antennaCurrent),
+      antennaVoltage: pick(HW_TYPES.antennaVoltage),
+      cpuUsage: pick(HW_TYPES.cpuUsage),
+    };
+  }
+
+  /** Sensor row tone: the receiver's own boundary limit wins when it flagged something. */
+  function sensorTone(reading) {
+    if (!reading) return 'unknown';
+    const limit = reading.limit;
+    if (limit === 0) return 'good';
+    if (limit === 1 || limit === 3) return 'warn';
+    return 'bad';
+  }
+
+  function renderDevice() {
+    const d = state.device;
+    // The original prints °C without decimals, V and mA with one — same convention here.
+    const temp = d?.temperature ? `${fixed(d.temperature.value, 0)} °C` : '--';
+    const volt = d?.antennaVoltage ? `${fixed(d.antennaVoltage.value, 1)} V` : '--';
+    const amp = d?.antennaCurrent ? `${fixed(d.antennaCurrent.value * 1000, 1)} mA` : '--';
+    const cpu = d?.cpuUsage ? `${fixed(d.cpuUsage.value, 0)} %` : '--';
+
+    setText(el.devCpu, cpu);
+    setText(el.devTemp, temp);
+    setText(el.devVoltage, volt);
+    setText(el.devCurrent, amp);
+
+    setBadge(el.devCpuBadge, d?.cpuUsage ? sensorTone(d.cpuUsage) : 'unknown');
+    setBadge(el.devTempBadge, sensorTone(d?.temperature));
+    setBadge(el.devVoltageBadge, sensorTone(d?.antennaVoltage));
+    setBadge(el.devCurrentBadge, sensorTone(d?.antennaCurrent));
+
+    // Band right half: only what the capture can actually answer.
+    setText(el.bandModel, '--'); // needs VERSION (#37), absent from these captures
+    setText(el.bandCpu, cpu);
+    setText(el.bandLogging, '--'); // needs FILESTATUS (#2127) / LOGLIST (#5)
+    setText(el.bandInterference, 'Not detected'); // ITK / ITDETECTSTATUS absent — no number invented
+    setText(el.bandTime, state.time || '--');
+
+    const complete = Boolean(d && d.temperature && d.antennaVoltage && d.antennaCurrent);
+    setBadge(el.bandDevBadge, complete || d ? 'good' : 'warn');
+    // The band's badge follows the readings the capture can answer; a missing CPU usage stays a
+    // `--` in its own row rather than turning the whole device amber.
+    el.bandDevBadge.title = d
+      ? 'Device health from the HWMONITOR (#963) boundary limits; CPU Usage / Logging have no source in a capture.'
+      : 'No HWMONITOR (#963) record in this capture.';
+  }
+
+  /* ---- RANGE #43 → Satellite View ---- */
+
+  const systemOf = (entry) => (Number(entry.c_status) >> 16) & 7;
+
+  function parseEpoch(record) {
+    const obs = new Map();
+    for (const field of record.fields) {
+      const match = /^obs\[(\d+)\]\.(sv_prn|c_status)$/.exec(field.path);
+      if (!match) continue;
+      const index = Number(match[1]);
+      if (!obs.has(index)) obs.set(index, {});
+      obs.get(index)[match[2]] = field.value;
+    }
+    const counts = new Map();
+    for (const entry of obs.values()) {
+      const system = systemOf(entry);
+      if (!counts.has(system)) counts.set(system, new Set());
+      counts.get(system).add(Number(entry.sv_prn));
+    }
+    return { counts, utc: record.header?.utc ?? '', observed: obs.size };
+  }
+
+  /**
+   * Up to five RANGE epochs of the capture: the first, three in the middle and the last one. The
+   * last epoch is "now" (In Use); the union of the sampled epochs is what the receiver has seen
+   * (Not Used = seen − now), the same rule Playback applies while scrubbing.
+   */
+  function epochOffsets(total) {
+    if (total <= 0) return [];
+    if (total <= 5) return Array.from({ length: total }, (_v, i) => i);
+    const wanted = [0, Math.round((total - 1) * 0.25), Math.round((total - 1) * 0.5), Math.round((total - 1) * 0.75), total - 1];
+    return [...new Set(wanted)];
+  }
+
+  async function loadRange(capture) {
+    const probe = await api.get('/api/records', { capture, msgId: RANGE, offset: 0, limit: 1 });
+    const total = Number(probe.total) || 0;
+    if (!total) return null;
+    const offsets = epochOffsets(total);
+    const records = new Map();
+    if (probe.records && probe.records[0]) records.set(0, parseEpoch(probe.records[0]));
+    await Promise.all(
+      offsets
+        .filter((offset) => offset !== 0)
+        .map(async (offset) => {
+          const data = await api.get('/api/records', { capture, msgId: RANGE, offset, limit: 1 });
+          const record = data.records && data.records[0];
+          if (record) records.set(offset, parseEpoch(record));
+        }),
     );
+    const lastOffset = offsets[offsets.length - 1];
+    const current = records.get(lastOffset) ?? null;
+    const seen = new Map();
+    for (const epoch of records.values()) {
+      for (const [system, prns] of epoch.counts) {
+        if (!seen.has(system)) seen.set(system, new Set());
+        for (const prn of prns) seen.get(system).add(prn);
+      }
+    }
+    return { total, current, seen, sampled: records.size };
   }
 
-  function renderRows() {
-    if (!state.logs) {
-      el.rows.innerHTML = '<tr class="empty-row"><td colspan="6">No statistics yet.</td></tr>';
-      el.count.textContent = '';
-      return;
+  function renderSatellite() {
+    const range = state.range;
+    const current = range?.current ?? null;
+    let inUseTotal = 0;
+    const dots = [];
+    for (const item of CONSTELLATIONS) {
+      const inUse = item.system === null || !current ? 0 : (current.counts.get(item.system)?.size ?? 0);
+      const seen = item.system === null || !range ? 0 : (range.seen.get(item.system)?.size ?? 0);
+      const notUsed = Math.max(0, seen - inUse);
+      inUseTotal += inUse;
+      const useNode = satCount[`${item.key}-use`];
+      const idleNode = satCount[`${item.key}-idle`];
+      const missNode = satCount[`${item.key}-missing`];
+      if (useNode) useNode.textContent = String(inUse);
+      if (idleNode) idleNode.textContent = String(notUsed);
+      if (missNode) missNode.textContent = '0';
+      if (item.system !== null && current && inUse) {
+        for (const prn of [...(current.counts.get(item.system) ?? [])].sort((a, b) => a - b)) {
+          dots.push({ prn, tone: item.tone });
+        }
+      }
     }
-    const groups = visibleGroups();
-    el.count.textContent = ` ${groups.length}/${state.logs.groups.length}`;
-    if (!groups.length) {
-      el.rows.innerHTML = '<tr class="empty-row"><td colspan="6">No message type matches this filter.</td></tr>';
-      return;
-    }
-    el.rows.innerHTML = groups
-      .map((group) => {
-        const gps = `W${group.firstWeek} · ${(group.firstMilliseconds / 1000).toFixed(3)} – ${(group.lastMilliseconds / 1000).toFixed(3)}`;
-        const utc = `${utcText(group.firstUtc)} → ${utcText(group.lastUtc).slice(11)}`;
-        const crc = group.crcFailed
-          ? `<span class="crc-fail">${group.crcFailed}</span>`
-          : '<span class="crc-ok">0</span>';
-        const unknown = group.known ? '' : ' <span class="tag">no layout</span>';
-        return (
-          `<tr class="clickable${state.selectedId === group.id ? ' selected' : ''}" data-msgid="${group.id}" tabindex="0">` +
-          `<td class="num id-cell">${group.id}</td>` +
-          `<td><span class="type-name">${esc(group.name)}</span>${unknown}</td>` +
-          `<td class="num">${group.count}</td>` +
-          `<td class="num">${crc}</td>` +
-          `<td><span class="gps-window">${esc(gps)}</span><br><span class="utc-window">${esc(utc)} UTC</span></td>` +
-          `<td><span class="sample" title="${esc(group.sample)}">${esc(group.sample)}</span></td>` +
-          '</tr>'
-        );
-      })
-      .join('');
-  }
 
-  function renderMeta() {
-    const logs = state.logs;
-    if (!logs) return;
-    el.meta.textContent =
-      `${logs.capture} · ${bytesText(logs.bytes)} · ${logs.totalRecords} records · ` +
-      `${logs.accepted} CRC-good · ${logs.dropped} dropped · first record ${utcText(logs.spanUtc ?? logs.span?.utc)} UTC` +
-      (logs.textRecords ? ` · ${logs.textRecords} text records (not converted)` : '');
-  }
+    if (!range) setBadge(el.satBadge, 'unknown');
+    else setBadge(el.satBadge, inUseTotal > 0 ? 'good' : 'warn');
 
-  /* ---- field table ---- */
+    const when = current && current.utc ? utcClock(current.utc) : '--:--:--';
+    el.satNote.textContent = range
+      ? `RANGE (#43) epoch ${when} UTC · ${inUseTotal} tracked PRNs · ` +
+        `In Use = last epoch, Not Used = seen in ${range.sampled} sampled epoch(s) only`
+      : 'No RANGE (#43) record in this capture — nothing to count.';
 
-  function renderRecord() {
-    const data = state.detail;
-    if (!data || !data.records.length) {
-      el.record.hidden = true;
-      return;
+    /* Symbolic sky dots: one per tracked PRN, spread by a golden-angle walk so neighbouring PRNs
+       do not overlap. RANGE has no az/el, so the position is explicitly not a sky position. */
+    const skyNodes = el.skySats;
+    if (skyNodes) {
+      const cx = 150;
+      const cy = 150;
+      skyNodes.innerHTML = dots
+        .map((dot, index) => {
+          const angle = (-90 + index * 137.508) * (Math.PI / 180);
+          const radius = 34 + ((index * 29) % 104);
+          const x = cx + Math.cos(angle) * radius;
+          const y = cy + Math.sin(angle) * radius;
+          return (
+            `<g class="mg-sky-dot mg-sky-dot-${esc(dot.tone)}">` +
+            `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10"/>` +
+            `<text x="${x.toFixed(1)}" y="${(y + 3.6).toFixed(1)}">${esc(dot.prn)}</text>` +
+            '</g>'
+          );
+        })
+        .join('');
     }
-    const record = data.records[0];
-    const header = record.header;
-    el.record.hidden = false;
-    el.recordTitle.textContent = `${data.name} · #${data.messageId} · decoded fields`;
-    el.index.textContent = `${record.index + 1} / ${data.total}`;
-    el.prev.disabled = record.index <= 0;
-    el.next.disabled = record.index >= data.total - 1;
-
-    const pairs = [
-      ['Frame', String(record.index + 1)],
-      ['Port', header.portName],
-      ['Sequence', String(header.sequence)],
-      ['GPS', `W${header.week} · ${(header.milliseconds / 1000).toFixed(3)}`],
-      ['UTC', `${utcText(header.utc)} UTC`],
-      ['Time status', header.timeStatus],
-      ['Receiver status', header.receiverStatus],
-      ['Payload', `${header.payloadLength} B`],
-      ['Record', `${header.frameBytes} B`],
-      ['CRC', header.crcOk ? 'OK' : 'FAIL'],
-    ];
-    let headHtml = '';
-    for (let i = 0; i < pairs.length; i += 2) {
-      const left = pairs[i];
-      const right = pairs[i + 1];
-      headHtml +=
-        '<tr>' +
-        `<th>${esc(left[0])}</th><td>${esc(left[1])}</td>` +
-        (right ? `<th>${esc(right[0])}</th><td>${esc(right[1])}</td>` : '<td></td><td></td>') +
-        '</tr>';
-    }
-    el.recordHead.innerHTML = headHtml;
-
-    const needle = state.fieldFilter.trim().toLowerCase();
-    const fields = record.fields.filter(
-      (field) =>
-        !needle ||
-        field.path.toLowerCase().includes(needle) ||
-        String(field.text ?? '').toLowerCase().includes(needle) ||
-        String(field.value).toLowerCase().includes(needle),
-    );
-    el.fieldCount.textContent = `${fields.length} / ${record.fieldTotal} fields` + (data.layoutKnown ? '' : ' · no EDIE layout');
-    if (!fields.length) {
-      el.fieldRows.innerHTML = '<tr class="empty-row"><td colspan="4">No field matches this filter.</td></tr>';
-      return;
-    }
-    let html = fields
-      .slice(0, 800)
-      .map((field, index) => {
-        const shown = shownValue(field);
-        const raw = String(field.value);
-        return (
-          '<tr>' +
-          `<td class="num idx">${index + 1}</td>` +
-          `<td class="path">${esc(field.path)}</td>` +
-          `<td class="shown">${esc(shown)}</td>` +
-          `<td class="raw">${esc(raw === shown ? '' : raw)}</td>` +
-          '</tr>'
-        );
-      })
-      .join('');
-    if (fields.length > 800) {
-      html += `<tr class="empty-row"><td colspan="4">Showing the first 800 of ${fields.length} filtered fields.</td></tr>`;
-    }
-    el.fieldRows.innerHTML = html;
   }
 
   /* ---- loading ---- */
 
-  async function loadRecord(messageId, offset, scroll) {
-    state.selectedId = messageId;
-    state.offset = offset;
-    renderRows();
+  async function probe(msgId) {
     try {
-      const data = await api.get('/api/records', { capture: state.capture, msgId: messageId, offset, limit: 1 });
-      if (!state.alive) return;
-      state.detail = data;
-      renderRecord();
-      if (scroll && el.record.scrollIntoView) el.record.scrollIntoView({ block: 'nearest' });
-    } catch (error) {
-      if (!state.alive) return;
-      alert(`Field decode failed: ${error.message}`);
+      const data = await api.get('/api/records', { capture: state.capture, msgId, limit: 1 });
+      return data.records && data.records[0] ? data.records[0] : null;
+    } catch {
+      return null;
     }
   }
 
-  async function loadData() {
-    if (!state.capture) return;
+  async function openCapture(capture) {
+    if (!capture) return;
+    const token = (state.token += 1);
+    const stale = () => !state.alive || token !== state.token;
+    state.capture = capture;
+    state.open = true;
+    setBodyState();
+    renderAppBar();
+    renderDeviceShell();
     alert('');
-    el.meta.textContent = 'Reading log statistics…';
-    try {
-      const logs = await api.get('/api/logs', { capture: state.capture });
-      if (!state.alive) return;
-      state.logs = logs;
-      state.selectedId = null;
-      state.detail = null;
-      state.offset = 0;
-      el.record.hidden = true;
-      renderMeta();
-      renderRows();
-      const logState = logs.dropped === 0 ? 'good' : 'warn';
-      badge('log', logState);
-    } catch (error) {
-      if (!state.alive) return;
-      alert(`Log statistics failed: ${error.message}`);
-      el.meta.textContent = '—';
-      return;
-    }
+    setText(el.bandTime, '--');
 
-    // The tiles are decoration on top of the statistics: a capture without BESTPOS / HWMONITOR /
-    // RXSTATUS must still show the table, so each probe fails soft.
-    const probe = async (msgId) => {
-      try {
-        const data = await api.get('/api/records', { capture: state.capture, msgId, limit: 1 });
-        return data.records && data.records[0] ? data.records[0] : null;
-      } catch {
-        return null;
+    let logs = null;
+    try {
+      logs = await api.get('/api/logs', { capture });
+    } catch (error) {
+      if (!stale()) alert(`Capture statistics failed: ${error.message}`);
+    }
+    if (stale()) return;
+    state.logs = logs;
+
+    /* A capture without BESTPOS / HWMONITOR / RANGE still shows the dashboard: every probe fails
+       soft and leaves `--` behind. */
+    const [bestpos, hw] = await Promise.all([probe(BESTPOS), probe(HWMONITOR)]);
+    if (stale()) return;
+    state.position = readPosition(bestpos);
+    state.device = readDevice(hw);
+
+    let latest = '';
+    if (logs && Array.isArray(logs.groups)) {
+      for (const group of logs.groups) {
+        if (group.lastUtc && group.lastUtc > latest) latest = group.lastUtc;
       }
-    };
-    const [position, rx] = await Promise.all([probe(42), probe(93)]);
-    const hw = state.logs && state.logs.groups.some((group) => group.id === 963) ? await probe(963) : null;
-    if (!state.alive) return;
-    state.position = position;
-    state.rx = rx;
-    renderPosition(position);
-    renderDevice(state.logs, hw, rx);
+    }
+    state.time = latest ? utcClock(latest) : '';
+
+    renderPosition();
+    renderDevice();
+
+    try {
+      state.range = await loadRange(capture);
+    } catch {
+      state.range = null; // an unreadable RANGE only empties the counters
+    }
+    if (stale()) return;
+    renderSatellite();
+  }
+
+  function closeCapture() {
+    state.open = false;
+    state.logs = null;
+    state.position = null;
+    state.device = null;
+    state.range = null;
+    setBodyState();
+    renderAppBar();
+    renderList();
   }
 
   async function boot() {
     try {
-      const captures = await api.get('/api/captures');
+      const data = await api.get('/api/captures');
       if (!state.alive) return;
-      state.captures = captures.captures ?? [];
-      fillCaptures();
-      await loadData();
+      state.captures = data.captures ?? [];
     } catch (error) {
-      if (!state.alive) return;
-      alert(`Capture list failed: ${error.message}`);
-      el.meta.textContent = '—';
+      if (state.alive) alert(`Capture list failed: ${error.message}`);
     }
+    if (!state.alive) return;
+
+    /* ctx.capture is empty on the very first mount (the shell fills its picker asynchronously),
+       so the panel picks the same default the shell does. */
+    const wanted =
+      (state.capture && state.captures.some((item) => item.path === state.capture) && state.capture) ||
+      (ctx.capture && state.captures.some((item) => item.path === ctx.capture) && ctx.capture) ||
+      state.captures.find((item) => item.path === 'convert/clean-9600.gps')?.path ||
+      state.captures[0]?.path ||
+      '';
+
+    if (wanted) await openCapture(wanted);
+    else closeCapture();
   }
 
   /* ---- events ---- */
 
-  const onCapturePick = () => {
-    state.capture = el.capture.value;
-    loadData();
-  };
-  const onFilter = () => renderRows();
-  const onRefresh = () => loadData();
-  const onRowsClick = (event) => {
-    const row = event.target.closest('tr[data-msgid]');
-    if (!row) return;
-    loadRecord(Number(row.dataset.msgid), 0, true);
-  };
-  const onRowsKey = (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    const row = event.target.closest('tr[data-msgid]');
-    if (!row) return;
+  /** The injected app-bar node: the file tab is the current page, the ✕ closes it again. */
+  const onAppTabClick = (event) => {
     event.preventDefault();
-    loadRecord(Number(row.dataset.msgid), 0, true);
+    if (event.target.closest('.mg-filetab-close')) closeCapture();
   };
-  const onPrev = () => {
-    if (!state.detail) return;
-    loadRecord(state.detail.messageId, Math.max(0, state.detail.offset - 1), false);
+  const onListClick = (event) => {
+    const open = event.target.closest('[data-open]');
+    if (!open) return;
+    openCapture(open.dataset.open);
   };
-  const onNext = () => {
-    if (!state.detail) return;
-    loadRecord(state.detail.messageId, state.detail.offset + 1, false);
-  };
-  const onFieldFilter = () => {
-    state.fieldFilter = el.fieldFilter.value;
-    renderRecord();
+  const onHelpClick = (event) => {
+    const node = event.target.closest('[data-help]');
+    if (!node) return;
+    event.preventDefault();
   };
 
-  el.capture.addEventListener('change', onCapturePick);
-  el.filter.addEventListener('input', onFilter);
-  el.refresh.addEventListener('click', onRefresh);
-  el.rows.addEventListener('click', onRowsClick);
-  el.rows.addEventListener('keydown', onRowsKey);
-  el.prev.addEventListener('click', onPrev);
-  el.next.addEventListener('click', onNext);
-  el.fieldFilter.addEventListener('input', onFieldFilter);
+  if (appTab) {
+    appTab.addEventListener('click', onAppTabClick);
+  }
+  el.listCards.addEventListener('click', onListClick);
+  el.device.addEventListener('click', onHelpClick);
 
   let offCapture = null;
   if (typeof ctx.onCaptureChange === 'function') {
     const unsubscribe = ctx.onCaptureChange((name) => {
-      if (!name || name === state.capture) return;
-      state.capture = name;
-      if (state.captures.some((item) => item.path === name)) el.capture.value = name;
-      loadData();
+      if (!name || !state.alive) return;
+      if (state.open && name === state.capture) return;
+      openCapture(name);
     });
     if (typeof unsubscribe === 'function') offCapture = unsubscribe;
   }
 
   root.__manageCleanup = () => {
     state.alive = false;
-    el.capture.removeEventListener('change', onCapturePick);
-    el.filter.removeEventListener('input', onFilter);
-    el.refresh.removeEventListener('click', onRefresh);
-    el.rows.removeEventListener('click', onRowsClick);
-    el.rows.removeEventListener('keydown', onRowsKey);
-    el.prev.removeEventListener('click', onPrev);
-    el.next.removeEventListener('click', onNext);
-    el.fieldFilter.removeEventListener('input', onFieldFilter);
+    el.listCards.removeEventListener('click', onListClick);
+    el.device.removeEventListener('click', onHelpClick);
+    if (appTab) {
+      appTab.removeEventListener('click', onAppTabClick);
+      appTab.remove();
+    }
     if (offCapture) offCapture();
+    if (document.body.dataset.manageState) delete document.body.dataset.manageState;
   };
 
   boot();
