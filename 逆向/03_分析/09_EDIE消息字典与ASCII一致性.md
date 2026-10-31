@@ -381,6 +381,66 @@ SHA-256 两侧相同（2 798 307 B / 2 657 890 B）
 
 ---
 
+## 9.x.8 B1 第二批：21 类，暴露两条**新**缺口（2026-11-01）
+
+抓包 `samples/live-20261031/b2-20261101.sbf`（2 581 390 B / 30 s），用
+`tools/remote/b2-capture.ps1` 抓的，目标全是前两批没有的报文：
+`MARKPOS`、`PSRPOS`、`PSRXYZ`、`PPPXYZ`、`BESTGNSSVEL`、`BESTGNSSPOS`、`BESTUTM`、
+`RAIMSTATUS`、`ALMANAC`、`RAWALM`、`GLORAWALM`、`CLOCKMODEL`、`IPSTATUS`、`ETHSTATUS`、
+以及 **`RANGECMP2` / `RANGECMP4`**（压缩测距，VLA + `%Z`/`%hu`）。
+套件 CLI 出的 golden：`golden-b2-20261101.ASCII`（4 931 973 B / 905 行）。
+
+### 结果：905 行全在，但 62 行内容不对
+
+```
+oracle 行 905；ours 行 905
+ours 中不在 oracle 里的行: 62      oracle 多出的行: 62
+按类型：RANGEA 61 / IPSTATUSA 1
+```
+
+**① `RANGECMP2` / `RANGECMP4` 原版解压成 `RANGEA` 输出（61 行）**
+
+| 类型 | oracle 行数 | ours 行数 |
+|---|---:|---:|
+| `RANGEA` | **699** | 638 |
+| `RANGECMP2A` | **0** | 31 |
+| `RANGECMP4A` | **0** | 30 |
+
+699 = 638 + 31 + 30。也就是说套件的 Convert **读 RANGECMP 的位打包数据、解压成标准 RANGE 行**
+再打印，不是原样输出压缩块。我们目前把 RANGECMP 当自己的类型、把 VLA 当
+`%Z`/`%hu` 逐元素打印，所以两边对不上。
+
+要做的事：实现 RANGECMP2/3/4/5 的**解压**（位域打包：PRN/频率/伪距/载波相位/多普勒/CNo/
+锁定时间/通道状态），再套 RANGE 的 ASCII 格式。这是 B1 里最大的一块，涉及字典里
+`RANGECMP*` 五条报文。
+
+**② `IPSTATUSA` 的可变长字符串数组（1 行）**
+
+```
+oracle: 1,ETHA,"192.168.5.10","255.255.255.0","192.168.5.1",1,"192.168.5.1"
+ours  : 1,ETHA,"192.168.5.10","255.255.255.0","192.168.5.1",2,"192.168.5.10","255.255.255.0"
+```
+
+IPSTATUS 的条目是「类型 + 若干 `ustring`」，**字符串个数随类型变化**；我们按固定字段读，
+于是把第二个条目的字符串也算进了第一条。要按字典里的条目类型分支（和 ICOMCONFIG 的
+`ustring` 同一个毛病，但嵌套在数组里）。
+
+### 顺带一条运维教训
+
+`UNLOGALL <名字>` 里的名字是**接收机的端口名**（`USB1`、`COM2`…），不是 Windows 的 `COM10`。
+所以 `b1-capture.ps1` 里那句 `UNLOGALL COM10` 其实**什么都没清**，日志会留在接收机上
+（这也是 10/31 那批"残留 LOG"的来源）。现在改成**裸 `UNLOGALL`**（清当前口）——
+`b2-capture.ps1` 已经这么写，`b1-capture.ps1` 同步改掉。
+
+### 状态
+
+- ✅ `b2` 抓包 + golden 入库；21 类里 19 类逐字节一致
+- ❌ RANGECMP 解压与 IPSTATUS 变长字符串**尚未实现**，已登记为 B1 的待办
+- 真机链路：Tailscale → `serial-bridge.ps1` → COM10 → OEM729，7 s 解出 291 条记录 / 16 类
+  （2026-11-01 实测，桥已停、端口已释放）
+
+---
+
 ## 9.x.7 B1 扩报文覆盖：25 类 / 1402 行逐字节一致（2026-11-01）
 
 ### 怎么抓的

@@ -85,7 +85,10 @@ while ($sw.Elapsed.TotalSeconds -lt $Seconds) {
 $fs.Close()
 
 if (-not $NoUnlog) {
-  $sp.Write('UNLOGALL ' + $Port + "`r`n")
+  # Bare UNLOGALL clears the port this session is on. The port-argument form wants the RECEIVER's
+  # port name (USB1, COM2, ...), not the Windows COM name, so `UNLOGALL COM10` silently does
+  # nothing and leaves logs behind (see 03_分析/09 §9.x.8).
+  $sp.Write("UNLOGALL`r`n")
   Start-Sleep -Milliseconds 400
 }
 $sp.Close()
