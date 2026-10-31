@@ -27,9 +27,8 @@
  *    + 3-wide epoch flag + 3-wide satellite count + `      -0.000000000000` (a receiver clock offset
  *    of minus zero, constant in all 400 epochs of the four goldens). Satellites follow in the order
  *    they first appear in the RANGE payload.
- *  - **`APPROX POSITION XYZ`** is the mean of the BESTPOS track converted to ECEF, exactly as in
- *    `rinex21.ts`; the suite uses a geoid model we do not have, so this is the one line allowed to
- *    differ (measured 8 mm, i.e. the last decimal of a `%14.4f` field only).
+ *  - **`APPROX POSITION XYZ`** is the **last** BESTPOS of the capture converted to ECEF, exactly as
+ *    in `rinex21.ts` (not the mean of the track — that is what used to be 8 mm off);
  *
  * Three quirks that only a byte comparison would reveal, all reproduced as measured:
  *
@@ -39,8 +38,8 @@
  *  - 3.02/3.03 write no `J07` observation although the capture has that satellite (and 3.04 does
  *    write it). See `OMITTED_SATELLITES`.
  *
- * Acceptance: `packages/protocol/test/rinex3.test.ts` demands byte identity line by line against all
- * four goldens, everywhere except `APPROX POSITION XYZ`.
+ * Acceptance: `packages/protocol/test/rinex3.test.ts` demands byte identity against all four goldens,
+ * `APPROX POSITION XYZ` included.
  */
 
 import type { SbfFrame } from './framing.ts';
@@ -370,28 +369,25 @@ function headerOf(
     String(built.getUTCSeconds()).padStart(2, '0'),
   ].join('') + ' UTC';
 
-  // Approximate position: mean of the BESTPOS track, ellipsoidal height (as in `rinex21.ts`).
+  // Approximate position: the **last** BESTPOS of the capture, ellipsoidal height - the same rule
+  // as `rinex21.ts` (the golden header is that record's ECEF to the last decimal, not the mean of
+  // the track).
   let x = 0;
   let y = 0;
   let z = 0;
-  let count = 0;
   for (const frame of frames) {
     if (frame.header.messageId !== 42) continue;
     const values = decodeEdie(frame.payload, tables.messages['42'], tables);
-    const [px, py, pz] = ecef(
-      valueLength(values, 'latitude'),
-      valueLength(values, 'longitude'),
+    const latitude = valueLength(values, 'latitude');
+    const longitude = valueLength(values, 'longitude');
+    // Safety rule, not a measured one: a 0/0 BESTPOS has no computed position (see `rinex21.ts`).
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    if (latitude === 0 && longitude === 0) continue;
+    [x, y, z] = ecef(
+      latitude,
+      longitude,
       valueLength(values, 'orthometric_height') + valueLength(values, 'undulation'),
     );
-    x += px;
-    y += py;
-    z += pz;
-    count += 1;
-  }
-  if (count) {
-    x /= count;
-    y /= count;
-    z /= count;
   }
 
   const mixed = plans.some((plan) => plan.letter !== 'G');

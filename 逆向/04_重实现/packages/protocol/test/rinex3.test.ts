@@ -10,8 +10,9 @@
  *  - 3.03 is 3.02 with `C2I` and a CRLF;
  *  - 3.04 adds the J07 records that 3.02/3.03 leave out.
  *
- * Every line matches byte for byte except the header's `APPROX POSITION XYZ`: the suite derives it
- * with a geoid model we do not have, so ours lands within 8 mm (last decimal of a `%14.4f` field).
+ * Every line matches byte for byte, `APPROX POSITION XYZ` included: it is the ECEF of the **last**
+ * BESTPOS of the capture, not the mean of the track (see `rinex21.test.ts`, which shows the mean is
+ * ~8 mm off and the last record is exact).
  */
 
 import test from 'node:test';
@@ -41,11 +42,11 @@ const CASES: Array<{ version: Rinex3Version; folder: string; builtAt: string; he
   { version: '3.04', folder: 'golden-rinex3_04', builtAt: '2026-10-30T09:10:11Z', headerLines: 37 },
 ];
 
-/** 0-based index of `APPROX POSITION XYZ`, the one line allowed to differ. */
+/** 0-based index of `APPROX POSITION XYZ`, checked like every other line. */
 const APPROX_POSITION = 9;
 
-function goldenLines(entry: (typeof CASES)[number]): string[] {
-  const file = join(
+function goldenFile(entry: (typeof CASES)[number]): string {
+  return join(
     samples,
     entry.folder,
     'clean-9600',
@@ -53,7 +54,10 @@ function goldenLines(entry: (typeof CASES)[number]): string[] {
     `RINEXv${entry.version.replace('.', '_')}`,
     'clean-9600.26O',
   );
-  return readFileSync(file, 'utf8').split('\r\n');
+}
+
+function goldenLines(entry: (typeof CASES)[number]): string[] {
+  return readFileSync(goldenFile(entry), 'utf8').split('\r\n');
 }
 
 function oursLines(entry: (typeof CASES)[number]): string[] {
@@ -61,33 +65,21 @@ function oursLines(entry: (typeof CASES)[number]): string[] {
 }
 
 for (const entry of CASES) {
-  test(`RINEX ${entry.version} observations match the golden file except the geoid-dependent header line`, () => {
+  test(`RINEX ${entry.version} observations are byte-identical to the golden file`, () => {
     const expected = goldenLines(entry);
     const actual = oursLines(entry);
 
-    assert.equal(actual.length, expected.length, 'same line count');
     assert.equal(expected[entry.headerLines - 1].includes('END OF HEADER'), true, 'header length sanity');
 
     const differences: number[] = [];
-    for (let i = 0; i < expected.length; i++) if (expected[i] !== actual[i]) differences.push(i + 1);
-    assert.deepEqual(differences, [APPROX_POSITION + 1], 'only `APPROX POSITION XYZ` differs');
-
-    // The differing line is still the same position to within a centimetre.
-    const parse = (text: string) => text.slice(0, 42).trim().split(/\s+/).map(Number);
-    const [gx, gy, gz] = parse(expected[APPROX_POSITION]);
-    const [ax, ay, az] = parse(actual[APPROX_POSITION]);
-    assert.ok(Math.hypot(gx - ax, gy - ay, gz - az) < 0.02, 'position within 2 cm');
-  });
-}
-
-/** The header up to `END OF HEADER`, apart from that one line, must be exact. */
-for (const entry of CASES) {
-  test(`RINEX ${entry.version} header fields that do not depend on the geoid are exact`, () => {
-    const expected = goldenLines(entry);
-    const actual = oursLines(entry);
-    for (let i = 0; i < entry.headerLines; i++) {
-      if (i === APPROX_POSITION) continue;
-      assert.equal(actual[i], expected[i], `header line ${i + 1}`);
+    for (let i = 0; i < Math.max(expected.length, actual.length); i++) {
+      if (expected[i] !== actual[i]) differences.push(i + 1);
     }
+    assert.deepEqual(differences, [], 'no line differs');
+    assert.equal(actual.length, expected.length, 'same line count');
+
+    const ours = buildRinex3Obs(frames(), tables, entry.version, { builtAt: new Date(entry.builtAt) });
+    assert.deepEqual(Buffer.from(ours, 'utf8'), readFileSync(goldenFile(entry)), 'same bytes, CRLF included');
+    assert.match(actual[APPROX_POSITION], /APPROX POSITION XYZ\s*$/, '`APPROX POSITION XYZ` is present');
   });
 }

@@ -6,8 +6,9 @@
  * measured from the golden file (see `03_分析/10_RINEX输出规格.md`):
  *
  *  - header: 20 lines, content padded to column 60, label padded to 80;
- *  - `APPROX POSITION XYZ` is the mean of the BESTPOS track converted to ECEF — this is the **only**
- *    line that does not reproduce exactly (≤ 1 cm, the suite uses a geoid model we do not have);
+ *  - `APPROX POSITION XYZ` is the **last** BESTPOS of the capture converted to ECEF (ellipsoidal
+ *    height = `orthometric_height + undulation`) — not the mean of the track. See the comment in
+ *    `header()`: the golden prints that record's ECEF to the last decimal;
  *  - epoch line `%3d%3d%3d%3d%3d%11.7f%3d%3d` + `G%02d` list, padded to 80, satellites in the order
  *    they first appear in the RANGE payload;
  *  - 8 observation types `C1 L1 D1 S1 P2 L2 D2 S2`, five per line, `%14.3f` + LLI + SNR;
@@ -139,28 +140,33 @@ function header(epochs: Epoch[], frames: SbfFrame[], tables: EdieTables, options
   const built = options.builtAt;
   const date = `${String(built.getDate()).padStart(2, '0')}-${MONTHS[built.getMonth()]}-${String(built.getFullYear() % 100).padStart(2, '0')} ${String(built.getHours()).padStart(2, '0')}:${String(built.getMinutes()).padStart(2, '0')}`;
 
-  // Approximate position: mean of the BESTPOS track, ellipsoidal height.
+  // Approximate position: the **last** BESTPOS of the capture, ellipsoidal height.
+  //
+  // Earlier this averaged the whole BESTPOS track, which is what made the line differ from the
+  // golden by up to 8 mm. It is not an average: `clean-9600.gps` carries five BESTPOS records
+  // (463098000 … 463102000) whose mean ECEF is `-2267176.2601 5008923.9291 3222098.6458`, while the
+  // golden header prints `-2267176.2633 5008923.9294 3222098.6385` — bit for bit the ECEF of the
+  // *last* record (see `packages/protocol/test/rinex21.test.ts`). That is how a writer which embeds
+  // the header after streaming the file ends up behaving: `TIME OF LAST OBS` has to be known first
+  // anyway, so the position it keeps is simply the latest one it saw.
   let x = 0;
   let y = 0;
   let z = 0;
-  let count = 0;
   for (const frame of frames) {
     if (frame.header.messageId !== 42) continue;
     const values = decodeEdie(frame.payload, tables.messages['42'], tables);
-    const [px, py, pz] = ecef(
-      valueLength(values, 'latitude'),
-      valueLength(values, 'longitude'),
+    const latitude = valueLength(values, 'latitude');
+    const longitude = valueLength(values, 'longitude');
+    // A BESTPOS with 0/0 coordinates carries no computed position (no fix). Skipping it is a safety
+    // rule, not something measured from the golden: all five records of the sample are valid, so it
+    // changes nothing there, and it keeps a fix-less capture from writing an ECEF near the geocentre.
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    if (latitude === 0 && longitude === 0) continue;
+    [x, y, z] = ecef(
+      latitude,
+      longitude,
       valueLength(values, 'orthometric_height') + valueLength(values, 'undulation'),
     );
-    x += px;
-    y += py;
-    z += pz;
-    count += 1;
-  }
-  if (count) {
-    x /= count;
-    y /= count;
-    z /= count;
   }
 
   const satellites = [...new Set(epochs.flatMap((epoch) => {

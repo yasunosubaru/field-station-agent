@@ -42,6 +42,11 @@ Leap Seconds Unknown                                        COMMENT
 要点：
 
 - `APPROX POSITION XYZ` 是 ECEF（由 BESTPOS 的经纬高换算），列宽 `%14.4f`×3 + 18 空格；
+  取的是**最后一条** BESTPOS（`orthometric_height + undulation` → 椭球高 → ECEF），**不是整条轨迹的均值**。
+  `clean-9600.gps` 有 5 条 BESTPOS（463098000…463102000）：均值是
+  `-2267176.2601 5008923.9291 3222098.6458`，而 golden 是 `-2267176.2633 5008923.9294 3222098.6385`，
+  逐位等于最后那一条（差 0.04 mm，纯浮点）。原先"原版用了我们没有的大地水准面模型、差 ≤8 mm"的结论是错的：
+  这 8 mm 完全来自"求均值 vs 取最后一条"。改法见 `04_重实现/packages/protocol/src/rinex21.ts`，五个 golden 现已逐字节一致；
 - `WAVELENGTH FACT L1/2` 按**波长因子分组**列出卫星：每组一行，前缀 `     1     1` 再 `%6d` 个数
   + 每颗 `   G%02d`；样例是 7 颗一组 + 2 颗一组（12 颗一行放不下时的换行规则需再验）；
 - `INTERVAL` = 观测间隔（50 ms）；
