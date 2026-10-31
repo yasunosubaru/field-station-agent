@@ -57,18 +57,35 @@ function buildFields(fields) {
   const segments = [];
   let offset = 0;
   for (const field of fields ?? []) {
-    if (field.type === 'FIXED_LENGTH_ARRAY' && !field.fields) {
+    if ((field.type === 'FIXED_LENGTH_ARRAY' || field.type === 'STRING') && !field.fields) {
       // CHAR/UCHAR arrays are printed as one quoted string (`base_id` → `""`), not as N numbers.
+      // `STRING` is the same thing with a different type name: `arrayLength` bytes of CHAR
+      // (ICOMCONFIG's `endpoint` is 80, DGPSTXID's `dgps_id` is 5). Missing it made those fields
+      // one-byte scalars and shifted every field behind them — 20 RXCONFIG lines in
+      // `samples/live-20261031/b1-20261101.sbf` printed `"65"`/`"58"` where the suite prints
+      // `"ANY"`/`":3002"`.
+      //
+      // A `STRING` field's `arrayLength` is a **maximum**, not the wire size: on the wire the text
+      // runs to a NUL and is zero-padded to a 4-byte boundary (ICOMCONFIG's `":3002"` occupies 8
+      // bytes, so the payload is 20 = 4+4+8+4, not 92). `variable` tells the writer to measure the
+      // padding instead of trusting `arrayLength`.
       const width = Number(field.dataType?.length ?? 1);
-      segments.push({
-        name: field.name,
-        kind: 'string',
-        offset,
-        size: width * Number(field.arrayLength ?? 0),
-        format: field.conversionString ?? null,
-      });
-      offset += width * Number(field.arrayLength ?? 0);
-      continue;
+      const fixed = field.type === 'FIXED_LENGTH_ARRAY';
+      const size = width * Number(field.arrayLength ?? 0);
+      // Only CHAR/UCHAR arrays are strings. A fixed array of FLOATs keeps its conversion string
+      // and prints one number per element (SETDIFFCODEBIASES: 40 × `%7.3k` inside 160 bytes).
+      if (width === 1) {
+        segments.push({
+          name: field.name,
+          kind: 'string',
+          offset,
+          size,
+          format: field.conversionString ?? null,
+          ...(fixed ? {} : { variable: true }),
+        });
+        offset += size;
+        continue;
+      }
     }
     if (field.type === 'FIELD_ARRAY' || field.type === 'FIXED_LENGTH_ARRAY') {
       const elementFields = field.fields ?? [{ ...field, type: 'SIMPLE', fields: undefined, arrayLength: null }];
@@ -107,6 +124,9 @@ function buildFields(fields) {
         offset,
         countSize: countPrefix,
         stride: width,
+        // The conversion string belongs to the field, so it goes on the array too: `%R` is one
+        // whole embedded message, not one per byte (see `ascii-log.ts`'s `%R` branch).
+        format: field.conversionString ?? null,
         elements: [element],
       });
       offset += countPrefix;

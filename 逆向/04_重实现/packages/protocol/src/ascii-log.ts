@@ -348,13 +348,20 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     // (`golden-remote-23types.ASCII`) where uppercase would give `0000000F`. The two other `%08X`
     // fields (RADARSTATUS) and the `%02XB`/`%XB` ones have only ever been seen carrying digits, so
     // this rule is measured on ITDETECTSTATUS alone.
+    //
+    // The declared width is a *minimum*: `%02X` on a ULONG still fills the four bytes
+    // (J1939CONFIG's `preferred_address` prints `0000001c`, not `1c`).
     case 'x':
     case 'X':
-      return hex(number, width || 8);
+      return hex(number, Math.max(width, (segment.size || 4) * 2));
     case 'XB':
-      return hex(number & 0xff, width || 2);
+      return hex(number & 0xff, Math.max(width, 2));
+    // `%B` — a CHAR printed as a number in hex with **no** zero padding: BESTXYZ's
+    // `char_as_int` is `0` in the golden, and our `width || 2` used to make it `00`
+    // (25 BESTXYZ lines in `b1-20261101.sbf`). `%02XB` keeps its padding, so only the
+    // bare `%B` changes.
     case 'B':
-      return hex(number & 0xff, width || 2);
+      return hex(number & 0xff, width);
     case 'UB':
       return String(Math.trunc(number) & 0xff);
     case 'f':
@@ -414,6 +421,12 @@ function readCount(bytes: Uint8Array, at: number, size: number): number {
   return readScalar(bytes, 'u32', at);
 }
 
+/** Per-record bookkeeping for the `%R` rule above. */
+interface RenderState {
+  /** Set when an embedded message could not be resolved; the record is then dropped. */
+  unresolvedEmbedded: boolean;
+}
+
 function renderSegments(
   bytes: Uint8Array,
   segments: EdieSegment[],
@@ -422,9 +435,12 @@ function renderSegments(
   out: string[],
   depth: number,
   options: AsciiLogOptions,
+  state: RenderState,
 ): void {
+  // A variable-length string moves everything after it; the layout's offsets are the fixed ones.
+  let shift = 0;
   for (const segment of segments) {
-    const at = base + segment.offset;
+    const at = base + segment.offset + shift;
     // `%R` — an embedded binary message, printed as its own finished ASCII line (`RXCONFIGA` wraps
     // `#LOGA,…*<embedded crc>` and the outer CRC follows after it). Measured on
     // `golden-remote-23types.ASCII`: the RXCONFIG payload is a complete SBF frame whose payload is
@@ -436,11 +452,16 @@ function renderSegments(
     if (String(segment.format ?? '') === '%R') {
       const start = segment.kind === 'array' ? at + (segment as EdieArray).countSize : at;
       if (depth >= 4) continue;
+      const before = out.length;
       for (const inner of new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(start))) {
         if (inner.kind !== 'sbf') continue;
         const layout = tables.messages[String(inner.header.messageId)];
         if (layout) out.push(render(inner, layout, tables, { ...options, requireValidCrc: false, invertCrc: true }, depth + 1));
       }
+      // An `%R` we cannot resolve drops the **whole record**: 42 of the 278 RXCONFIG frames in
+      // `b1-20261101.sbf` embed a message the dictionary does not have (ids 229, 1464, 1471, 1799,
+      // 2036, 2636), and the suite writes no line for them at all — not a line with an empty body.
+      if (out.length === before) state.unresolvedEmbedded = true;
       continue;
     }
     if (segment.kind === 'string') {
@@ -450,6 +471,14 @@ function renderSegments(
         out.push(Array.from({ length: raw.size }, (_, i) => (bytes[at + i] ?? 0).toString(16).padStart(2, '0')).join(''));
       } else {
         out.push(`"${decodeString(bytes, at, raw.size)}"`);
+        // A `STRING` field runs to a NUL and is zero-padded to a 4-byte boundary; `arrayLength` is
+        // only a maximum, and the padding wins even when it exceeds it: SETNAV declares
+        // `from_point` as 6 bytes but the wire spends 8 on `"FROM"`, so `to_point` starts at 48.
+        if (raw.variable) {
+          let length = 0;
+          while (length < raw.size && (bytes[at + length] ?? 0) !== 0) length += 1;
+          shift += Math.max(4, Math.ceil((length + 1) / 4) * 4) - raw.size;
+        }
       }
       continue;
     }
@@ -460,7 +489,13 @@ function renderSegments(
     const array = segment as EdieArray;
     const stride = array.stride || 1;
     const first = at + array.countSize;
-    const capacity = Math.floor(Math.max(0, bytes.byteLength - first) / stride);
+    // An element that carries a variable-length string does not occupy `stride` bytes on the wire,
+    // so its capacity cannot be derived from the stride (DNSCONFIG's one address is 12 bytes, not
+    // the declared 16); trust the count the record carries instead.
+    const variableElements = array.elements.some((el) => el.kind === 'string' && (el as EdieString).variable === true);
+    const capacity = variableElements
+      ? Number.POSITIVE_INFINITY
+      : Math.floor(Math.max(0, bytes.byteLength - first) / stride);
     // Three shapes: a fixed array prints no count; a counted array (`FIELD_ARRAY`, and
     // `VARIABLE_LENGTH_ARRAY` with an `arrayLengthFieldSize`) prints its count first; a
     // prefix-less variable array (RXCONFIG's `%R`, handled above) runs to the end of the payload.
@@ -471,7 +506,7 @@ function renderSegments(
         : capacity;
     if (array.countSize) out.push(String(declared));
     const count = Math.max(0, Math.min(declared, capacity));
-    for (let i = 0; i < count; i++) renderSegments(bytes, array.elements, first + i * stride, tables, out, depth, options);
+    for (let i = 0; i < count; i++) renderSegments(bytes, array.elements, first + i * stride, tables, out, depth, options, state);
   }
 }
 
@@ -513,7 +548,10 @@ function render(
   if ((options.requireValidCrc ?? true) && !frame.crcOk) return '';
   const { header, payload } = frame;
   const body: string[] = [];
-  renderSegments(payload, layout.fields, 0, tables, body, depth, options);
+  const state: RenderState = { unresolvedEmbedded: false };
+  renderSegments(payload, layout.fields, 0, tables, body, depth, options, state);
+  // `%R` with nothing to print drops the record (see the note in `renderSegments`).
+  if (state.unresolvedEmbedded) return '';
 
   const head = [
     `${layout.name}${options.versionLetter ?? 'A'}`,

@@ -37,7 +37,7 @@ function main(): void {
   const bytes = new Uint8Array(readFileSync(capture));
 
   const frames: Frame[] = [];
-  for (const frame of new SbfDeframer({ crcMode: 'mirror' }).push(bytes)) frames.push(frame);
+  for (const frame of new SbfDeframer({ crcMode: 'validate' }).push(bytes)) frames.push(frame);
 
   // Text records (the receiver's own ASCII logs) are converted too, in capture order.
   const textLines = textLogLines(frames, tables);

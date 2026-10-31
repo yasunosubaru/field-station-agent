@@ -378,3 +378,52 @@ SHA-256 两侧相同（2 798 307 B / 2 657 890 B）
 
 **仍未覆盖**（写明而不是猜）：`%` 短 ASCII 与 `$` NMEA 文本记录没有样本，套件行为未测；
 `ABBREV_ASCII` 输出里的文本记录也没接线（现有 abbrev golden 不含文本行）。
+
+---
+
+## 9.x.7 B1 扩报文覆盖：25 类 / 1402 行逐字节一致（2026-11-01）
+
+### 怎么抓的
+
+接收机已在远程机，套件不在跑时 COM8/COM9/COM10 都空闲。新脚本 `tools/remote/b1-capture.ps1`
+（纯 ASCII，坑照旧：写文件 → scp → 按路径执行）：
+
+1. 打开空闲口（本次 COM10，115200）；
+2. 先发 `LOG … ONCE`（一次性）再发 `LOG … ONTIME`（周期），共 24 条日志；
+3. 抓 25 s；
+4. 收尾 `UNLOGALL COM10` —— **只清我们自己那个口**，不碰套件用的 COM9。
+
+样本 `samples/live-20261031/b1-20261101.sbf`（2 758 111 B），oracle 是本机套件 CLI
+`NovAtelApplicationSuite.exe -a`，产出 `golden-b1-20261101.ASCII`（5 088 882 B / 1402 行）。
+
+**覆盖 25 类**（对比 23 类抓包新增 9 类）：
+`VERSION(37)`、`GPSEPHEM(7)`、`GALEPHEMERIS(1122)`、`BESTVEL(99)`、`BESTXYZ(241)`、
+`PSRDOP(174)`、`SERIALCONFIG(1246)`、`MODELFEATURES(1329)`、`IONUTC(8)`，
+另有 RANGE / BESTPOS / SATVIS2 / TRACKSTAT / PORTSTATS / BESTSATS / HWMONITOR / TIME /
+ITPSDFINAL / ITPSDDETECT / ITDETECTSTATUS / RXSTATUS / RAWEPHEM / GLO·BDS 星历 / RXCONFIG / LOGLIST。
+
+### 又逼出四条规则（66 行 → 0）
+
+| # | 现象 | 规则 |
+|---|---|---|
+| 1 | `J1939CONFIG` 的 `%02X` 我们打 `1c`，原版 `0000001c` | 十六进制声明的宽度是**下限**，ULONG 字段一律填满 8 位 |
+| 2 | `BESTXYZ` 的 `char_as_int` 原版 `0`，我们 `00` | `%B`（CHAR 按十六进制）**不补零**；`%02XB` 才补 |
+| 3 | `ICOMCONFIG`/`SETNAV`/`DNSCONFIG` 的字符串错位 | 字典的 `STRING` 类型：`arrayLength` 只是**上限**，线上是「读到 NUL + 补到 4 字节边界」。`":3002"` 占 8 字节（payload 20 = 4+4+8+4），`"FROM"` 声明 6 却占 8 |
+| 4 | 4 条 RAWEPHEM 我们完全没有 | **CRC 校验失败的记录，原版不按长度字段跳过**，而是往后找下一个记录起点；一个 CRC 坏的 RANGE 声明了 3700 字节 payload，里面藏着 5 条 RAWEPHEM，原版捞回 4 条（第 5 条自身 CRC 也坏）。另有一条 `%R` 内嵌报文解析不了时，**整条记录丢弃**而不是打空 body（42 条 RXCONFIG 如此） |
+
+第 4 条落在 `framing.ts`：`crcMode: 'validate'` 时拒绝后只向后移动一个头长，并且在恢复过程中
+**只认二进制同步字**（否则坏 payload 里的 `<`/`#` 字节会被当成文本记录起点，一路吃到下一个换行，
+把后面的真记录吞掉——`broad-clean.gps` 里正好吞掉 4 条 SATVIS2）。
+
+### 结果
+
+```
+$ node packages/cli/src/convert.ts b1-20261101.sbf --to ASCII -o <tmp>
+oracle 行 1402；ours 行 1402
+ours 中不在 oracle 里的行: 0
+oracle 多出的行: 0
+5 088 882 B，SHA-256 = 2D6F529F…672CC361（两侧相同）
+```
+
+回归：`broad-clean.ASCII` 5 567 000 B **逐字节不变**，`clean-9600.ABBREV_ASCII`、KML、BINARY 同；
+RINEX 仍只差已知两行。测试 **511 / 511**（新增 `live-b1.test.ts` 4 项）。

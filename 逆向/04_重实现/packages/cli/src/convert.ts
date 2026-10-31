@@ -64,7 +64,7 @@ function main(): void {
 
   const all: SbfFrame[] = [];
   const frames: Frame[] = [];
-  for (const frame of new SbfDeframer({ crcMode: 'mirror' }).push(new Uint8Array(inputBytes))) {
+  for (const frame of new SbfDeframer({ crcMode: 'validate' }).push(new Uint8Array(inputBytes))) {
     frames.push(frame);
     if (frame.kind === 'sbf') all.push(frame);
   }

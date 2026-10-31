@@ -52,6 +52,17 @@ export type CrcMode = 'mirror' | 'validate' | 'ignore';
 export interface DeframerOptions {
   /** Default 'mirror' = reproduce the original (drop only when the CRC field is zero). */
   crcMode?: CrcMode;
+  /**
+   * Where to continue after a **rejected** record in `validate` mode. Convert does not trust a
+   * record it rejects and never advances by the length field; the measured default (`'header'`,
+   * i.e. just past the 28-byte header) reproduces both captures:
+   *
+   *  - `b1-20261101.sbf`: a RANGE with a bad CRC claims 3700 payload bytes and hides five RAWEPHEM
+   *    frames; the suite prints four of them, exactly what this offset finds;
+   *  - `broad-clean.gps`: the same rule keeps all 40 SATVIS2 records (stepping one byte instead
+   *    lands on a false frame and loses four).
+   */
+  resync?: 'header' | 'byte' | 'sync';
   /** Called when bytes are thrown away, so a reimplementation can log what the original hides. */
   onDrop?: (byteCount: number, reason: string) => void;
 }
@@ -78,10 +89,13 @@ function prefixOf(byte: number): TextPrefix {
 export class SbfDeframer {
   private pending: Uint8Array = new Uint8Array(0);
   private readonly crcMode: CrcMode;
+  private resync: 'header' | 'byte' | 'sync';
+  private recovering = false;
   private readonly onDrop?: (byteCount: number, reason: string) => void;
 
   constructor(options: DeframerOptions = {}) {
     this.crcMode = options.crcMode ?? 'mirror';
+    this.resync = options.resync ?? 'header';
     this.onDrop = options.onDrop;
   }
 
@@ -109,6 +123,15 @@ export class SbfDeframer {
       if (found > i) {
         this.drop(found - i, 'garbage-before-record');
         i = found;
+      }
+
+      // While recovering from a rejected record, only a binary sync may end the search: a stray
+      // '<'/'#'/'$' byte inside the rejected payload would otherwise start a "text record" that
+      // runs to the next newline and swallows the real frames behind it (four SATVIS2 records in
+      // `broad-clean.gps`).
+      if (this.recovering && buf[i] !== SYNC_1) {
+        i += 1;
+        continue;
       }
 
       if (buf[i] !== SYNC_1) {
@@ -162,6 +185,7 @@ export class SbfDeframer {
       else if (this.crcMode === 'validate') accept = crcField !== 0 && crcOk;
 
       if (accept) {
+        this.recovering = false;
         frames.push({
           kind: 'sbf',
           header,
@@ -170,10 +194,18 @@ export class SbfDeframer {
           crcField,
           crcOk,
         });
+        i += total;
       } else {
         this.drop(total, this.crcMode === 'validate' ? 'crc-mismatch' : 'zero-crc-field');
+        // Convert does not trust the length field of a record it rejects: it never advances by
+        // `total`. Where it resumes is measured — see `DeframerOptions.resync`.
+        if (this.crcMode === 'validate') {
+          this.recovering = true;
+          i += this.resync === 'byte' ? 1 : this.resync === 'sync' ? 3 : header.headerLength;
+        } else {
+          i += total;
+        }
       }
-      i += total;
     }
     return frames;
   }

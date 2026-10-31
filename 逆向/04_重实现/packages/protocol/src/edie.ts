@@ -30,6 +30,11 @@ export interface EdieString {
   offset: number;
   size: number;
   format?: string | null;
+  /**
+   * `size` is a maximum, not the wire size: the text is NUL-terminated and zero-padded to a
+   * 4-byte boundary (the dictionary's `STRING` fields, e.g. ICOMCONFIG's `endpoint`).
+   */
+  variable?: boolean;
 }
 
 export interface EdieArray {

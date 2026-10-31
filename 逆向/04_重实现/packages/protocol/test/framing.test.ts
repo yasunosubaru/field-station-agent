@@ -152,13 +152,17 @@ test('a wrong CRC is still accepted in mirror mode (the original never verifies 
   assert.notEqual(frames[0].crcField, 0);
 });
 
-test('validate mode rejects a wrong CRC', () => {
+test('validate mode rejects a wrong CRC and then resyncs past it', () => {
   const frame = longFrame(42, [1, 2, 3, 4]);
   frame[frame.length - 1] ^= 0xff;
   const reasons: string[] = [];
   const deframer = new SbfDeframer({ crcMode: 'validate', onDrop: (_n, r) => reasons.push(r) });
   assert.deepEqual(deframer.push(frame), []);
-  assert.deepEqual(reasons, ['crc-mismatch']);
+  // Convert does not trust the length field of a rejected record: it steps one byte and scans
+  // again, which is how it recovers records nested inside a corrupt span (see `b1-20261101.sbf`,
+  // where a RANGE with a bad CRC claims 3700 bytes and hides four RAWEPHEM frames). Here the
+  // re-scan finds no further record start, so the rest is reported as garbage.
+  assert.deepEqual(reasons, ['crc-mismatch', 'no-record-start']);
 });
 
 test('trailing garbage after a valid frame is reported, not silently kept', () => {
