@@ -992,7 +992,9 @@ body[data-page="playback"] #gritGroupView {
 }
 
 /* 抓包选择与健康状态移到应用栏右侧（原版内容区没有这一块；放在应用栏不占垂直空间）。 */
-.appbar-tools {
+/* 注意：`#tabs-list li` 是 ID 选择器（height 32 / margin 3px 8px 0 0），
+ * 单类选择器压不住它 —— 这里必须同样带上 #tabs-list 才不会把下拉撑出应用栏。 */
+#tabs-list li.appbar-tools {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1000,21 +1002,25 @@ body[data-page="playback"] #gritGroupView {
   padding: 0;
   height: 34px;
   max-height: 34px;
+  width: auto;
+  background: transparent;
+  border-radius: 0;
+  cursor: default;
 }
 
-.appbar-tools .nas-field {
+#tabs-list li.appbar-tools .nas-field {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 6px;
   margin: 0;
+  min-width: 0;
 }
 
+/* 原版应用栏只有应用名 + 文件页签；抓包下拉是我们自己加的入口，
+ * 34 px 的行里放不下"抓包"二字，标签隐藏（下拉本身已显示文件名）。 */
 .appbar-tools-label {
-  color: rgba(255, 255, 255, 0.75);
-  font-family: OpenSans-Regular, sans-serif;
-  font-size: 13px;
-  white-space: nowrap;
+  display: none;
 }
 
 .appbar-tools select {
