@@ -636,7 +636,11 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/live/logs') {
         const after = integer(url.searchParams.get('after'), 0, 0, 10_000_000, 'after');
+        /* `limit` keeps the newest N entries of the page (0 = all). The Terminal's backfill asks
+         * for a slice because 400 RANGE records carry ~1.3 MB of ASCII plus their decoded rows. */
+        const limit = integer(url.searchParams.get('limit'), 0, 0, 10_000, 'limit');
         const page = liveLink().logs(after);
+        if (limit > 0 && page.entries.length > limit) page.entries = page.entries.slice(-limit);
         sendJson(res, 200, { ok: true, ...page }, method);
         return;
       }

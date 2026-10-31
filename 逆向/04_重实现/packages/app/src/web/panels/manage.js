@@ -20,17 +20,39 @@
  *   6. second row         Satellite View (2 columns: legend + 8 constellation rows + sky plot) ·
  *                         PPP Corrections - Off
  *
+ * Two sources, never mixed, and the mode is always on screen:
+ *
+ *   **Live**     a receiver session is open (`LiveLink`, polled through `/api/live/status` and
+ *                `/api/live/logs?after=<cursor>`). The four tiles read the decoded records the
+ *                receiver is actually emitting; anything the stream does not carry prints `--`
+ *                with the reason in the tile. The mode strip above the tabs says `Live`, names the
+ *                target and the time of the newest record.
+ *   **Capture**  no live session in this page: the dashboard replays a capture through
+ *                `/api/records`, exactly as before. The strip says `Capture` and names the file, so
+ *                replayed numbers can never be mistaken for a connected receiver.
+ *   **Live lost**  a live session existed and the transport dropped (receiver unplugged, socket
+ *                closed). Every live field falls back to `--` — the panel deliberately does *not*
+ *                swap in capture values and pretend the receiver is back. `Back to capture replay`
+ *                is an explicit action.
+ *
  * Where the numbers come from (all of them from the local JSON API, nothing invented):
- *   BESTPOS #42    first record      → band left half + Positioning tile
- *   HWMONITOR #963 measurements[]    → Device tile + band right half; the status word's high byte
- *                                      is the reading type (1 temperature · 2 antenna current ·
- *                                      7 antenna voltage), its low byte the boundary limit
- *   RANGE #43      sv_prn + c_status → constellation counts (`(c_status >> 16) & 7`, the same
- *                                      table as `graph/src/range-charts.ts`); no azimuth/elevation
- *                                      is carried by RANGE, so the sky dots are symbolic
- *   ITK / ITDETECTSTATUS and VERSION / FILESTATUS are **not** in these captures: Interference
- *   reads "Not detected" (as the original does when nothing is detected) and Model / CPU Usage /
- *   Logging print `--` — the same honest gap Playback already prints.
+ *
+ *   live mode (fields decoded by `LiveLink` from the EDIE dictionary, same paths `/api/records`
+ *   returns for a capture):
+ *     BESTPOS #42       → band left half + Positioning tile
+ *     HWMONITOR #963    → Device tile + band right half; the status word's high byte is the reading
+ *                         type (1 temperature · 2 antenna current · 7 antenna voltage), its low byte
+ *                         the boundary limit. CPU Usage is `100 − idleTime / 2` (GRIT §5.6).
+ *     RANGE #43         → constellation counts (`(c_status >> 16) & 7`, the same table as
+ *                         `graph/src/range-charts.ts`); In Use = newest epoch, Not Used = seen
+ *                         earlier in this session
+ *     SATVIS2 #1043     → real azimuth/elevation for the sky dots, and Missing = visible but not in
+ *                         the newest RANGE epoch. Without SATVIS2 the dots stay symbolic.
+ *     VERSION #37       → Model. ITDETECTSTATUS #2065 → Interference.
+ *     FILESTATUS #2127 / LOGLIST #5 are not asked for, so Logging stays `--`.
+ *
+ *   capture mode: the same four sources come from the capture's first/last records via
+ *   `/api/records`; a capture that lacks VERSION / ITDETECTSTATUS prints the same `--` it always did.
  *
  * Without an open capture the panel falls back to the capture list (`ref-ui/manage-clean.png`):
  * the original's "All devices" page with one card per capture and a Connect/Open action.
@@ -45,6 +67,9 @@ const CSS_ID = 'nas-panel-manage-css';
 const BESTPOS = 42;
 const RANGE = 43;
 const HWMONITOR = 963;
+const VERSION_LOG = 37;
+const SATVIS2 = 1043;
+const ITDETECTSTATUS = 2065;
 
 /** `system` = `(c_status >> 16) & 7` — same table as `packages/graph/src/range-charts.ts`. */
 const SYSTEM_GPS = 0;
@@ -70,9 +95,31 @@ const CONSTELLATIONS = [
 /**
  * `HwMonitorStatusReadingType` → the row it feeds. The status word's high byte is the type, its
  * low byte the boundary limit (0 acceptable · 1 lower warning · 2 lower error · 3 upper warning ·
- * 4 upper error). Binary HWMONITOR carries no `idleTime`, so CPU Usage has no source here.
+ * 4 upper error). A capture's binary HWMONITOR has no `idleTime`, but a live one does (the session
+ * decoder keeps it), so CPU Usage is answered in live mode only.
  */
 const HW_TYPES = { temperature: [1, 22], antennaCurrent: [2], antennaVoltage: [7], cpuUsage: [] };
+
+/** `SATVIS2.system_type` → the Satellite View row it belongs to. */
+const SATVIS_KEYS = {
+  GPS: 'gps',
+  GLONASS: 'glo',
+  GLO: 'glo',
+  GALILEO: 'gal',
+  GAL: 'gal',
+  BEIDOU: 'bds',
+  BDS: 'bds',
+  QZSS: 'qzss',
+  NAVIC: 'navic',
+  SBAS: 'sbas',
+  LBAND: 'lband',
+};
+
+/** How many RANGE epochs the live session keeps for "seen but not in use" (≈2 min at 1 Hz). */
+const LIVE_RANGE_HISTORY = 120;
+
+/** Entries the Terminal asks for when it opens: enough context without a multi-MB backfill. */
+const TERMINAL_BACKFILL = 150;
 
 /**
  * The black bar under the app bar. Only `Status` is a real page in this build; the other four are
@@ -386,6 +433,16 @@ function template() {
   </div>
 
   <div class="mg-page">
+    <div class="mg-mode" data-el="mode" data-mode="capture" role="status" aria-live="polite">
+      <span class="mg-mode-badge" data-el="modeBadge" data-tone="off">Capture</span>
+      <span class="mg-mode-source" data-el="modeSource">no capture</span>
+      <span class="mg-mode-detail" data-el="modeDetail"></span>
+      <span class="mg-mode-spacer"></span>
+      <button type="button" class="mg-mode-action" data-mode-action="connect">Connect live…</button>
+      <button type="button" class="mg-mode-action" data-mode-action="disconnect" hidden>Disconnect</button>
+      <button type="button" class="mg-mode-action" data-mode-action="replay" hidden>Back to capture replay</button>
+    </div>
+
     <div class="mg-tabstrip" role="tablist" aria-label="Status pages">
       <button type="button" class="mg-tab is-active" role="tab" aria-selected="true">Positioning</button>
       <button type="button" class="mg-tab is-off" role="tab" aria-selected="false" disabled
@@ -408,8 +465,9 @@ function template() {
           ${kvRow('2d-SD', 'pos2d')}
           ${kvRow('Datum', 'posDatum')}
         </div>
+        <p class="mg-reason" data-el="posReason"></p>
         <button type="button" class="mg-help" data-help="positioning"
-                title="Positioning comes from the first BESTPOS (#42) record of the capture: Operating Mode is solution_status, Position is position_type, Height Accuracy is height_std_dev, 2d-SD is sqrt(latitude_std_dev² + longitude_std_dev²).">Help</button>
+                title="Positioning comes from the first BESTPOS (#42) record of the capture, or the newest BESTPOS in a live session: Operating Mode is solution_status, Position is position_type, Height Accuracy is height_std_dev, 2d-SD is sqrt(latitude_std_dev² + longitude_std_dev²).">Help</button>
       </section>
 
       <section class="mg-card" data-area="device">
@@ -422,18 +480,20 @@ function template() {
           ${deviceRow('Antenna Voltage', 'devVoltage', 'devVoltageBadge')}
           ${deviceRow('Antenna Current', 'devCurrent', 'devCurrentBadge')}
         </div>
+        <p class="mg-reason" data-el="devReason"></p>
         <button type="button" class="mg-help" data-help="device"
-                title="Device readings are HWMONITOR (#963) measurements[]: the status word's high byte is the reading type (1 temperature · 2 antenna current · 7 antenna voltage), the low byte the boundary limit the badge reports. The binary log carries no idleTime, so CPU Usage has no source and prints --.">Help</button>
+                title="Device readings are HWMONITOR (#963) measurements[]: the status word's high byte is the reading type (1 temperature · 2 antenna current · 7 antenna voltage), the low byte the boundary limit the badge reports. In a live session the session decoder keeps idleTime, so CPU Usage prints 100 − idleTime / 2; a capture's binary HWMONITOR has no idleTime and stays --.">Help</button>
       </section>
 
       <section class="mg-card" data-area="interference">
         <div class="mg-card-head">
           <h2 class="mg-heading">Interference</h2>
-          <span class="mg-badge mg-badge-good" data-tone="good">Good</span>
+          <span class="mg-badge mg-badge-good" data-el="intBadge" data-tone="good">Good</span>
         </div>
         <p class="mg-interference" data-el="interference">Not detected</p>
+        <p class="mg-reason" data-el="intReason"></p>
         <button type="button" class="mg-help" data-help="interference"
-                title="Interference needs ITDETECTSTATUS (#2065) / the ITK logs, which this capture does not contain. The original prints Not detected when the receiver reports no interference; no number is invented here.">Help</button>
+                title="Interference reads ITDETECTSTATUS (#2065): rfPath, detection method and the four parameters, with the tile badge driven by the severity words. A live session that does not log #2065 prints -- and says so; the captures in this build do not contain it, so capture mode keeps the original's Not detected with no number invented.">Help</button>
       </section>
 
       <section class="mg-card mg-card-wide" data-area="satellite">
@@ -459,7 +519,7 @@ function template() {
           <div class="mg-sat-right" data-el="sky">${skySvg()}</div>
         </div>
         <button type="button" class="mg-help" data-help="satellite"
-                title="Satellite View counts RANGE (#43) observations: system = (c_status >> 16) & 7 (0 GPS · 1 GLO · 2 SBAS · 3 GAL · 4 BDS · 5 QZSS · 6 NAVIC), In Use = distinct sv_prn in the last epoch of the capture, Not Used = PRNs seen in earlier epochs only. RANGE carries no azimuth/elevation, so the sky dots are symbolic; Missing needs SATVIS2, absent here.">Help</button>
+                title="Satellite View counts RANGE (#43) observations: system = (c_status >> 16) & 7 (0 GPS · 1 GLO · 2 SBAS · 3 GAL · 4 BDS · 5 QZSS · 6 NAVIC), In Use = distinct sv_prn in the newest epoch, Not Used = PRNs seen in earlier epochs only. In a live session SATVIS2 (#1043) adds real azimuth/elevation for the sky dots and Missing = visible but not in the newest epoch; a capture has neither, so its dots are symbolic and Missing stays 0.">Help</button>
       </section>
 
       <section class="mg-card" data-area="ppp">
@@ -535,14 +595,78 @@ export function mount(root, ctx = {}) {
   root.innerHTML = template();
   const el = collect(root);
 
-  /* ---------------- terminal (the live link behind Tools ▸ Terminal) ---------------- */
+  /* ---------------- live session + terminal (one poller feeds both) ---------------- */
 
-  const term = { open: false, cursor: 0, timer: 0, lines: [] };
+  const term = { open: false, backfilling: false, lines: [] };
   const termEls = {};
   for (const node of root.querySelectorAll('[data-term]')) termEls[node.dataset.term] = node;
 
+  /**
+   * Everything the Status dashboard knows about the live link. `latest`/`ranges`/`satvis` are fed
+   * incrementally from `/api/live/logs?after=<cursor>` so the device's one-shot VERSION record
+   * survives the server's 400-record ring buffer.
+   */
+  const live = {
+    connected: false,
+    /** A live session existed at least once on this page — that is what "lost" means. */
+    everConnected: false,
+    /** The user chose "Back to capture replay" while the link was down. */
+    dismissed: false,
+    /** `connectedAt` of the session the cached data belongs to; a new one resets it. */
+    session: '',
+    target: '',
+    disconnectedAt: '',
+    lastError: '',
+    lastRecordAt: '',
+    cursor: 0,
+    records: 0,
+    /** Last `/api/live/status` body, so the Terminal can render without its own request. */
+    status: null,
+    latest: new Map(),
+    ranges: [],
+    satvis: new Map(),
+    pollTimer: 0,
+  };
+
+  /** `live` wins over `lost` over `capture`; "lost" never silently falls back to replay. */
+  function liveMode() {
+    if (live.connected) return 'live';
+    if (live.everConnected && !live.dismissed) return 'lost';
+    return 'capture';
+  }
+
+  function resetLiveData() {
+    live.latest = new Map();
+    live.ranges = [];
+    live.satvis = new Map();
+    live.records = 0;
+    live.lastRecordAt = '';
+  }
+
+  function applyLiveEntry(entry) {
+    live.records += 1;
+    if (entry.time) live.lastRecordAt = entry.time;
+    const data = entry.data;
+    if (!data) return;
+    live.latest.set(entry.messageId, { data, time: entry.time, seq: entry.seq });
+    if (data.kind === 'range') {
+      live.ranges.push({ time: entry.time, observations: data.observations ?? [] });
+      if (live.ranges.length > LIVE_RANGE_HISTORY) live.ranges.splice(0, live.ranges.length - LIVE_RANGE_HISTORY);
+    } else if (data.kind === 'satvis') {
+      const key = SATVIS_KEYS[String(data.system || '').toUpperCase()];
+      if (key) live.satvis.set(key, { time: entry.time, satellites: data.satellites ?? [] });
+    }
+  }
+
   function termStatus(text) {
     if (termEls.status) termEls.status.textContent = text;
+  }
+  function termStatusText(status) {
+    if (!status.connected) {
+      return status.disconnectedAt ? `Disconnected — ${utcClock(status.disconnectedAt)} UTC` : 'Not connected';
+    }
+    const base = `Connected — ${status.target} — ${status.records} records`;
+    return status.lastError ? `${base} — ${status.lastError}` : base;
   }
   function termAppend(text) {
     term.lines.push(text);
@@ -552,31 +676,86 @@ export function mount(root, ctx = {}) {
       termEls.output.scrollTop = termEls.output.scrollHeight;
     }
   }
-  async function termRefresh() {
+
+  /**
+   * One poll for the whole panel: status first (the mode depends on it), then the log cursor. The
+   * terminal drawer prints the same entries, so opening it never restarts or races the poll.
+   */
+  async function livePoll() {
+    if (!state.alive) return;
+    let status;
     try {
-      const status = await api.get('/api/live/status');
-      const base = status.connected ? `Connected — ${status.target} — ${status.records} records` : 'Not connected';
-      termStatus(status.lastError ? `${base} — ${status.lastError}` : base);
-      const page = await api.get('/api/live/logs', { after: term.cursor });
-      term.cursor = page.cursor ?? term.cursor;
-      for (const entry of page.entries ?? []) {
-        termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
-      }
+      status = await api.get('/api/live/status');
     } catch (error) {
       termStatus(`API error: ${error.message}`);
+      /* The server itself is unreachable: stop claiming Live. The next successful poll restores
+       * it (or reports the session gone), so this is not a dead end. */
+      if (live.connected) {
+        live.connected = false;
+        live.lastError = `API error: ${error.message}`;
+        live.disconnectedAt = live.disconnectedAt || new Date().toISOString();
+        render();
+      }
+      return;
+    }
+    if (!state.alive) return;
+
+    live.target = status.target || live.target;
+    live.lastError = status.lastError || '';
+    live.status = status;
+    const connected = Boolean(status.connected);
+
+    if (connected) {
+      live.everConnected = true;
+      live.dismissed = false;
+      live.disconnectedAt = '';
+      if (live.session !== (status.connectedAt || '')) {
+        live.session = status.connectedAt || '';
+        live.cursor = 0;
+        resetLiveData();
+      }
+      if (status.lastRecordAt) live.lastRecordAt = status.lastRecordAt;
+      try {
+        const page = await api.get('/api/live/logs', { after: live.cursor });
+        if (!state.alive) return;
+        live.cursor = Number(page.cursor) || live.cursor;
+        for (const entry of page.entries ?? []) {
+          applyLiveEntry(entry);
+          if (term.open && !term.backfilling) termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
+        }
+      } catch (error) {
+        live.lastError = error.message;
+      }
+    } else {
+      live.disconnectedAt = status.disconnectedAt || live.disconnectedAt;
+    }
+
+    live.connected = connected;
+    termStatus(termStatusText(status));
+
+    /* A session opened from the Terminal (or before this page mounted) takes over the dashboard. */
+    if (connected && !state.open) {
+      state.open = true;
+      setBodyState();
+      renderDeviceShell();
+    }
+    render();
+  }
+
+  function startLivePolling() {
+    stopLivePolling();
+    live.pollTimer = setInterval(() => {
+      void livePoll();
+    }, 900);
+    void livePoll();
+  }
+  function stopLivePolling() {
+    if (live.pollTimer) {
+      clearInterval(live.pollTimer);
+      live.pollTimer = 0;
     }
   }
-  function termStartPolling() {
-    termStopPolling();
-    term.timer = setInterval(termRefresh, 800);
-    void termRefresh();
-  }
-  function termStopPolling() {
-    if (term.timer) {
-      clearInterval(term.timer);
-      term.timer = 0;
-    }
-  }
+
   async function termConnect() {
     const path = (termEls.path?.value ?? '').trim();
     const body = path
@@ -584,10 +763,14 @@ export function mount(root, ctx = {}) {
       : { kind: 'tcp', host: (termEls.host?.value ?? '').trim() || '127.0.0.1', port: Number(termEls.port?.value) || 3001 };
     try {
       const status = await api.post('/api/live/connect', body);
-      term.cursor = 0;
       term.lines = [];
       termAppend(`Connected to ${status.target}`);
-      termStartPolling();
+      live.session = status.connectedAt || '';
+      live.cursor = 0;
+      live.everConnected = true;
+      live.dismissed = false;
+      resetLiveData();
+      void livePoll();
     } catch (error) {
       termAppend(`Connect failed: ${error.message}`);
     }
@@ -596,8 +779,8 @@ export function mount(root, ctx = {}) {
     try {
       await api.post('/api/live/disconnect', {});
       termAppend('Disconnected');
-      termStopPolling();
-      termStatus('Not connected');
+      live.disconnectedAt = new Date().toISOString();
+      void livePoll();
     } catch (error) {
       termAppend(`Disconnect failed: ${error.message}`);
     }
@@ -608,7 +791,7 @@ export function mount(root, ctx = {}) {
       const status = await api.post('/api/live/command', { line });
       if (status.lastError) termAppend(`> ${line}   (${status.lastError})`);
       else termAppend(`> ${line}`);
-      termRefresh();
+      void livePoll();
     } catch (error) {
       termAppend(`> ${line}   (${error.message})`);
     }
@@ -616,13 +799,30 @@ export function mount(root, ctx = {}) {
   function termOpen() {
     term.open = true;
     if (el.terminal) el.terminal.hidden = false;
-    termStartPolling();
+    if (!live.pollTimer) startLivePolling();
+    if (live.status) termStatus(termStatusText(live.status));
+    void termBackfill();
     termEls.line?.focus();
+  }
+  /** Re-open the drawer after a long session: the newest slice of the ring buffer, newest last. */
+  async function termBackfill() {
+    if (term.backfilling) return;
+    term.backfilling = true;
+    try {
+      const page = await api.get('/api/live/logs', { after: 0, limit: TERMINAL_BACKFILL });
+      term.lines = [];
+      for (const entry of page.entries ?? []) {
+        termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
+      }
+    } catch (error) {
+      termAppend(`API error: ${error.message}`);
+    } finally {
+      term.backfilling = false;
+    }
   }
   function termClose() {
     term.open = false;
     if (el.terminal) el.terminal.hidden = true;
-    termStopPolling();
   }
 
   /* The 1232 px column is centred in the area *left of the scrollbar* (the reference window has a
@@ -658,6 +858,8 @@ export function mount(root, ctx = {}) {
     position: null,
     device: null,
     range: null,
+    version: null,
+    interference: null,
     time: '',
     /** Bumped per open; a slower response for an older capture never overwrites a newer one. */
     token: 0,
@@ -695,9 +897,30 @@ export function mount(root, ctx = {}) {
     if (!state.open) {
       appTab.hidden = true;
       appTab.innerHTML = '';
+      delete appTab.dataset.manageKey;
       return;
     }
     appTab.hidden = false;
+    const mode = liveMode();
+    const key = `${mode}|${live.target}|${state.capture}`;
+    if (appTab.dataset.manageKey === key) return;
+    appTab.dataset.manageKey = key;
+    if (mode !== 'capture') {
+      /* A live dashboard is not a file: no ✕ that would look like it disconnects the receiver. */
+      const label = mode === 'live' ? `Live · ${live.target || 'receiver'}` : 'Live lost';
+      const title = mode === 'live'
+        ? `Live session on ${live.target}. The cards read what the receiver is emitting right now.`
+        : `The live session to ${live.target || 'the receiver'} closed — the cards show -- until it is connected again.`;
+      appTab.innerHTML =
+        '<span class="mg-filetab-plate mg-filetab-plate-live">' +
+        `<span class="mg-filetab mg-filetab-live" title="${esc(title)}">` +
+        `<span class="mg-filetab-name">${esc(label)}</span></span>` +
+        '</span>' +
+        '<button type="button" class="mg-add-tab" disabled ' +
+        `title="${esc('Add Device: one live session per process; disconnect it in the mode strip first.')}">` +
+        '<span class="mg-plus" aria-hidden="true"></span>Add Device</button>';
+      return;
+    }
     const name = baseName(state.capture);
     const short = name.length > 12 ? `${name.slice(0, 12)}…` : name;
     appTab.innerHTML =
@@ -748,6 +971,99 @@ export function mount(root, ctx = {}) {
     el.device.hidden = false;
   }
 
+  /* ---- mode strip + dashboard dispatch --------------------------------------
+   * One place decides which source the cards read. `render()` is called by the poller every tick,
+   * so it must be cheap and idempotent; it never fetches anything itself. */
+
+  function setModeBadge(tone, text) {
+    if (!el.modeBadge) return;
+    el.modeBadge.className = `mg-mode-badge mg-mode-badge-${tone}`;
+    el.modeBadge.dataset.tone = tone;
+    el.modeBadge.textContent = text;
+  }
+
+  function renderModeStrip() {
+    const mode = liveMode();
+    if (el.mode) el.mode.dataset.mode = mode;
+    root.dataset.mode = mode;
+
+    const actions = { connect: mode !== 'live', disconnect: mode === 'live', replay: mode === 'lost' };
+    for (const node of root.querySelectorAll('[data-mode-action]')) {
+      node.hidden = !actions[node.dataset.modeAction];
+    }
+
+    if (mode === 'live') {
+      setModeBadge('good', 'Live');
+      if (el.modeBadge) el.modeBadge.title = `A receiver session is open on ${live.target}; the four tiles read its decoded records.`;
+      setText(el.modeSource, live.target || 'receiver');
+      if (el.modeSource) el.modeSource.title = 'The receiver this dashboard is connected to.';
+      const at = live.lastRecordAt ? utcClock(live.lastRecordAt) : '—';
+      const since = live.session ? utcClock(live.session) : '—';
+      setText(el.modeDetail, `实时数据 · 会话连接于 ${since} UTC · 已收 ${live.records} 条 · 最后一条 ${at}（接收机时间）`);
+      return;
+    }
+
+    if (mode === 'lost') {
+      setModeBadge('bad', 'Live lost');
+      if (el.modeBadge) el.modeBadge.title = 'The live session closed. Fields show -- until the receiver is connected again; capture values are never substituted.';
+      setText(el.modeSource, live.target || 'receiver');
+      const when = live.disconnectedAt ? utcClock(live.disconnectedAt) : '—';
+      const error = live.lastError ? ` · ${live.lastError}` : '';
+      setText(el.modeDetail, `连接已断开 ${when} UTC${error} · 字段回到 --，不会改用抓包数据`);
+      const connect = root.querySelector('[data-mode-action="connect"]');
+      if (connect) connect.textContent = 'Reconnect…';
+      return;
+    }
+
+    setModeBadge('off', 'Capture');
+    if (el.modeBadge) el.modeBadge.title = 'No live session: the numbers below are replayed from a capture, not read from a receiver.';
+    setText(el.modeSource, state.capture ? baseName(state.capture) : 'no capture');
+    if (el.modeSource) el.modeSource.title = state.capture ? `离线回放：${state.capture}` : 'No capture open.';
+    setText(el.modeDetail, '离线回放 — 没有实时会话；数值来自抓包，不是接收机');
+    const connect = root.querySelector('[data-mode-action="connect"]');
+    if (connect) connect.textContent = 'Connect live…';
+  }
+
+  /** The single entry point: mode strip first, then whichever source the mode allows. */
+  function render() {
+    const mode = liveMode();
+    renderModeStrip();
+    renderAppBar();
+    if (!state.open) return;
+    if (mode === 'live') renderLiveDashboard();
+    else if (mode === 'lost') renderLostDashboard();
+    else renderCaptureDashboard();
+  }
+
+  function renderCaptureDashboard() {
+    renderPosition();
+    renderDevice();
+    renderInterference(state.interference ? { entries: state.interference.entries, time: state.interference.time } : null, 'capture');
+    renderSatellite();
+  }
+
+  /* ---- numbers shared by both modes ---------------------------------------- */
+
+  /** `Number(null)` is 0 — a missing EDIE field must stay missing, not become a real zero. */
+  function numberOrNaN(value) {
+    if (value === null || value === undefined || value === '') return NaN;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  function withFixed(value, digits, suffix = '') {
+    const parsed = numberOrNaN(value);
+    return Number.isFinite(parsed) ? `${parsed.toFixed(digits)}${suffix}` : '--';
+  }
+
+  /** `/api/records` and `LiveLink` both speak `path → field`, so one reader serves both. */
+  function fieldMap(record) {
+    const map = new Map();
+    if (!record || !Array.isArray(record.fields)) return map;
+    for (const field of record.fields) if (!map.has(field.path)) map.set(field.path, field);
+    return map;
+  }
+
   /* ---- BESTPOS #42 → band left half + Positioning tile ---- */
 
   function readPosition(record) {
@@ -783,6 +1099,10 @@ export function mount(root, ctx = {}) {
       }
       setBadge(el.bandPosBadge, tone);
       setBadge(el.cardPosBadge, tone);
+      setText(
+        el.posReason,
+        `抓包回放 · ${baseName(state.capture) || '这个抓包'} 里没有 BESTPOS (#42) — 字段保持 --。`,
+      );
       return;
     }
     const position = p.position ? titleCase(p.position) : '--';
@@ -806,6 +1126,10 @@ export function mount(root, ctx = {}) {
 
     setBadge(el.bandPosBadge, tone);
     setBadge(el.cardPosBadge, tone);
+    setText(
+      el.posReason,
+      `抓包回放 · BESTPOS (#42) 首条记录 · 离线数据，不是接收机实时值`,
+    );
   }
 
   /* ---- HWMONITOR #963 → Device tile + band right half ---- */
@@ -850,10 +1174,10 @@ export function mount(root, ctx = {}) {
   function renderDevice() {
     const d = state.device;
     // The original prints °C without decimals, V and mA with one — same convention here.
-    const temp = d?.temperature ? `${fixed(d.temperature.value, 0)} °C` : '--';
-    const volt = d?.antennaVoltage ? `${fixed(d.antennaVoltage.value, 1)} V` : '--';
-    const amp = d?.antennaCurrent ? `${fixed(d.antennaCurrent.value * 1000, 1)} mA` : '--';
-    const cpu = d?.cpuUsage ? `${fixed(d.cpuUsage.value, 0)} %` : '--';
+    const temp = d?.temperature ? `${withFixed(d.temperature.value, 0, ' °C')}` : '--';
+    const volt = d?.antennaVoltage ? `${withFixed(d.antennaVoltage.value, 1, ' V')}` : '--';
+    const amp = d?.antennaCurrent ? `${withFixed(d.antennaCurrent.value * 1000, 1, ' mA')}` : '--';
+    const cpu = d?.cpuUsage ? `${withFixed(d.cpuUsage.value, 0, ' %')}` : '--';
 
     setText(el.devCpu, cpu);
     setText(el.devTemp, temp);
@@ -866,10 +1190,10 @@ export function mount(root, ctx = {}) {
     setBadge(el.devCurrentBadge, sensorTone(d?.antennaCurrent));
 
     // Band right half: only what the capture can actually answer.
-    setText(el.bandModel, '--'); // needs VERSION (#37), absent from these captures
+    setText(el.bandModel, state.version ? state.version.hardware || state.version.model || '--' : '--');
     setText(el.bandCpu, cpu);
     setText(el.bandLogging, '--'); // needs FILESTATUS (#2127) / LOGLIST (#5)
-    setText(el.bandInterference, 'Not detected'); // ITK / ITDETECTSTATUS absent — no number invented
+    setText(el.bandInterference, interferenceText(state.interference));
     setText(el.bandTime, state.time || '--');
 
     const complete = Boolean(d && d.temperature && d.antennaVoltage && d.antennaCurrent);
@@ -879,6 +1203,101 @@ export function mount(root, ctx = {}) {
     el.bandDevBadge.title = d
       ? 'Device health from the HWMONITOR (#963) boundary limits; CPU Usage / Logging have no source in a capture.'
       : 'No HWMONITOR (#963) record in this capture.';
+
+    const missing = [];
+    if (!d) missing.push('HWMONITOR (#963) 不在这个抓包里');
+    else if (!d.temperature || !d.antennaVoltage || !d.antennaCurrent) missing.push('HWMONITOR 缺温度/电压/电流读数');
+    missing.push(d?.cpuUsage ? '' : 'CPU Usage：抓包的二进制 HWMONITOR 没有 idleTime');
+    missing.push(state.version ? '' : 'Model：抓包里没有 VERSION (#37)');
+    missing.push('Logging：需要 FILESTATUS (#2127)/LOGLIST (#5)');
+    setText(el.devReason, `抓包回放 · ${missing.filter(Boolean).join(' · ')}`);
+  }
+
+  /* ---- VERSION #37 / ITDETECTSTATUS #2065 in a capture ---- */
+
+  function readVersion(record) {
+    if (!record) return null;
+    const fields = fieldMap(record);
+    const total = Number(fields.get('versions.count')?.value) || 0;
+    let fallback = null;
+    for (let index = 0; index < Math.min(total, 16); index += 1) {
+      const base = `versions[${index}]`;
+      const candidate = {
+        model: shown(fields.get(`${base}.model_name`)) ?? '',
+        hardware: shown(fields.get(`${base}.hardware_version`)) ?? '',
+        software: shown(fields.get(`${base}.software_version`)) ?? '',
+        component: shown(fields.get(`${base}.component_type`)) ?? '',
+      };
+      if (!fallback && (candidate.model || candidate.hardware)) fallback = candidate;
+      if (candidate.component === 'GPSCARD' || candidate.component === 'GPSCARD2') return candidate;
+    }
+    return fallback;
+  }
+
+  function readInterference(record) {
+    if (!record) return null;
+    const fields = fieldMap(record);
+    const total = Number(fields.get('interference_statuses.count')?.value) || 0;
+    const entries = [];
+    for (let index = 0; index < Math.min(total, 64); index += 1) {
+      const base = `interference_statuses[${index}]`;
+      entries.push({
+        rfPath: shown(fields.get(`${base}.frequency`)) ?? '',
+        detectionType: shown(fields.get(`${base}.int_detect_method`)) ?? '',
+        centerFrequency: numberOrNaN(fields.get(`${base}.parameter1`)?.value),
+        bandwidth: numberOrNaN(fields.get(`${base}.parameter2`)?.value),
+        power: numberOrNaN(fields.get(`${base}.parameter3`)?.value),
+        estimatedPower: numberOrNaN(fields.get(`${base}.parameter4`)?.value),
+        severity: [
+          numberOrNaN(fields.get(`${base}.severity1`)?.value) || 0,
+          numberOrNaN(fields.get(`${base}.severity2`)?.value) || 0,
+        ],
+      });
+    }
+    return entries.length ? { entries, time: record.header?.utc ?? '' } : null;
+  }
+
+  /** Any non-zero severity word is the receiver saying it detected interference. */
+  function interferenceDetected(data) {
+    return (data?.entries ?? []).some((entry) => (entry.severity ?? []).some((value) => Number(value) !== 0));
+  }
+
+  function interferenceText(data) {
+    if (!data) return null;
+    return interferenceDetected(data) ? 'Detected' : 'Not detected';
+  }
+
+  /**
+   * The Interference tile is shared by both modes: live fills it from ITDETECTSTATUS (#2065) when
+   * the receiver logs it, and a capture prints the original's "Not detected" only when its own
+   * #2065 record is absent — never a number that was invented.
+   */
+  function renderInterference(data, source) {
+    const live_ = source === 'live';
+    if (!data || !data.entries || !data.entries.length) {
+      setText(el.interference, live_ ? '--' : 'Not detected');
+      setBadge(el.intBadge, live_ ? 'unknown' : 'good');
+      setText(
+        el.intReason,
+        live_
+          ? 'Live · ITDETECTSTATUS (#2065) 没有到达 — 接收机没有在这一路输出干扰检测报文，字段保持 --。'
+          : '抓包回放 · 这个抓包没有 ITDETECTSTATUS (#2065) — 沿用原界面的 Not detected，没有编造数值。',
+      );
+      return;
+    }
+    const detected = interferenceDetected(data);
+    setText(el.interference, detected ? 'Detected' : 'Not detected');
+    setBadge(el.intBadge, detected ? 'warn' : 'good', detected ? 'Detected' : 'Good');
+    const detail = data.entries
+      .map(
+        (entry) =>
+          `${entry.rfPath || '--'} · ${entry.detectionType || '--'} · ` +
+          `center ${withFixed(entry.centerFrequency, 2)} · width ${withFixed(entry.bandwidth, 2)} · ` +
+          `power ${withFixed(entry.power, 2)} · est ${withFixed(entry.estimatedPower, 2)}`,
+      )
+      .join(' ; ');
+    const when = data.time ? `${utcClock(data.time)} UTC` : '—';
+    setText(el.intReason, `${live_ ? 'Live' : '抓包回放'} · ITDETECTSTATUS (#2065) ${when} · ${detail}`);
   }
 
   /* ---- RANGE #43 → Satellite View ---- */
@@ -977,25 +1396,324 @@ export function mount(root, ctx = {}) {
 
     /* Symbolic sky dots: one per tracked PRN, spread by a golden-angle walk so neighbouring PRNs
        do not overlap. RANGE has no az/el, so the position is explicitly not a sky position. */
-    const skyNodes = el.skySats;
-    if (skyNodes) {
-      const cx = 150;
-      const cy = 150;
-      skyNodes.innerHTML = dots
-        .map((dot, index) => {
-          const angle = (-90 + index * 137.508) * (Math.PI / 180);
-          const radius = 34 + ((index * 29) % 104);
-          const x = cx + Math.cos(angle) * radius;
-          const y = cy + Math.sin(angle) * radius;
-          return (
-            `<g class="mg-sky-dot mg-sky-dot-${esc(dot.tone)}">` +
-            `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10"/>` +
-            `<text x="${x.toFixed(1)}" y="${(y + 3.6).toFixed(1)}">${esc(dot.prn)}</text>` +
-            '</g>'
-          );
-        })
-        .join('');
+    paintSky(symbolicSky(dots));
+  }
+
+  /* ---- sky plot painting (shared: capture is always symbolic, live prefers SATVIS2) ---- */
+
+  function paintSky(dots) {
+    if (!el.skySats) return;
+    el.skySats.innerHTML = dots
+      .map(
+        (dot) =>
+          `<g class="mg-sky-dot mg-sky-dot-${esc(dot.tone)}">` +
+          `<circle cx="${dot.x.toFixed(1)}" cy="${dot.y.toFixed(1)}" r="10"/>` +
+          `<text x="${dot.x.toFixed(1)}" y="${(dot.y + 3.6).toFixed(1)}">${esc(dot.label)}</text>` +
+          '</g>',
+      )
+      .join('');
+  }
+
+  function symbolicSky(prns) {
+    return prns.map((dot, index) => {
+      const angle = (-90 + index * 137.508) * (Math.PI / 180);
+      const radius = 34 + ((index * 29) % 104);
+      return {
+        label: String(dot.prn),
+        tone: dot.tone,
+        x: 150 + Math.cos(angle) * radius,
+        y: 150 + Math.sin(angle) * radius,
+      };
+    });
+  }
+
+  /** Real sky positions from SATVIS2: azimuth clockwise from north, elevation from the horizon. */
+  function satvisSky() {
+    const dots = [];
+    for (const item of CONSTELLATIONS) {
+      const visible = live.satvis.get(item.key);
+      if (!visible) continue;
+      for (const satellite of visible.satellites ?? []) {
+        const elevation = numberOrNaN(satellite.elevation);
+        const azimuth = numberOrNaN(satellite.azimuth);
+        if (!Number.isFinite(elevation) || !Number.isFinite(azimuth) || elevation <= 0) continue;
+        const radius = ((90 - Math.min(90, elevation)) / 90) * 140;
+        const angle = (azimuth * Math.PI) / 180;
+        dots.push({
+          label: String(satellite.id),
+          tone: item.tone,
+          x: 150 + Math.sin(angle) * radius,
+          y: 150 - Math.cos(angle) * radius,
+        });
+      }
     }
+    return dots;
+  }
+
+  /* ---- live mode: the four tiles read the receiver's own records ---- */
+
+  function renderLiveDashboard() {
+    renderLivePosition();
+    renderLiveDevice();
+    const interference = live.latest.get(ITDETECTSTATUS);
+    renderInterference(
+      interference ? { entries: interference.data.entries, time: interference.time } : null,
+      'live',
+    );
+    renderLiveSatellite();
+  }
+
+  function renderLivePosition() {
+    const cached = live.latest.get(BESTPOS);
+    const p = cached ? cached.data : null;
+    const columns = [
+      el.bandPosition,
+      el.bandLat,
+      el.bandLon,
+      el.bandHeight,
+      el.posMode,
+      el.posPosition,
+      el.posLat,
+      el.posLon,
+      el.posHeight,
+      el.posHeightAcc,
+      el.pos2d,
+      el.posDatum,
+    ];
+    if (!p) {
+      for (const node of columns) setText(node, '--');
+      setBadge(el.bandPosBadge, 'unknown');
+      setBadge(el.cardPosBadge, 'unknown');
+      setText(el.posReason, 'Live · 还没有收到 BESTPOS (#42) — 这一路流没有位置报文，字段保持 --。');
+      return;
+    }
+
+    const solved = p.solutionStatus === 'SOL_COMPUTED';
+    const tone = solved ? 'good' : 'warn';
+    const position = p.positionType ? titleCase(p.positionType) : '--';
+    const lat = withFixed(p.latitude, 7, '°');
+    const lon = withFixed(p.longitude, 7, '°');
+    const height = withFixed(p.height, 2, ' m');
+    const latDev = numberOrNaN(p.latitudeDeviation);
+    const lonDev = numberOrNaN(p.longitudeDeviation);
+    const twoSigma = Number.isFinite(latDev) && Number.isFinite(lonDev) ? Math.sqrt(latDev * latDev + lonDev * lonDev) : NaN;
+
+    setText(el.bandPosition, position);
+    setText(el.bandLat, lat);
+    setText(el.bandLon, lon);
+    setText(el.bandHeight, height);
+
+    setText(el.posMode, p.solutionStatus || '--');
+    setText(el.posPosition, position);
+    setText(el.posLat, lat);
+    setText(el.posLon, lon);
+    setText(el.posHeight, height);
+    setText(el.posHeightAcc, withFixed(p.heightDeviation, 2, ' m'));
+    setText(el.pos2d, withFixed(twoSigma, 2, ' m'));
+    setText(el.posDatum, p.datumId || '--');
+
+    setBadge(el.bandPosBadge, tone);
+    setBadge(el.cardPosBadge, tone);
+    const used = Number.isFinite(numberOrNaN(p.satellitesUsed)) ? `${p.satellitesUsed} used` : 'used --';
+    const tracked = Number.isFinite(numberOrNaN(p.satellitesTracked)) ? `${p.satellitesTracked} tracked` : 'tracked --';
+    setText(el.posReason, `Live · BESTPOS (#42) ${utcClock(cached.time)} UTC · ${used} / ${tracked}`);
+  }
+
+  function sensorOf(sensors, types) {
+    for (const type of types) {
+      const hit = sensors.find((sensor) => sensor.type === type);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  /** Worst boundary limit across the readings on screen; a missing reading is simply absent. */
+  function worstTone(readings) {
+    const rank = { unknown: 0, good: 1, warn: 2, bad: 3 };
+    let worst = 'unknown';
+    for (const reading of readings) {
+      const tone = sensorTone(reading);
+      if (rank[tone] > rank[worst]) worst = tone;
+    }
+    return worst;
+  }
+
+  function renderLiveDevice() {
+    const hwCached = live.latest.get(HWMONITOR);
+    const hw = hwCached ? hwCached.data : null;
+    const versionCached = live.latest.get(VERSION_LOG);
+    const version = versionCached ? versionCached.data : null;
+    const sensors = hw?.sensors ?? [];
+    const temperature = sensorOf(sensors, HW_TYPES.temperature);
+    const current = sensorOf(sensors, HW_TYPES.antennaCurrent);
+    const voltage = sensorOf(sensors, HW_TYPES.antennaVoltage);
+    const idleTime = numberOrNaN(hw?.idleTime);
+    const cpu = Number.isFinite(idleTime) ? Math.max(0, Math.min(100, 100 - idleTime / 2)) : NaN;
+
+    const temp = temperature ? withFixed(temperature.value, 0, ' °C') : '--';
+    const volt = voltage ? withFixed(voltage.value, 1, ' V') : '--';
+    const amp = current ? withFixed(current.value * 1000, 1, ' mA') : '--';
+    const cpuText = Number.isFinite(cpu) ? `${cpu.toFixed(0)} %` : '--';
+
+    setText(el.devCpu, cpuText);
+    setText(el.devTemp, temp);
+    setText(el.devVoltage, volt);
+    setText(el.devCurrent, amp);
+
+    setBadge(el.devCpuBadge, Number.isFinite(cpu) ? 'good' : 'unknown');
+    setBadge(el.devTempBadge, sensorTone(temperature));
+    setBadge(el.devVoltageBadge, sensorTone(voltage));
+    setBadge(el.devCurrentBadge, sensorTone(current));
+
+    const model = version ? version.hardwareVersion || version.model : '';
+    setText(el.bandModel, model || '--');
+    setText(el.bandCpu, cpuText);
+    setText(el.bandLogging, '--');
+    setText(
+      el.bandInterference,
+      interferenceText(live.latest.get(ITDETECTSTATUS)?.data) ?? '--',
+    );
+    setText(el.bandTime, live.lastRecordAt ? `${utcClock(live.lastRecordAt)} UTC` : '--');
+
+    const tone = worstTone([temperature, voltage, current]);
+    setBadge(el.bandDevBadge, hw ? (tone === 'unknown' ? 'good' : tone) : 'unknown');
+    el.bandDevBadge.title = hw
+      ? 'Device health from the live HWMONITOR (#963) boundary limits.'
+      : 'No HWMONITOR (#963) in the live stream.';
+
+    const reasons = [];
+    reasons.push(hwCached ? `HWMONITOR (#963) ${utcClock(hwCached.time)} UTC` : 'HWMONITOR (#963) 未到达');
+    reasons.push(
+      version
+        ? `Model: VERSION (#37) ${version.model || version.hardwareVersion || '--'}${version.softwareVersion ? ` / ${version.softwareVersion}` : ''}`
+        : 'Model: 流里没有 VERSION (#37)',
+    );
+    reasons.push(Number.isFinite(idleTime) ? 'CPU Usage = 100 − idleTime / 2' : 'CPU Usage: 这一路没有 idleTime，保持 --');
+    reasons.push('Logging: 需要 FILESTATUS (#2127)/LOGLIST (#5)，未读取');
+    setText(el.devReason, `Live · ${reasons.join(' · ')}`);
+  }
+
+  function renderLiveSatellite() {
+    const newest = live.ranges.length ? live.ranges[live.ranges.length - 1] : null;
+    const inUse = new Map();
+    const seen = new Map();
+    const add = (map, system, prn) => {
+      if (!map.has(system)) map.set(system, new Set());
+      map.get(system).add(prn);
+    };
+    if (newest) for (const observation of newest.observations) add(inUse, observation.system, observation.prn);
+    for (const range of live.ranges) {
+      for (const observation of range.observations) add(seen, observation.system, observation.prn);
+    }
+
+    let inUseTotal = 0;
+    let satvisTotal = 0;
+    const symbolic = [];
+    for (const item of CONSTELLATIONS) {
+      const useNode = satCount[`${item.key}-use`];
+      const idleNode = satCount[`${item.key}-idle`];
+      const missNode = satCount[`${item.key}-missing`];
+      if (!newest || item.system === null) {
+        if (useNode) useNode.textContent = '--';
+        if (idleNode) idleNode.textContent = '--';
+        if (missNode) missNode.textContent = '--';
+        continue;
+      }
+      const inUseSet = inUse.get(item.system) ?? new Set();
+      const seenSet = seen.get(item.system) ?? new Set();
+      const notUsed = Math.max(0, seenSet.size - inUseSet.size);
+      inUseTotal += inUseSet.size;
+      if (useNode) useNode.textContent = String(inUseSet.size);
+      if (idleNode) idleNode.textContent = String(notUsed);
+
+      const visible = live.satvis.get(item.key);
+      if (visible) {
+        const missing = (visible.satellites ?? []).filter(
+          (satellite) => numberOrNaN(satellite.elevation) > 0 && !inUseSet.has(satellite.id),
+        ).length;
+        satvisTotal += (visible.satellites ?? []).length;
+        if (missNode) missNode.textContent = String(missing);
+      } else if (missNode) {
+        missNode.textContent = '--';
+      }
+
+      for (const prn of [...inUseSet].sort((a, b) => a - b)) symbolic.push({ prn, tone: item.tone });
+    }
+
+    const liveBadge = newest ? (inUseTotal > 0 ? 'good' : 'warn') : 'unknown';
+    setBadge(el.satBadge, liveBadge);
+
+    const when = newest ? `${utcClock(newest.time)} UTC` : '—';
+    const source = satvisTotal > 0
+      ? '星点来自 SATVIS2 (#1043) 的实际方位角/高度角'
+      : '流里没有 SATVIS2 (#1043)，星点按符号位置摆放';
+    setText(
+      el.satNote,
+      newest
+        ? `Live · RANGE (#43) ${when} · ${inUseTotal} 个在用 PRN · In Use = 最新历元，Not Used = 本次会话更早历元见过 · ${source}`
+        : 'Live · 还没有收到 RANGE (#43) — 星座计数与星点保持 --。',
+    );
+
+    const real = satvisSky();
+    paintSky(real.length ? real : symbolicSky(symbolic));
+  }
+
+  /* ---- lost mode: show the gap, never substitute captured values ---- */
+
+  function renderLostDashboard() {
+    const when = live.disconnectedAt ? `${utcClock(live.disconnectedAt)} UTC` : '—';
+    const error = live.lastError ? `（${live.lastError}）` : '';
+
+    for (const node of [
+      el.bandPosition,
+      el.bandLat,
+      el.bandLon,
+      el.bandHeight,
+      el.posMode,
+      el.posPosition,
+      el.posLat,
+      el.posLon,
+      el.posHeight,
+      el.posHeightAcc,
+      el.pos2d,
+      el.posDatum,
+    ]) {
+      setText(node, '--');
+    }
+    setBadge(el.bandPosBadge, 'unknown');
+    setBadge(el.cardPosBadge, 'unknown');
+    setText(el.posReason, `Live lost · 会话在 ${when} 断开${error} — 位置字段回到 --，不会改用抓包数据。`);
+
+    setText(el.devCpu, '--');
+    setText(el.devTemp, '--');
+    setText(el.devVoltage, '--');
+    setText(el.devCurrent, '--');
+    setBadge(el.devCpuBadge, 'unknown');
+    setBadge(el.devTempBadge, 'unknown');
+    setBadge(el.devVoltageBadge, 'unknown');
+    setBadge(el.devCurrentBadge, 'unknown');
+    setText(el.bandModel, '--');
+    setText(el.bandCpu, '--');
+    setText(el.bandLogging, '--');
+    setText(el.bandInterference, '--');
+    setText(el.bandTime, '--');
+    setBadge(el.bandDevBadge, 'unknown');
+    el.bandDevBadge.title = 'The live session closed; no device readings are available.';
+    setText(el.devReason, `Live lost · 会话在 ${when} 断开 — Device 读数不可用，重新连接后自动恢复。`);
+
+    setText(el.interference, '--');
+    setBadge(el.intBadge, 'unknown');
+    setText(el.intReason, 'Live lost · 会话已断开 — 没有干扰检测数据。');
+
+    for (const item of CONSTELLATIONS) {
+      for (const suffix of ['use', 'idle', 'missing']) {
+        const node = satCount[`${item.key}-${suffix}`];
+        if (node) node.textContent = '--';
+      }
+    }
+    setBadge(el.satBadge, 'unknown');
+    setText(el.satNote, `Live lost · 会话在 ${when} 断开 — 星座计数与星点已清空。`);
+    paintSky([]);
   }
 
   /* ---- loading ---- */
@@ -1015,9 +1733,18 @@ export function mount(root, ctx = {}) {
     const stale = () => !state.alive || token !== state.token;
     state.capture = capture;
     state.open = true;
+    state.version = null;
+    state.interference = null;
     setBodyState();
-    renderAppBar();
     renderDeviceShell();
+
+    /* A live dashboard owns the tiles: do not parse a 3 MB capture the user cannot see, and do
+     * not let a slower capture response overwrite live values. */
+    if (liveMode() === 'live') {
+      render();
+      return;
+    }
+
     alert('');
     setText(el.bandTime, '--');
 
@@ -1032,10 +1759,17 @@ export function mount(root, ctx = {}) {
 
     /* A capture without BESTPOS / HWMONITOR / RANGE still shows the dashboard: every probe fails
        soft and leaves `--` behind. */
-    const [bestpos, hw] = await Promise.all([probe(BESTPOS), probe(HWMONITOR)]);
+    const [bestpos, hw, version, interference] = await Promise.all([
+      probe(BESTPOS),
+      probe(HWMONITOR),
+      probe(VERSION_LOG),
+      probe(ITDETECTSTATUS),
+    ]);
     if (stale()) return;
     state.position = readPosition(bestpos);
     state.device = readDevice(hw);
+    state.version = readVersion(version);
+    state.interference = readInterference(interference);
 
     let latest = '';
     if (logs && Array.isArray(logs.groups)) {
@@ -1045,8 +1779,7 @@ export function mount(root, ctx = {}) {
     }
     state.time = latest ? utcClock(latest) : '';
 
-    renderPosition();
-    renderDevice();
+    render();
 
     try {
       state.range = await loadRange(capture);
@@ -1054,7 +1787,7 @@ export function mount(root, ctx = {}) {
       state.range = null; // an unreadable RANGE only empties the counters
     }
     if (stale()) return;
-    renderSatellite();
+    render();
   }
 
   function closeCapture() {
@@ -1063,6 +1796,8 @@ export function mount(root, ctx = {}) {
     state.position = null;
     state.device = null;
     state.range = null;
+    state.version = null;
+    state.interference = null;
     setBodyState();
     renderAppBar();
     renderList();
@@ -1078,6 +1813,19 @@ export function mount(root, ctx = {}) {
     }
     if (!state.alive) return;
 
+    /* A session may already be open (Tools ▸ Terminal connects without leaving this page, and a
+     * reload must not drop back to a capture while the receiver is streaming). */
+    await livePoll();
+    if (!state.alive) return;
+    if (liveMode() === 'live') {
+      state.open = true;
+      setBodyState();
+      renderDeviceShell();
+      render();
+      startLivePolling();
+      return;
+    }
+
     /* ctx.capture is empty on the very first mount (the shell fills its picker asynchronously),
        so the panel picks the same default the shell does. */
     const wanted =
@@ -1089,6 +1837,7 @@ export function mount(root, ctx = {}) {
 
     if (wanted) await openCapture(wanted);
     else closeCapture();
+    startLivePolling();
   }
 
   /* ---- events ---- */
@@ -1144,6 +1893,21 @@ export function mount(root, ctx = {}) {
     if (termEls.line) termEls.line.value = '';
     void termSend(line);
   };
+  /** The mode strip's buttons: Connect/Reconnect opens the Terminal drawer, Disconnect closes the
+   *  session, Back to capture replay is the only way out of "Live lost". */
+  const onModeAction = (event) => {
+    const button = event.target.closest('[data-mode-action]');
+    if (!button) return;
+    const action = button.dataset.modeAction;
+    if (action === 'connect') termOpen();
+    else if (action === 'disconnect') void termDisconnect();
+    else if (action === 'replay') {
+      live.dismissed = true;
+      if (state.capture) void openCapture(state.capture);
+      else closeCapture();
+      render();
+    }
+  };
 
 
   if (appTab) {
@@ -1152,6 +1916,7 @@ export function mount(root, ctx = {}) {
   el.listCards.addEventListener('click', onListClick);
   el.device.addEventListener('click', onHelpClick);
   el.device.addEventListener('click', onMenuClick);
+  el.device.addEventListener('click', onModeAction);
   if (el.terminal) {
     el.terminal.addEventListener('click', onTermClick);
     el.terminal.addEventListener('submit', onTermSubmit);
@@ -1169,10 +1934,11 @@ export function mount(root, ctx = {}) {
 
   root.__manageCleanup = () => {
     state.alive = false;
-    termStopPolling();
+    stopLivePolling();
     el.listCards.removeEventListener('click', onListClick);
     el.device.removeEventListener('click', onHelpClick);
     el.device.removeEventListener('click', onMenuClick);
+    el.device.removeEventListener('click', onModeAction);
     if (el.terminal) {
       el.terminal.removeEventListener('click', onTermClick);
       el.terminal.removeEventListener('submit', onTermSubmit);
