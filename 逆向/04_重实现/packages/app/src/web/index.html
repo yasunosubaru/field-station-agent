@@ -107,44 +107,8 @@
       <div id="panel-playback" class="app-panel" role="tabpanel" aria-labelledby="tab-playback" hidden></div>
       <div id="panel-grit" class="app-panel" role="tabpanel" aria-labelledby="tab-grit" hidden></div>
 
-      <!-- Graph 页没有对应的 panels 模块，实现直接留在壳里（/api/graph/*） -->
-      <div id="panel-graph" class="app-panel" role="tabpanel" aria-labelledby="tab-graph" hidden>
-        <div class="card">
-          <div class="card-head">
-            <h3>CSV 折线图 <span class="badge" id="graph-badge">—</span></h3>
-            <span class="hint">直接读 samples/graph/export/csv/*.csv（Graph 2.11.0 的原始导出）</span>
-          </div>
-          <div class="controls">
-            <label class="field"><span>CSV 文件</span><select id="graph-file"></select></label>
-            <label class="field"><span>绘图列（y）</span><select id="graph-column"></select></label>
-            <button class="btn primary" id="graph-refresh" type="button">重新读取</button>
-          </div>
-          <p class="muted" id="graph-meta">正在读取 CSV 列表…</p>
-        </div>
-
-        <div class="notice error" id="graph-error" hidden></div>
-
-        <div class="card">
-          <div class="card-head">
-            <h3>折线</h3>
-            <span class="hint" id="graph-note"></span>
-          </div>
-          <div class="chart-box" id="graph-chart"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head">
-            <h3>前 20 行</h3>
-            <span class="hint" id="graph-table-note"></span>
-          </div>
-          <div class="table-scroll">
-            <table>
-              <thead><tr id="graph-table-head"></tr></thead>
-              <tbody id="graph-table-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <!-- Graph 页由 panels/graph.js 挂载（首页 + 工作区两个视图，见该文件头注释） -->
+      <div id="panel-graph" class="app-panel" role="tabpanel" aria-labelledby="tab-graph" hidden></div>
     </div>
   </main>
 </div>
@@ -335,7 +299,7 @@
   }
 
   function ensurePanel(name) {
-    if (!panelEls[name] || name === 'graph') return;
+    if (!panelEls[name]) return;
     if (panelState[name] === 'ok' || panelState[name] === 'loading') return;
     mountPanel(name, false);
   }
@@ -343,7 +307,6 @@
   /* ---------------- 页签 ---------------- */
 
   var currentPage = 'manage';
-  var graphLoaded = false;
 
   function selectPage(name) {
     if (!PAGES[name]) return;
@@ -367,10 +330,6 @@
     $('page-subtitle').textContent = PAGES[name].subtitle;
 
     ensurePanel(name);
-    if (name === 'graph' && !graphLoaded) {
-      graphLoaded = true;
-      loadGraphFiles();
-    }
   }
 
   function wireTabs() {
@@ -428,179 +387,6 @@
     }
   }
 
-  /* ---------------- Graph（壳内自带，不走 panels/） ---------------- */
-
-  var graph = { files: [], data: null };
-
-  function showNotice(id, message, tone) {
-    var box = $(id);
-    if (!box) return;
-    if (!message) { box.hidden = true; box.textContent = ''; return; }
-    box.hidden = false;
-    box.className = 'notice ' + (tone || 'error');
-    box.textContent = message;
-  }
-
-  function fmtNum(value) {
-    if (!isFinite(value)) return '—';
-    var abs = Math.abs(value);
-    if (abs !== 0 && (abs >= 1e6 || abs < 1e-4)) return value.toExponential(2);
-    return String(Math.round(value * 1000) / 1000);
-  }
-
-  /* 配色取自原版：主色 #00516F（S:1766）、强调 #00ABC8（S:2624）、
-     分隔 #9B9B9B（S:15420）、次要文字 rgba(0,0,0,.6)（S:15400） */
-  function chartSvg(series) {
-    var points = series.points;
-    var width = 860, height = 300;
-    var pad = { left: 66, right: 18, top: 30, bottom: 46 };
-    var xs = points.map(function (p) { return p[0]; });
-    var ys = points.map(function (p) { return p[1]; });
-    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
-    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
-    if (xMax === xMin) xMax = xMin + 1;
-    if (yMax === yMin) { yMax = yMin + 1; yMin = yMin - 1; }
-    var plotW = width - pad.left - pad.right;
-    var plotH = height - pad.top - pad.bottom;
-    function px(x) { return pad.left + ((x - xMin) / (xMax - xMin)) * plotW; }
-    function py(y) { return pad.top + plotH - ((y - yMin) / (yMax - yMin)) * plotH; }
-
-    var parts = ['<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="'
-      + esc(series.label || '折线图') + '">'];
-    for (var i = 0; i <= 4; i++) {
-      var yValue = yMin + ((yMax - yMin) * i) / 4;
-      var yPos = py(yValue);
-      parts.push('<line x1="' + pad.left + '" y1="' + yPos.toFixed(1) + '" x2="' + (width - pad.right)
-        + '" y2="' + yPos.toFixed(1) + '" stroke="rgba(0,0,0,0.12)"/>');
-      parts.push('<text x="' + (pad.left - 8) + '" y="' + (yPos + 3.5).toFixed(1)
-        + '" font-size="10" fill="rgba(0,0,0,0.6)" text-anchor="end" font-family="Consolas, monospace">'
-        + esc(fmtNum(yValue)) + '</text>');
-    }
-    for (var k = 0; k <= 4; k++) {
-      var xValue = xMin + ((xMax - xMin) * k) / 4;
-      var xPos = px(xValue);
-      parts.push('<line x1="' + xPos.toFixed(1) + '" y1="' + pad.top + '" x2="' + xPos.toFixed(1)
-        + '" y2="' + (pad.top + plotH) + '" stroke="rgba(0,0,0,0.08)"/>');
-      parts.push('<text x="' + xPos.toFixed(1) + '" y="' + (pad.top + plotH + 16)
-        + '" font-size="10" fill="rgba(0,0,0,0.6)" text-anchor="middle" font-family="Consolas, monospace">'
-        + esc(fmtNum(xValue)) + '</text>');
-    }
-    parts.push('<line x1="' + pad.left + '" y1="' + (pad.top + plotH) + '" x2="' + (width - pad.right)
-      + '" y2="' + (pad.top + plotH) + '" stroke="#9B9B9B"/>');
-    parts.push('<line x1="' + pad.left + '" y1="' + pad.top + '" x2="' + pad.left + '" y2="'
-      + (pad.top + plotH) + '" stroke="#9B9B9B"/>');
-    parts.push('<polyline fill="none" stroke="#00516F" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="'
-      + points.map(function (p) { return px(p[0]).toFixed(1) + ',' + py(p[1]).toFixed(1); }).join(' ') + '"/>');
-    if (points.length <= 80) {
-      parts.push(points.map(function (p) {
-        return '<circle cx="' + px(p[0]).toFixed(1) + '" cy="' + py(p[1]).toFixed(1) + '" r="2.2" fill="#00ABC8"/>';
-      }).join(''));
-    }
-    parts.push('<text x="' + pad.left + '" y="' + (height - 8) + '" font-size="10.5" fill="rgba(0,0,0,0.6)" font-family="OpenSans-Regular, sans-serif">'
-      + esc(series.xLabel) + ' · ' + esc(series.xStartLabel) + ' → ' + esc(series.xEndLabel) + '</text>');
-    parts.push('<text x="' + (width - pad.right) + '" y="13" font-size="10.5" fill="#115C7C" text-anchor="end" font-family="OpenSans-Regular, sans-serif">y = '
-      + esc(series.label || '') + '</text>');
-    parts.push('</svg>');
-    return parts.join('');
-  }
-
-  function loadGraphFiles() {
-    showNotice('graph-error', '');
-    var select = $('graph-file');
-    if (!select) return;
-    request('GET', '/graph/files').then(function (data) {
-      graph.files = data.files || [];
-      if (!graph.files.length) {
-        select.innerHTML = '<option value="">（没有 CSV）</option>';
-        $('graph-meta').textContent = '未在 ' + data.directory + ' 下找到 CSV。';
-        $('graph-chart').innerHTML = '<div class="code-empty">没有可绘制的 CSV。</div>';
-        return;
-      }
-      select.innerHTML = graph.files.map(function (file) {
-        return '<option value="' + esc(file.name) + '">' + esc(file.name) + '  ·  '
-          + file.rows + ' 行 / ' + file.columns + ' 列 · ' + bytesText(file.bytes) + '</option>';
-      }).join('');
-      var preferred = graph.files.filter(function (file) {
-        return file.name === 'GNSS Signal Strength.csv';
-      })[0] || graph.files[0];
-      select.value = preferred.name;
-      $('graph-meta').textContent = '共 ' + graph.files.length + ' 份 CSV · 目录 ' + data.directory
-        + ' · 行数不含 6 行注释与表头';
-      loadGraphFile(preferred.name);
-    }).catch(function (error) {
-      showNotice('graph-error', '读取 CSV 列表失败：' + error.message);
-    });
-  }
-
-  function loadGraphFile(name, column) {
-    showNotice('graph-error', '');
-    var params = { file: name };
-    if (column) params.column = column;
-    request('GET', '/graph/data', undefined, params).then(function (data) {
-      graph.data = data;
-      renderGraph(data);
-    }).catch(function (error) {
-      showNotice('graph-error', '读取 CSV 失败：' + error.message);
-    });
-  }
-
-  function renderGraph(data) {
-    var comments = data.comments || {};
-    var facts = [
-      comments.projectName ? '工程 ' + comments.projectName : '',
-      comments.dataFileName ? '数据 ' + comments.dataFileName : '',
-      comments.startTime ? 'GPS ' + comments.startTime + ' – ' + (comments.endTime || '?') : '',
-      comments.duration ? '时长 ' + comments.duration : '',
-      data.rows + ' 行 · ' + data.columns.length + ' 列'
-    ].filter(Boolean);
-    $('graph-meta').textContent = facts.join(' · ');
-
-    var columnSelect = $('graph-column');
-    if (data.numericColumns.length) {
-      columnSelect.innerHTML = data.numericColumns.map(function (column) {
-        return '<option value="' + esc(column.name) + '">' + esc(column.name) + '</option>';
-      }).join('');
-      columnSelect.value = data.column;
-      columnSelect.disabled = false;
-    } else {
-      columnSelect.innerHTML = '<option value="">（无数值列）</option>';
-      columnSelect.disabled = true;
-    }
-
-    $('graph-badge').textContent = data.column || '无数值列';
-    $('graph-note').textContent = data.series.points.length
-      ? data.series.points.length + ' 点 · x = ' + data.series.xLabel + ' · '
-        + data.series.xStartLabel + ' → ' + data.series.xEndLabel
-      : '全部列为枚举文本，没有可绘制的数值列';
-    $('graph-chart').innerHTML = data.series.points.length
-      ? chartSvg(data.series)
-      : '<div class="code-empty">该 CSV 没有数值列，只能查看表格。</div>';
-
-    $('graph-table-head').innerHTML = data.table.columns.map(function (column) {
-      return '<th>' + esc(column) + '</th>';
-    }).join('');
-    $('graph-table-body').innerHTML = data.table.rows.length
-      ? data.table.rows.map(function (row) {
-        return '<tr>' + row.map(function (cell) {
-          return '<td class="mono">' + esc(cell) + '</td>';
-        }).join('') + '</tr>';
-      }).join('')
-      : '<tr class="empty-row"><td colspan="' + Math.max(data.table.columns.length, 1) + '">没有数据行</td></tr>';
-    $('graph-table-note').textContent = '显示前 ' + data.table.rows.length + ' / ' + data.rows + ' 行'
-      + (data.tableTruncated ? '（其余请在 CSV 中查看）' : '（全部）');
-  }
-
-  function wireGraph() {
-    if (!$('graph-file')) return;
-    $('graph-file').addEventListener('change', function () {
-      loadGraphFile($('graph-file').value);
-    });
-    $('graph-column').addEventListener('change', function () {
-      loadGraphFile($('graph-file').value, $('graph-column').value);
-    });
-    $('graph-refresh').addEventListener('click', loadGraphFiles);
-  }
-
   /* ---------------- 启动 ---------------- */
 
   function fillCaptures() {
@@ -651,7 +437,6 @@
   wireBanner();
   wireTabs();
   wireCapture();
-  wireGraph();
   bootHealth();
   bootCaptures();
   selectPage('manage');
