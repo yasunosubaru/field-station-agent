@@ -67,6 +67,8 @@
         aria-selected="false" aria-controls="panel-playback"><a href="#" tabindex="-1">Playback</a></li>
     <li class="app-tab" role="tab" data-tab="convert" id="tab-convert"
         aria-selected="false" aria-controls="panel-convert"><a href="#" tabindex="-1">Convert</a></li>
+    <li class="app-tab" role="tab" data-tab="grit" id="tab-grit"
+        aria-selected="false" aria-controls="panel-grit"><a href="#" tabindex="-1">GRIT Monitor</a></li>
     <li class="app-tab" role="tab" data-tab="graph" id="tab-graph"
         aria-selected="false" aria-controls="panel-graph"><a href="#" tabindex="-1">Graph</a></li>
 </ul>
@@ -103,6 +105,7 @@
       <div id="panel-convert" class="app-panel" role="tabpanel" aria-labelledby="tab-convert" hidden></div>
       <div id="panel-manage" class="app-panel" role="tabpanel" aria-labelledby="tab-manage"></div>
       <div id="panel-playback" class="app-panel" role="tabpanel" aria-labelledby="tab-playback" hidden></div>
+      <div id="panel-grit" class="app-panel" role="tabpanel" aria-labelledby="tab-grit" hidden></div>
 
       <!-- Graph 页没有对应的 panels 模块，实现直接留在壳里（/api/graph/*） -->
       <div id="panel-graph" class="app-panel" role="tabpanel" aria-labelledby="tab-graph" hidden>
@@ -186,14 +189,20 @@
       title: 'Graph',
       subtitle: '把 Graph 导出的 CSV 画成折线',
       icon: 'default-icon'
+    },
+    grit: {
+      title: 'GRIT Monitor',
+      subtitle: '频谱 / 干扰 / 信号矩阵监控',
+      icon: 'grit-default-icon'
     }
   };
-  var ORDER = ['convert', 'manage', 'playback', 'graph'];
+  var ORDER = ['convert', 'manage', 'playback', 'grit', 'graph'];
 
   var panelEls = {
     convert: $('panel-convert'),
     manage: $('panel-manage'),
     playback: $('panel-playback'),
+    grit: $('panel-grit'),
     graph: $('panel-graph')
   };
 
