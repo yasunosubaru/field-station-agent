@@ -620,10 +620,15 @@ function renderSegments(
       const start = segment.kind === 'array' ? at + (segment as EdieArray).countSize : at;
       if (depth >= 4) continue;
       const before = out.length;
-      for (const inner of new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(start))) {
-        if (inner.kind !== 'sbf') continue;
-        const layout = tables.messages[String(inner.header.messageId)];
-        if (layout) out.push(render(inner, layout, tables, { ...options, requireValidCrc: false, invertCrc: true }, depth + 1));
+      // **Only the first embedded record is converted.** Measured 2026-11-01: a #128 payload holding
+      // two BESTPOS frames makes the suite print one line (301 chars, the first record); ours printed
+      // both (523). The extra record is not even counted as unknown bytes — the `.UNKNOWN` file stays
+      // empty — so the suite simply stops after the first embedded SBF record.
+      const embedded = [...new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(start))]
+        .find((inner) => inner.kind === 'sbf');
+      if (embedded && embedded.kind === 'sbf') {
+        const layout = tables.messages[String(embedded.header.messageId)];
+        if (layout) out.push(render(embedded, layout, tables, { ...options, requireValidCrc: false, invertCrc: true }, depth + 1));
       }
       // An `%R` we cannot resolve drops the **whole record**: 22 of the 278 RXCONFIG frames in
       // `b1-20261101.sbf` embed a message the dictionary does not have (ids 229, 817, 1436, 1464,

@@ -263,14 +263,17 @@ function renderSegments(
     if (format === '%R') {
       const before = body.size;
       if (depth < 4) {
-        for (const inner of new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(at + array.countSize))) {
-          if (inner.kind !== 'sbf') continue;
-          const layout = tables.messages[String(inner.header.messageId)];
-          if (!layout) continue;
-          const nested = encodeAbbrevRecord(inner, layout, tables, depth + 1);
-          if (!nested) continue;
-          body.value(nested.header);
-          for (const line of nested.lines) body.lines.push(line);
+        // Only the first embedded record is converted — same measurement as the ASCII writer (a
+        // payload with two BESTPOS frames prints one block, the second is dropped silently).
+        const embedded = [...new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(at + array.countSize))]
+          .find((inner) => inner.kind === 'sbf');
+        if (embedded && embedded.kind === 'sbf') {
+          const layout = tables.messages[String(embedded.header.messageId)];
+          const nested = layout ? encodeAbbrevRecord(embedded, layout, tables, depth + 1) : null;
+          if (nested) {
+            body.value(nested.header);
+            for (const line of nested.lines) body.lines.push(line);
+          }
         }
       }
       // Like ASCII, an embedded record we cannot resolve drops the whole record (the suite prints
