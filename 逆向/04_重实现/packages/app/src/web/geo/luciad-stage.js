@@ -1,5 +1,10 @@
 /**
- * The LuciadRIA stage — the real engine, driven by the CSVs the Graph panel already reads.
+ * The LuciadRIA stage — the real engine, shared by the Graph and GRIT panels.
+ *
+ * It draws one picture: a track (`2D Trajectory.csv` in a capture, BESTPOS #42 when a receiver is
+ * live), its vertices, a 1σ ring (`Position SD.csv` / BESTPOS deviations), start/end markers and an
+ * optional cursor marker. Which *decorations* sit around it is the panel's choice, through the
+ * `profile` / `chrome` messages below.
  *
  * This file lives in an iframe (`luciad-stage.html`) for one reason: the shell page is served with
  * `script-src 'self'`, which blocks `WebAssembly.instantiate`, and LuciadRIA 2026.0 is a wasm+WebGPU
@@ -13,15 +18,26 @@
  *
  * The panel talks to this document with `postMessage` only:
  *
- *   panel → stage   {type:'track', points:[[lon,lat]], sigmaM, trackColor, fit}
+ *   panel → stage   {type:'profile', profile}    'graph' (default) | 'grit' — which decorations
+ *                                                this panel wants; `chrome` can override one flag
+ *                   {type:'chrome', …}           {graticule, labels, metric, scale, north} booleans
+ *                   {type:'track', points:[[lon,lat]], sigmaM, trackColor, fit}
  *                   {type:'cursor', index}      index < 0 hides the marker
  *                   {type:'zoom', factor}       1.6 zooms out, 1/1.6 zooms in
  *                   {type:'fit'} / {type:'recenter'}
- *   stage → panel   {type:'ready', engine, reference, webgpu}
+ *   stage → panel   {type:'ready', engine, reference, webgpu, profile}
+ *                   {type:'profile', profile, chrome}   echo of the applied decoration set
  *                   {type:'error', message}
  *                   {type:'view', centerLon, centerLat, spanM, label}
  *                   {type:'hover', lon, lat}    lon === null → pointer left the map
  *                   {type:'cursor', x, y, visible}
+ *
+ * **Profiles.** The stage is shared by two panels with different decoration needs: Graph's Overview
+ * draws the graticule with its degree labels (its legend repeats them), GRIT's Position Overview
+ * only wants the position picture — the track, its vertices, the 1σ ring, start/end and the live
+ * cursor — so `grit` switches the degree labels off. Only the *decorations* differ; every profile
+ * draws the same features from the same data, and the panel can override a single flag with
+ * `{type:'chrome'}` instead of inventing another profile.
  *
  * Everything drawn here is a Luciad feature: the graticule, the metric grid, the 1σ ring, the track,
  * its vertices, the start/end markers and the timeline cursor. The stage owns no data — the panel
@@ -63,7 +79,6 @@ const {
   getReference,
   createPoint,
   createPolyline,
-  createCircleByCenterPoint,
   createBounds,
   createTransformation,
   Feature,
@@ -75,12 +90,24 @@ const {
   PointLabelPosition,
 } = engine || {};
 
-const CRS84 = getReference('CRS:84');
+const CRS84 = engine ? getReference('CRS:84') : null;
 const STAGE = document.getElementById('stage');
 const STATUS = document.getElementById('status');
 const SCALE = document.getElementById('scale');
+const NORTH = document.querySelector('.north');
 const SCALE_BAR = document.getElementById('scaleBar');
 const SCALE_TEXT = document.getElementById('scaleText');
+
+/**
+ * What each panel asks the stage to draw **besides** the track. `labels` is the degree graticule
+ * labelling Graph's legend repeats; `metric` is the 1-2-5 m grid that makes a 24 m box legible.
+ * `grit` keeps the grid and the two HUD instruments but drops the labels — "position and track
+ * only", the same picture with less prose.
+ */
+const STAGE_PROFILES = {
+  graph: { graticule: true, labels: true, metric: true, scale: true, north: true },
+  grit: { graticule: true, labels: false, metric: true, scale: true, north: true },
+};
 
 const state = {
   points: [],
@@ -94,6 +121,8 @@ const state = {
   gridKey: '',
   fitted: false,
   layers: {},
+  profile: 'graph',
+  chrome: { ...STAGE_PROFILES.graph },
 };
 
 function post(message) {
@@ -310,14 +339,15 @@ function drawGraticule(view) {
     stepLon, stepLat,
     rect.lonMin.toFixed(7), rect.latMin.toFixed(7),
     lonSpan.toFixed(7), latSpan.toFixed(7),
+    state.chrome.graticule ? 1 : 0, state.chrome.labels ? 1 : 0, state.chrome.metric ? 1 : 0,
   ].join('|');
   if (key === state.gridKey) return;
   state.gridKey = key;
 
   const lines = [];
   const labels = [];
-  const lonTicks = tickValues(rect.lonMin, rect.lonMax, stepLon).slice(0, 40);
-  const latTicks = tickValues(rect.latMin, rect.latMax, stepLat).slice(0, 40);
+  const lonTicks = state.chrome.graticule ? tickValues(rect.lonMin, rect.lonMax, stepLon).slice(0, 40) : [];
+  const latTicks = state.chrome.graticule ? tickValues(rect.latMin, rect.latMax, stepLat).slice(0, 40) : [];
   // Labels sit just inside the edge of the view, so a label on the boundary is still readable.
   const insetLon = lonSpan * 0.006;
   const insetLat = latSpan * 0.02;
@@ -358,7 +388,7 @@ function drawGraticule(view) {
    * its spacing stays readable (36…200 px) — the same rule `mapSvg()` uses. */
   const meterStep = niceStep(72 / view.pxPerM);
   const meterPx = meterStep * view.pxPerM;
-  if (meterPx >= 36 && meterPx <= 200) {
+  if (state.chrome.metric && meterPx >= 36 && meterPx <= 200) {
     const per = metersPerDegree(view.centerLat);
     const lonStep = meterStep / per.lon;
     const latStep = meterStep / per.lat;
@@ -385,7 +415,30 @@ function drawGraticule(view) {
   }
 
   setFeatures(state.layers.grid, lines);
-  setFeatures(state.layers.labels, labels);
+  setFeatures(state.layers.labels, state.chrome.labels ? labels : []);
+}
+
+/**
+ * The 1σ ring, as a closed lon/lat polyline.
+ *
+ * `createCircleByCenterPoint(CRS84, …)` is **not portable**: the third argument is read in the
+ * reference's own units, and on this engine build a geodetic circle painted nothing at all (the
+ * feature existed, the pixels did not). Computing the ring with the same metres-per-degree model
+ * `mapSvg()` uses makes the engine and the SVG fallback show identical geometry, which is the
+ * whole point of two renderers over one dataset.
+ */
+function ringPolyline(lon, lat, radiusM, steps = 128) {
+  const per = metersPerDegree(lat);
+  const ring = [];
+  for (let index = 0; index <= steps; index += 1) {
+    const angle = (index / steps) * Math.PI * 2;
+    ring.push(createPoint(
+      CRS84,
+      [lon + (radiusM * Math.cos(angle)) / per.lon, lat + (radiusM * Math.sin(angle)) / per.lat],
+      0,
+    ));
+  }
+  return createPolyline(CRS84, ring);
 }
 
 function drawTrack() {
@@ -401,11 +454,7 @@ function drawTrack() {
   if (state.sigmaM > 0) {
     bodies.push({
       id: 'sigma',
-      shape: createCircleByCenterPoint(
-        CRS84,
-        createPoint(CRS84, [points[0].lon, points[0].lat], 0),
-        state.sigmaM / 111132.9,
-      ),
+      shape: ringPolyline(points[0].lon, points[0].lat, state.sigmaM),
       properties: { kind: 'sigma' },
     });
   }
@@ -491,6 +540,10 @@ function drawCursor() {
 
 function paintScaleBar(view) {
   if (!SCALE || !SCALE_BAR) return;
+  if (!state.chrome.scale) {
+    SCALE.hidden = true;
+    return;
+  }
   const bar = scaleBar(view.pxPerM, Math.min(150, Math.max(48, view.width * 0.26)));
   if (!(bar.px > 4)) {
     SCALE.hidden = true;
@@ -507,6 +560,39 @@ function paintScaleBar(view) {
     light.style.left = `${half.toFixed(1)}px`;
   }
   if (SCALE_TEXT) SCALE_TEXT.textContent = bar.label;
+}
+
+/* ---------------- decorations (profile / chrome) ---------------- */
+
+/**
+ * Apply the decoration set to the HUD and schedule a redraw of the layers that depend on it.
+ * `graticule` / `labels` / `metric` are read by `drawGraticule`, `scale` / `north` are the two HUD
+ * instruments; `gridKey` is cleared so the next `refresh()` recomputes instead of short-circuiting
+ * on the old view key.
+ */
+function applyChrome() {
+  if (NORTH) NORTH.hidden = !state.chrome.north;
+  if (SCALE && !state.chrome.scale) SCALE.hidden = true;
+  state.gridKey = '';
+  if (state.ready) refresh();
+}
+
+/**
+ * `{type:'profile', profile, chrome}` — switch the decoration set. Unknown profiles keep the
+ * current one rather than falling back silently: a typo in a panel must not change what is drawn.
+ */
+function setProfile(profile, overrides) {
+  if (profile && Object.prototype.hasOwnProperty.call(STAGE_PROFILES, profile)) {
+    state.profile = profile;
+    state.chrome = { ...STAGE_PROFILES[profile] };
+  }
+  if (overrides && typeof overrides === 'object') {
+    for (const flag of Object.keys(STAGE_PROFILES.graph)) {
+      if (typeof overrides[flag] === 'boolean') state.chrome[flag] = overrides[flag];
+    }
+  }
+  applyChrome();
+  post({ type: 'profile', profile: state.profile, chrome: { ...state.chrome } });
 }
 
 function refresh() {
@@ -576,11 +662,18 @@ async function boot() {
 
   state.ready = true;
   setStatus('');
+  /* HUD decorations chosen before the engine finished booting (a `profile` message can arrive
+   * while this function is awaiting `whenReady`) are applied now; `refresh()` follows with the
+   * first graticule draw. */
+  if (NORTH) NORTH.hidden = !state.chrome.north;
+  if (SCALE && !state.chrome.scale) SCALE.hidden = true;
   post({
     type: 'ready',
     engine: 'LuciadRIA',
     reference: map.reference.identifier,
     webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu),
+    profile: state.profile,
+    chrome: { ...state.chrome },
   });
   refresh();
 }
@@ -589,7 +682,19 @@ async function boot() {
 
 window.addEventListener('message', (event) => {
   if (event.origin !== window.location.origin) return;
+  /* No engine module → nothing to draw into. The panel already got `{type:'error'}` above and
+   * falls back to its own SVG; answering track messages here would only throw at `CRS84`. */
+  if (!engine) return;
   const data = event.data || {};
+  if (data.type === 'profile') {
+    setProfile(data.profile, data.chrome);
+    return;
+  }
+  if (data.type === 'chrome') {
+    /* A single flag without a profile: keep the profile, override only what was sent. */
+    setProfile('', data.chrome || data);
+    return;
+  }
   if (data.type === 'track') {
     state.points = Array.isArray(data.points)
       ? data.points
@@ -653,6 +758,8 @@ window.__luciadStage = {
       ready: state.ready,
       reference: map ? map.reference.identifier : null,
       webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu),
+      profile: state.profile,
+      chrome: { ...state.chrome },
       points: state.points.length,
       layers: Object.keys(state.layers),
       canvases: document.querySelectorAll('canvas').length,

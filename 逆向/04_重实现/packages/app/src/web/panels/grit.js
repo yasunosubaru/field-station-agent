@@ -33,7 +33,21 @@
  *
  * Blocks that are deliberately empty on this build, because the data is not in the capture:
  *   Interference / Jamming / Mitigation Assistant → `Not detected` (no ITK in any sample)
- *   Position Overview                              → blank canvas (no basemap renderer here)
+ *
+ * Position Overview — the whole stage is the **shared LuciadRIA stage** (`web/geo/luciad-stage.html`,
+ * the same iframe Graph's Overview boots; `/geo/luciad-engine.js` is the shipped Graph renderer
+ * bundle). This panel only says *what to draw* and never loads the engine itself:
+ *
+ *   - capture    the fixes of `2D Trajectory.csv` and the 1σ of `Position SD.csv`, read through the
+ *                same `/api/graph/data` the Graph panel uses; the track, its vertices, the start/end
+ *                markers and the ring are drawn by Luciad, the degree labels are switched off with
+ *                the stage's `profile: 'grit'` (GRIT has no Graph legend to feed them);
+ *   - live       BESTPOS #42 out of `/api/live/logs`, accumulated while the link is up — the last
+ *                fix is the cursor marker, the 1σ ring is the last fix's lat/lon deviation;
+ *   - fallback   when the engine cannot start (no WebGPU adapter, missing `01_解包`, timeout) the
+ *                stage is dropped exactly like Graph's `failLuciad()` and the tile paints
+ *                `mapSvg()` — the same track as SVG — with the reason printed on the stage. No
+ *                blank canvas, and nothing claims to be Luciad unless the stage said `ready`.
  *
  * Spectrum Viewer / Waterfall — fed by two sources, one store:
  *
@@ -64,8 +78,31 @@
  * Contract: `mount(root, ctx)` / `unmount(root)`, ctx = { api, capture, onCaptureChange }.
  */
 
+/* Position Overview shares Graph's map: the same engine document, the same CSV columns, the same
+ * pure helpers (`mapSvg` is the fallback picture, `trajectoryPoints` pairs the two CSV columns). */
+import {
+  LUCIAD_READY_TIMEOUT_MS,
+  LUCIAD_STAGE_URL,
+  MAP_FILE,
+  MAP_LAT_COLUMN,
+  MAP_LON_COLUMN,
+  MAP_SD_FILE,
+  MAP_SD_LAT_COLUMN,
+  MAP_SD_LON_COLUMN,
+  MAP_TRACK_COLOR,
+  formatDistance,
+  mapFit,
+  mapSvg,
+  trackLength,
+  trajectoryPoints,
+} from './graph.js';
+import { createStageClient } from '../geo/luciad-panel.js';
+
 const CSS_URL = new URL('./grit.css', import.meta.url).href;
 const CSS_ID = 'nas-panel-grit-css';
+
+/** BESTPOS fixes the live track keeps — ten minutes at the default 1 Hz. */
+const TRACK_POINTS = 600;
 
 /** Message ids this page reads (SBF). */
 const BESTPOS = 42;
@@ -593,7 +630,11 @@ function template() {
           <button type="button" class="grit-pos-tab" role="tab" aria-selected="false" data-view="satellite">Satellite</button>
         </div>
         <div class="grit-pos-canvas" data-el="posCanvas">
+          <div class="grit-pos-map" data-el="posMap" hidden></div>
+          <iframe class="grit-pos-frame" data-el="posFrame" title="LuciadRIA 地图（原版 Graph 引擎）"
+                  src="about:blank" hidden></iframe>
           <p class="grit-pos-note" data-el="posNote" hidden></p>
+          <p class="grit-pos-foot" data-el="posFoot" hidden></p>
         </div>
       </section>
     </div>
@@ -624,6 +665,99 @@ function template() {
     </button>
   </div>
 </div>`;
+}
+
+/* ---------------- Position Overview: the track (pure part) ---------------- */
+
+/**
+ * `2D Trajectory.csv` + `Position SD.csv`, as `/api/graph/data` returns them → the track the stage
+ * draws. Longitude and latitude are paired row by row by `trajectoryPoints` (Graph's own rule, so
+ * both panels show the same fixes); the 1σ ring is the largest of the two horizontal deviations of
+ * the first epoch — exactly what Graph's Overview does with the same two files.
+ *
+ * Pure, so the data path is testable without a browser or a server.
+ */
+export function gritTrackFromCsv(lonPayload, latPayload, sdLatPayload, sdLonPayload) {
+  const points = trajectoryPoints(lonPayload, latPayload);
+  const firstValue = (payload) => {
+    const point = payload && payload.series && payload.series.points && payload.series.points[0];
+    const value = point ? Number(point[1]) : 0;
+    return Number.isFinite(value) ? value : 0;
+  };
+  const sigmaM = Math.max(firstValue(sdLatPayload), firstValue(sdLonPayload));
+  return { points, sigmaM: Math.max(0, sigmaM) };
+}
+
+/**
+ * `null` / `undefined` / `''` are *missing*, not zero — `Number(null)` is `0`, which would plant a
+ * BESTPOS fix on the equator whenever the receiver has no solution yet.
+ */
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+/**
+ * BESTPOS #42 entries (`LiveEntry.data.kind === 'bestpos'`, see `src/live.ts`) → the same track
+ * shape. A fix without a finite lat/lon is skipped rather than drawn at 0°/0°; the 1σ is the last
+ * accepted fix's deviation, in metres. `limit` keeps the newest N fixes.
+ */
+export function gritTrackFromBestpos(entries, limit = TRACK_POINTS) {
+  const points = [];
+  let sigmaM = 0;
+  let lastTime = '';
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const data = entry && entry.data;
+    if (!data || data.kind !== 'bestpos') continue;
+    const lon = finiteNumber(data.longitude);
+    const lat = finiteNumber(data.latitude);
+    if (lon === null || lat === null) continue;
+    points.push({ t: Number(entry.seq) || points.length, lon, lat });
+    lastTime = entry.time || lastTime;
+    const latSd = finiteNumber(data.latitudeDeviation);
+    const lonSd = finiteNumber(data.longitudeDeviation);
+    sigmaM = Math.max(latSd === null ? 0 : latSd, lonSd === null ? 0 : lonSd);
+  }
+  const keep = Math.max(1, Number(limit) || TRACK_POINTS);
+  return { points: points.slice(-keep), sigmaM: Math.max(0, sigmaM), lastTime };
+}
+
+/** Points / metres / 1σ of a track, for the footer line (`gritTrackSummary`). */
+export function gritTrackSummary(track) {
+  const points = track && Array.isArray(track.points) ? track.points : [];
+  return {
+    points: points.length,
+    lengthM: trackLength(points),
+    sigmaM: Number(track && track.sigmaM) || 0,
+  };
+}
+
+/**
+ * The one sentence the tile prints when the picture is not self-explanatory — and `''` only when
+ * Luciad really is painting the track. This is the GRIT equivalent of Graph's `failLuciad()`
+ * reason: a missing engine, a missing CSV or an empty column set always says *why*, so the tile
+ * can never be a blank canvas that pretends everything is fine. Pure, for the tests.
+ */
+export function gritPositionReason(view) {
+  const state = view || {};
+  const points = Number(state.points) || 0;
+  const lengthM = Number(state.lengthM) || 0;
+  if ((state.tab || 'map') === 'satellite') {
+    return 'Satellite 视图需要影像瓦片：本构建离线、没有影像层（原版用的是在线底图）。'
+      + '切回 Map —— 同一份轨迹由 LuciadRIA 绘制。';
+  }
+  if (state.status === 'error') {
+    return `读不到轨迹：${state.error || '未知错误'}（Position Overview 需要 Graph 导出的 ${MAP_FILE}）`;
+  }
+  if (state.status === 'empty') return `${MAP_FILE} 里没有可配对的经纬度列，画不出轨迹。`;
+  if (state.status !== 'ready') return `正在通过 /api/graph/data 读取 ${MAP_FILE}…`;
+  if (state.engine === 'failed') {
+    return `LuciadRIA 不可用（${state.engineError || '未知原因'}）· 已退回自绘经纬网：`
+      + `同一份轨迹 ${points} 点 / ${formatDistance(lengthM)}，坐标系与配色都不变。`;
+  }
+  if (state.engine !== 'ready') return '正在启动 LuciadRIA（原版 Graph 引擎包，WebGPU）…';
+  return '';
 }
 
 /* ---------------- data ---------------- */
@@ -1441,6 +1575,24 @@ export function mount(root, ctx = {}) {
     spectrumTotals: null,
     /** True while the capture's spectrum page is in flight — the note says so instead of "none". */
     spectrumLoading: false,
+    /**
+     * Position Overview: the track plus the engine drawing it. `status` is about the *data*
+     * (idle|loading|ready|empty|error), `engine` about LuciadRIA (idle|booting|ready|failed) —
+     * keeping them apart is what lets the tile say "data is fine, the engine fell back".
+     * (Named `track`, not `position`: `readStatus()` owns `state.position` for the BESTPOS band.)
+     */
+    track: {
+      tab: 'map',
+      status: 'idle',
+      error: '',
+      source: '',
+      points: [],
+      sigmaM: 0,
+      engine: 'idle',
+      engineError: '',
+    },
+    /** BESTPOS entries of the current live session; empty while no receiver is connected. */
+    liveFixes: [],
     live: {
       connected: false,
       everConnected: false,
@@ -1478,8 +1630,10 @@ export function mount(root, ctx = {}) {
       renderSpectrum(root, state);
       renderDock(root, state);
       injectAppBar(root, state);
-      /* Only now that the dashboard has painted: the spectrum is a second, optional read. */
+      /* Only now that the dashboard has painted: the spectrum and the position track are two
+         second, optional reads. */
       void requestCaptureSpectrum();
+      void loadPosition();
     } catch (error) {
       if (disposed || mine !== token) return;
       console.error('[grit] 读取抓包失败：', error);
@@ -1576,6 +1730,7 @@ export function mount(root, ctx = {}) {
       if (state.live.session !== (status.connectedAt || '')) {
         state.live.session = status.connectedAt || '';
         state.live.cursor = 0;
+        state.liveFixes = [];
         state.spectrum = emptySpectrumStore();
         renderSpectrum(root, state);
       }
@@ -1584,9 +1739,12 @@ export function mount(root, ctx = {}) {
         if (disposed) return;
         state.live.cursor = Number(page.cursor) || state.live.cursor;
         let changed = false;
+        let moved = false;
         for (const entry of page.entries ?? []) {
           state.live.records += 1;
           if (entry.time) state.live.lastRecordAt = entry.time;
+          /* BESTPOS #42 feeds the Position Overview track; ITPSD feeds the spectrum store. */
+          if (ingestPositionFix(entry)) moved = true;
           if (ingestSpectrum(state.spectrum, entry)) {
             changed = true;
             /* The live stream owns the tile from now on; a capture page must not blend into it. */
@@ -1595,6 +1753,7 @@ export function mount(root, ctx = {}) {
           }
         }
         if (changed) renderSpectrum(root, state);
+        if (moved) applyLiveTrack();
         if (state.live.lastRecordAt) setText(root, 'devTime', hhmmss(state.live.lastRecordAt));
       } catch (error) {
         if (disposed) return;
@@ -1614,6 +1773,15 @@ export function mount(root, ctx = {}) {
         state.spectrum = emptySpectrumStore();
         spectrumPage = '';
         void requestCaptureSpectrum();
+        /* Same for the track: BESTPOS fixes belong to the closed session. */
+        state.liveFixes = [];
+        if (state.track.source === 'live') {
+          state.track.source = '';
+          state.track.points = [];
+          state.track.sigmaM = 0;
+          state.track.status = 'idle';
+          void loadPosition();
+        }
       }
       renderSpectrum(root, state);
     }
@@ -1647,28 +1815,222 @@ export function mount(root, ctx = {}) {
   };
   dockToggle.addEventListener('click', onDock);
 
-  /* ---- Map / Satellite tabs: both draw an empty canvas; the basemap renderer is not part of
-     this build, so nothing is faked (the original's map layer is Luciad, not available offline). ---- */
-  const tabs = Array.from(root.querySelectorAll('[data-view]'));
+  /* ---------------- Position Overview: the shared LuciadRIA stage ----------------
+   *
+   * The tile is Graph's map, not a second implementation of it: the same stage document in an
+   * iframe (`/geo/luciad-stage.html` → `/geo/luciad-engine.js`, the shipped Graph bundle), the
+   * same `2D Trajectory.csv` / `Position SD.csv` columns through `/api/graph/data`, the same
+   * `mapSvg()` as the fallback picture. This panel only picks the data and the decorations
+   * (`profile: 'grit'` — track and grid, no degree labels), and prints the reason whenever the
+   * engine or the data is missing.
+   * ------------------------------------------------------------------------------------------ */
+
+  const posCanvas = root.querySelector('[data-el="posCanvas"]');
+  const posMap = root.querySelector('[data-el="posMap"]');
+  const posFrame = root.querySelector('[data-el="posFrame"]');
   const posNote = root.querySelector('[data-el="posNote"]');
+  const posFoot = root.querySelector('[data-el="posFoot"]');
+
+  const stage = createStageClient({
+    frame: posFrame,
+    url: LUCIAD_STAGE_URL,
+    profile: 'grit',
+    timeoutMs: LUCIAD_READY_TIMEOUT_MS,
+    onReady: () => {
+      state.track.engine = 'ready';
+      state.track.engineError = '';
+      pushTrack(false);
+      renderPosition();
+    },
+    onError: (reason) => {
+      /* Graph's `failLuciad()`: drop the frame, keep the data, say why on the tile. */
+      state.track.engine = 'failed';
+      state.track.engineError = reason;
+      renderPosition();
+    },
+    /* Hover/view/cursor are the stage's own HUD for Graph; GRIT's tile has no readout to fill, so
+     * nothing is written back — the messages are still handled (and filtered by source). */
+  });
+
+  /** The picture box, or null while the tile has no layout yet (a fit from 0×0 is silently wrong). */
+  function positionBox() {
+    if (!posCanvas) return null;
+    const rect = posCanvas.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) return null;
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  }
+
+  function pushTrack(fit) {
+    const position = state.track;
+    if (position.status !== 'ready' || position.engine !== 'ready') return;
+    stage.sendTrack(position.points, {
+      sigmaM: position.sigmaM,
+      trackColor: MAP_TRACK_COLOR,
+      fit,
+    });
+    /* Live: the newest fix is the "you are here" marker. A capture track has no clock of its own,
+     * so it is drawn start-to-end with no cursor (start/end markers already say the rest). */
+    stage.sendCursor(position.source === 'live' ? position.points.length - 1 : -1);
+  }
+
+  function positionFooter() {
+    const position = state.track;
+    const summary = gritTrackSummary(position);
+    const engine = position.engine === 'ready'
+      ? `引擎：LuciadRIA 2026.0（原版 Graph 包）· ${(stage.state.view && stage.state.view.reference) || 'EPSG:32662'} · WebGPU`
+      : position.engine === 'failed'
+        ? `引擎：自绘 SVG（Luciad 不可用：${position.engineError}）`
+        : '引擎：正在启动 LuciadRIA（/geo/luciad-engine.js）…';
+    const source = position.source === 'live'
+      ? '数据源 BESTPOS #42（实时）'
+      : `数据源 ${MAP_FILE} / ${MAP_SD_FILE}`;
+    return `${engine} · ${source} · ${summary.points} 点 · 长度 ${formatDistance(summary.lengthM)}`
+      + (summary.sigmaM > 0 ? ` · 1σ ${summary.sigmaM.toFixed(2)} m` : '');
+  }
+
+  /** Draw whichever state is true: engine frame, SVG fallback, or the sentence that says why not. */
+  function renderPosition() {
+    const position = state.track;
+    const summary = gritTrackSummary(position);
+    const reason = gritPositionReason({
+      tab: position.tab,
+      status: position.status,
+      error: position.error,
+      engine: position.engine,
+      engineError: position.engineError,
+      points: summary.points,
+      lengthM: summary.lengthM,
+    });
+    const onMap = position.tab === 'map';
+    const engineLive = onMap && position.status === 'ready' && position.engine === 'ready';
+
+    if (posFrame) posFrame.hidden = !engineLive;
+
+    if (onMap && position.status === 'ready' && !engineLive) {
+      const box = positionBox();
+      if (box && posMap) {
+        posMap.hidden = false;
+        posMap.innerHTML = mapSvg({
+          points: position.points,
+          view: mapFit(position.points, box.width, box.height),
+          sigmaM: position.sigmaM,
+        }, box.width, box.height);
+      }
+    } else if (posMap) {
+      posMap.hidden = true;
+      posMap.innerHTML = '';
+    }
+
+    if (posNote) {
+      posNote.hidden = !reason;
+      posNote.textContent = reason;
+    }
+    if (posFoot) {
+      posFoot.hidden = !(onMap && position.status === 'ready');
+      posFoot.textContent = posFoot.hidden ? '' : positionFooter();
+    }
+  }
+
+  /** Boot the engine once the data is there. A failure is final, exactly like Graph's. */
+  function ensureStage() {
+    const position = state.track;
+    if (position.status !== 'ready') return;
+    if (position.engine === 'booting' || position.engine === 'ready' || position.engine === 'failed') return;
+    position.engine = 'booting';
+    renderPosition();
+    stage.start();
+  }
+
+  /** Capture mode: the two trajectory columns and the 1σ column, through the Graph endpoint. */
+  async function loadPosition() {
+    if (disposed) return;
+    const position = state.track;
+    /* A live session owns the picture: the CSV belongs to a different recording. */
+    if (state.live.connected && state.liveFixes.length) return;
+    position.status = 'loading';
+    position.error = '';
+    renderPosition();
+    try {
+      const [lon, lat] = await Promise.all([
+        api.get('/graph/data', { file: MAP_FILE, column: MAP_LON_COLUMN }),
+        api.get('/graph/data', { file: MAP_FILE, column: MAP_LAT_COLUMN }),
+      ]);
+      if (disposed) return;
+      const [sdLat, sdLon] = await Promise.all([
+        api.get('/graph/data', { file: MAP_SD_FILE, column: MAP_SD_LAT_COLUMN }).catch(() => null),
+        api.get('/graph/data', { file: MAP_SD_FILE, column: MAP_SD_LON_COLUMN }).catch(() => null),
+      ]);
+      if (disposed) return;
+      const track = gritTrackFromCsv(lon, lat, sdLat, sdLon);
+      if (!track.points.length) {
+        position.status = 'empty';
+        position.error = '';
+        renderPosition();
+        return;
+      }
+      position.points = track.points;
+      position.sigmaM = track.sigmaM;
+      position.source = 'capture';
+      position.error = '';
+      position.status = 'ready';
+      renderPosition();
+      ensureStage();
+    } catch (error) {
+      if (disposed) return;
+      position.status = 'error';
+      position.error = (error && error.message) || String(error);
+      renderPosition();
+    }
+  }
+
+  /**
+   * One BESTPOS entry → the live track. The entries are kept (last `TRACK_POINTS`) rather than
+   * appended to the drawing, so a reconnect starts a clean track and a shrinking buffer is the
+   * only thing that ever changes the picture.
+   */
+  function ingestPositionFix(entry) {
+    const data = entry && entry.data;
+    if (!data || data.kind !== 'bestpos') return false;
+    if (finiteNumber(data.longitude) === null || finiteNumber(data.latitude) === null) return false;
+    state.liveFixes.push(entry);
+    if (state.liveFixes.length > TRACK_POINTS) state.liveFixes.splice(0, state.liveFixes.length - TRACK_POINTS);
+    return true;
+  }
+
+  function applyLiveTrack() {
+    const position = state.track;
+    const track = gritTrackFromBestpos(state.liveFixes, TRACK_POINTS);
+    if (!track.points.length) return;
+    const first = position.source !== 'live';
+    position.points = track.points;
+    position.sigmaM = track.sigmaM;
+    position.source = 'live';
+    position.status = 'ready';
+    position.error = '';
+    renderPosition();
+    /* Fit once, on the first live fix; after that the camera belongs to the operator. */
+    pushTrack(first);
+    ensureStage();
+  }
+
+  /* ---- Map / Satellite tabs. Map is the stage; Satellite is honestly absent (no imagery offline). ---- */
+  const tabs = Array.from(root.querySelectorAll('[data-view]'));
   const onTab = (event) => {
-    const view = event.currentTarget.getAttribute('data-view');
+    const view = event.currentTarget.getAttribute('data-view') === 'satellite' ? 'satellite' : 'map';
     for (const tab of tabs) {
       const on = tab === event.currentTarget;
       tab.classList.toggle('is-active', on);
       tab.setAttribute('aria-selected', on ? 'true' : 'false');
     }
-    if (posNote) {
-      if (view === 'satellite') {
-        posNote.hidden = false;
-        posNote.textContent = 'Satellite view needs the basemap renderer — this build has no map layer.';
-      } else {
-        posNote.hidden = true;
-        posNote.textContent = '';
-      }
-    }
+    state.track.tab = view;
+    renderPosition();
   };
   for (const tab of tabs) tab.addEventListener('click', onTab);
+
+  /* The SVG fallback is sized from the canvas box, so a resize needs one repaint. The engine keeps
+   * its own view (the stage listens to its own `resize`). */
+  const onResize = () => renderPosition();
+  window.addEventListener('resize', onResize);
 
   /* ---- Spectrum / Waterfall: two renderers over the same merged sweeps ---- */
   const segs = Array.from(root.querySelectorAll('[data-spec]'));
@@ -2007,10 +2369,47 @@ export function mount(root, ctx = {}) {
 
   const offCapture = typeof ctx.onCaptureChange === 'function' ? ctx.onCaptureChange(load) : () => {};
 
+  /**
+   * Self-report for the browser check — the stage's own `__luciadStage.status()` is read through
+   * the iframe (same origin), so a screenshot run can prove *which* engine painted the tile
+   * instead of trusting the footer. Read-only; the panel never calls it.
+   */
+  const positionHook = {
+    status() {
+      const position = state.track;
+      let stageStatus = null;
+      try {
+        stageStatus = posFrame && posFrame.contentWindow && posFrame.contentWindow.__luciadStage
+          ? posFrame.contentWindow.__luciadStage.status()
+          : null;
+      } catch {
+        stageStatus = null;
+      }
+      return {
+        tab: position.tab,
+        dataStatus: position.status,
+        dataError: position.error,
+        engine: position.engine,
+        engineError: position.engineError,
+        source: position.source,
+        points: position.points.length,
+        sigmaM: position.sigmaM,
+        note: posNote && !posNote.hidden ? posNote.textContent : '',
+        frameHidden: Boolean(posFrame && posFrame.hidden),
+        stage: stageStatus,
+      };
+    },
+  };
+  window.__gritPos = positionHook;
+
   root.__gritCleanup = () => {
     disposed = true;
     token += 1;
     stopLive();
+    stage.stop();
+    window.removeEventListener('resize', onResize);
+    /* Only drop the hook if it is still ours — a newer mount may already have replaced it. */
+    if (window.__gritPos === positionHook) delete window.__gritPos;
     offCapture?.();
     document.removeEventListener('click', onDocumentClick);
     menuPop.removeEventListener('click', onMenuClick);
@@ -2022,6 +2421,7 @@ export function mount(root, ctx = {}) {
   };
 
   renderSpectrum(root, state);
+  renderPosition();
   startLive();
   load();
   return page;
