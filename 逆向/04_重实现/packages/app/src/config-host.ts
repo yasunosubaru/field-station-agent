@@ -32,6 +32,16 @@ import { MemoryStorage, UserStore } from '../../view/src/userStore.ts';
 import { DEFAULT_FEATURES, type FeatureFlags } from '../../view/src/types.ts';
 import type { ConfigOperationsHost } from '../../view/src/config/index.ts';
 
+/**
+ * Pages `/config/<name>` serves, in drawer order.
+ *
+ * The fourteen pill/settings pages of the shipped Configuration template, plus `deviceDetails`:
+ * that page is built by the same controller (`ConfigBundle.pagesByName.deviceDetails`) and its
+ * subscription list is already declared, but the shipped app mounts it from **Device ▸ Device
+ * Details** rather than from the Configuration pills, so it is not one of `CONFIG_PAGE_NAMES` in
+ * the view layer. Serving it here is what makes `/config/deviceDetails` answer with the page
+ * instead of `未知配置页：deviceDetails`.
+ */
 const CONFIG_PAGE_NAMES = [
   'positionConfig',
   'portConfig',
@@ -47,6 +57,7 @@ const CONFIG_PAGE_NAMES = [
   'spanInstallation',
   'lghnPositionConfig',
   'lghnLoggingConfig',
+  'deviceDetails',
 ] as const;
 
 export type ConfigPageName = (typeof CONFIG_PAGE_NAMES)[number];
@@ -215,7 +226,7 @@ export class ConfigHost {
     this.registry.setHidden(this.tab, false);
   }
 
-  /** Module names the controller knows (14 pages, `ConfigBundle.pageNames()`). */
+  /** Module names this host serves: the view's fourteen pages plus `deviceDetails`. */
   pageNames(): string[] {
     return [...CONFIG_PAGE_NAMES];
   }
@@ -286,7 +297,65 @@ export class ConfigHost {
 
   /** The whole Manage tab as HTML (shipped ids preserved). */
   html(): string {
+    this.syncFormState();
     return serializeNode(this.doc.body as never);
+  }
+
+  /**
+   * Reflect live form state into attributes before anything is serialised.
+   *
+   * `minidom` keeps `.value` / `.checked` as **properties**, exactly as a browser does, and
+   * `serializeNode` prints **attributes** only. A page fills its fields by writing
+   * `element.value = '192.168.5.10'` (that is what `base.ts#setValue` does), so without this step
+   * every value the controller computed is dropped on the way out and the browser shows an empty
+   * box — the page reads as "no data" while its state holds the receiver's answer. Measured on the
+   * desk OEM729: `alignConfig`, `gnssConfig` and `networkingSettings` were empty for exactly this
+   * reason, not because their records never arrived.
+   *
+   * A blank value removes a stale `value` attribute instead of writing `value=""`, so a field the
+   * receiver never reported stays blank rather than showing an empty string.
+   */
+  private syncFormState(): void {
+    for (const node of this.doc.querySelectorAll('input, textarea, select')) {
+      const control = node as unknown as {
+        tagName: string;
+        value?: unknown;
+        checked?: boolean;
+        getAttribute(name: string): string | null;
+        setAttribute(name: string, value: string): void;
+        removeAttribute(name: string): void;
+        textContent: string;
+      };
+      const tag = String(control.tagName ?? '').toLowerCase();
+      const value = control.value === undefined || control.value === null ? '' : String(control.value);
+      if (tag === 'textarea') {
+        // A textarea has no `value` attribute: its content is the value.
+        if (value !== '') control.textContent = value;
+        continue;
+      }
+      if (tag === 'select') {
+        const wanted = value;
+        for (const option of (node as unknown as { querySelectorAll(selector: string): Element[] })
+          .querySelectorAll('option')) {
+          const candidate = option as unknown as {
+            getAttribute(name: string): string | null;
+            setAttribute(name: string, value: string): void;
+            removeAttribute(name: string): void;
+          };
+          const optionValue = candidate.getAttribute('value') ?? (option as unknown as { textContent: string }).textContent.trim();
+          if (wanted !== '' && optionValue === wanted) candidate.setAttribute('selected', '');
+          else candidate.removeAttribute('selected');
+        }
+        continue;
+      }
+      if (value !== '') control.setAttribute('value', value);
+      else if (control.getAttribute('value') !== null) control.removeAttribute('value');
+      const type = (control.getAttribute('type') ?? '').toLowerCase();
+      if (type === 'checkbox' || type === 'radio') {
+        if (control.checked) control.setAttribute('checked', '');
+        else control.removeAttribute('checked');
+      }
+    }
   }
 
   /**
@@ -350,6 +419,7 @@ export class ConfigHost {
 
   /** Serialised markup of one element, or `null` when the selector matches nothing. */
   elementHtml(selector: string): string | null {
+    this.syncFormState();
     const node = this.doc.querySelector(selector);
     return node ? serializeNode(node as never) : null;
   }
@@ -434,7 +504,7 @@ export class ConfigHost {
 
   /** Apply a form event the browser reported: set a value, a checkbox, or click. */
   applyEvent(selector: string, event: { value?: unknown; checked?: boolean; click?: boolean }): boolean {
-    const element = this.doc.querySelector(selector) as
+    const element = this.eventTarget(selector) as
       | (Element & { value?: unknown; checked?: boolean })
       | null;
     if (!element) return false;
@@ -449,6 +519,54 @@ export class ConfigHost {
     }
     if (event.click) trigger(element as never, 'click');
     return true;
+  }
+
+  /**
+   * The `@i/j/k` address of the element `selector` names — the form the drawer's script posts for a
+   * control that has no id (see `eventTarget`). Exposed so a test can address the same element the
+   * browser does instead of hand-counting children.
+   */
+  pathOf(selector: string): string | null {
+    const shell = this.doc.getElementById('shell');
+    const target = this.doc.querySelector(selector);
+    if (!shell || !target || !(shell as unknown as { contains(node: unknown): boolean }).contains(target)) {
+      return null;
+    }
+    const indices: number[] = [];
+    let node = target as unknown as { parentElement: unknown };
+    while (node && (node as unknown) !== (shell as unknown)) {
+      const parent = node.parentElement as
+        | { children: unknown[]; parentElement: unknown }
+        | null;
+      if (!parent) return null;
+      indices.unshift(parent.children.indexOf(node));
+      node = parent;
+    }
+    return '@' + indices.join('/');
+  }
+
+  /**
+   * The element a browser event names: `#id` for anything with an id, or `@i/j/k` — the child-index
+   * path inside `#shell` that the drawer's script posts for a control without one.
+   *
+   * The path form exists because the shipped markup has id-less buttons (the Positioning wizard's
+   * "Next", dropdown items) and the server's selector engine has no `:nth-child`: a positional CSS
+   * selector never resolved, so those clicks were silently dropped.
+   */
+  private eventTarget(selector: string): unknown {
+    if (!selector.startsWith('@')) return this.doc.querySelector(selector);
+    let node = this.doc.getElementById('shell') as unknown as
+      | { children?: ArrayLike<unknown> }
+      | null;
+    const indices = selector
+      .slice(1)
+      .split('/')
+      .map((part) => Number(part));
+    for (const index of indices) {
+      if (!node || !Number.isInteger(index) || index < 0) return null;
+      node = (node.children?.[index] ?? null) as { children?: ArrayLike<unknown> } | null;
+    }
+    return node;
   }
 
   /** Commands the controller queued since the last call (framed bytes / raw text). */

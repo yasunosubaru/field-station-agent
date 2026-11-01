@@ -77,13 +77,14 @@ async function postJson(path: string, body: unknown) {
 
 /* ------------------------------------------------------------------ 1/12 the pages */
 
-test('the page list serves the 14 pill pages and the operational Events page', async () => {
+test('the page list serves the fourteen Configuration pages, Device Details and Events', async () => {
   const { response, text } = await getText('/api/config/pages');
   assert.equal(response.status, 200);
   const body = JSON.parse(text) as { pages: Array<{ name: string; label: string; operational: boolean }> };
   const names = body.pages.map((page) => page.name);
-  assert.equal(body.pages.filter((page) => !page.operational).length, 14);
+  assert.equal(body.pages.filter((page) => !page.operational).length, 15);
   assert.ok(names.includes('portConfig'));
+  assert.ok(names.includes('deviceDetails'), 'Device ▸ Device Details is served by this build');
   assert.ok(names.includes('events'));
   const events = body.pages.find((page) => page.name === 'events');
   assert.equal(events?.label, 'Events');
@@ -234,12 +235,15 @@ test('the page list marks the Settings pages apart from the Configuration pills'
   assert.ok(settings.includes('generalSettings'), 'General is listed as a Settings page');
   assert.ok(settings.includes('networkingSettings'), 'so is Networking');
   assert.equal(settings.includes('portConfig'), false, 'the pill pages are not');
+  assert.ok(settings.includes('deviceDetails'), 'Device Details is a menu page too');
   const general = body.pages.find((page) => page.name === 'generalSettings');
   assert.equal(general?.label, 'General');
   const networking = body.pages.find((page) => page.name === 'networkingSettings');
   assert.equal(networking?.label, 'Networking');
   assert.equal(networking?.settings, true);
-  assert.equal(body.pages.filter((page) => !page.operational).length, 14, 'still 14 pill pages');
+  const details = body.pages.find((page) => page.name === 'deviceDetails');
+  assert.equal(details?.label, 'Device Details');
+  assert.equal(body.pages.filter((page) => !page.operational).length, 15, 'fourteen pills plus Device Details');
 });
 
 test('/config/generalSettings serves the shipped General page alone, and says there is no session', async () => {

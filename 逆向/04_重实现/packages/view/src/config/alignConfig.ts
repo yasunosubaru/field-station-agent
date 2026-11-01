@@ -14,6 +14,17 @@ export const ALIGN_MSG = {
   ALIGN_AUTOMATION: 1323,
 } as const;
 
+/**
+ * One offset as the page prints it: `0.000000000` → `0.00`, and nothing at all when the receiver
+ * never sent the field. The shipped controller's `toFixed(2)` is the format; a missing value must
+ * stay missing rather than become a made-up zero.
+ */
+function offsetText(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  const numeric = typeof value === 'number' ? value : Number(String(value));
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : '';
+}
+
 /** `alignConfig.js:948-1150`. */
 export class AlignConfigPage extends BaseConfigPage {
   constructor(runtime: ConfigPageRuntime) {
@@ -32,8 +43,17 @@ export class AlignConfigPage extends BaseConfigPage {
     const current = this.state.current(tab) as Record<string, Record<string, unknown>>;
     const heading = current[String(ALIGN_MSG.HEADING_OFFSET)];
     if (heading) {
-      setValue(this.context, tab, '#hoffsetVal', heading.headingoffsetindeg);
-      setValue(this.context, tab, '#poffsetVal', heading.pitchoffsetindeg);
+      // `alignConfig.js#setHeadingPitchOffset` writes the **desk inputs** `#heading-offset` /
+      // `#pitch-offset` with `toFixed(2)`; `#hoffsetVal`/`#poffsetVal` are only the mobile spans.
+      // Writing the mobile ids alone is why a receiver that answers
+      // `HEADINGOFFSET = 0.000000000,0.000000000` left every visible box empty: zero is a value,
+      // and the pair only looked empty because nothing ever reached the inputs the page shows.
+      const headingOffset = offsetText(heading.headingoffsetindeg);
+      const pitchOffset = offsetText(heading.pitchoffsetindeg);
+      setValue(this.context, tab, '#heading-offset', headingOffset);
+      setValue(this.context, tab, '#pitch-offset', pitchOffset);
+      setValue(this.context, tab, '#hoffsetVal', headingOffset);
+      setValue(this.context, tab, '#poffsetVal', pitchOffset);
     }
   }
 

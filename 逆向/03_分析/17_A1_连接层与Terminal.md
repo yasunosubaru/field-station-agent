@@ -275,3 +275,158 @@ LOG RXCONFIGA ONCE      -> 本口 20 s 内一条不出（不要用它做回读�
 按键/鼠标注入无效，`PostMessage` 只有首页 Manage 卡片响应；加 `--remote-debugging-port=9222`
 时 DevTools 端口一闪即被它自己的参数校验判死（`Invald option  REMOTE-DEBUGGING-PORT`）。
 完整证据与逐页对照表见 `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-live\REPORT.md`。
+
+### 17.8 实机：配置页真的拿到数据了（2026-11-01 下午，COM10/USB2）
+
+17.7 结尾把根因归到「`CONFIG_MESSAGE_IDS` 只放行 6 个 id」+「两页没有 LOG 请求」。本轮把这条链
+在真机上走通，结论是**四层都要修，只修前两层页面仍然是空的**：
+
+| # | 缺陷 | 位置 | 实测表现 |
+|---|---|---|---|
+| a | 入站白名单只有 6 个 id | `config-feed.ts#CONFIG_MESSAGE_IDS` | `HEADINGOFFSET`/`ELEVATIONCUTOFF`/`PPSCONTROL`/`IPCONFIG` 全被挡在页外 |
+| b | `configSliceOf` 只有 6 个分支 | 同上 | 就算放行，页面也没有形状可读 |
+| c | `gnssConfig`/`networkingSettings` 无请求表 | `view/src/config/index.ts#CONFIG_LOG_REQUESTS` | `GET /config/gnssConfig` 24 ms 返回，**一条 LOG 都不发** |
+| d | **输入框的值写不进 HTML** | `config-host.ts` + `base.ts#setValue` | 数据到了页面，浏览器里仍是空框 |
+| e | **无 id 控件的点击进不了控制器** | `config-http.ts` 客户端脚本 | 向导的 Next、下拉项点了没反应 |
+| f | `deviceDetails` 不在服务页列表 | `config-host.ts#CONFIG_PAGE_NAMES` | `/config/deviceDetails` → `未知配置页` |
+| g | ALIGN 只写移动端 span | `view/src/config/alignConfig.ts` | 桌面输入框 `#heading-offset` 永远空 |
+
+#### 17.8.1 先更正 17.7 的一处 id 笔误
+
+17.7 写的是 `HEADINGOFFSET(1335)`，**1335 是 HEADING2**（本机不双天线，`LOG HEADING2B ONCE`
+回 `<OK` 但 0 条记录）。`HEADINGOFFSET` 是 **1082**（`NovatelIdConstants.js:486`、
+`basemodel.js`、页面 `ALIGN_MSG.HEADING_OFFSET` 三处一致）。实测行：
+
+```text
+#HEADINGOFFSETA,SPECIAL,0,72.0,UNKNOWN,0,1.982,03801800,59e2,18278;0.000000000,0.000000000*713ffcce
+```
+
+#### 17.8.2 白名单改成「页面自己的订阅表」
+
+`CONFIG_MESSAGE_IDS` 不再手写，改为 `CONFIG_SUBSCRIPTIONS`（`view/src/config/index.ts` 导出）
+里所有 id 的去重并集，本机为 **72 个**（含 Events 页订阅的 83/93/94 等，`configSliceOf` 对它们一律
+返回 `null`）；`configSliceOf` 按每个 id 补分支，**字段名以页面
+`updateData`/`render` 真正读的为准**（不是 layout 的名字，也不是猜）：
+
+```text
+1735 ELEVATIONCUTOFF  -> { constellation, angle }          gnssConfig 读 .angle
+ 613 PPSCONTROL       -> { switch, polarity, period, pulsewidth }
+1082 HEADINGOFFSET    -> { headingoffsetindeg, pitchoffsetindeg }
+1243 IPCONFIG         -> { interfaceName, mode, ipAddress, netmask, gateway }
+1244 DNSCONFIG        -> { dnsserver, ipAddress }
+  37 VERSION          -> { data: [ {type, model, PSN, hardwareVersion, softwareVersion, bootVersion, …} ] }
+1329 MODELFEATURES    -> { data: [ {featureStatus:<码>, featureType:<码>, status, feature} ] }
+1148 CHANCONFIGLIST   -> { data: [ {numChans, signalType} ] }
+ 206 VALIDMODELS      -> { data: [ {model, expyear, expmonth, expday} ] }
+1348 AUTHCODES        -> { data: [ {authCodeType, authCodeValidity, authCodeString} ] }
+1719/2159 TERRASTAR/OCEANIXINFO -> { subscriptionService, mode, serviceEndYear, serviceEndDay }
+1728 VERIPOSINFO      -> { mode, serviceCode }      2160 OCEANIXSTATUS -> { access: 1|0 }
+  42 BESTPOS          -> { solutionStatus, positionType, latitude, longitude, height, … }
+1795 AUTOSURVEY       -> { control, time, accuracy, tolerance, save_nvm }
+```
+
+两个必须写进代码的实测细节：
+
+- **引号里的逗号不能拆**：`AUTHCODES` 的授权码是 `"R35JCN,BTG98D,R4DD6P,5PCR7N,9WPP25,PFNLYNTBN"`，
+  原来的「先按逗号拆再剥引号」会把一个字段拆成 7 个。现在逐字符扫描，引号内的逗号不拆。
+- **MODELFEATURES 的 ASCII 给的是名字，页面按数字查表**：`20HZ,MAX_MSR_RATE` / `SINGLE,ANTENNA` /
+  `AUTHORIZED,MEAS_OUTPUT`。`config-feed` 用页面自己的 `FEATURE_STATUS`/`FEATURE_TYPE` 反查出码
+  （6/0、25/28、0/3），两张表因此不可能和页面对不上。
+
+订阅了但**任何页面都不读**的 id（`IPSTATUS` 1289、`WIFINETLIST` 2210、SPAN 的 6 个、GIII 的
+4101/4108）**不造形状**，`configSliceOf` 返回 `null`：编一个没人读的 shape 只会误导下一个人。
+
+#### 17.8.3 两页的 LOG 请求表（名字都在真机上试过）
+
+```text
+gnssConfig         LOG ELEVATIONCUTOFFB ONCE   <OK  7 条（GPS 10.0 / GLONASS 5.0 / SBAS 10.0 /
+                                                     GALILEO 5.0 / BEIDOU 10.0 / QZSS 10.0 / NAVIC 5.0）
+                   LOG PPSCONTROLB      ONCE   <OK  1 条 ENABLE,NEGATIVE,1.000000000,1000
+networkingSettings LOG IPCONFIGB         ONCE   <OK  1 条 ETHA,STATIC,"192.168.5.10","255.255.255.0","192.168.5.1"
+                   LOG DNSCONFIGB        ONCE   <OK  1 条 1,"192.168.5.1"
+                   LOG IPSTATUSB         ONCE   <OK  1 条
+                   LOG ETHCONFIGB        ONCE   <OK  1 条
+                   LOG IPSERVICEB        ONCE   <OK  1 条 WEB_SERVER,ENABLE
+```
+
+**这台机器不该请求的名字**（实测应答，别加回请求表）：
+
+```text
+LOG WIFIMODEB / WIFISTATUSB / WIFIAPSETTINGSB / FILESTATUSB ONCE
+   -> <ERROR:Message is invalid for this model
+LOG THISANTENNATYPEB ONCE
+   -> <OK 但 0 条记录（两次独立试过：直连串口一次、经 app 一次）
+```
+
+#### 17.8.4 第四层：输入框的值为什么「到了页面却看不见」
+
+`packages/view/src/minidom.ts` 把 `.value`/`.checked` 当**属性级字段**（`:732` `value = ''`），
+而 `serializeNode` 只输出属性。页面用 `setValue()` 写 `element.value = '192.168.5.10'`，序列化时这个
+值**不在属性里**，浏览器解析出来就是空框。所以 `alignConfig` / `gnssConfig` / `networkingSettings`
+三页看起来「没数据」，其实状态里早就有接收机的值。
+
+修法两处，都在本轮文件范围内：
+
+- `config-host.ts#syncFormState()`：`html()` / `elementHtml()` 序列化前，把每个
+  `input/textarea/select` 的 `value`（以及 checkbox/radio 的 `checked`）反射成属性；空值删掉旧属性，
+  不会出现 `value=""` 的假空。
+- `base.ts#setValue()`：改成按标签判断（`input`/`textarea`/`select`/`option` 写 `.value`，其余写
+  `textContent`）。原来用 `'value' in element`，而 minidom 的每个元素都有 `value` 字段，于是 span 的
+  文本被写进一个永远不显示的地方——ALIGN 的 `#hoffsetVal` 就是这么「空」的。
+
+#### 17.8.5 第五层：无 id 的按钮点了没反应
+
+抽屉脚本原来给无 id 元素拼 `body > div:nth-child(3) > …`，而服务端的迷你选择器只支持
+`#id`/`.class`/`tag`/`[attr]`/`:not()`，`nth-child` 解析不了 → `applyEvent` 返回 false，点击被静默丢弃。
+定位向导的 `Next`、下拉项都是这种无 id 控件，所以参数页永远停在第一步。
+
+现在客户端改发 `@i/j/k`（相对 `#shell` 的子节点下标），服务端 `ConfigHost#eventTarget` 按
+`children[index]` 走到目标；带 id 的元素仍发 `#id`（重渲染后更稳）。
+
+#### 17.8.6 逐页对照（页面显示 vs 接收机原话）
+
+口径：`GET /config/<page>`（服务端按该页 `requiredLogs` 自己发 `LOG …B ONCE`、喂数据、重渲染），
+浏览器读**可见控件的 value 与元素文本**，截图在
+`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-cfgdata\<page>.png`。
+
+| 页 | 页面显示（实测 DOM） | 接收机原话 | 判定 |
+|---|---|---|---|
+| `alignConfig` | `Heading Offset (*degrees)` = **0.00**，`Pitch Offset (*degrees)` = **0.00** | `#HEADINGOFFSETA,…;0.000000000,0.000000000*713ffcce` | 一致（原来两个框全空：0 被当成「没有值」，且只写了移动端 span） |
+| `gnssConfig` | Elevation Mask = **5**；Pulse per Second = **开**；Polarity = **Negative** | 7 条 `ELEVATIONCUTOFF`：`GPS,10.0,0` `GLONASS,5.0,0` `SBAS,10.0,0` `GALILEO,5.0,0` `BEIDOU,10.0,0` `QZSS,10.0,0` `NAVIC,5.0,0`；`PPSCONTROL = ENABLE,NEGATIVE,1.000000000,1000` | 一致但**有损**：页面只有一个输入框、shipped 逻辑「后到的覆盖先到的」，所以显示最后一条 NAVIC 的 5.0 |
+| `networkingSettings` | IP Address **192.168.5.10**；Subnet Mask **255.255.255.0**；Gateway **192.168.5.1**；DNS IP Address **192.168.5.1**；DHCP 未勾（STATIC） | `IPCONFIG = ETHA,STATIC,"192.168.5.10","255.255.255.0","192.168.5.1"`；`DNSCONFIG = 1,"192.168.5.1"` | 一致（原来四框全空） |
+| `deviceDetails` | Serial Number **BMGX21030301G**；Model Number **PFNLYNTBN**；HW **OEM729-2.03**；SW **OM7MR1002RN0000**；Boot **OM7BR0100RB0000**；GPS **L1, L2, L5**；BDS **B1, B2, B3**；QZSS **L1, L2, L5, L6**；RTK Tx / DGPS Tx / DGPS Rx；Output Rate **20 Hz**；Expiry **Permanent** | `VERSION = 3,GPSCARD,"PFNLYNTBN","BMGX21030301G","OEM729-2.03",…`；`MODELFEATURES = 21,20HZ,MAX_MSR_RATE,…`；`CHANCONFIGLIST = 1,5,5,16,GPSL1L2PL5,7,QZSSL1CAL2CL5,4,SBASL1,30,BEIDOUB1B2B2B,5,LBAND,…`；`VALIDMODELS = 1,"PFNLYNTBN",0,0,0` | 一致。**注意槽位**：这台机 `VERSION` 第二槽（`model_name`）就是 `PFNLYNTBN`、第三槽（`psn`）是 `BMGX21030301G`；`VALIDMODELS` 与 `AUTHCODES` 末位也都写 `PFNLYNTBN`，三条记录互相印证，页面按槽位原样显示 |
+| `positionConfig` | 第一屏是向导：`Current Operating Mode = --`，模式列表 `Transmit (Base) / Receive (Rover) / Standalone` | 接收机**不报**「工作模式」（`LOG RXCONFIGB` 里没有 base/rover 配置；`BESTPOS = SOL_COMPUTED,SINGLE,…`） | `--` 是对的。页面状态里已由接收机填好：`survey-time=1440`、`accuracy=0.1`、`latitude=30.53996845566`、`longitude=114.35280666399`、`height=64.4677`（DOM 读得到），对应 `BESTPOS …;SOL_COMPUTED,SINGLE,30.53997035688,114.35280731754,65.5566,…` 与 `AUTOSURVEY = DISABLE,1440,2.0,10.0,OFF,"AUTO"`；这些框在向导后续步骤里，本轮没打通（§17.8.7） |
+| `loggingConfig` | 第一步 `Destination = Onboard Storage`，File Name 空，Message Sets NONE | `LOG FILESTATUSB ONCE` → `<ERROR:Message is invalid for this model`（0 条） | 空是对的（这台机器没有文件日志组件，接收机自己就拒绝这条日志） |
+| `spanConfig` | 只有 `IMU Installation / Type / Port / Baud Rate` + `Configure`，无值 | `INSCONFIG` / `CONNECTIMU` / `SETIMUEVENT` 全 **0 条** | 空是对的（无 IMU） |
+| `spoofingConfiguration` | 只有一句 `For spoofing detection to operate, the receiver must be calibrated.` | `SKDETECTCONFIG` **0 条** | 空是对的（该机不出欺骗遥测） |
+
+#### 17.8.7 这轮没做到的
+
+1. **定位向导的后续步骤打不开**：点 `Receive (Rover)` 后 `#posconfig-mainlist li` 能选中（已接线），
+   Next 也能把 `.selected-operating-mode` 显示出来（已接线），但承载字段的
+   `.panel.input-source-container` 在 shipped 样式里是 `display:none`，要靠
+   `positionConfig.js:2084/2152` 那套 `.addClass("show-mode")` 流程——它在接收机**确认**模式切换
+   （`INTERFACEMODE`/`POSAVE`/`AUTOSURVEY` 一整套 apply）之后才调用，本轮没有搬这套 apply 管线。
+   因此截图里仍是向导第一屏；字段值本身已在页面状态里（上表左列），没有伪造截图。
+2. **第三个模式项没有标签**：`positionConfig.html` 标的是 `data-lang-standalone-single-point`，而词典
+   里只有 `SINGLE_POINT` / `STANDALONE`，通用语言通道查不到，于是只剩一个裸 radio。这是语言表缺口，
+   不是数据缺口。
+3. `alignConfig` 的请求表里还有 `WIFIMODE` / `WIFISTATUS`（shipped 原表），本机会回
+   `<ERROR:Message is invalid for this model`；这两条上一轮就有，本轮没删（别的机型需要），打开
+   ALIGN 会看到两行应答错误，别误判成新问题。
+
+#### 17.8.8 收尾状态（本轮结束）
+
+```text
+UNLOGALL            -> <OK
+UNLOGALL USB2       -> <OK
+LOG LOGLISTB ONCE   -> 60 条（本轮 ONCE 残留已清；USB1_29/USB1_30/USB2_29 上那组 ONTIME 常驻
+                       日志仍在——UNLOGALL 不摘子地址上的日志）
+stop-bridge.ps1     -> killed bridges: 2 / port 4002 lines: 0
+port-state.ps1      -> COM8 FREE / COM9 FREE / COM10 FREE，远程机无我们起的进程
+本机 node server    -> 已停
+```
+
+需要把这台机的日志表恢复成 17.7 记录的样子时，照
+`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-live\report\loglist-before-unlogall.txt` 重发即可。
+

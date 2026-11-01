@@ -171,6 +171,14 @@ const UNWIRED_NOTE =
 /** `Settings ▸ …` entries: each opens the drawer on the shipped page it names. */
 const SETTINGS_PAGES = new Set(['generalSettings', 'networkingSettings']);
 
+/**
+ * `Device ▸ Device Details`: a menu page of the same family — mounted into the tab's menu layouts
+ * and served by the same controller — but it belongs to the Device menu, not to Settings. The
+ * drawer's page list comes from `/api/config/pages`, which marks every menu page `settings: true`,
+ * so the name is what tells the two menus apart here.
+ */
+const DEVICE_PAGES = new Set(['deviceDetails']);
+
 /* Material-style glyphs, 24×24 viewBox, drawn with `currentColor` so the bar can dim the
  * unwired items. The gear is the same path the shell's app-bar settings icon uses
  * (`icons/menubar_settings.svg`). */
@@ -711,7 +719,11 @@ export function mount(root, ctx = {}) {
       // Settings without pretending they are the same page family.
       const groups = [
         { label: 'Configuration', pages: drawer.pages.filter((page) => !page.settings && !page.operational) },
-        { label: 'Settings', pages: drawer.pages.filter((page) => page.settings) },
+        {
+          label: 'Settings',
+          pages: drawer.pages.filter((page) => page.settings && !DEVICE_PAGES.has(page.name)),
+        },
+        { label: 'Device', pages: drawer.pages.filter((page) => DEVICE_PAGES.has(page.name)) },
         { label: 'Operational', pages: drawer.pages.filter((page) => page.operational) },
       ].filter((group) => group.pages.length);
       configEls.page.innerHTML = groups
@@ -735,11 +747,15 @@ export function mount(root, ctx = {}) {
     if (configEls.page) configEls.page.value = page;
     if (configEls.frame) configEls.frame.src = `/config/${encodeURIComponent(page)}`;
     const settings = SETTINGS_PAGES.has(page);
-    if (configEls.title) configEls.title.textContent = settings ? 'Settings' : 'Configuration';
+    const device = DEVICE_PAGES.has(page);
+    if (configEls.title) {
+      configEls.title.textContent = device ? 'Device' : settings ? 'Settings' : 'Configuration';
+    }
     if (configEls.note) {
       const entry = (drawer.pages ?? []).find((item) => item.name === page);
+      const family = device ? ' (Device page)' : settings ? ' (Settings page)' : '';
       configEls.note.textContent = entry
-        ? `${entry.label}${settings ? ' (Settings page)' : ''} — the suite’s shipped markup and controller (${page})`
+        ? `${entry.label}${family} — the suite’s shipped markup and controller (${page})`
         : page;
     }
   }

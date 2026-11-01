@@ -1,6 +1,7 @@
 /**
- * The config host: the suite's 14 Configuration pages, mounted server-side on `minidom` and handed
- * to the browser as HTML (A1's adapter; see `packages/app/src/config-host.ts`).
+ * The config host: the suite's Configuration pages (the fourteen pills/settings pages plus the
+ * Device ▸ Device Details page), mounted server-side on `minidom` and handed to the browser as HTML
+ * (A1's adapter; see `packages/app/src/config-host.ts`).
  *
  * These assertions are against the **shipped** markup (`01_解包/app/view/<page>/<page>.html`), so a
  * pass means the original ids came through the adapter rather than a hand-drawn look-alike. The
@@ -15,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 import { ConfigHost, CONFIG_PAGE_NAMES } from '../src/config-host.ts';
+import { configSliceOf, createAccumulator } from '../src/config-feed.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -52,9 +54,10 @@ test('the host mounts a shipped configuration page and returns its original mark
   assert.equal(host.show('spoofingConfiguration').mounted, false, 'and not again');
 });
 
-test('every page in the catalogue mounts (14 pages)', () => {
+test('every page in the catalogue mounts (the fourteen pills plus Device Details)', () => {
   const host = new ConfigHost(options());
-  assert.equal(CONFIG_PAGE_NAMES.length, 14);
+  assert.equal(CONFIG_PAGE_NAMES.length, 15);
+  assert.ok((CONFIG_PAGE_NAMES as readonly string[]).includes('deviceDetails'));
   const failed: string[] = [];
   for (const name of CONFIG_PAGE_NAMES) {
     try {
@@ -227,10 +230,162 @@ test('clicking a height unit records it, and General frames nothing for the rece
   assert.deepEqual(host.takeCommands(), [], 'a local setting has no receiver command behind it');
 });
 
+test('an id-less control is clicked by its #shell path, as the drawer posts it', () => {
+  const host = new ConfigHost(options());
+  host.show('networkingSettings');
+  const base = '#networkingSettings-layout_tabs-2';
+  // `.ipaddress` carries no id, so a `#id` selector cannot name it; the browser posts `@i/j/k`.
+  const path = host.pathOf(`${base} .ipaddress`);
+  assert.ok(path && path.startsWith('@'), `path is ${path}`);
+  assert.equal(host.applyEvent(path!, { value: '10.1.2.3' }), true);
+  assert.match(host.elementHtml(`${base} .ipaddress`) ?? '', /value="10\.1\.2\.3"/);
+  // An out-of-range path resolves to nothing rather than to some other element.
+  assert.equal(host.applyEvent('@999/999', { click: true }), false);
+});
+
 test('a Configuration pill page is not a menu page: its document stays the whole shell', () => {
   const host = new ConfigHost(options());
   host.show('portConfig');
   assert.equal(host.menuPanelId('portConfig'), null);
   assert.equal(host.menuPanelId('events'), null);
   assert.notEqual(host.menuPanelId('networkingSettings'), null);
+});
+
+/* --------------------------------------------------- the pages that used to show nothing
+ *
+ * Every value below is a line the desk OEM729 answered on 2026-11-01 (`LOG <NAME>B ONCE` on COM10 =
+ * receiver USB2). The assertions read the **serialised document**, which is what the browser gets:
+ * a value the page writes into an <input> only reaches the browser because the host now reflects
+ * form state into attributes before serialising (`ConfigHost#syncFormState`).
+ */
+
+/** Feed one real ASCII record and re-render, the two steps `primeConfigurationPage` takes. */
+function feedAsciiLog(host: ConfigHost, page: string, messageId: number, ascii: string): string[] {
+  const slice = configSliceOf(messageId, ascii, createAccumulator());
+  assert.ok(slice, `#${messageId} must parse`);
+  const fed = host.feedLog(slice.name, slice.data);
+  host.refreshPage();
+  void page;
+  return fed;
+}
+
+test('Device Details is a served page, and VERSION fills its component boxes', () => {
+  const host = new ConfigHost(options());
+  const shown = host.show('deviceDetails');
+  assert.equal(shown.mounted, true, 'the page mounts on first use');
+  assert.equal(host.menuPanelId('deviceDetails'), 'deviceDetails-layout_tabs-2');
+  assert.ok(host.ids().includes('deviceDetails-layout_tabs-2'), 'the menu layout exists');
+  const detail = host.selectDetail('deviceDetails');
+  assert.equal(detail.selected, true, 'a menu page needs no pill to switch');
+  assert.equal(detail.paneId, null);
+
+  const fed = host.feedLog(37, {
+    data: [
+      {
+        type: 'GPSCARD',
+        model: 'PFNLYNTBN',
+        PSN: 'BMGX21030301G',
+        hardwareVersion: 'OEM729-2.03',
+        softwareVersion: 'OM7MR1002RN0000',
+        bootVersion: 'OM7BR0100RB0000',
+      },
+    ],
+  });
+  assert.ok(fed.includes('deviceDetails'), 'the page is fed by its own subscription');
+  // VERSION is also subscribed by Radio (37) and Device Update (37); the feed names every page it
+  // reached, so the assertion above is "delivered", not "delivered only here".
+  const html = host.html();
+  // The slots are printed as the receiver fills them (see the feed test); nothing is swapped.
+  assert.match(html, /id="deviceDetailsgnssModelNumber"[^>]*>PFNLYNTBN</);
+  assert.match(html, /id="deviceDetailsgnssSerialNumber"[^>]*>BMGX21030301G</);
+  assert.match(html, /id="activeModelName"[^>]*>PFNLYNTBN</);
+  assert.match(html, /id="deviceDetailsgnssSoftwareVersion"[^>]*>OM7MR1002RN0000</);
+});
+
+test('Device Details shows the authorised features the receiver reports', () => {
+  const host = new ConfigHost(options());
+  host.show('deviceDetails');
+  host.feedLog(37, {
+    data: [{ type: 'GPSCARD', model: 'PFNLYNTBN', PSN: 'BMGX21030301G', hardwareVersion: 'OEM729-2.03' }],
+  });
+  host.feedLog(1329, {
+    data: [
+      { featureStatus: 0, featureType: 5, status: 'AUTHORIZED', feature: 'RTK_TX' },
+      { featureStatus: 0, featureType: 9, status: 'AUTHORIZED', feature: 'LOW_END_POSITIONING' },
+      { featureStatus: 6, featureType: 1, status: '20HZ', feature: 'MAX_POS_RATE' },
+    ],
+  });
+  host.feedLog(1148, {
+    data: [
+      { numChans: 16, signalType: 'GPSL1L2PL5' },
+      { numChans: 4, signalType: 'SBASL1' },
+    ],
+  });
+  const html = host.html();
+  assert.match(html, /id="rtktx"/, 'RTK_TX is an authorised row');
+  assert.match(html, /id="deviceDetailsoutputRate"[^>]*>20 Hz</, 'the max position rate is printed');
+  assert.match(html, /id="gpsSignals"[^>]*>L1, L2, L5</, 'the GPS channels came from CHANCONFIGLIST');
+});
+
+test('ALIGN prints the receiver\'s own zero instead of an empty box', () => {
+  const host = new ConfigHost(options());
+  host.show('alignConfig');
+  // `#HEADINGOFFSETA,…,18278;0.000000000,0.000000000*713ffcce`
+  const fed = feedAsciiLog(
+    host,
+    'alignConfig',
+    1082,
+    '#HEADINGOFFSETA,SPECIAL,0,72.0,UNKNOWN,0,1.982,03801800,59e2,18278;0.000000000,0.000000000*713ffcce',
+  );
+  assert.deepEqual(fed, ['alignConfig']);
+  const heading = host.elementHtml('#heading-offset') ?? '';
+  const pitch = host.elementHtml('#pitch-offset') ?? '';
+  assert.match(heading, /value="0\.00"/, 'the desk heading box holds 0.00');
+  assert.match(pitch, /value="0\.00"/, 'the desk pitch box holds 0.00');
+  // The mobile spans are written too, and they are text, not form state.
+  assert.match(host.elementHtml('#hoffsetVal') ?? '', />0\.00</);
+});
+
+test('GNSS shows ELEVATIONCUTOFF and PPSCONTROL as the receiver reported them', () => {
+  const host = new ConfigHost(options());
+  host.show('gnssConfig');
+  feedAsciiLog(
+    host,
+    'gnssConfig',
+    1735,
+    '#ELEVATIONCUTOFFA,SPECIAL,6,73.0,UNKNOWN,0,2.282,03801800,50e0,18278;GPS,10.0,0*e0baeadd',
+  );
+  assert.match(host.elementHtml('#gnss-elevation-mask-value') ?? '', /value="10"/);
+
+  feedAsciiLog(
+    host,
+    'gnssConfig',
+    613,
+    '#PPSCONTROLA,SPECIAL,0,73.0,UNKNOWN,0,2.136,03801800,409a,18278;ENABLE,NEGATIVE,1.000000000,1000*e3bba9c0',
+  );
+  const toggle = host.elementHtml('.gnss-pulse-toggle-button') ?? '';
+  assert.match(toggle, /checked/, 'PPS is enabled on the receiver');
+  assert.match(host.elementHtml('#polarityNeg') ?? '', /class="[^"]*active/, 'NEGATIVE is the chosen polarity');
+});
+
+test('Networking shows the receiver\'s IPCONFIG and DNSCONFIG', () => {
+  const host = new ConfigHost(options());
+  host.show('networkingSettings');
+  feedAsciiLog(
+    host,
+    'networkingSettings',
+    1243,
+    '#IPCONFIGA,SPECIAL,0,72.5,UNKNOWN,0,2.365,03801800,3e3c,18278;ETHA,STATIC,"192.168.5.10","255.255.255.0","192.168.5.1"*81eac919',
+  );
+  feedAsciiLog(
+    host,
+    'networkingSettings',
+    1244,
+    '#DNSCONFIGA,SPECIAL,0,72.5,UNKNOWN,0,2.386,03801800,b03d,18278;1,"192.168.5.1"*fca1d977',
+  );
+  const base = '#networkingSettings-layout_tabs-2';
+  assert.match(host.elementHtml(`${base} .ipaddress`) ?? '', /value="192\.168\.5\.10"/);
+  assert.match(host.elementHtml(`${base} .subnetMask`) ?? '', /value="255\.255\.255\.0"/);
+  assert.match(host.elementHtml(`${base} .ethernetGateway`) ?? '', /value="192\.168\.5\.1"/);
+  assert.match(host.elementHtml(`${base} .dns-input input`) ?? '', /value="192\.168\.5\.1"/);
 });

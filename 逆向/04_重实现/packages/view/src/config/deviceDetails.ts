@@ -795,7 +795,14 @@ const GIII_ETHERNET_DETAILS: Record<number, [string, string]> = {
   5: ['100 Mbits/sec', 'Half'],
 };
 
-const FEATURE_STATUS: Record<number, string> = {
+/**
+ * Numeric → name, exactly as `MODELFEATURES` renders its two enums.
+ *
+ * Exported because the host meets the same record as **ASCII names** (`AUTHORIZED,MEAS_OUTPUT`)
+ * while this page indexes by code; `packages/app/src/config-feed.ts` inverts these tables so the
+ * two halves can never disagree about a code.
+ */
+export const FEATURE_STATUS: Record<number, string> = {
   0: 'AUTHORIZED',
   1: 'UNAUTHORIZED',
   2: '0Hz',
@@ -814,7 +821,7 @@ const FEATURE_STATUS: Record<number, string> = {
   37: 'RADIO_TX',
 };
 
-const FEATURE_TYPE: Record<number, string> = {
+export const FEATURE_TYPE: Record<number, string> = {
   0: 'MAX_MSR_RATE',
   1: 'MAX_POS_RATE',
   3: 'MEAS_OUTPUT',

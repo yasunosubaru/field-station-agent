@@ -121,6 +121,35 @@ const CONFIG_LOG_REQUESTS: Record<string, ConfigLogRequest[]> = {
     { name: 'SETIMUTOANTOFFSET2', spec: 'onchanged,0' },
     { name: 'SERIALCONFIG', spec: 'ontime,1' },
   ],
+  /**
+   * The GNSS page's two records, and nothing else: `ELEVATIONCUTOFF` (one record per constellation)
+   * and `PPSCONTROL` are the only ids `gnssConfig.ts` reads.
+   *
+   * Measured on the desk OEM729 (2026-11-01): both answer — `LOG ELEVATIONCUTOFFB ONCE` returns 7
+   * records (`GPS,10.0,0` … `NAVIC,5.0,0`) and `LOG PPSCONTROLB ONCE` one
+   * (`ENABLE,NEGATIVE,1.000000000,1000`). `LOG THISANTENNATYPEB ONCE` is accepted (`<OK`) but emits
+   * no record on this model, so it is not requested.
+   */
+  gnssConfig: [
+    { name: 'ELEVATIONCUTOFF', spec: 'onchanged,0' },
+    { name: 'PPSCONTROL', spec: 'onchanged,0' },
+  ],
+  /**
+   * The Networking page's records. The page reads `IPCONFIG` (address/mask/gateway/DHCP) and
+   * `DNSCONFIG` (the DNS box); `IPSTATUS`/`ETHCONFIG`/`IPSERVICE` are asked for because they are
+   * the receiver's own statement about the same interface and cost one line each.
+   *
+   * `WIFIMODE` / `WIFISTATUS` / `WIFIAPSETTINGS` are deliberately **not** here: this model answers
+   * them with `<ERROR:Message is invalid for this model` (measured 2026-11-01), so requesting them
+   * would put errors on the link and never fill the hotspot fields.
+   */
+  networkingSettings: [
+    { name: 'IPCONFIG', spec: 'onchanged,0' },
+    { name: 'DNSCONFIG', spec: 'onchanged,0' },
+    { name: 'IPSTATUS', spec: 'ontime,1' },
+    { name: 'ETHCONFIG', spec: 'onchanged,0' },
+    { name: 'IPSERVICE', spec: 'onchanged,0' },
+  ],
   radioConfig: [
     { name: 'SATEL9INFO', spec: 'ontime,1' },
     { name: 'SATEL4CONFIG', spec: 'ontime,1' },
@@ -164,7 +193,14 @@ const CONFIG_LOG_REQUESTS: Record<string, ConfigLogRequest[]> = {
   ],
 };
 
-const CONFIG_SUBSCRIPTIONS: Record<string, number[]> = {
+/**
+ * Which record each page consumes, by message id — the pages' own contract with the link.
+ *
+ * Exported because the host has to know it too: `packages/app/src/config-feed.ts` lets through
+ * exactly the union of these ids, so a page that starts reading a new record cannot be starved by
+ * a hand-kept allow-list in the host.
+ */
+export const CONFIG_SUBSCRIPTIONS: Record<string, number[]> = {
   positionConfig: [42, 172, 173, 1795, 1335, 1428, 379],
   portConfig: [3, 5, 1246, 1248, 1249, 1344, 861, 2258, 1861, 691],
   loggingConfig: [5, 2127, 861, 2258, 1861, 691],

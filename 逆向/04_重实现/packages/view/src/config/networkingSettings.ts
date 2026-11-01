@@ -3,6 +3,7 @@ import type { ConfigDataMap, ConfigPageRuntime } from './types.ts';
 import {
   BaseConfigPage,
   elementValue,
+  scopedQuery,
   scopedQueryAll,
   setChecked,
   setValue,
@@ -43,6 +44,23 @@ export class NetworkingSettingsPage extends BaseConfigPage {
       const checked = ['ON', 'AP', 'CONCURRENT'].includes(String(mode.mode));
       setChecked(this.context, tab, '#wifi-hotspot-on-off', checked);
     }
+    // `networkingSettings.js:638` fills the DNS box from `DNSCONFIG`; the page's own input is
+    // `.dns-input input` and `dnsserver === 0` means "no server configured", which the shipped
+    // page prints as `0.0.0.0` rather than leaving the box empty.
+    const dns = current[String(NETWORK_MSG.DNS_CONFIG)];
+    if (dns) {
+      setValue(
+        this.context,
+        tab,
+        '.dns-input input',
+        Number(dns.dnsserver ?? 0) === 0 ? '0.0.0.0' : dns.ipAddress,
+      );
+    }
+    // `networkingSettings.js:53` gives this one label its own key (`__('DNSIPADDRESS')`); the
+    // generic `data-lang-dns-ip-address` pass cannot resolve it, so the box would sit above an
+    // empty heading.
+    const dnsLabel = scopedQuery(this.context, tab, '.dns-input .dnstitle');
+    if (dnsLabel) dnsLabel.textContent = this.context.translate('DNSIPADDRESS');
   }
 
   setEthernet(

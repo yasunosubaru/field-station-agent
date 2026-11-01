@@ -54,8 +54,16 @@ export function setValue(context: ConfigPageContext, tab: TabId, selector: strin
     | (Element & { value?: string; checked?: boolean })
     | null;
   if (!element) return false;
-  if ('value' in element) element.value = value === undefined || value === null ? '' : String(value);
-  else element.textContent = value === undefined || value === null ? '' : String(value);
+  const text = value === undefined || value === null ? '' : String(value);
+  // `minidom` carries a `value` field on **every** element (`minidom.ts:732`), so `'value' in
+  // element` is true for a `<span>` too — writing `.value` on a span puts the text nowhere the
+  // serialiser or the browser can see it. The tag decides, exactly like a browser's form controls.
+  const tag = String(element.tagName ?? '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'option') {
+    element.value = text;
+  } else {
+    element.textContent = text;
+  }
   return true;
 }
 

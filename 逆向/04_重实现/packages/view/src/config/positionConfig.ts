@@ -79,7 +79,9 @@ const PAGE_DEFAULT: PositionPageData = {
   selectedMode: 'Standalone',
   surveyType: 'survey-auto',
   surveyTime: 1440,
-  accuracy: 2,
+  // `positionConfig.js#displayingTimeAndAccuracy`'s own default when the receiver says nothing:
+  // 1440 min / 0.1 m. (It used to be 2 here, which no receiver ever reported.)
+  accuracy: 0.1,
   latitude: 0,
   longitude: 0,
   height: 0,
@@ -91,6 +93,13 @@ const PAGE_DEFAULT: PositionPageData = {
   receiveModeChanged: { rtk: false, ppp: false, sbas: false },
 };
 
+/** A receiver token as a number, or `undefined` when it is absent (never a made-up zero). */
+function numeric(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = typeof value === 'number' ? value : Number(String(value));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function cloneData(value: PositionPageData): PositionPageData {
   return JSON.parse(JSON.stringify(value)) as PositionPageData;
 }
@@ -100,6 +109,15 @@ export class PositionConfigPage extends BaseConfigPage {
   private readonly pages = new Map<TabId, PositionPageData>();
   private readonly baselinePages = new Map<TabId, PositionPageData>();
   private readonly confirmed = new Set<TabId>();
+  /**
+   * What the receiver has actually reported, kept across `reset()`.
+   *
+   * `reset` is the shipped `dh_createDefaultData` + `v_loadDefaultData` pair, and the shipped
+   * defaults are built *from the logs the receiver sent* (`dh_positionConfigDefaultData`), not from
+   * constants. Keeping the received values here is what makes a re-render show them instead of
+   * dropping back to the placeholder zeros.
+   */
+  private readonly received = new Map<TabId, Partial<PositionPageData>>();
 
   constructor(runtime: ConfigPageRuntime) {
     super(runtime, {
@@ -137,7 +155,39 @@ export class PositionConfigPage extends BaseConfigPage {
         value.operatingMode = mode;
         value.selectedMode = mode;
       }
+      // `positionConfig.js#handleNewDataReceivedForBestpos` writes the receiver's own position into
+      // `#latitude` / `#longitude` / `#height`; without it the page shows a placeholder `0` that no
+      // receiver ever sent. A field the record did not carry stays untouched.
+      const latitude = numeric(data.latitude);
+      const longitude = numeric(data.longitude);
+      const height = numeric(data.height);
+      const received: Partial<PositionPageData> = {};
+      if (latitude !== undefined) received.latitude = latitude;
+      if (longitude !== undefined) received.longitude = longitude;
+      if (height !== undefined) received.height = height;
+      if (Object.keys(received).length) {
+        Object.assign(value, received);
+        this.rememberReceived(tab, received);
+      }
+      return;
     }
+    if (msgId === POSITION_MSG.AUTOSURVEY) {
+      // `displayingTimeAndAccuracy`: the receiver's survey time and accuracy are shown only while
+      // `AUTOSURVEY` is ENABLED — otherwise the shipped defaults stand.
+      if (String(data.control ?? '').toUpperCase() !== 'ENABLE') return;
+      const surveyTime = numeric(data.time);
+      const accuracy = numeric(data.accuracy);
+      const received: Partial<PositionPageData> = {};
+      if (surveyTime !== undefined) received.surveyTime = surveyTime;
+      if (accuracy !== undefined) received.accuracy = accuracy;
+      if (!Object.keys(received).length) return;
+      Object.assign(this.page(tab), received);
+      this.rememberReceived(tab, received);
+    }
+  }
+
+  private rememberReceived(tab: TabId, values: Partial<PositionPageData>): void {
+    this.received.set(tab, { ...(this.received.get(tab) ?? {}), ...values });
   }
 
   protected render(tab: TabId): void {
@@ -157,6 +207,73 @@ export class PositionConfigPage extends BaseConfigPage {
         if (button.id) button.id = `${button.id}-${tab}`;
       }
     }
+    // `positionConfig.js:2239` rewrites each step's Next to the namespaced panel id; do the same so
+    // the button and the panel it opens agree on which document they are in.
+    for (const button of [...container.querySelectorAll('.select-mode-btn')]) {
+      const href = button.getAttribute('href') ?? '';
+      if (href.startsWith('#') && !href.endsWith(`-${tab}`)) {
+        button.setAttribute('href', `${href}-${tab}`);
+      }
+    }
+  }
+
+  /**
+   * The wizard's own clicks, ported from the shipped handlers.
+   *
+   * `positionConfig.js:2477-2488` — choosing a mode marks it and loads the RTK defaults; the page
+   * only ever showed its first step because nothing was listening, so the fields the receiver
+   * fills (`#survey-time`, `#accuracy`, `#latitude`, `#longitude`, `#height`) could never be
+   * reached. `2951-2974` — the step's Next refuses an empty choice, otherwise it reveals the
+   * `.selected-operating-mode` block and opens the panel it points at (`2289-2291`).
+   */
+  protected override bindActions(tab: TabId, container: Element): void {
+    super.bindActions(tab, container);
+    for (const item of [...container.querySelectorAll('#posconfig-mainlist li')]) {
+      item.addEventListener('click', () => {
+        const mode = item.id as OperatingMode;
+        if (mode !== 'Transmit' && mode !== 'Receive' && mode !== 'Standalone') return;
+        this.setMode(tab, mode);
+        this.render(tab);
+      });
+    }
+    for (const button of [...container.querySelectorAll('.select-mode-btn')]) {
+      button.addEventListener('click', () => this.nextStep(tab, container, button));
+    }
+  }
+
+  /** One step of the wizard: mark the choice, then show the block and panel it opens. */
+  private nextStep(tab: TabId, container: Element, button: Element): void {
+    const document = this.context.document;
+    const chosen = container.querySelector('#posconfig-mainlist li.active');
+    const firstStep = (button.getAttribute('href') ?? '').includes('collapseinputsource');
+    if (firstStep && !chosen) {
+      // `2955-2961`: nothing chosen → the list is marked, the step does not advance.
+      for (const item of [...container.querySelectorAll('#posconfig-mainlist li')]) {
+        item.classList.add('error-border');
+      }
+      return;
+    }
+    const chooser = container.querySelector('#select-operating-list') as
+      | (Element & { style?: CSSStyleDeclaration })
+      | null;
+    const buttons = container.querySelector('.select-operating-mode .btnsRow') as
+      | (Element & { style?: CSSStyleDeclaration })
+      | null;
+    const selected = container.querySelector('.selected-operating-mode') as
+      | (Element & { style?: CSSStyleDeclaration })
+      | null;
+    if (firstStep) {
+      if (chooser?.style) chooser.style.display = 'none';
+      if (buttons?.style) buttons.style.display = 'none';
+      if (selected?.style) selected.style.display = 'block';
+    }
+    const target = (button.getAttribute('href') ?? '').replace(/^#/, '');
+    if (!target) return;
+    const panel = document.getElementById(target) ?? document.getElementById(target.replace(/-[^-]+$/, ''));
+    if (!panel) return;
+    panel.classList.add('in');
+    const styled = panel as Element & { style?: CSSStyleDeclaration };
+    if (styled.style) styled.style.display = 'block';
   }
 
   reset(tab: TabId): void {
@@ -164,6 +281,8 @@ export class PositionConfigPage extends BaseConfigPage {
     const fresh = cloneData(PAGE_DEFAULT);
     fresh.operatingMode = operatingMode;
     fresh.selectedMode = operatingMode;
+    // The shipped defaults are the receiver's own last words, not constants.
+    Object.assign(fresh, this.received.get(tab) ?? {});
     this.pages.set(tab, fresh);
     this.baselinePages.set(tab, cloneData(fresh));
     this.state.updateCurrent(tab, 'page', cloneData(fresh));

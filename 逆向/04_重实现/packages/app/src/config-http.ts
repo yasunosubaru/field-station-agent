@@ -30,7 +30,7 @@ import {
 import { MENU_PAGE_NAMES, type ConfigOperationsHost } from '../../view/src/config/index.ts';
 import type { LiveCommandReply } from './live.ts';
 import {
-  CONFIG_MESSAGE_IDS,
+  CONFIG_MESSAGE_ID_SET,
   configSliceOf,
   createAccumulator,
   type ConfigAccumulator,
@@ -69,6 +69,7 @@ export const CONFIG_LABELS: Record<string, string> = {
   spanInstallation: 'SPAN Installation',
   lghnPositionConfig: 'Longhorn Positioning',
   lghnLoggingConfig: 'Longhorn Logging',
+  deviceDetails: 'Device Details',
   events: 'Events',
 };
 
@@ -207,19 +208,27 @@ function bodyOf(name: string): string {
 const CLIENT_SCRIPT = `
 (function () {
   var page = document.body.getAttribute('data-config-page');
-  function selectorOf(el) {
-    if (!el || el.nodeType !== 1) return null;
-    if (el.id) return '#' + el.id;
+  function pathOf(el) {
+    /* Position inside #shell, which is exactly the subtree the server keeps: an id-less control
+     * (a step's "Next", a dropdown item) has no CSS selector the server's small selector engine can
+     * resolve, so the click would never reach the controller. The server reads the same indices
+     * (ConfigHost.applyEvent, the '@i/j/k' form). */
+    var shell = document.getElementById('shell');
+    if (!shell || !el || !shell.contains(el)) return null;
     var path = [];
-    while (el && el.nodeType === 1 && el !== document.body) {
-      var name = el.nodeName.toLowerCase();
+    while (el && el !== shell) {
       var parent = el.parentNode;
-      if (!parent) break;
-      var index = Array.prototype.indexOf.call(parent.children, el) + 1;
-      path.unshift(name + ':nth-child(' + index + ')');
+      if (!parent) return null;
+      path.unshift(Array.prototype.indexOf.call(parent.children, el));
       el = parent;
     }
-    return path.length ? 'body > ' + path.join(' > ') : null;
+    return path;
+  }
+  /** '#id' when the element has one (stable across re-renders), otherwise the '#shell' index path. */
+  function targetOf(el) {
+    if (el.id) return '#' + el.id;
+    var path = pathOf(el);
+    return path && path.length ? '@' + path.join('/') : null;
   }
   function post(payload, done) {
     fetch('/api/config/' + page + '/event', {
@@ -250,16 +259,16 @@ const CLIENT_SCRIPT = `
   document.addEventListener('click', function (event) {
     var el = event.target.closest('button, a, input[type=checkbox], input[type=radio], label, li');
     if (!el) return;
-    var selector = selectorOf(el);
-    if (!selector) return;
-    post({ selector: selector, click: true });
+    var target = targetOf(el);
+    if (!target) return;
+    post({ selector: target, click: true });
   }, true);
   document.addEventListener('change', function (event) {
     var el = event.target;
     if (!el || !el.matches('input, select, textarea')) return;
-    var selector = selectorOf(el);
-    if (!selector) return;
-    post({ selector: selector, value: el.value, checked: el.checked });
+    var target = targetOf(el);
+    if (!target) return;
+    post({ selector: target, value: el.value, checked: el.checked });
   }, true);
   /* The Events drawer is fed by the live link; reload it when the server's real count changes. */
   if (page === 'events') {
@@ -418,8 +427,11 @@ export function eventsSummary(): { ok: true; count: number } {
 
 /* ---------------------------------------------------- configuration pages: receiver logs */
 /**
- * Feed the configuration records (INTERFACEMODE, LOGLIST, SERIALCONFIG, ICOMCONFIG, NTRIPCONFIG,
- * SOURCETABLE) that the live link decoded into every open configuration page.
+ * Feed the configuration records the live link decoded (INTERFACEMODE, LOGLIST, SERIALCONFIG,
+ * ELEVATIONCUTOFF, PPSCONTROL, IPCONFIG, VERSION, …) into every open configuration page.
+ *
+ * Which ids are accepted is the pages' own list (`config-feed.ts#CONFIG_MESSAGE_ID_SET`, the union
+ * of `CONFIG_SUBSCRIPTIONS`), so a page that reads a record always gets it.
  *
  * The pages read a per-port dictionary, so the two tables that arrive one port per record
  * (`SERIALCONFIG`, `LOGLIST`) are accumulated per page and handed over whole each time. Entries are
@@ -438,7 +450,7 @@ export function feedConfigFromEntries(
     const seq = Number(entry.seq ?? 0);
     if (seq > 0 && seq <= lastConfigSeq) continue;
     if (seq > highest) highest = seq;
-    if (!(CONFIG_MESSAGE_IDS as readonly number[]).includes(entry.messageId)) continue;
+    if (!CONFIG_MESSAGE_ID_SET.has(entry.messageId)) continue;
     if (!entry.ascii) continue;
     for (const [page, instance] of hosts) {
       const key = `${page}:${entry.messageId}`;
