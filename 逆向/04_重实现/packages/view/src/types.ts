@@ -162,6 +162,14 @@ export interface FeatureFlags {
   spoofingSupported: boolean;
   loggingComponent: boolean;
   fileSupported: boolean;
+  /**
+   * `featuresList.js#isWiFiClientSupported` / `#isWiFiHotspotSupported` — one bit for both, because
+   * the suite sets both from the same test (`featuresList.js:1077`: an `ENCLOSURE` component of
+   * `VERSION` (#37) whose PSN, minus its first character, starts with one of
+   * `wifiSupportedPSNList`). `Settings ▸ Networking`'s `.wifi-comp` and `.wifi-hotspot-comp` panels
+   * ship `display: none` and are only shown when this is true.
+   */
+  wifiSupported: boolean;
   constellations: string[];
   increasedLogLimit: boolean;
   positionModes: string[];
@@ -181,6 +189,7 @@ export const DEFAULT_FEATURES: FeatureFlags = {
   spoofingSupported: false,
   loggingComponent: false,
   fileSupported: false,
+  wifiSupported: false,
   constellations: [],
   increasedLogLimit: false,
   positionModes: [],

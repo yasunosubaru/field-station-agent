@@ -30,7 +30,11 @@ import { createTabRegistry } from '../../view/src/tabs.ts';
 import { createTileSystem } from '../../view/src/tiles.ts';
 import { MemoryStorage, UserStore } from '../../view/src/userStore.ts';
 import { DEFAULT_FEATURES, type FeatureFlags } from '../../view/src/types.ts';
-import type { ConfigOperationsHost } from '../../view/src/config/index.ts';
+import {
+  wifiSupportedFromVersion,
+  type ConfigOperationsHost,
+  type ItkCaptureSummary,
+} from '../../view/src/config/index.ts';
 
 /**
  * Pages `/config/<name>` serves, in drawer order.
@@ -55,6 +59,11 @@ import type { ConfigOperationsHost } from '../../view/src/config/index.ts';
  *   `vehicleSetup`   **Settings ▸ Vehicle Setup** (§2.2.7) — the `spanInstallation` fragment in a
  *                    container of its own (§2.2.7's screen *is* that template; the suite has no
  *                    separate `vehicleSetup` component).
+ *   `interferenceToolkit` **Tools ▸ Interference Toolkit** (§2.2.9) — the shipped ITK component,
+ *                    served read-only: its detection list comes from a capture's
+ *                    `ITDETECTSTATUS` text records (`feedItk`), its settings from the receiver's
+ *                    own `ITDETECTCONFIG` / `ITWARNINGCONFIG` / `ITSPECTRALANALYSIS` records. The
+ *                    spectrum plot needs the live `ITPSDFINAL` stream and is not drawn.
  */
 const CONFIG_PAGE_NAMES = [
   'positionConfig',
@@ -70,6 +79,7 @@ const CONFIG_PAGE_NAMES = [
   'languageSettings',
   'spanInstallation',
   'vehicleSetup',
+  'interferenceToolkit',
   'lghnPositionConfig',
   'lghnLoggingConfig',
   'deviceDetails',
@@ -78,6 +88,16 @@ const CONFIG_PAGE_NAMES = [
 ] as const;
 
 export type ConfigPageName = (typeof CONFIG_PAGE_NAMES)[number];
+
+/**
+ * The pages that belong to a **Tools** menu entry rather than to Settings or Device.
+ *
+ * `Tools ▸ Interference Toolkit` is the manual's own wording (§2.2.9: "click the Tools menu and
+ * then click Interference Toolkit"), and the shipped suite mounts the ITK component from that menu
+ * (`view/interferenceToolKit/*` is not part of the Configuration pill strip). The HTTP layer marks
+ * these pages apart so the drawer can group them; everything else about them is a menu page.
+ */
+export const TOOLS_PAGE_NAMES = ['interferenceToolkit'] as const;
 
 /**
  * Pages that live outside the 14-pill template: `events.ts` mounts into the tab's
@@ -178,6 +198,23 @@ export const UNSUPPORTED_PAGES: Record<string, string> = {
     'below is the shipped page’s own state, not a reading of a disk.',
 };
 
+/**
+ * What `Settings ▸ Networking` prints while the Wi-Fi half is hidden.
+ *
+ * The suite's own test is the enclosure PSN (`featuresList.js:1077`), and this receiver fails it on
+ * both counts: its `VERSION` (#37, b1-20261101.sbf) carries a `GPSCARD` and two database
+ * components and no `ENCLOSURE` at all, and the card it does report has PSN `BMGX21030301G`, whose
+ * three-character prefix after the first character (`MGX`) is not in `wifiSupportedPSNList`. The
+ * link agrees: `LOG WIFIMODE` answers `<ERROR:Message is invalid for this model` (measured
+ * 2026-11-01), which is why this page never asks for the Wi-Fi records either.
+ */
+export const WIFI_HIDDEN_NOTE =
+  'The Wi-Fi and Wi-Fi hotspot panels are hidden, exactly as the suite hides them: the receiver ' +
+  'reports no Wi-Fi. `VERSION` (#37) carries no ENCLOSURE component, the card’s PSN prefix (MGX) ' +
+  'is not in the suite’s Wi-Fi list (MND, MNE, MPL, MPM, MUS, MUR, MUT, MPX, MSR, MUH, MRT), and ' +
+  '`LOG WIFIMODE` answers <ERROR:Message is invalid for this model. Nothing about Wi-Fi is ' +
+  'assumed here.';
+
 /** The minimal clock the controller needs; the suite only reads `now()` during a page build. */
 function hostClock() {
   const now = (): number => Date.now();
@@ -219,6 +256,15 @@ export class ConfigHost {
       spoofingSupported: true,
       loggingComponent: true,
       fileSupported: true,
+      /**
+       * Measured on the desk OEM729 (2026-11-01): `VERSION` (#37) reports a `GPSCARD` and two
+       * database components and **no `ENCLOSURE`**, so the suite's Wi-Fi test
+       * (`featuresList.js:1077`) never runs for it; `LOG WIFIMODE` answers
+       * `<ERROR:Message is invalid for this model`. `Settings ▸ Networking` therefore keeps
+       * `.wifi-comp` / `.wifi-hotspot-comp` hidden, exactly as the shipped stylesheet leaves them.
+       * A receiver that does report Wi-Fi flips this through `feedLog(37, …)`.
+       */
+      wifiSupported: false,
       ...options.features,
     } as FeatureFlags;
 
@@ -330,7 +376,22 @@ export class ConfigHost {
         });
       }
     }
+    /* `Settings ▸ Networking` ships `.wifi-comp` and `.wifi-hotspot-comp` hidden, and the page only
+     * writes `display: block` when the receiver reports Wi-Fi. A hidden panel with no sentence above
+     * it reads as "this build forgot the Wi-Fi half", so the reason is printed there — and withdrawn
+     * the moment a `VERSION` record says the receiver does have Wi-Fi. */
+    if (name === 'networkingSettings') this.syncWifiNote();
     return { html: this.html(), mounted };
+  }
+
+  /** Keep `#config-wifi-note` in step with `features.wifiSupported` (see `WIFI_HIDDEN_NOTE`). */
+  private syncWifiNote(): void {
+    if (this.features.wifiSupported) {
+      this.doc.getElementById('config-wifi-note')?.remove();
+      return;
+    }
+    if (this.doc.getElementById('config-wifi-note')) return;
+    this.applyPageNote('networkingSettings', WIFI_HIDDEN_NOTE, { disable: [], id: 'config-wifi-note' });
   }
 
   /**
@@ -540,7 +601,37 @@ export class ConfigHost {
 
   /** Feed one decoded log record (same shape `manage.handleDecodedLog` expects). */
   feed(messageId: number, fields: Record<string, unknown>): string[] {
+    this.applyVersion(messageId, fields);
     return this.manage.configs.updateFromLog(messageId, fields);
+  }
+
+  /**
+   * Hand the Interference Toolkit page a capture's records (§2.2.9).
+   *
+   * The page cannot be fed from the link: `ITDETECTSTATUS` is a text record on this receiver and the
+   * live decoder never sees it, so the capture — mapped by `config-http.ts#feedItkCapture` with the
+   * same `readTextRecords` the `/api/records` endpoint uses — is what fills it.
+   */
+  feedItk(summary: ItkCaptureSummary | undefined): string[] {
+    return this.manage.configs.setItkCapture(this.tab as never, summary)
+      ? ['interferenceToolkit']
+      : [];
+  }
+
+  /**
+   * The one feature bit a record can change: whether the receiver has Wi-Fi.
+   *
+   * `featuresList.js` derives it from `VERSION` (#37) alone (`wifiSupportedFromVersion`), so the same
+   * record flips the flag here and `Settings ▸ Networking` re-reads it on its next render. Nothing
+   * else about a model is guessed: every other flag stays whatever the host was constructed with.
+   */
+  private applyVersion(messageId: number, fields: Record<string, unknown> | undefined): void {
+    if (messageId !== 37 || !fields) return;
+    const verdict = wifiSupportedFromVersion(fields);
+    if (this.features.wifiSupported === verdict.supported) return;
+    this.features.wifiSupported = verdict.supported;
+    this.manage.configs.page('networkingSettings')?.reset(this.tab as never);
+    this.syncWifiNote();
   }
 
   /**
@@ -579,6 +670,7 @@ export class ConfigHost {
    * pages that read its message id. `tab` is this host's own tab, exactly like `feedAscii`.
    */
   feedLog(messageId: number, data: Record<string, unknown>): string[] {
+    this.applyVersion(messageId, data);
     return this.manage.configs.updateFromLog(messageId, { ...data, tab: this.tab });
   }
 

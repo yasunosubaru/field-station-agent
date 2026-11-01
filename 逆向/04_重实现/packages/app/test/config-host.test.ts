@@ -54,10 +54,12 @@ test('the host mounts a shipped configuration page and returns its original mark
   assert.equal(host.show('spoofingConfiguration').mounted, false, 'and not again');
 });
 
-test('every page in the catalogue mounts (fourteen pills plus Device Details, Storage, Update, Vehicle Setup)', () => {
+test('every page in the catalogue mounts (fourteen pills plus Device Details, Storage, Update, Vehicle Setup, Interference Toolkit)', () => {
   const host = new ConfigHost(options());
-  assert.equal(CONFIG_PAGE_NAMES.length, 18);
-  for (const name of ['deviceDetails', 'deviceExport', 'deviceUpdate', 'vehicleSetup']) {
+  // 14 pill/settings pages + deviceDetails, deviceExport, deviceUpdate, vehicleSetup (§2.2.8/11/12/7)
+  // + interferenceToolkit (Tools ▸ Interference Toolkit, §2.2.9).
+  assert.equal(CONFIG_PAGE_NAMES.length, 19);
+  for (const name of ['deviceDetails', 'deviceExport', 'deviceUpdate', 'vehicleSetup', 'interferenceToolkit']) {
     assert.ok((CONFIG_PAGE_NAMES as readonly string[]).includes(name), `${name} is served`);
   }
   const failed: string[] = [];

@@ -25,10 +25,15 @@ import {
   CONFIG_PAGE_NAMES,
   OPERATIONAL_PAGE_NAMES,
   READ_ONLY_PAGES,
+  TOOLS_PAGE_NAMES,
   ConfigHost,
   type ConfigCommand,
 } from './config-host.ts';
 import { MENU_PAGE_NAMES, type ConfigOperationsHost } from '../../view/src/config/index.ts';
+import { itkRowsOf, type ItkCaptureSummary, type ItkRow } from '../../view/src/config/index.ts';
+import { loadCapture, tables } from './capture.ts';
+import { resolveCapture } from './paths.ts';
+import { readRecords, readTextRecords } from './logs.ts';
 import type { LiveCommandReply } from './live.ts';
 import {
   CONFIG_MESSAGE_ID_SET,
@@ -77,6 +82,8 @@ export const CONFIG_LABELS: Record<string, string> = {
   deviceUpdate: 'Update',
   /** §2.2.7: the `spanInstallation` fragment under its own menu entry. */
   vehicleSetup: 'Vehicle Setup',
+  /** §2.2.9: `View ▸ Tools ▸ Interference Toolkit`, served read-only from a capture's records. */
+  interferenceToolkit: 'Interference Toolkit',
   events: 'Events',
 };
 
@@ -170,12 +177,19 @@ export function isConfigPage(name: string): boolean {
  * tab's menu layouts (`Settings ▸ …`) rather than in the Configuration pill strip — the drawer
  * groups them apart so a reader can tell which menu a page belongs to.
  */
-export function configPageList(): Array<{ name: string; label: string; operational: boolean; settings: boolean }> {
+export function configPageList(): Array<{
+  name: string;
+  label: string;
+  operational: boolean;
+  settings: boolean;
+  tools: boolean;
+}> {
   return ALL_PAGE_NAMES.map((name) => ({
     name,
     label: CONFIG_LABELS[name] ?? name,
     operational: (OPERATIONAL_PAGE_NAMES as readonly string[]).includes(name),
     settings: (MENU_PAGE_NAMES as readonly string[]).includes(name),
+    tools: (TOOLS_PAGE_NAMES as readonly string[]).includes(name),
   }));
 }
 
@@ -289,6 +303,17 @@ const CLIENT_SCRIPT = `
         .catch(function () {});
     }, 2500);
   }
+  /* Tools ▸ Interference Toolkit is read from a capture; the drawer names it in the page's URL.
+   * The page cannot read a capture itself — it names it through the #itk-capture control and the
+   * server does the read — and it prints its own summary, so nothing is written over the session
+   * note here. The comparison is against the capture the page last read, because the drawer reuses
+   * this iframe when the shell's capture changes. */
+  if (page === 'interferenceToolkit') {
+    var wanted = new URLSearchParams(location.search).get('capture') || '';
+    var read = document.querySelector('#itk-detections[data-itk-capture]');
+    var current = read ? read.getAttribute('data-itk-capture') : '';
+    if (wanted !== current) post({ selector: '#itk-capture', value: wanted });
+  }
 })();
 `;
 
@@ -323,10 +348,45 @@ export function configPageDocument(name: string, options: { connected?: boolean 
         '  .config-readonly-note { margin: 0 0 10px; padding: 8px 12px; background: #fff4e5;',
         '    border-left: 3px solid #a00214; font: 13px/1.4 sans-serif; color: #4a3200; }',
         '  .config-page-note { margin: 0 0 10px; padding: 8px 12px; background: #fff4e5;',
-        '    border-left: 3px solid #d98500; font: 13px/1.4 sans-serif; color: #4a3200; }',
+        '    border-left: 3px solid #d98500; font: 13px/1.4 sans-serif; color: #4a3200;',
+        /* The shipped stylesheet pins `body` to 1280 px inside a narrower window (style.css:2492),
+         * so a full-width paragraph is clipped at the drawer's right edge. A reading note should not
+         * be: it wraps inside the visible part of the drawer instead. */
+        '    max-width: 660px; }',
         '  #deviceUpdateBrowseBtn[disabled], #deviceUpdateApplyBtn[disabled],',
         '  .download-image-btn[disabled], .usb-image-btn[disabled], .delete-image-btn[disabled]',
         '    { opacity: .55; cursor: not-allowed; }',
+        /* Tools ▸ Interference Toolkit: the two read-only sections the page appends to the shipped
+         * fragment. The stylesheet has no rules for them (the original drew a Plotly canvas there),
+         * so they are sized here rather than borrowing a class that means something else. */
+        /* The shipped stylesheet pins `body` to 1280 px below a 1279 px window (style.css:2492,
+         * the width the desktop app is designed at); the drawer's iframe is ~1000 px, so the page
+         * would be clipped at the right edge. This page has no 1280 px canvas left (the plot is not
+         * drawn), so it is allowed to use the drawer's own width. */
+        '  body[data-config-page="interferenceToolkit"] { width: auto !important;',
+        '    max-width: 100% !important; }',
+        '  .itk-readonly-note { clear: both; margin: 4px 24px 8px; padding: 8px 12px;',
+        '    background: #fff4e5; border-left: 3px solid #d98500; font: 13px/1.45 sans-serif;',
+        '    color: #4a3200; }',
+        '  .itk-readonly-section { margin: 14px 24px 22px; }',
+        /* The shipped title is `float: left`; with the Settings button and the plot gone the float
+         * would push the note beside it instead of below. */
+        '  body[data-config-page="interferenceToolkit"] .itk-title { float: none;',
+        '    display: block; margin: 0 24px 4px; }',
+        '  .itk-readonly-section h3 { margin: 0 0 6px; font: 600 15px/1.3 sans-serif; color: #115c7c; }',
+        '  .itk-detection-summary, .itk-config-missing { margin: 0 0 8px; font: 13px/1.45 sans-serif;',
+        '    color: #333; }',
+        '  .itk-table-wrap { overflow-x: auto; }',
+        '  .itk-table { width: 100%; border-collapse: collapse; font: 13px/1.35 sans-serif; }',
+        '  .itk-table th, .itk-table td { border-bottom: 1px solid #e3e3e3; padding: 5px 8px;',
+        '    text-align: left; white-space: nowrap; }',
+        '  .itk-table th { background: #f4f8fb; color: #115c7c; font-weight: 600; }',
+        '  .itk-table .itk-config-item { white-space: normal; }',
+        '  .itk-table .itk-config-source { color: #666; }',
+        '  .itk-not-detected { color: #666; font-style: italic; }',
+        '  .itk-no-detections { margin: 6px 0 0; font: 13px/1.4 sans-serif; color: #666;',
+        '    font-style: italic; }',
+        '  #itk-capture { display: none; }',
       ].join('\n');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
@@ -365,6 +425,16 @@ export function applyConfigEvent(
   options: { connected?: boolean; sent?: number } = {},
 ): ConfigEventResult {
   const target = host(name);
+  /**
+   * Tools ▸ Interference Toolkit (§2.2.9) is filled from a **capture**, and only the drawer knows
+   * which one is open. The page document names it through `#itk-capture`, the one control on that
+   * page that is not a receiver setting; the read happens here, on the server, with the same
+   * `readTextRecords` the `/api/records` endpoint serves, and the re-rendered panel comes back in
+   * `shell` like every other form event.
+   */
+  if (name === 'interferenceToolkit' && selector === '#itk-capture' && typeof event.value === 'string') {
+    feedItkCapture(event.value);
+  }
   const applied = target.applyEvent(selector, event);
   const commands = target.takeCommands();
   /* A read-only page (§2.2.12 Update) dropped whatever it framed; say that in the page rather than
@@ -522,6 +592,166 @@ export function feedEventsItk(fields: Record<string, unknown>): boolean {
   const before = instance.eventCount();
   instance.feedLog(2065, fields);
   return instance.eventCount() > before;
+}
+
+/* ------------------------------------------------- Tools ▸ Interference Toolkit (§2.2.9) */
+
+/** What one read of a capture gave the Interference Toolkit page. */
+export interface ItkCaptureFeed {
+  ok: boolean;
+  capture: string;
+  /** Why nothing could be read, when `ok` is false. */
+  reason?: string;
+  /** `ITDETECTSTATUS` records in the capture (`47` on b7). */
+  total: number;
+  /** Records handed to the page — the `/api/records` per-request limit, 25. */
+  shown: number;
+  /** How many of those carry a detection. */
+  detected: number;
+}
+
+/** `#ITDETECTSTATUSA,…;1,L2,SPECTRUMANALYSIS,1270.432,…` → the flat field map the page groups. */
+function fieldMapOf(record: { fields: Array<{ path: string; value: unknown; text?: string }> }): Record<
+  string,
+  unknown
+> {
+  const fields: Record<string, unknown> = {};
+  // `text` is the **printed** token (`L2`, `SPECTRUMANALYSIS`, `00000400`), which is what the page
+  // shows; `value` would turn the band into `3` and the severity into `0`. Text records always carry
+  // it, and so does a decoded enum in a binary record (`ALL`, `HDR`, `2K`).
+  for (const field of record.fields) fields[field.path] = field.text ?? field.value;
+  return fields;
+}
+
+/** One field of a binary record, by layout name, as its printed form. */
+function fieldTextOf(
+  record: { fields: Array<{ name: string; value: unknown; text?: string }> } | undefined,
+  name: string,
+): string | undefined {
+  const field = record?.fields.find((candidate) => candidate.name === name);
+  return field ? String(field.text ?? field.value) : undefined;
+}
+
+/**
+ * Read one capture into the Interference Toolkit page.
+ *
+ * The page's detections are `ITDETECTSTATUS` (#2065) — a **text** record on this receiver, so it is
+ * read with the same `readTextRecords` the `/api/records?name=…` endpoint uses, at the same per
+ * request limit (25). Its settings come from the receiver's immutable-in-this-build records:
+ * `ITDETECTCONFIG` (#2143), `ITWARNINGCONFIG` (#2289), `ITFRONTENDMODE` (#2039) and
+ * `ITSPECTRALANALYSIS` (#1967); whatever the capture does not hold is reported as missing so the
+ * page can print `--` with a reason instead of a zero.
+ *
+ * Nothing in a capture is sent anywhere: this only reads files the app already has.
+ */
+export function feedItkCapture(capture: unknown): ItkCaptureFeed {
+  const wanted = String(capture ?? '').trim();
+  const fail = (reason: string): ItkCaptureFeed => ({
+    ok: false,
+    capture: wanted,
+    reason,
+    total: 0,
+    shown: 0,
+    detected: 0,
+  });
+  if (!wanted) {
+    // Nothing to read: clear whatever the page was showing, so it cannot keep a previous capture's
+    // rows while its own URL names none.
+    host('interferenceToolkit').feedItk(undefined);
+    return fail('no capture was named, so nothing could be read');
+  }
+  let data;
+  try {
+    data = loadCapture(resolveCapture(wanted));
+  } catch (error) {
+    host('interferenceToolkit').feedItk(undefined);
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+  const table = tables();
+  const PAGE = 25;
+  const first = readTextRecords(data, table, 'ITDETECTSTATUS', 0, PAGE);
+
+  // Every record, not just the first page: the page states the capture-wide count ("38 of 47 carry
+  // a detection"), and a count it could not see would be a guess.
+  const allRows: ItkRow[] = [];
+  let detectedTotal = 0;
+  const methods: Record<string, number> = {};
+  const bands: string[] = [];
+  for (let offset = 0; offset < first.total; offset += PAGE) {
+    const page = readTextRecords(data, table, 'ITDETECTSTATUS', offset, PAGE);
+    for (const record of page.records) {
+      for (const row of itkRowsOf(fieldMapOf(record))) {
+        allRows.push(row);
+        if (!row.detected) continue;
+        detectedTotal += 1;
+        methods[row.method] = (methods[row.method] ?? 0) + 1;
+        if (!bands.includes(row.band)) bands.push(row.band);
+      }
+    }
+  }
+
+  const shownRows = allRows.slice(0, first.records.length);
+  const config: ItkCaptureSummary['config'] = {};
+  const missing: string[] = [];
+  const readOne = (messageId: number) => readRecords(data, table, messageId, 0, 1).records[0];
+
+  const itdetect = readOne(2143);
+  if (itdetect) config.itkSwitch = fieldTextOf(itdetect, 'frequency');
+  else missing.push('ITDETECTCONFIG (#2143) — the Interference Toolkit switch');
+
+  const warning = readOne(2289);
+  if (warning) config.warningLevel = fieldTextOf(warning, 'level');
+  else missing.push('ITWARNINGCONFIG (#2289) — the warning level');
+
+  const frontend = readOne(2039);
+  if (frontend) config.hdrMode = fieldTextOf(frontend, 'mode');
+  else missing.push('ITFRONTENDMODE (#2039) — Enable HDR Mode');
+
+  const spectral = readOne(1967);
+  if (spectral) {
+    config.dataSource = fieldTextOf(spectral, 'data_source');
+    config.analysisBand = fieldTextOf(spectral, 'frequency');
+    config.updatePeriodMs = fieldTextOf(spectral, 'psd_update_period_ms');
+    config.fftSize = fieldTextOf(spectral, 'fft_size');
+    config.timeAveragingSec = fieldTextOf(spectral, 'psd_time_ave_window_sec');
+    config.detectionSensitivity = fieldTextOf(spectral, 'psd_subcarrier_ave_window');
+  } else {
+    missing.push('ITSPECTRALANALYSIS (#1967) — the Advanced Settings');
+  }
+
+  const hasFilters = [1991, 2022, 2023].some(
+    (messageId) => readRecords(data, table, messageId, 0, 1).total > 0,
+  );
+  if (!hasFilters) {
+    missing.push(
+      'ITFILTTABLE (#1991) / ITPROGFILTBANK (#2023) / ITBANDPASSBANK (#2022) — the filter list',
+    );
+  } else {
+    config.filters = 'Present in the capture (see ITFILTTABLE)';
+  }
+
+  const summary: ItkCaptureSummary = {
+    capture: data.relPath,
+    total: first.total,
+    shown: first.records.length,
+    detectedShown: shownRows.filter((row) => row.detected).length,
+    detectedTotal,
+    methods,
+    bands,
+    rows: shownRows,
+    config,
+    missing,
+  };
+  // A capture with no ITDETECTSTATUS at all still renders the page's own empty state; `feedItk`
+  // ignores a page that is not mounted, and the drawer always mounts before it asks.
+  host('interferenceToolkit').feedItk(summary);
+  return {
+    ok: true,
+    capture: data.relPath,
+    total: first.total,
+    shown: first.records.length,
+    detected: summary.detectedShown,
+  };
 }
 
 /* ------------------------------------------------------------------- Device ▸ .cfg */

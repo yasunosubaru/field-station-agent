@@ -24,6 +24,7 @@ import {
   LonghornPositionConfigPage,
 } from './longhorn.ts';
 import { NetworkingSettingsPage } from './networkingSettings.ts';
+import { InterferenceToolkitPage, type ItkCaptureSummary } from './interferenceToolkit.ts';
 import { PortConfigPage } from './portConfig.ts';
 import { PositionConfigPage } from './positionConfig.ts';
 import { RadioConfigPage } from './radioConfig.ts';
@@ -218,6 +219,14 @@ export const CONFIG_SUBSCRIPTIONS: Record<string, number[]> = {
   radioConfig: [37, 2204, 2205, 2215, 2220],
   gnssConfig: [1735, 613],
   spoofingConfiguration: [2358, 2366, 2367],
+  /**
+   * Tools ▸ Interference Toolkit (§2.2.9) takes **nothing** from the live link: `ITDETECTSTATUS`
+   * is a text record on this receiver (`#ITDETECTSTATUSA`), so the live decoder never sees it and
+   * the page is handed a capture's records by the host (`config-http.ts#feedItkCapture`). An empty
+   * list is the page's contract, kept explicit so a later reader does not think a request went
+   * missing — the same reason `vehicleSetup` has one.
+   */
+  interferenceToolkit: [],
   networkingSettings: [2091, 2093, 1243, 1289, 2210, 2207, 1244],
   lghnPositionConfig: [],
   lghnLoggingConfig: [],
@@ -240,7 +249,13 @@ export const CONFIG_LANGUAGE_PAGE_NAMES = [
   'interferenceToolKit',
 ] as const;
 
-/** Fourteen page implementations; GIII Logging is a variant of `loggingConfig`. */
+/**
+ * The fourteen page implementations of the shipped **Configuration pill strip**.
+ *
+ * `interferenceToolkit` (§2.2.9) is deliberately not here: it is a Tools menu page, mounted like
+ * `generalSettings` / `deviceDetails` into the tab's menu layouts (`MENU_PAGE_NAMES`), and the pill
+ * strip has never had a button for it.
+ */
 export const CONFIG_PAGE_NAMES = [
   'positionConfig',
   'portConfig',
@@ -275,6 +290,7 @@ export const MENU_PAGE_NAMES = [
   'languageSettings',
   'spanInstallation',
   'vehicleSetup',
+  'interferenceToolkit',
   'displaysSettings',
   'deviceDetails',
   'deviceExport',
@@ -298,6 +314,8 @@ export class ConfigBundle {
   readonly language: LanguageSettingsPage;
   readonly spanInstallation: SpanInstallationPage;
   readonly vehicleSetup: VehicleSetupPage;
+  /** Tools ▸ Interference Toolkit (§2.2.9), fed from a capture by the host. */
+  readonly interferenceToolkit: InterferenceToolkitPage;
   readonly displays: DisplaysSettingsPage;
   readonly autoUpdates = new AutoUpdatesPage();
   readonly longhornPosition: LonghornPositionConfigPage;
@@ -343,6 +361,7 @@ export class ConfigBundle {
     this.language = new LanguageSettingsPage(runtime);
     this.spanInstallation = new SpanInstallationPage(runtime);
     this.vehicleSetup = new VehicleSetupPage(runtime);
+    this.interferenceToolkit = new InterferenceToolkitPage(runtime);
     this.displays = new DisplaysSettingsPage(this.spanInstallation);
     this.longhornPosition = new LonghornPositionConfigPage(runtime);
     this.longhornLogging = new LonghornLoggingConfigPage(runtime);
@@ -371,6 +390,7 @@ export class ConfigBundle {
       languageSettings: this.language,
       spanInstallation: this.spanInstallation,
       vehicleSetup: this.vehicleSetup,
+      interferenceToolkit: this.interferenceToolkit,
       displaysSettings: this.displays,
       autoUpdates: this.autoUpdates,
       lghnPositionConfig: this.longhornPosition,
@@ -520,6 +540,19 @@ export class ConfigBundle {
     if (styled.style) styled.style.display = 'none';
     layouts.appendChild(container);
     return container;
+  }
+
+  /**
+   * Hand the Interference Toolkit page the records of one capture.
+   *
+   * The page is fed from a capture rather than from the link (its `ITDETECTSTATUS` is a text record
+   * the live decoder never sees), so this is the one entry point that fills it. `false` when the
+   * page is not mounted on this tab — never a silent no-op for a page that was asked for.
+   */
+  setItkCapture(tab: TabId, summary: ItkCaptureSummary | undefined): boolean {
+    if (!this.mountedPages(tab).includes(this.interferenceToolkit.name)) return false;
+    this.interferenceToolkit.setCapture(tab, summary);
+    return true;
   }
 
   requiredLogs(features: FeatureFlags, target?: string): ConfigLogRequest[] {
@@ -728,6 +761,7 @@ export * from './loggingConfig.ts';
 export * from './localSettings.ts';
 export * from './longhorn.ts';
 export * from './networkingSettings.ts';
+export * from './interferenceToolkit.ts';
 export * from './portConfig.ts';
 export * from './positionConfig.ts';
 export * from './radioConfig.ts';

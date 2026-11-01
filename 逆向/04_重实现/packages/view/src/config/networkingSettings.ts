@@ -7,6 +7,7 @@ import {
   scopedQueryAll,
   setChecked,
   setValue,
+  setVisible,
 } from './base.ts';
 
 export const NETWORK_MSG = {
@@ -20,6 +21,118 @@ export const NETWORK_MSG = {
   WIFI_AP_PASSKEY: 2090,
 } as const;
 
+/**
+ * `NovatelIdConstants.wifiSupportedPSNList` verbatim (`model/NovatelIdConstants.js:39`).
+ *
+ * These are PSN **prefixes of an enclosure**, not model names: `featuresList.js:1077` takes the
+ * `VERSION` (#37) record, and only for a component whose `component_type` is `ENCLOSURE`, drops the
+ * PSN's first character and compares the next three (`PSNVal.slice(1).slice(0,3)`).
+ */
+export const WIFI_SUPPORTED_PSN_PREFIXES = [
+  'MND',
+  'MNE',
+  'MPL',
+  'MPM',
+  'MUS',
+  'MUR',
+  'MUT',
+  'MPX',
+  'MSR',
+  'MUH',
+  'MRT',
+] as const;
+
+/** What the suite's Wi-Fi test said about one receiver, and in its own terms. */
+export interface WifiSupportVerdict {
+  supported: boolean;
+  /** The three-character prefixes the receiver's enclosure PSNs produced (empty if none). */
+  psnPrefixes: string[];
+  /** One sentence naming the evidence, for the page's line. */
+  reason: string;
+}
+
+/** `Component` enum of `VERSION` (#37): `0 UNKNOWN, 1 GPSCARD, 3 ENCLOSURE, …` (`edie-layouts.json`). */
+const COMPONENT_ENCLOSURE = 3;
+
+/**
+ * `getWifiSupported` of the shipped suite, over one decoded `VERSION` (#37) record.
+ *
+ * Both flags it drives (`isWiFiClientSupported` → `.wifi-comp`, `isWiFiHotspotSupported` →
+ * `.wifi-hotspot-comp`) are false until this test passes, and `featuresList.js:1036` resets them to
+ * false at the start of every `VERSION` decode — so a receiver that reports no enclosure (the desk
+ * OEM729 does: its `VERSION` holds a `GPSCARD` and two database components, no `ENCLOSURE`) keeps
+ * both panels hidden, which is exactly what the suite does with it.
+ *
+ * `MODELFEATURES` (#1329) plays no part: nothing in `featuresList.js` reads it for Wi-Fi.
+ */
+export function wifiSupportedFromVersion(
+  fields: Record<string, unknown> | undefined,
+): WifiSupportVerdict {
+  const components: Array<Record<string, unknown>> = [];
+  const versions = fields?.versions;
+  if (Array.isArray(versions)) {
+    for (const entry of versions) {
+      if (entry && typeof entry === 'object') components.push(entry as Record<string, unknown>);
+    }
+  } else if (fields) {
+    // Flat `versions[i].field` paths, the shape the capture API and the live projection use.
+    const grouped = new Map<number, Record<string, unknown>>();
+    for (const [key, value] of Object.entries(fields)) {
+      const match = /^versions\[(\d+)\]\.(\w+)$/.exec(key);
+      if (!match) continue;
+      const index = Number(match[1]);
+      const component = grouped.get(index) ?? {};
+      component[match[2]] = value;
+      grouped.set(index, component);
+    }
+    components.push(...grouped.values());
+  }
+
+  const psnPrefixes: string[] = [];
+  let enclosures = 0;
+  for (const component of components) {
+    const type = component.component_type ?? component.componentType ?? component.type;
+    const isEnclosure =
+      Number(type) === COMPONENT_ENCLOSURE ||
+      String(type ?? '').toUpperCase() === 'ENCLOSURE';
+    if (!isEnclosure) continue;
+    enclosures += 1;
+    const psn = String(component.psn ?? component.PSN ?? '');
+    const prefix = psn.slice(1, 4).toUpperCase();
+    if (prefix) psnPrefixes.push(prefix);
+  }
+
+  const hit = psnPrefixes.find((prefix) =>
+    (WIFI_SUPPORTED_PSN_PREFIXES as readonly string[]).includes(prefix),
+  );
+  if (hit) {
+    return {
+      supported: true,
+      psnPrefixes,
+      reason:
+        `ENCLOSURE PSN prefix ${hit} is in the suite’s Wi-Fi list ` +
+        `(${WIFI_SUPPORTED_PSN_PREFIXES.join(', ')}), so VERSION (#37) reports Wi-Fi.`,
+    };
+  }
+  if (!enclosures) {
+    return {
+      supported: false,
+      psnPrefixes,
+      reason:
+        'VERSION (#37) reports no ENCLOSURE component at all, so the suite’s Wi-Fi test ' +
+        '(`featuresList.js:1077`) never runs and both Wi-Fi panels stay hidden.',
+    };
+  }
+  return {
+    supported: false,
+    psnPrefixes,
+    reason:
+      `ENCLOSURE PSN prefix ${psnPrefixes.join(', ') || '--'} is not one of the suite’s Wi-Fi ` +
+      `prefixes (${WIFI_SUPPORTED_PSN_PREFIXES.join(', ')}), so both Wi-Fi panels stay hidden.`,
+  };
+}
+
+
 /** `networkingSettings.js:1236-1600`. */
 export class NetworkingSettingsPage extends BaseConfigPage {
   constructor(runtime: ConfigPageRuntime) {
@@ -31,6 +144,13 @@ export class NetworkingSettingsPage extends BaseConfigPage {
   }
 
   protected render(tab: TabId): void {
+    // `networkingSettings.js:1248-1289`: `.wifi-hotspot-comp` and `.wifi-comp` are hidden unless
+    // `featuresList` says the receiver has Wi-Fi, and shown (with their own default data loaded)
+    // when it does. The shipped stylesheet hides both (`style.css:30349`), so the unsupported case
+    // has to write `display: none` as well — that is the original's own `css("display", "none")`.
+    const wifi = this.context.features(tab).wifiSupported === true;
+    setVisible(scopedQuery(this.context, tab, '.wifi-comp'), wifi);
+    setVisible(scopedQuery(this.context, tab, '.wifi-hotspot-comp'), wifi);
     const current = this.state.current(tab) as Record<string, Record<string, unknown>>;
     const ip = current[String(NETWORK_MSG.IP_CONFIG)];
     if (ip) {

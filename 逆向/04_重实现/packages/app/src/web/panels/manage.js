@@ -927,6 +927,8 @@ const MENU = [
     items: [
       { key: 'terminal', label: 'Terminal', wired: true },
       { key: 'events', label: 'Events', wired: true },
+      /* §2.2.9: "click the Tools menu and then click Interference Toolkit". */
+      { key: 'interferenceToolkit', label: 'Interference Toolkit…', wired: true },
       {
         key: 'device',
         label: 'Device',
@@ -970,6 +972,13 @@ export const SETTINGS_PAGES = new Set(['generalSettings', 'networkingSettings', 
  *   `deviceUpdate`  **Update**        (§2.2.12) — served read-only, see `READ_ONLY_PAGES`
  */
 export const DEVICE_PAGES = new Set(['deviceDetails', 'deviceExport', 'deviceUpdate']);
+
+/**
+ * `Tools ▸ …` pages: §2.2.9's Interference Toolkit is a menu page of the same family (mounted into
+ * the tab's menu layouts and served by the same controller pages) but belongs to the Tools menu, and
+ * the drawer groups it apart for that reason. `/api/config/pages` marks it `tools: true`.
+ */
+export const TOOLS_PAGES = new Set(['interferenceToolkit']);
 /* Material-style glyphs, 24×24 viewBox, drawn with `currentColor` so the bar can dim the
  * unwired items. The gear is the same path the shell's app-bar settings icon uses
  * (`icons/menubar_settings.svg`). */
@@ -1625,11 +1634,17 @@ export function mount(root, ctx = {}) {
       // Grouped by the menu the page belongs to, so the same one select covers Configuration and
       // Settings without pretending they are the same page family.
       const groups = [
-        { label: 'Configuration', pages: drawer.pages.filter((page) => !page.settings && !page.operational) },
+        {
+          label: 'Configuration',
+          pages: drawer.pages.filter((page) => !page.settings && !page.operational && !page.tools),
+        },
         {
           label: 'Settings',
-          pages: drawer.pages.filter((page) => page.settings && !DEVICE_PAGES.has(page.name)),
+          pages: drawer.pages.filter(
+            (page) => page.settings && !DEVICE_PAGES.has(page.name) && !page.tools,
+          ),
         },
+        { label: 'Tools', pages: drawer.pages.filter((page) => page.tools) },
         { label: 'Device', pages: drawer.pages.filter((page) => DEVICE_PAGES.has(page.name)) },
         { label: 'Operational', pages: drawer.pages.filter((page) => page.operational) },
       ].filter((group) => group.pages.length);
@@ -1653,19 +1668,22 @@ export function mount(root, ctx = {}) {
     drawer.page = page;
     if (configEls.page) configEls.page.value = page;
     if (configEls.frame) {
-      // `Events` reads a capture's interference records server-side (`ITDETECTSTATUS` only ever
-      // arrives as text here), so the shell tells it which capture is open.
-      const suffix = page === 'events' && state.capture ? `?capture=${encodeURIComponent(state.capture)}` : '';
+      // Two pages read a capture rather than the live link: `Events` takes the capture's
+      // `ITDETECTSTATUS` records, and `Interference Toolkit` (§2.2.9) takes the same records plus the
+      // ITK configuration ones. The page's own script hands the name back so the server can read it.
+      const fromCapture = page === 'events' || page === 'interferenceToolkit';
+      const suffix = fromCapture && state.capture ? `?capture=${encodeURIComponent(state.capture)}` : '';
       configEls.frame.src = `/config/${encodeURIComponent(page)}${suffix}`;
     }
     const settings = SETTINGS_PAGES.has(page);
     const device = DEVICE_PAGES.has(page);
+    const tools = TOOLS_PAGES.has(page);
     if (configEls.title) {
-      configEls.title.textContent = device ? 'Device' : settings ? 'Settings' : 'Configuration';
+      configEls.title.textContent = device ? 'Device' : tools ? 'Tools' : settings ? 'Settings' : 'Configuration';
     }
     if (configEls.note) {
       const entry = (drawer.pages ?? []).find((item) => item.name === page);
-      const family = device ? ' (Device page)' : settings ? ' (Settings page)' : '';
+      const family = device ? ' (Device page)' : tools ? ' (Tools page)' : settings ? ' (Settings page)' : '';
       configEls.note.textContent = entry
         ? `${entry.label}${family} — the suite’s shipped markup and controller (${page})`
         : page;
@@ -3694,6 +3712,7 @@ export function mount(root, ctx = {}) {
     else if (key === 'events') void openConfigDrawer('events');
     else if (SETTINGS_PAGES.has(key)) void openConfigDrawer(key);
     else if (DEVICE_PAGES.has(key)) void openConfigDrawer(key);
+    else if (TOOLS_PAGES.has(key)) void openConfigDrawer(key);
     else if (key === 'exportCfg') openDeviceModal('export');
     else if (key === 'importCfg') openDeviceModal('import');
   };

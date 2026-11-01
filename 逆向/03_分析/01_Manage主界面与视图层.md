@@ -1266,3 +1266,131 @@ Storage 无存储态与禁用按钮、Update 只读门禁）。既有 `config-ho
 `frequency` / `int_detect_method` / `parameter1…4` / `severity1` / `severity2`，数组键是
 `interference_statuses`（`rowsOf()` 认的是 `data/Data/blocks/channelData/sats` 或数字键）。要让
 Events 页真的显示干扰条目，这两处名字得先对上；`packages/view` 本轮不在改动范围，只记在这里。
+
+> 上一段已在上轮修掉：`events.ts#itkDetections()` 现在读 `int_detect_method` / `parameter1`，
+> 由 `packages/view/test/events-itk.test.ts` 钉住。本轮的工具页复用了同一套字段名。
+
+## 14. Tools ▸ Interference Toolkit（§2.2.9）与 Wi-Fi 特征位（B6）——本轮实测
+
+样本仍是 `00_来源/samples/live-20261031/b7-20261101.sbf`（OEM729），判定用的二进制表是
+`packages/protocol/data/edie-layouts.json`，页面在 `逆向/04_重实现` 里由 `minidom` 渲染后交给浏览器。
+
+### 14.1 页面的结构，以及每一块的数据来源
+
+手册 §2.2.9 的窗口有四块：标题 + Interference Toolkit 开关、频段页签（L1/L2/L5/L6/L-Band）、
+谱图、Settings（HDR / Filters / Advanced Settings）。本轮**只做只读展示**，所以：
+
+| 页面区块 | 谁提供的 | 抓包里有没有 |
+|---|---|---|
+| 标题、页签、面包屑 `Tools / Interference Toolkit` | shipped 片段 `view/interferenceToolKit/interferenceToolKit.html`（原 id 全保留）| — |
+| **检测列表**（频段 / 方法 / 中心频率 / 参数 1–4 / severity）| `ITDETECTSTATUS`（#2065），一条 `interference_statuses[i]` 一行 | **有**：47 条文本记录，38 条带检测 |
+| **No interference detected** 空态 | 同一个记录，`;0*…`（状态数 0）| **有**：47 条里 9 条是 `;0` |
+| Interference Toolkit 开关（`ALL` / `NONE`）| `ITDETECTCONFIG`（#2143）`frequency` 枚举 | 有，**1 条二进制**记录 |
+| Warning level | `ITWARNINGCONFIG`（#2289）`level` | 有，**1 条二进制**记录 |
+| Advanced Settings（更新率 / 分辨率 / 平均 / 灵敏度）| `ITSPECTRALANALYSIS`（#1967）| 有，**1 条二进制**记录 |
+| Enable HDR Mode | `ITFRONTENDMODE`（#2039）`mode` | **没有** → `--`，页面写明缺哪条记录 |
+| Filters | `ITFILTTABLE`（#1991）/ `ITPROGFILTBANK`（#2023）/ `ITBANDPASSBANK`（#2022）| **没有** → `--` + 原因 |
+| 谱图（实时/历史曲线、Wideband/Passband、Share）| 需要 `ITPSDFINAL`（#1968）/ `ITPSDDETECT`（#2063）的实时流 | 抓包有 47/90 条**文本**记录，但本页不画图：不从抓包重放画出来的曲线只能是伪造。控件全部隐藏/禁用，并在页顶写明原因 |
+
+两条容易踩的事实：
+
+1. **`ITDETECTSTATUS` 是文本记录，配置类记录是二进制记录。** `#ITDETECTSTATUSA` 在抓包里是
+   47 个文本帧（`/api/logs` 的 `textGroups` 里就这一组），而 `ITDETECTCONFIG` / `ITWARNINGCONFIG` /
+   `ITSPECTRALANALYSIS` 在 `.sbf` 里各只有 **1 条二进制**记录（`/api/records?msgId=2143|2289|1967`
+   → `total=1`；`?name=…` → `total=0`）。所以配置值必须走 `readRecords`（二进制），
+   只看 `textGroups` 会以为"抓包里没有这些配置"。
+2. **中心频率只在 `SPECTRUMANALYSIS` 行成立。** `1,L2,SPECTRUMANALYSIS,1270.432,…` 的
+   `parameter1` 是 MHz；`1,L2,STATISTICANALYSIS,6.826,…` 的 `parameter1` 是统计量。把后者当频率
+   显示成 `6.826 MHz` 是错的，页面对统计法行把"中心频率"列留成 `--`，四个参数照实列在参数列里。
+   第三个 severity 字在布局里叫 `ITDETECTSTATUS_reserved3`，页面只显示 `severity1/severity2`。
+
+### 14.2 实测条数与截图
+
+| 判据 | 结果 |
+|---|---|
+| `GET /api/records?capture=b7-20261101.sbf&name=ITDETECTSTATUS&limit=25` | `total=47`，`records=25` |
+| 页面上的 `tr.itk-detection-row` 条数 | **25**，与上一行一致（`limit` 上限就是 25）|
+| 页面一次展示的上限说明 | 页面首行写明"Showing the first 25 record(s) — the API's per-request limit is 25 — 25 of them with a detection" |
+| 全抓包统计 | 47 条记录 / 38 条带检测（`STATISTICANALYSIS` 25 · `SPECTRUMANALYSIS` 13），频段全为 `L2` |
+| 空态 | 换成 `b1-20261101.sbf`（该抓包 0 条 `ITDETECTSTATUS`）：0 行、`No interference detected.` 可见、配置值全部 `--` 并列出缺失记录 |
+
+截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-itkpage\`）：
+`07-drawer-itk.png`（抽屉里的 ITK 页，25 行 + 页顶只读说明）、`04-itk-standalone.png`（整页）、
+`05-itk-config.png` / `06-itk-missing.png`（配置表与缺失原因）、`09-itk-empty.png`（换 b1 后的空态）、
+`10-filter-L1.png`（点 L1 页签后过滤成空）、`08-networking.png`（Settings ▸ Networking 只剩 Ethernet）。
+
+### 14.3 它是怎么被喂数据的（以及为什么不走实时链路）
+
+`ITDETECTSTATUS` 在本机是**文本**记录，实时解码器看不到它，所以这个页面没有
+`CONFIG_SUBSCRIPTIONS` 条目（`interferenceToolkit: []`，与 `vehicleSetup` 同理）。链路是：
+
+1. 抽屉打开时把当前抓包名写进 iframe URL（`manage.js#setConfigFrame` → `?capture=…`）；
+2. 页面自己的脚本把它 POST 回 `#itk-capture`（页面上唯一一个不是接收机设置的控制）；
+3. `config-http.ts#applyConfigEvent` 拦下这个选择器，`feedItkCapture()` 用**与 `/api/records`
+   同一个** `readTextRecords(...,0,25)` 读 25 条，再用 `readRecords` 读 4 条配置记录，
+   把枚举名（`ALL`/`PREDECIMATION`/`2K`）取 `text` 字段；
+4. 结果交给 `InterferenceToolkitPage#setCapture()`，页面渲染后整块 panel 随事件响应回到浏览器。
+
+换抓包时 URL 的 `?capture=` 与页面上一次读过的 `data-itk-capture` 不同就会重读，切到另一个
+抓包不会留着上一份的行（实测：b7 → 25 行；切 b1 → 0 行 + 空态）。
+
+### 14.4 Wi-Fi 特征位（B6）：套件怎么判，本机为什么保持隐藏
+
+套件的判据只有一个地方：`app/model/featuresList.js:1077`，在解码 `VERSION`（#37）时，对
+`component_type == "ENCLOSURE"` 的组件取 `PSN`，**去掉第一个字符再取 3 个**，看是否在
+`NovatelIdConstants.wifiSupportedPSNList = [MND, MNE, MPL, MPM, MUS, MUR, MUT, MPX, MSR, MUH, MRT]`
+里；命中才把 `wifiHotspot[tab]` / `wifiClient[tab]` 置真（`featuresList.js:1036` 每次解 VERSION 先清成
+false）。`MODELFEATURES`（#1329）**不参与**这个判断——`featuresList.js` 里没有任何地方为 Wi-Fi 读它。
+
+本机（OEM729，`b1-20261101.sbf` 的 `VERSION`）两条都不满足：
+
+- 组件列表是 `GPSCARD`（`BMGX21030301G`, `OEM729-2.03`）+ `OEM7FPGA` + `DB_WWWISO`，**没有 ENCLOSURE**
+  ——套件那段代码根本没机会运行；
+- 就算拿板卡的 PSN 去算，`slice(1,4)` = `MGX`，不在上表里；
+- 链路也同意：`LOG WIFIMODE` 回 `<ERROR:Message is invalid for this model`（2026-11-01 实测，
+  见 `config/index.ts` 里 `networkingSettings` 的请求表注释）。
+
+所以 `FeatureFlags.wifiSupported` 默认 `false`，`networkingSettings#render` 对
+`.wifi-comp` / `.wifi-hotspot-comp` 写 `display: none`（shipped CSS 本来就是隐藏的），
+并在 panel 顶部打印 `#config-wifi-note` 说明上面这三条理由。反过来，收到一条带 ENCLOSURE、
+PSN 前缀命中的 `VERSION` 时（`ConfigHost#feed(37, …)`，判据在
+`wifiSupportedFromVersion()`），两段写 `display: block`、说明自动撤掉。
+
+两态实测（`packages/app/test/config-itk.test.ts`）：
+
+| 输入 | `.wifi-comp` / `.wifi-hotspot-comp` | 说明 |
+|---|---|---|
+| b1 的真实 `VERSION`（无 ENCLOSURE）| `style="display: none"` | 打印 `#config-wifi-note` |
+| 合成 `versions[0].component_type=3` + `psn=BMND…` | `style="display: block"` | 说明被撤掉 |
+| 合成 ENCLOSURE + `psn=BMGX…`（前缀 MGX）| `style="display: none"` | 前缀不在表里 |
+
+截图：`08-networking.png`（抽屉里 Settings ▸ Networking，只剩 Ethernet 一段 + 顶部说明）。
+
+### 14.5 本轮改动的文件与测试
+
+- `packages/view/src/config/interferenceToolkit.ts`（新）：`itkRowsOf()` 映射、`InterferenceToolkitPage`；
+- `packages/view/src/config/index.ts`：bundle 里的 `interferenceToolkit`、`MENU_PAGE_NAMES`、
+  `CONFIG_SUBSCRIPTIONS.interferenceToolkit = []`、`setItkCapture()`（**不**进 `CONFIG_PAGE_NAMES`：
+  它不是 Configuration 的药丸页，与 `generalSettings` / `deviceDetails` 同类）；
+- `packages/view/src/types.ts`：`FeatureFlags.wifiSupported`；`networkingSettings.ts`：
+  `wifiSupportedFromVersion()` + 两段显隐；
+- `packages/app/src/config-host.ts`：`CONFIG_PAGE_NAMES += interferenceToolkit`、`TOOLS_PAGE_NAMES`、
+  `feedItk()`、VERSION 驱动的 Wi-Fi 位、`WIFI_HIDDEN_NOTE`；
+- `packages/app/src/config-http.ts`：标签、`tools` 分组位、`feedItkCapture()`、事件拦截、页面 CSS；
+- `packages/app/src/web/panels/manage.js`：Tools ▸ Interference Toolkit… 菜单项、抽屉的 Tools 分组、
+  ITK 页的 `?capture=`；
+- `packages/app/test/config-itk.test.ts`（新，14 项）+ 两处页面计数（18→19）。
+
+全量：`node --test --test-force-exit "packages/*/test/*.test.ts"` → 最后一次运行 **948 项全绿**
+（数量随并行改动变化：本轮开工时是 894 项，其中 14 项是本轮新增的）。
+
+### 14.6 本轮没做到的
+
+- **谱图没画**：`ITPSDFINAL`/`ITPSDDETECT` 在抓包里是 47/90 条文本记录（1024 点/条），理论上能重放，
+  但手册的描述是"随接收信号实时变化"的活图；本页只做只读展示，画一张静态重放而不说清楚
+  会被误读成实时频谱。控件已隐藏并写明原因。
+- **Filters / HDR 的写入不支持**：页面里这两个值连读都读不到（抓包没有 #1991/#2022/#2023/#2039），
+  所以是 `--` + 缺失清单；写入（`ITBANDPASSCONFIG` / `ITPROGFILTCONFIG` / `ITFRONTENDMODE`）
+  本轮完全没做。
+- **频段页签只做过滤，不切图**：点击 L2 把列表过滤成 L2 行（再点一次恢复全部），因为页签原本
+  切换的是那张没画的图。实测抓包里 38 条检测全在 L2，所以 L1/L5/L6/L-Band 页签会给出空态。

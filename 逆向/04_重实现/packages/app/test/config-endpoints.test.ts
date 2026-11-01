@@ -82,7 +82,9 @@ test('the page list serves the Configuration pages, the four menu pages and Even
   assert.equal(response.status, 200);
   const body = JSON.parse(text) as { pages: Array<{ name: string; label: string; operational: boolean }> };
   const names = body.pages.map((page) => page.name);
-  assert.equal(body.pages.filter((page) => !page.operational).length, 18);
+  // 14 pill/settings pages + deviceDetails, deviceExport, deviceUpdate, vehicleSetup,
+  // interferenceToolkit (Tools ▸ Interference Toolkit, §2.2.9).
+  assert.equal(body.pages.filter((page) => !page.operational).length, 19);
   assert.ok(names.includes('portConfig'));
   assert.ok(names.includes('deviceDetails'), 'Device ▸ Device Details is served by this build');
   assert.ok(names.includes('deviceExport'), 'Device ▸ Storage (§2.2.11) is served by this build');
@@ -256,10 +258,19 @@ test('the page list marks the Settings pages apart from the Configuration pills'
   const update = body.pages.find((page) => page.name === 'deviceUpdate');
   assert.equal(update?.label, 'Update');
   assert.equal(update?.settings, true);
+  /* §2.2.9: the Tools page — a menu page, but its own group, not Settings or Device. */
+  const itk = body.pages.find((page) => page.name === 'interferenceToolkit');
+  assert.equal(itk?.label, 'Interference Toolkit');
+  assert.equal(itk?.settings, true, 'it lives in the tab’s menu layouts like the Settings pages');
+  assert.equal(
+    (itk as unknown as { tools?: boolean } | undefined)?.tools,
+    true,
+    'and the drawer lists it under Tools',
+  );
   assert.equal(
     body.pages.filter((page) => !page.operational).length,
-    18,
-    'fourteen pills plus Device Details, Storage, Update and Vehicle Setup',
+    19,
+    'fourteen pills plus Device Details, Storage, Update, Vehicle Setup and Interference Toolkit',
   );
 });
 
