@@ -1,0 +1,49 @@
+
+The following conversion was completed at 2026-11-01T17:31:28.274Z
+
+
+Input File was b6.sbf, 2001033 bytes from C:\Users\SunCh\AppData\Local\Temp\opencode\b6suite
+
+
+Converted files were output to C:\Users\SunCh\AppData\Local\Temp\opencode\b6suite\ascii\b6
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2443, 34162.35
+      Finish time: 2443, 34194.55
+
+    UTC Time:
+      Start time : 2026-11-01T09:29:22.350Z
+      Finish time: 2026-11-01T09:29:54.550Z
+
+    Total Duration: 00:00:32
+      
+
+The following 17 log(s) were converted successfully to ASCII 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+      42 | BESTPOS                       |      32 |      32 |
+    1288 | ETHSTATUS                     |      15 |      15 |
+     963 | HWMONITOR                     |       3 |       3 |
+    1718 | LBANDBEAMTABLE                |      17 |      17 |
+    1201 | LBANDTRACKSTAT                |      17 |      17 |
+    2160 | OCEANIXSTATUS                 |      16 |      16 |
+     235 | PASSCOM3                      |       1 |       1 |
+      72 | PORTSTATS                     |       3 |       3 |
+    2250 | PPPSEEDAPPLICATIONSTATUS      |       1 |       1 |
+    2251 | PPPSEEDSTORESTATUS            |       1 |       1 |
+      43 | RANGE                         |     635 |     635 |
+      41 | RAWEPHEM                      |       8 |       8 |
+      93 | RXSTATUS                      |       2 |       2 |
+    1344 | SOURCETABLE                   |      17 |      17 |
+    2291 | TECTONICSCOMPENSATION         |       1 |       1 |
+    1729 | TERRASTARSTATUS               |      17 |      17 |
+       0 | UNKNOWN                       |     230 |       0 |
+
+
+
+
+

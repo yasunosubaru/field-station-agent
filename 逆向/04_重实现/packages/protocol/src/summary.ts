@@ -42,6 +42,13 @@ export interface SummaryInput {
   formatName: string;
   frames: SbfFrame[];
   completedAt: Date;
+  /**
+   * The `UNKNOWN` row's Source column: the pre-scan's byte count for everything it could not turn
+   * into a log (`convert-pipeline.ts#unknownByteCount`). `0` prints no row at all.
+   */
+  unknownBytes?: number;
+  /** `N bytes could not be converted.` — records this format cannot represent. `0` prints nothing. */
+  unConvertedBytes?: number;
 }
 
 const FORMAT_DIRECTORY: Record<string, string> = {
@@ -126,6 +133,15 @@ export function buildSummary(input: SummaryInput, logNames: Map<number, { name: 
       ].join('|') + '|',
     );
 
+  // The suite prints the `UNKNOWN` row **last**, whatever its name would sort to (`b3` shows it
+  // after `UPTIME`, which sorts before it), and counts it in the sentence above the table
+  // (`cli.js:838-852`: the row is appended to `logEntry` before `logEntry.split('\n')` is counted).
+  const unknownBytes = input.unknownBytes ?? 0;
+  if (unknownBytes > 0) {
+    rows.push([`${pad(0, 8, 'start')} `, ` ${pad('UNKNOWN', 29, 'end')} `, `${pad(unknownBytes, 8, 'start')} `, `${pad(0, 8, 'start')} `].join('|') + '|');
+  }
+  const logCount = logNames.size + (unknownBytes > 0 ? 1 : 0);
+
   const lines: string[] = [];
   lines.push('');
   lines.push(`The following conversion was completed at ${isoSeconds(input.completedAt)}`);
@@ -150,15 +166,15 @@ export function buildSummary(input: SummaryInput, logNames: Map<number, { name: 
   lines.push(`    Total Duration: ${durationText(Math.floor(finishMs) - Math.floor(startMs))}`);
   lines.push('      ');
   lines.push('');
-  lines.push(`The following ${logNames.size} log(s) were converted successfully to ${input.formatName} `);
+  lines.push(`The following ${logCount} log(s) were converted successfully to ${input.formatName} `);
   lines.push('');
   lines.push('      ID | Name                          | Source #| Output #|');
   lines.push(`${'-'.repeat(9)}+${'-'.repeat(31)}+${'-'.repeat(9)}+${'-'.repeat(9)}+`);
   lines.push(...rows);
-  lines.push('');
-  lines.push('');
-  lines.push('');
-  lines.push('');
-  lines.push('');
+  // `cli.js:854`: the sentence goes above the last two newlines, so the tail is
+  // `row\n\n\n\n<msg>\n\n` when a message is printed and `row\n\n\n\n\n\n` when it is not.
+  const unConverted = input.unConvertedBytes ?? 0;
+  if (unConverted > 0) lines.push('', '', '', `${unConverted} bytes could not be converted.`, '');
+  else lines.push('', '', '', '', '');
   return `${lines.join('\n')}\n`;
 }

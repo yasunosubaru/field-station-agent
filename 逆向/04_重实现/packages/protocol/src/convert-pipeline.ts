@@ -40,7 +40,7 @@ import { buildRinex21GloNav, buildRinex21Nav } from './rinex21-nav.ts';
 import { buildRinex3Obs, type Rinex3Version } from './rinex3.ts';
 import { RINEX3_NAV_EXTENSIONS, buildRinex3EmptyNav, buildRinex3Nav, rinex3NavSystems } from './rinex3-nav.ts';
 import { formatDirectory } from './summary.ts';
-import { abbrevTextLogLines, textLogLines } from './text-log.ts';
+import { abbrevTextLogLines, collectTextLogs, textLogLines } from './text-log.ts';
 
 export const CONVERT_FORMATS = [
   'ASCII',
@@ -91,7 +91,21 @@ export interface ConvertOptions {
    * Only the ASCII family has a per-log writer, so every other format ignores it.
    */
   split?: boolean;
+  /**
+   * `--unknown-bytes` (`cli.js:161-164`): what to do with the bytes Convert cannot attribute to a
+   * log. `'file'` writes them next to the output as `<base>.UNKNOWN`, `'interleave'` splices them
+   * into the converted file at the position they came from, `'ignore'` (the default, the suite's
+   * `SKIP`) drops them — the summary still counts them either way.
+   */
+  unknownBytes?: UnknownBytesMode;
+  /**
+   * The raw capture. Only needed for the unknown-byte accounting: those bytes are, by definition,
+   * in no frame, so they cannot be recovered from the frame list.
+   */
+  source?: Uint8Array;
 }
+
+export type UnknownBytesMode = 'file' | 'interleave' | 'ignore';
 
 /** One output file. `text` is null for BINARY; `bytes` is always what goes on disk. */
 export interface ConvertFile {
@@ -118,6 +132,18 @@ export interface ConvertOutcome {
   accepted: SbfFrame[];
   /** Source/output per log id, for the summary table (`summary.ts#buildSummary`). */
   counts: Map<number, { name: string; source: number; output: number }>;
+  /**
+   * The Summary's `UNKNOWN` row: how many bytes the suite's pre-scan could not turn into a log.
+   * Not the same number as `unknown.length` — see `unknownSpanLengths`.
+   */
+  unknownCount: number;
+  /**
+   * The bytes Convert cannot attribute to a log, in capture order. `--unknown-bytes=file` writes
+   * exactly these to `<base>.UNKNOWN`; the suite's own file is byte-identical (`b1`–`b5`).
+   */
+  unknown: Uint8Array;
+  /** `N bytes could not be converted.` — records of a type this format cannot represent. */
+  unConvertedBytes: number;
 }
 
 /**
@@ -178,11 +204,18 @@ function textLinesFor(
   rendered: Map<number, number> = new Map(),
   /** `--split`: the same lines, bucketed by log name so each one can go to its own file. */
   perLog?: Map<string, string[]>,
+  /** Per yielded output line: its record's capture offset, for `--unknown-bytes=interleave`. */
+  placed?: Array<{ offset: number; lines: readonly string[] }>,
 ): string[] {
   const rangeLayout = tables.messages['43'];
   const carries: RangeCarries = new Map();
   const lines: string[] = [];
   const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
+  const place = (index: number, produced: readonly string[]) => {
+    if (!placed) return;
+    const offset = frames[index].offset;
+    if (offset !== undefined) placed.push({ offset, lines: produced });
+  };
   const bucket = (name: string, produced: readonly string[]) => {
     if (!perLog || produced.length === 0) return;
     const list = perLog.get(name) ?? [];
@@ -195,6 +228,7 @@ function textLinesFor(
       // ASCII prints one line per text record; abbreviated ASCII one whole block per record.
       const produced = Array.isArray(text) ? text : [text];
       lines.push(...produced);
+      place(index, produced);
       // `--split` names the file after the log the record carries (`#BESTPOSA…` → `BESTPOS`).
       const name = /^[<#]\s*([A-Za-z][A-Za-z0-9_]*)/.exec(produced[0] ?? '')?.[1]?.toUpperCase() ?? '';
       if (name) bucket(name.replace(/[AB]$/, ''), produced);
@@ -209,6 +243,7 @@ function textLinesFor(
       const unpacked = { ...frame, payload: buildRangePayload(observations) };
       const produced = render(unpacked, rangeLayout);
       lines.push(...produced);
+      place(index, produced);
       bucket(rangeLayout.name, produced);
       // One `RANGE` record per compressed record — its observations are that record's array, not
       // separate rows (b2: 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 → 699 RANGE).
@@ -219,6 +254,7 @@ function textLinesFor(
     if (!layout) return;
     const produced = render(frame, layout);
     lines.push(...produced);
+    place(index, produced);
     // A record that prints nothing (`RXCONFIG` with an embedded message the dictionary lacks) is
     // input but not output — that is why b1's summary reads `RXCONFIG 278 → 256`.
     if (produced.length) bump(frame.header.messageId, 1);
@@ -339,6 +375,148 @@ function countTextRecords(
 }
 
 /**
+ * The bytes Convert cannot attribute to a log, split into the two questions the suite answers with
+ * two different numbers. Measured on `b1`–`b5` (2026-11-01):
+ *
+ *  1. **`<base>.UNKNOWN`** (`--unknown-bytes=file`) is the capture minus every record whose payload
+ *     renders, minus every text record the parser resolves (a `<NAME …` header **and** its
+ *     continuation rows). It is format-independent: `b1` gives the same 5386 bytes under `-a`,
+ *     `--abbrev` and `-b`. A record that is a log but renders nothing — an `RXCONFIG` (128) whose
+ *     embedded message the dictionary lacks, 22 of them in `b1`, 1616 bytes — is *in* the file:
+ *     the writer had nothing to put in the output, so the record's bytes are unconverted.
+ *
+ *  2. **The Summary's `UNKNOWN` row** comes from the pre-scan (`readmessage`), which *does* parse
+ *     those silent records (they show up as `RXCONFIG 278`), so their bytes are **not** in it.
+ *     What is left is counted by a rule of its own:
+ *       - a run of unattributable bytes counts as its length,
+ *       - except that `<OK…\r\n` / `<ERROR…\r\n` lines are command responses: a run that holds
+ *         nothing but responses counts **one per response** (`<OK\r\n` alone → 1), and a run that
+ *         holds any other byte counts only those other bytes (`<OK\r\n[USB2]` → 8),
+ *       - the run that starts the file is counted whole (`\r\n<OK\r\n[USB2]` at offset 0 → 13):
+ *         the parser has not synced on a record yet, so it reads the leading text as garbage.
+ *     Numbers: b1 3695 / b2 6875 / b3 224 / b5 350 — every one of them exact.
+ */
+interface UnknownSpans {
+  /** Complement of the records the **pre-scan** parses — what the `UNKNOWN` row counts. */
+  parseRuns: Span[];
+  /** Complement of the records that **produce output** — what `.UNKNOWN` holds. */
+  fileRuns: Span[];
+}
+
+interface Span { start: number; end: number }
+
+/** `<OK`/`<ERROR` up to CRLF. `IGNORED`/`INVALID` are not responses: `<IGNORED\r\n` counts as 10 B. */
+const RESPONSE_LINE = /<(OK|ERROR)[^\r\n]*\r\n/y;
+const RESPONSE_WORDS = new Set(['OK', 'ERROR', 'IGNORED', 'INVALID']);
+
+/**
+ * Text frames the parser resolves into a log: the `#`/`$`/`<` records `text-log.ts` renders, plus
+ * every `<` continuation row (`<     10 `, `<    `) that belongs to one of them.
+ *
+ * The continuation rows are not in `textLogLines`' map — only the header frame is — so the same
+ * little state machine `collectTextLogs` runs is replayed here: a header opens a record, a
+ * `<OK`/`<ERROR` response closes it, and any other `<` line is part of the open record.
+ */
+function resolvedTextFrames(frames: readonly Frame[], tables: EdieTables): Set<number> {
+  const headers = new Set(collectTextLogs(frames, tables).keys());
+  const rendered = textLogLines(frames, tables);
+  const resolved = new Set<number>();
+  let open = false;
+  frames.forEach((frame, index) => {
+    if (frame.kind !== 'text') return;
+    if (frame.prefix !== '<') {
+      if ((frame.prefix === '#' || frame.prefix === '$') && rendered.has(index)) resolved.add(index);
+      return;
+    }
+    const tokens = frame.text.slice(1).trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) {
+      // A bare `<` / `<    ` data line: part of the open record, otherwise stray bytes.
+      if (open) resolved.add(index);
+      return;
+    }
+    if (headers.has(index)) { resolved.add(index); open = true; return; }
+    if (RESPONSE_WORDS.has(tokens[0]) || tokens[0].startsWith('?')) { open = false; return; }
+    if (open) resolved.add(index);
+  });
+  return resolved;
+}
+
+/** Complement of `spans` inside `[0, length)`. */
+function complement(spans: readonly Span[], length: number): Span[] {
+  const runs: Span[] = [];
+  let at = 0;
+  for (const span of spans) {
+    if (span.start > at) runs.push({ start: at, end: span.start });
+    at = Math.max(at, span.end);
+  }
+  if (at < length) runs.push({ start: at, end: length });
+  return runs;
+}
+
+function unknownSpans(
+  frames: readonly Frame[],
+  tables: EdieTables,
+  length: number,
+): UnknownSpans {
+  const resolved = resolvedTextFrames(frames, tables);
+  const parsed: Span[] = [];
+  const written: Span[] = [];
+  frames.forEach((frame, index) => {
+    if (frame.offset === undefined) return;
+    if (frame.kind === 'sbf') {
+      if (!frame.crcOk) return;
+      const layout = tables.messages[String(frame.header.messageId)];
+      if (!layout) return;
+      const span = { start: frame.offset, end: frame.offset + frame.bytes.length };
+      // A record the pre-scan recognises is not unknown bytes even when the dictionary cannot
+      // render it; that only keeps it out of `.UNKNOWN`'s *input* list, not out of the file.
+      parsed.push(span);
+      if (encodeAsciiLog(frame, layout, tables)) written.push(span);
+      return;
+    }
+    if (!resolved.has(index)) return;
+    const end = frame.offset + frame.text.length;
+    parsed.push({ start: frame.offset, end });
+    written.push({ start: frame.offset, end });
+  });
+  return { parseRuns: complement(parsed, length), fileRuns: complement(written, length) };
+}
+
+/**
+ * The `UNKNOWN` row's number, from the runs `unknownSpans` produced — see the block comment there
+ * for the rule and the four captures it was measured on.
+ */
+function countUnknown(capture: Uint8Array, runs: readonly Span[]): number {
+  let total = 0;
+  runs.forEach((run, index) => {
+    if (index === 0 && run.start === 0) { total += run.end - run.start; return; }
+    const text = latin1(capture.subarray(run.start, run.end));
+    let cursor = 0;
+    let bytes = 0;
+    let responses = 0;
+    while (cursor < text.length) {
+      RESPONSE_LINE.lastIndex = cursor;
+      const match = RESPONSE_LINE.exec(text);
+      if (match) { responses += 1; cursor += match[0].length; continue; }
+      bytes += 1;
+      cursor += 1;
+    }
+    total += bytes > 0 ? bytes : responses;
+  });
+  return total;
+}
+
+/** Latin-1 view: the capture is a byte stream, and every byte below 0x100 is one character. */
+function latin1(bytes: Uint8Array): string {
+  let text = '';
+  const chunk = 0x8000;
+  for (let at = 0; at < bytes.length; at += chunk) {
+    text += String.fromCharCode(...bytes.subarray(at, Math.min(at + chunk, bytes.length)));
+  }
+  return text;
+}
+
+/**
  * Build every file Convert writes for one capture.
  *
  * `frames` must be the frames **Convert** sees: `SbfDeframer({crcMode: 'validate'})`, text records
@@ -362,20 +540,33 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
   let countsRendered: Map<number, number> | undefined;
   let countsText: Map<number, string | string[]> | undefined;
 
+  // Unknown bytes, when the caller handed us the capture itself (they are in no frame).
+  const mode: UnknownBytesMode = options.unknownBytes ?? 'ignore';
+  const source = options.source;
+  const spans = source && source.length > 0 && frames.every((frame) => frame.offset !== undefined)
+    ? unknownSpans(frames, tables, source.length)
+    : undefined;
+  const textFamily = format === 'ASCII' || format === 'ABBREV_ASCII' || format === 'BINARY';
+  // The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`).
+  const interleaving = mode === 'interleave' && textFamily && !options.split && spans !== undefined && source !== undefined;
+
   if (format === 'ASCII') {
     const rendered = new Map<number, number>();
     const textMap = textLogLines(frames, tables);
     const perLog = options.split ? new Map<string, string[]>() : undefined;
+    const placed: Array<{ offset: number; lines: readonly string[] }> = [];
     const lines = textLinesFor(frames, tables, textMap, (frame, layout) => {
       const line = encodeAsciiLog(frame, layout, tables);
       return line ? [line] : [];
-    }, rendered, perLog);
+    }, rendered, perLog, placed);
     if (perLog) {
       // `--split`: the suite writes one file per log type and no combined file
       // (`b2_ALMANAC.ASCII`, `b2_BESTPOS.ASCII`, `b2_RANGE.ASCII`, …).
       for (const [name, list] of [...perLog].sort((a, b) => a[0].localeCompare(b[0]))) {
         files.push(lineFile(`${base}_${name}.ASCII`, list));
       }
+    } else if (interleaving) {
+      files.push(interleave(`${base}.ASCII`, blockPieces(placed), spans!.fileRuns, source!));
     } else {
       files.push(lineFile(`${base}.ASCII`, lines));
     }
@@ -385,11 +576,14 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
     const rendered = new Map<number, number>();
     const textMap = abbrevTextLogLines(frames, tables);
     const perLog = options.split ? new Map<string, string[]>() : undefined;
-    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => encodeAbbrevLines(frame, layout, tables), rendered, perLog);
+    const placed: Array<{ offset: number; lines: readonly string[] }> = [];
+    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => encodeAbbrevLines(frame, layout, tables), rendered, perLog, placed);
     if (perLog) {
       for (const [name, list] of [...perLog].sort((a, b) => a[0].localeCompare(b[0]))) {
         files.push(lineFile(`${base}_${name}.ABBREV_ASCII`, list));
       }
+    } else if (interleaving) {
+      files.push(interleave(`${base}.ABBREV_ASCII`, blockPieces(placed), spans!.fileRuns, source!));
     } else {
       files.push(lineFile(`${base}.ABBREV_ASCII`, lines));
     }
@@ -435,13 +629,45 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
       ));
     }
   } else {
-    files.push({ name: `${base}.BINARY`, text: null, bytes: encodeBinaryCapture(accepted).bytes });
+    const binary = encodeBinaryCapture(accepted).bytes;
+    if (interleaving) {
+      files.push(interleave(`${base}.BINARY`, accepted.map((frame) => ({ offset: frame.offset ?? 0, bytes: frame.bytes })), spans!.fileRuns, source!));
+    } else {
+      files.push({ name: `${base}.BINARY`, text: null, bytes: binary });
+    }
   }
 
   const counts = countLogs(converted, tables, {
     rendered: countsRendered,
     ...(countsText ? { frames, textAt: countsText } : {}),
   });
+
+  // A format only "represents" some log types: KML writes `BESTPOS` (42) and nothing else, RINEX
+  // writes observations from `RANGE` (43), the epoch position from `BESTPOS` (42) and navigation
+  // from `RAWEPHEM` (41). Every other record is input the format cannot express — its row reads
+  // `N → 0` and its bytes are the summary's `N bytes could not be converted.`
+  // (`clean-9600.gps`: RINEX `116 + 1076 + 4×480 = 1672`, KML `270864 − 5×104 = 270344`).
+  const representable = REPRESENTABLE_IDS[format];
+  let unConvertedBytes = 0;
+  if (representable) {
+    for (const frame of accepted) {
+      if (representable.has(frame.header.messageId)) continue;
+      unConvertedBytes += frame.bytes.length;
+      const entry = counts.get(frame.header.messageId);
+      if (entry) entry.output = 0;
+    }
+  }
+
+  // The unknown-byte accounting, when the caller handed us the capture itself.
+  let unknownCount = 0;
+  let unknownBytes = new Uint8Array(0);
+  if (spans && source) {
+    unknownCount = countUnknown(source, spans.parseRuns);
+    unknownBytes = concatBytes(spans.fileRuns.map((run) => source.subarray(run.start, run.end)));
+    if (mode === 'file' && textFamily) {
+      files.push({ name: `${base}.UNKNOWN`, text: null, bytes: unknownBytes });
+    }
+  }
 
   return {
     format,
@@ -453,5 +679,54 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
     converted,
     accepted,
     counts,
+    unknownCount,
+    unknown: unknownBytes,
+    unConvertedBytes,
   };
+}
+
+/**
+ * Which log ids each format is able to express; a format absent from this table represents
+ * everything it is given (the ASCII family writes every record, BINARY copies them).
+ */
+const REPRESENTABLE_IDS: Partial<Record<ConvertFormat, ReadonlySet<number>>> = {
+  KML: new Set([42]),
+  RINEX21: new Set([41, 42, 43]),
+  RINEX301: new Set([41, 42, 43]),
+  RINEX302: new Set([41, 42, 43]),
+  RINEX303: new Set([41, 42, 43]),
+  RINEX304: new Set([41, 42, 43]),
+};
+
+function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) { out.set(part, at); at += part.length; }
+  return out;
+}
+
+/** One record's rendered lines as the byte block the suite writes, `\r\n`-terminated. */
+function blockPieces(placed: ReadonlyArray<{ offset: number; lines: readonly string[] }>): Array<{ offset: number; bytes: Uint8Array }> {
+  return placed
+    .filter((piece) => piece.lines.length > 0)
+    .map((piece) => ({ offset: piece.offset, bytes: latin1Bytes(`${piece.lines.join('\r\n')}\r\n`) }));
+}
+
+/**
+ * `--unknown-bytes=interleave`: put the unknown bytes back where the capture had them, ordered by
+ * capture offset. Measured on a synthetic capture through `-a` / `--abbrev` / `-b`: the bytes are
+ * spliced verbatim between the records, so the file is no longer line-oriented.
+ */
+function interleave(
+  name: string,
+  placed: ReadonlyArray<{ offset: number; bytes: Uint8Array }>,
+  runs: readonly Span[],
+  source: Uint8Array,
+): ConvertFile {
+  const pieces = [
+    ...placed.filter((piece) => piece.bytes.length > 0),
+    ...runs.map((run) => ({ offset: run.start, bytes: source.subarray(run.start, run.end) })),
+  ].sort((a, b) => a.offset - b.offset);
+  const bytes = concatBytes(pieces.map((piece) => piece.bytes));
+  return { name, text: latin1(bytes), bytes };
 }

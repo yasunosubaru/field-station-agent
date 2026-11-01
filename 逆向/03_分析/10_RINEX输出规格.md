@@ -112,3 +112,40 @@ code = clamp(floor((cnr - 29.93) / 2.2335) + 1, 1, 9)
 
 RINEX 是目前唯一还没做到逐字节一致的格式。观测部分（列宽、LLI、SNR 阶梯、历元行、头）已经测清，
 剩余工作集中在：**频道→频点的挑选规则** 与 **星历解位**，两者都是纯计算、可用 golden 逐字节验证。
+
+## 6. Summary 的计数与「N bytes could not be converted.」（2026-11-01 实测）
+
+五份 golden（`golden-rinex2_1`、`golden-rinex3_01/02/03/04` 下的 `Summary_clean-9600.txt`）里，
+RINEX 的表格与 ASCII 的表格**只差三行**，这是 RINEX 唯一会打 `0` 的地方：
+
+| ID | Name | Source | Output |
+|---|---|---:|---:|
+| 42 | BESTPOS | 5 | 5 |
+| 963 | HWMONITOR | 1 | **0** |
+| 72 | PORTSTATS | 1 | **0** |
+| 43 | RANGE | 100 | 100 |
+| 41 | RAWEPHEM | 8 | 8 |
+| 93 | RXSTATUS | 4 | **0** |
+
+后面还有一句（五个版本完全相同）：
+
+```
+1672 bytes could not be converted.
+```
+
+### 规则
+
+1. **Output = 该格式真正能表达的记录数。** RINEX 只吃三种：`RANGE`(43) → 观测、`BESTPOS`(42) →
+   头里的 `APPROX POSITION XYZ`、`RAWEPHEM`(41) → 导航。其余记录 `N → 0`。
+   `BESTPOS` 明明不进 RINEX 的文件，却记 5 → 5，因为它被读了（算"转换过"）。
+2. **那句字节数 = 这些"格式表达不了"的记录的整条帧长之和**（不是 payload、不是文本长度）：
+   `HWMONITOR 116 + PORTSTATS 1076 + 4 × RXSTATUS 480 = 1672`。
+3. 同一规则在 KML 上同样成立，且能反过来验证"整条帧长"这个读法：KML 只表达 `BESTPOS`，于是
+   `270864 − 5 × 104 = 270344`，golden 正是 `270344 bytes could not be converted.`。
+4. ASCII / ABBREV / BINARY 不会打这句：它们对每条能解析的记录都有输出（打不出行的那 22 条
+   `RXCONFIG` 也不算"未转换"——b1 的 Summary 里没有这句话）。
+
+实现：`convert-pipeline.ts` 的 `REPRESENTABLE_IDS` 表 + `unConvertedBytes`，`summary.ts` 在表格之后
+按 `row\n\n\n\n<msg>\n\n` 的字节形状打出这一句；没有这句话时尾部是 `row` + 5 个空行。
+验收：`packages/protocol/test/summary-rinex.test.ts`（五份 RINEX + KML + ASCII，逐行比 golden）。
+

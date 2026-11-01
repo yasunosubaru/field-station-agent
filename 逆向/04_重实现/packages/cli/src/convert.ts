@@ -18,7 +18,7 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SbfDeframer, type Frame } from '../../protocol/src/framing.ts';
-import { convertFrames, isConvertFormat, type ConvertFormat } from '../../protocol/src/convert-pipeline.ts';
+import { convertFrames, isConvertFormat, type ConvertFormat, type UnknownBytesMode } from '../../protocol/src/convert-pipeline.ts';
 import { buildSummary, formatDirectory } from '../../protocol/src/summary.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 
@@ -90,6 +90,12 @@ function main(): void {
   let startTime: { week: number; seconds: number } | undefined;
   let finishTime: { week: number; seconds: number } | undefined;
   let limitDuration: number | undefined;
+  /** `--unknown-bytes=[file|interleave|ignore]`; anything else is the suite's `SKIP`. */
+  let unknownBytes: UnknownBytesMode = 'ignore';
+  const unknownMode = (value: string | undefined): UnknownBytesMode => {
+    const text = (value ?? '').toLowerCase();
+    return text === 'file' ? 'file' : text === 'interleave' ? 'interleave' : 'ignore';
+  };
   const weekSeconds = (value: string | undefined): { week: number; seconds: number } | undefined => {
     if (!value) return undefined;
     const [weekText, secondsText] = value.split(',');
@@ -113,10 +119,13 @@ function main(): void {
     else if (token === '--finish-time') finishTime = weekSeconds(argv[++i]);
     else if (token.startsWith('--limit-duration=')) limitDuration = Number(token.slice('--limit-duration='.length));
     else if (token === '--limit-duration') limitDuration = Number(argv[++i]);
+    else if (token.startsWith('--unknown-bytes=')) unknownBytes = unknownMode(token.slice('--unknown-bytes='.length));
+    else if (token === '--unknown-bytes') unknownBytes = unknownMode(argv[++i]);
     else if (!token.startsWith('-')) input = token;
   }
   if (!input || !isConvertFormat(format)) {
     console.error('usage: convert.ts <input> --to ASCII|ABBREV_ASCII|BINARY [--out <dir>] [--at ISO] [--split]'
+      + ' [--unknown-bytes=file|interleave|ignore]'
       + ' [--start-time=<WEEK>,<SECONDS>] [--finish-time=<WEEK>,<SECONDS>] [--limit-duration=<SECONDS>]');
     process.exit(2);
   }
@@ -129,11 +138,25 @@ function main(): void {
   // `validate`, not the view's `mirror`: Convert drops a record whose CRC does not match and keeps
   // scanning inside it, so a damaged capture splits into a different frame list (b1: 1325 SBF frames
   // here, 1322 under `mirror`). Text records are frames too — they are converted, in capture order.
-  const frames: Frame[] = [
-    ...new SbfDeframer({ crcMode: 'validate' }).push(new Uint8Array(inputBytes)),
-  ];
+  const deframer = new SbfDeframer({ crcMode: 'validate' });
+  const capture = new Uint8Array(inputBytes);
+  const frames: Frame[] = [...deframer.push(capture)];
+  // Trailing bytes that never completed a record are dropped like any other unknown byte.
+  deframer.end();
   const windowed = applyTimeWindow(frames, startTime, finishTime, limitDuration);
-  const outcome = convertFrames(windowed, { format: format as ConvertFormat, at, tables, name: basename(inputPath), split });
+  // Unknown bytes are measured over the whole capture, so a windowed conversion reports none: the
+  // records outside the window are not "unknown", and the suite's own accounting for that
+  // combination is unmeasured. Every unwindowed run reports the suite's exact number.
+  const source = windowed.length === frames.length ? capture : undefined;
+  const outcome = convertFrames(windowed, {
+    format: format as ConvertFormat,
+    at,
+    tables,
+    name: basename(inputPath),
+    split,
+    unknownBytes,
+    ...(source ? { source } : {}),
+  });
 
   const outputRoot = outRoot ? resolve(outRoot) : join(dirname(inputPath), 'converted');
   const convertedDir = join(outputRoot, base, `Converted_On_${stamp(at)}`);
@@ -158,6 +181,8 @@ function main(): void {
       formatName: formatDirectory(format),
       frames: outcome.accepted,
       completedAt: at,
+      unknownBytes: outcome.unknownCount,
+      unConvertedBytes: outcome.unConvertedBytes,
     },
     outcome.counts,
   );

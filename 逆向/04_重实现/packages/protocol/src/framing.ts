@@ -36,6 +36,8 @@ export interface SbfFrame {
   payload: Uint8Array;
   crcField: number;
   crcOk: boolean;
+  /** Byte offset of the frame's first sync byte in the stream, when the deframer made it. */
+  offset?: number;
 }
 
 export interface TextFrame {
@@ -43,6 +45,8 @@ export interface TextFrame {
   prefix: TextPrefix;
   /** Decoded with latin1 so byte values survive round-tripping. */
   text: string;
+  /** Byte offset of the record's first byte in the stream, when the deframer made it. */
+  offset?: number;
 }
 
 export type Frame = SbfFrame | TextFrame;
@@ -65,6 +69,13 @@ export interface DeframerOptions {
   resync?: 'header' | 'byte' | 'sync';
   /** Called when bytes are thrown away, so a reimplementation can log what the original hides. */
   onDrop?: (byteCount: number, reason: string) => void;
+  /**
+   * The same event with the bytes themselves. Convert's `--unknown-bytes=file` writes them out
+   * (`<base>.UNKNOWN`), so a reimplementation needs the payload, not only the length. Reasons:
+   * `no-record-start`, `garbage-before-record`, `record-start-inside-text`, `crc-mismatch`,
+   * `zero-crc-field`, `truncated-tail`.
+   */
+  onDropBytes?: (bytes: Uint8Array, reason: string) => void;
 }
 
 const CANDIDATES: ReadonlyArray<number> = [SYNC_1, 0x23 /* # */, 0x25 /* % */, 0x3c /* < */, 0x5b /* [ */, 0x24 /* $ */];
@@ -92,11 +103,15 @@ export class SbfDeframer {
   private resync: 'header' | 'byte' | 'sync';
   private recovering = false;
   private readonly onDrop?: (byteCount: number, reason: string) => void;
+  private readonly onDropBytes?: (bytes: Uint8Array, reason: string) => void;
+  /** Bytes handed to `push` so far, so frames can carry their stream offset. */
+  private received = 0;
 
   constructor(options: DeframerOptions = {}) {
     this.crcMode = options.crcMode ?? 'mirror';
     this.resync = options.resync ?? 'header';
     this.onDrop = options.onDrop;
+    this.onDropBytes = options.onDropBytes;
   }
 
   /** Bytes held back because the record is incomplete. */
@@ -104,12 +119,25 @@ export class SbfDeframer {
     return this.pending.length;
   }
 
+  /**
+   * End of stream: whatever is still buffered can never become a record, so it is dropped like the
+   * rest. Convert counts those trailing bytes too (`b1` ends with a half-received record).
+   */
+  end(): void {
+    const rest = this.pending;
+    this.pending = new Uint8Array(0);
+    this.drop(rest.length, 'truncated-tail', rest);
+  }
+
   reset(): void {
     this.pending = new Uint8Array(0);
   }
 
   push(chunk: Uint8Array): Frame[] {
+    // Stream position of `buf[0]`: everything already consumed, minus what was held back.
+    const base = this.received - this.pending.length;
     const buf = this.pending.length ? concat(this.pending, chunk) : chunk;
+    this.received += chunk.length;
     this.pending = new Uint8Array(0);
     const frames: Frame[] = [];
     let i = 0;
@@ -117,11 +145,11 @@ export class SbfDeframer {
     while (i < buf.length) {
       const found = earliestCandidate(buf, i);
       if (found < 0) {
-        this.drop(buf.length - i, 'no-record-start');
+        this.drop(buf.length - i, 'no-record-start', buf.subarray(i));
         return frames;
       }
       if (found > i) {
-        this.drop(found - i, 'garbage-before-record');
+        this.drop(found - i, 'garbage-before-record', buf.subarray(i, found));
         i = found;
       }
 
@@ -149,7 +177,7 @@ export class SbfDeframer {
         if (boundary >= 0) {
           // Unterminated as far as the record is concerned: drop the bytes it had claimed. The
           // suite prints nothing for them (measured), so this is a drop, not a frame.
-          this.drop(boundary - i, 'record-start-inside-text');
+          this.drop(boundary - i, 'record-start-inside-text', buf.subarray(i, boundary));
           i = boundary;
           continue;
         }
@@ -158,7 +186,7 @@ export class SbfDeframer {
           return frames;
         }
         const slice = buf.slice(i, end + 1);
-        frames.push({ kind: 'text', prefix: prefixOf(buf[i]), text: latin1(slice) });
+        frames.push({ kind: 'text', prefix: prefixOf(buf[i]), text: latin1(slice), offset: base + i });
         i = end + 1;
         continue;
       }
@@ -208,10 +236,11 @@ export class SbfDeframer {
           payload: bytes.subarray(header.headerLength, total - 4),
           crcField,
           crcOk,
+          offset: base + i,
         });
         i += total;
       } else {
-        this.drop(total, this.crcMode === 'validate' ? 'crc-mismatch' : 'zero-crc-field');
+        this.drop(total, this.crcMode === 'validate' ? 'crc-mismatch' : 'zero-crc-field', bytes);
         // Convert does not trust the length field of a record it rejects: it never advances by
         // `total`. Where it resumes is measured — see `DeframerOptions.resync`.
         if (this.crcMode === 'validate') {
@@ -225,8 +254,10 @@ export class SbfDeframer {
     return frames;
   }
 
-  private drop(byteCount: number, reason: string): void {
-    if (byteCount > 0 && this.onDrop) this.onDrop(byteCount, reason);
+  private drop(byteCount: number, reason: string, bytes?: Uint8Array): void {
+    if (byteCount <= 0) return;
+    this.onDrop?.(byteCount, reason);
+    if (bytes) this.onDropBytes?.(bytes, reason);
   }
 }
 
