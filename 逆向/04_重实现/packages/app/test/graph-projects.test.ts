@@ -56,7 +56,7 @@ const B1_DIR = resolve(EXPORT_DIR, 'b1');
 test('listExportProjects finds every export directory, not a hardcoded name', () => {
   const projects = listExportProjects(EXPORT_DIR);
   const keys = projects.map((project) => project.key).sort();
-  assert.deepEqual(keys, ['b1', 'csv'], 'export/ 下应有两个工程目录');
+  assert.deepEqual(keys, ['b1', 'csv', 'heading'], 'export/ 下应有三个工程目录');
 
   const clean = projects.find((project) => project.key === 'csv')!;
   assert.equal(clean.name, 'clean', '工程名取自 CSV 的 #Project Name:，不是目录名');
@@ -77,6 +77,15 @@ test('listExportProjects finds every export directory, not a hardcoded name', ()
   assert.equal(b1.duration, '00:00:28');
   assert.equal(relative(REPO_DIR, b1.csvDirectory).split('\\').join('/'),
     '逆向/00_来源/samples/graph/export/b1/csv', 'Graph 把 CSV 写进 <project>/csv/');
+
+  // 第三个工程是从**合成抓包**导出的（本机没有 INS 硬件），只有 Heading & Attitude 三份 CSV。
+  const heading = projects.find((project) => project.key === 'heading')!;
+  assert.equal(heading.name, 'heading');
+  assert.equal(heading.csvCount, 3);
+  assert.equal(heading.dataFileName, 'heading.sbf');
+  assert.deepEqual(listProjectCsv(heading).map((file) => file.name).sort(), [
+    'Azimuth.csv', 'Roll and Pitch.csv', 'SPAN Filter Updates.csv',
+  ]);
 
   // Every project's CSVs are real files: the count is checked against disk, not against a constant.
   for (const project of projects) {
@@ -182,11 +191,11 @@ async function getJson(path: string): Promise<{ status: number; body: any }> {
   return { status: response.status, body: await response.json() };
 }
 
-test('GET /api/graph/projects lists both projects with name, CSV count, time range and path', async () => {
+test('GET /api/graph/projects lists every project with name, CSV count, time range and path', async () => {
   const { status, body } = await getJson('/api/graph/projects');
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(body.count, 2);
+  assert.equal(body.count, 3);
   assert.equal(body.count, body.projects.length);
   assert.equal(body.default, 'csv');
   assert.equal(body.root, '逆向/00_来源/samples/graph/export');

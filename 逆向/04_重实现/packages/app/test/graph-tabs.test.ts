@@ -1,7 +1,7 @@
 /**
- * The four Graph tabs under Overview — PVT / Tracking & Measurements / Receiver Status / Project
- * Information — are real charts, not placeholders. Three things here can rot silently, so all three
- * are pinned:
+ * The five Graph tabs under Overview — PVT / Heading & Attitude / Tracking & Measurements /
+ * Receiver Status / Project Information — are real charts, not placeholders. Three things here can
+ * rot silently, so all three are pinned:
  *
  *   1. the catalog wiring (`C_图表目录.json` → `CHART_GROUPS` → pane markup),
  *   2. the `/api/graph/data` contract each tile depends on (one numeric column per call, and the
@@ -89,9 +89,10 @@ interface GraphPayload {
   comments: Record<string, string>;
 }
 
-async function getData(file: string, column?: string): Promise<GraphPayload> {
+async function getData(file: string, column?: string, project?: string): Promise<GraphPayload> {
   const search = new URLSearchParams({ file });
   if (column) search.set('column', column);
+  if (project) search.set('project', project);
   const response = await fetch(`${base}/api/graph/data?${search.toString()}`);
   assert.equal(response.status, 200, `GET /api/graph/data?file=${file}`);
   return (await response.json()) as GraphPayload;
@@ -110,19 +111,22 @@ after(() => {
 /* ---------------- 1. catalog wiring ---------------- */
 
 test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
-  assert.deepEqual(CHART_GROUPS.map((group) => group.id), ['pvt', 'tracking', 'receiver']);
+  assert.deepEqual(CHART_GROUPS.map((group) => group.id), ['pvt', 'heading', 'tracking', 'receiver']);
   assert.equal(CHART_GROUPS[0].label, 'PVT');
-  assert.equal(CHART_GROUPS[1].label, 'Tracking & Measurements');
-  assert.equal(CHART_GROUPS[2].label, 'Receiver Status');
+  assert.equal(CHART_GROUPS[1].label, 'Heading & Attitude');
+  assert.equal(CHART_GROUPS[2].label, 'Tracking & Measurements');
+  assert.equal(CHART_GROUPS[3].label, 'Receiver Status');
 
-  // 附录 C：PVT 7 张、Tracking 3 张、Receiver Status 3 张。每一张都有一块图块 —— 工程没导出
-  // `Velocity.csv` 时那块图块留空（脚注写明），而不是把图块删掉。
+  // 附录 C：PVT 7 张、Heading & Attitude 3 张、Tracking 3 张、Receiver Status 3 张。每一张都有一块
+  // 图块 —— 工程没导出 `Velocity.csv` 时那块图块留空（脚注写明），而不是把图块删掉。
   assert.equal(CHART_GROUPS[0].catalog.length, 7);
   assert.equal(CHART_GROUPS[1].catalog.length, 3);
   assert.equal(CHART_GROUPS[2].catalog.length, 3);
+  assert.equal(CHART_GROUPS[3].catalog.length, 3);
   assert.equal(CHART_GROUPS[0].charts.length, 7);
   assert.equal(CHART_GROUPS[1].charts.length, 3);
   assert.equal(CHART_GROUPS[2].charts.length, 3);
+  assert.equal(CHART_GROUPS[3].charts.length, 3);
 
   const titles = CHART_GROUPS.flatMap((group) => group.charts.map((chart) => chart.title));
   // catalog 里出现的每一张图，要么画了，要么在"没有 CSV"的名单里 —— 不能凭空消失
@@ -133,9 +137,12 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
   assert.deepEqual(titles.slice(0, 3), ['Position Type', 'Position Status', 'Position SD']);
 
   // 每块图盯住一份真实存在的 CSV。`Velocity.csv` 只在 broad 导出里（clean / b1 没有 BESTVEL），
-  // 所以两个目录都看。
+  // Heading & Attitude 的三份只在合成抓包的导出里（本机没有 INS），所以三个目录都看。
+  const headingCsvDir = join(repoRoot, '逆向', '00_来源', 'samples', 'graph', 'export', 'heading', 'csv');
   for (const chart of CHART_GROUPS.flatMap((group) => group.charts)) {
-    const dir = existsSync(join(graphCsvDir, chart.file)) ? graphCsvDir : broadCsvDir;
+    const dir = [graphCsvDir, broadCsvDir, headingCsvDir].find((candidate) =>
+      existsSync(join(candidate, chart.file)),
+    ) ?? graphCsvDir;
     const header = readFileSync(join(dir, chart.file), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
     const columns = (header.find((line) => line.trim() && !line.startsWith('#')) ?? '').split(',');
     assert.ok(columns.length > 1, `${chart.file} 读得出表头`);
@@ -152,6 +159,11 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
   assert.equal(byTitle.get('Velocity')!.units, '(m/s)');
   assert.equal(byTitle.get('Velocity')!.file, 'Velocity.csv');
   assert.equal(byTitle.get('Velocity')!.minYZero, undefined, '目录里 Velocity 没有 minYZero');
+  assert.equal(byTitle.get('Azimuth')!.units, '(degrees)');
+  assert.equal(byTitle.get('Azimuth')!.kind, 'line');
+  assert.equal(byTitle.get('Roll and Pitch')!.units, '(degrees)');
+  assert.equal(byTitle.get('Roll and Pitch')!.kind, 'line');
+  assert.equal(byTitle.get('SPAN Filter Updates')!.kind, 'bar');
   assert.equal(byTitle.get('GNSS Signal Strength')!.units, 'C/No (dB-Hz)');
   assert.equal(byTitle.get('Tracking Time')!.units, '(s)');
   assert.equal(byTitle.get('Tracking Time')!.minYZero, true);
@@ -162,8 +174,9 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
   assert.equal(byTitle.get('Receiver Status')!.kind, 'bar');
 });
 
-test('页签标记：三页各一块图块，Project Information 是信息卡，没有占位文案', () => {
+test('页签标记：四页各一块图块，Project Information 是信息卡，没有占位文案', () => {
   assert.equal(chartsOf('pvt').length, 7);
+  assert.equal(chartsOf('heading').length, 3);
   assert.equal(chartsOf('tracking').length, 3);
   assert.equal(chartsOf('receiver').length, 3);
   assert.deepEqual(chartsOf('project'), []);
@@ -221,6 +234,48 @@ test('每块图要的列数：/api/graph/data 的 numericColumns 与 CSV 表头�
       assert.equal(body.series.xKind, 'index');
     }
   }
+});
+
+test('Heading & Attitude 图块要的列名就是 CSV 里的列名（/api/graph/data?project=heading）', async () => {
+  // 图块的 `columns` 与 CSV 表头必须逐字相同，否则 `/api/graph/data?column=` 会 404、图块留空。
+  for (const chart of chartsOf('heading')) {
+    const body = await getData(chart.file, undefined, 'heading');
+    if ((chart as { rowsAsSeries?: boolean }).rowsAsSeries) {
+      // 跨度表：`/api/graph/data` 把 start/end/min_diff 视作数值列，value 是整数。
+      assert.deepEqual(body.table.columns, ['name', 'start', 'end', 'value', 'min_diff']);
+      assert.ok(body.table.rows.every((row) => row[3] === '1'), 'value 列五列里的第 4 列恒为 1');
+      continue;
+    }
+    const names = ((chart as { columns?: string[] }).columns ?? []).slice();
+    assert.deepEqual(body.numericColumns.map((column) => column.name), names, `${chart.file} 的数值列`);
+    for (const name of names) {
+      const column = await getData(chart.file, name, 'heading');
+      assert.equal(column.column, name);
+      assert.ok(column.series.points.length > 0, `${chart.file} 的 ${name} 有数据点`);
+    }
+  }
+});
+
+test('Heading & Attitude 的三条曲线画得出、且是六条/三条采样点', async () => {
+  const azimuth = await getData('Azimuth.csv', 'INS Azimuth', 'heading');
+  assert.equal(azimuth.rows, 6);
+  const values = azimuth.series.points.map((point) => point[1]);
+  assert.deepEqual(values, [100.125, 101.125, 102.125, 103.125, 104.125, 105.125]);
+
+  const svg = chartSvgFor({
+    kind: 'line',
+    title: 'Azimuth',
+    units: '(degrees)',
+    xLabel: azimuth.series.xLabel,
+    series: [{ name: 'INS Azimuth', color: seriesColor(0), points: azimuth.series.points }],
+  }, 800, 240);
+  assert.equal((svg.match(/<polyline /g) ?? []).length, 1);
+  assert.equal((svg.match(/<circle /g) ?? []).length, 6);
+
+  const pitch = await getData('Roll and Pitch.csv', 'INS Pitch', 'heading');
+  const roll = await getData('Roll and Pitch.csv', 'INS Roll', 'heading');
+  assert.deepEqual(pitch.series.points.map((point) => point[1]), [-0.75, -1.75, -2.75, -3.75, -4.75, -5.75]);
+  assert.deepEqual(roll.series.points.map((point) => point[1]), [1.5, 2.5, 3.5, 4.5, 5.5, 6.5]);
 });
 
 test('分类图（Position Type / Position Status）整份表都在前 20 行里，且只有一列标签', async () => {

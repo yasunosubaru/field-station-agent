@@ -1,0 +1,25 @@
+{
+  "projectName": "heading",
+  "projectDirectory": "H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体\\逆向\\00_来源\\samples\\graph\\export\\heading",
+  "dataFileName": "heading.sbf",
+  "capture": "H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体\\逆向\\00_来源\\samples\\graph\\synthetic\\heading.sbf",
+  "startTime": "2442,470000.000",
+  "endTime": "2442,470005.001",
+  "duration": "00:00:05",
+  "messages": {
+    "INSPVAX": 6,
+    "HEADING2": 3
+  },
+  "droppedFrames": [],
+  "chartTitles": [
+    "Azimuth",
+    "Roll and Pitch",
+    "SPAN Filter Updates"
+  ],
+  "csv": [
+    "Azimuth.csv",
+    "Roll and Pitch.csv",
+    "SPAN Filter Updates.csv"
+  ],
+  "command": "node packages/graph/tools/export-sbf-project.ts --capture ../00_来源/samples/graph/synthetic/heading.sbf --out ../00_来源/samples/graph/export/heading --name heading"
+}

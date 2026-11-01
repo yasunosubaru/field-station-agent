@@ -1,0 +1,10 @@
+﻿#Project Name:          heading
+#Project Directory:    H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\graph\export\heading
+#Data File Name:      heading.sbf
+#Start Time(GPS):      2442,470000.000
+#End Time(GPS):       2442,470005.001
+#Duration:                   00:00:05
+name,start,end,value,min_diff
+ALIGN (heading) update,1477391602000.000000,1477391604000.000000,1,1.000000
+Alignment direction verified,1477391604000.000000,1477391605000.000000,1,1.000000
+Position update,1477391600000.000000,1477391605000.000000,1,1.000000

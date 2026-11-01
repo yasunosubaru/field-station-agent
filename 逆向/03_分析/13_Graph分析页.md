@@ -121,8 +121,8 @@ node packages/graph/tools/export-sbf-project.ts `
 
 ## 5 实测
 
-- 落地页：**2 张卡**（`b1` 2026-10-31、`clean` 2026-10-30），状态行
-  `2 个工程 · 当前 clean · 12 份 CSV · 逆向/00_来源/samples/graph/export/csv`。
+- 落地页：**3 张卡**（`heading` 合成抓包、`b1` 2026-10-31、`clean` 2026-10-30），状态行
+  `3 个工程 · 当前 clean · 12 份 CSV · 逆向/00_来源/samples/graph/export/csv`。
 - 点 `b1` 后 Overview：`工程 b1 · 数据 b1-20261101.sbf · GPS 2442,570227.100 – 2442,570255.151 ·
   时长 00:00:28 · 530 行 · 98 列`，图例 `GPS_L1_CA_15` 30 点（该卫星只在 530 行里的 30 行出现，
   其余是空单元格），时间轴右端 28.05 s。
@@ -138,10 +138,12 @@ node packages/graph/tools/export-sbf-project.ts `
 
 ## 6 没做到的 / 边界
 
-1. **13 份 CSV，不是 16 份。** 图表目录（`06_Graph应用-附录/C_图表目录.json`）有 16 张图，
-   导出层实现 13 张（缺 Heading & Attitude 的 `Azimuth` / `Roll and Pitch` / `SPAN Filter Updates`，
-   那要 INS 报文做对照）；`clean` 的 golden 只有 12 份（没有 `BESTVEL`，所以没有 `Velocity.csv`）。
-   所以"同一套 16 份"这一条仍无法满足——剩下的 3 张需要原版导出结果做逐字节对照，本轮没有。
+1. **16 份 CSV 已齐，但只有 12 张有 golden 逐字节对照。** 图表目录
+   （`06_Graph应用-附录/C_图表目录.json`）有 16 张图，导出层现在都实现（§12 补了 Heading &
+   Attitude 的 `Azimuth` / `Roll and Pitch` / `SPAN Filter Updates`）。其中有原版 CSV 可比的仍是
+   12 张（`clean`）+ `Velocity`（`broad`）；Heading & Attitude 那三张**本机造不出来**（无 INS /
+   ALIGN 授权），只能用原生模块里的表结构/字段/优先级做依据、用合成抓包验证数值来源，
+   没有逐字节 oracle。`clean` 的 golden 也只有 12 份（没有 `BESTVEL`）。
 2. **`export-broad/` 仍然不在 `export/` 下。** 它是原版 Graph 对 `broad-clean.gps` 的另一份真导出
    （13 份 CSV，含 `Velocity.csv`），本轮把它当 `Velocity` 的 oracle 用（§7），但工程模型只扫
    `export/` 的直接子目录，按边界没有把样本搬进来。
@@ -597,3 +599,167 @@ GPS↔ms 往返、`flagOffsetSeconds`（无 GPS 头返回 `null`）、每工程�
 `flags-timeline-tooltip.png`（4 个标记 + tooltip + `(4/10)`）、`flags-panel-list.png`
 （面板列表：时间/偏移/坐标/评论/颜色/眼睛/垃圾桶）、`flags-panel-full.png`（整页）。
 
+
+
+## 12 Heading & Attitude：第 14–16 张图（合成帧验证，**未实机验证**）
+
+原版 Graph 的页签顺序是 Overview → PVT → **Heading & Attitude** → Tracking & Measurements →
+Receiver Status → Project Information；本构建此前只有 4 个图表页签，这一节把缺的那一组补齐。
+
+**先说清楚边界**：本机接收机 `ANTENNA=SINGLE`、无 IMU、IMU/INS `UNAUTHORIZED`，所以
+**没有任何原版 Heading & Attitude CSV** 可做逐字节对照（`export/`、`export-broad/` 里也都没有）。
+下面的"列名 / 列序 / 字段 / 消息优先级"全部读自原版程序本身，"数值"来自合成抓包，两者不混用。
+
+### 12.1 页签与图表目录（`C_图表目录.json` / renderer bundle）
+
+`index-B86bHcCD.js` 与 `C_图表目录.json` 里这一组是：
+
+| 页签 | 图表标题 | 图表类型 | y 轴单位 | PlotSummary 键 |
+|---|---|---|---|---|
+| Heading & Attitude | `Azimuth` | line | `(degrees)` | `INS Orientation Azimuth` |
+| Heading & Attitude | `Roll and Pitch` | line | `(degrees)` | `INS Orientation Pitch` |
+| Heading & Attitude | `SPAN Filter Updates` | bar | 无 | `SPAN Filter Updates` |
+
+- `GRAPH_GROUPS.HEADING_ATTITUDE = "Heading & Attitude"`、`GRAPH_GROUPS_TABS` 里是
+  `Heading_Attitude`（@564742 起）；`HAGraphs` 三项的 `table` 分别是 `insattitude_azimuth` /
+  `insattitude_pitch` / `insupdate`。
+- **PlotSummary 的键与 CSV 标题不同**：原生模块 `HAEdieLogParser` 那一段字符串
+  （windows `.node` @4365152–4365360）依次是 `insattitude_pitch` `insattitude_azimuth`
+  `insUpdatestatus` / `INS Orientation Pitch` `insattitude_pitch` / `INS Orientation Azimuth`
+  `insattitude_azimuth` / `SPAN Filter Updates` `insUpdatestatus` `count` `count`。
+  所以代码里用 `ChartCsvSpec.plot = { title, message }` 做别名，而不是把 CSV 标题硬塞进
+  `PlotSummary`。
+
+### 12.2 列名与列序（原生模块的 CREATE TABLE，不是猜的）
+
+linux `graph-node-wrapper.node` 保留动态符号，可直接反汇编构造函数
+（`objdump -d --start-address=0x30ea60`，VMA 与 .rodata 文件偏移相同）：
+
+- `INSATTITUDE::INSATTITUDE` 建两张表：
+  `createTable({timestamp,TEXT},{[INS Azimuth],REAL})` 与
+  `createTable({timestamp,TEXT},{[INS Pitch],REAL},{[INS Roll],REAL})`。
+  立即数 `0x6d617473656d6974`="timestamp"、`0x54584554`="TEXT"、`0x4c414552`="REAL"、
+  `0x6d697a4120534e49`="INS Azi"+`muth]`、`0x74695020534e495b`="[INS Pit"+`ch]`、
+  `0x6c6f5220534e495b`="[INS Rol"+`l]`。
+  → **`Roll and Pitch.csv` 的列序是 `INS Pitch` 在前、`INS Roll` 在后**（不是按标题顺序）。
+- `INSATTITUDE::addPoint(INSBaseData*)`（@0x310130）：三个值都用 `printf("%f")` 写字符串
+  （格式串 `%f` @0x5fa985、时间乘 1000.0 @0x5f4f80），并映射到
+  `+0x60 → INS Roll`、`+0x70 → INS Pitch`、`+0x80 → INS Azimuth`（0x3106f9 赋 `0x100` 给
+  "INS Pitch"，0x310816 赋 `0x120` 给 "INS Roll"）。
+- `INSLogDecoder::SetData`（@0x2c0530）决定这三个偏移来自报文的哪一段：INSPVA(#507)
+  取 payload +0x3c / +0x44 / +0x4c，INSPVAX(#1465) 取 +0x3c / +0x44 / +0x4c，
+  与 `edie-layouts.json` 的 `roll` / `pitch` / `azimuth` 偏移一致。
+- `INSUPDATE::INSUPDATE`（@0x306d00）建跨度表：
+  `createTable({name,TEXT},{start,TEXT},{end,TEXT},{value,TEXT},{min_diff,TEXT})`。
+  → `SPAN Filter Updates.csv` 的表头是 `name,start,end,value,min_diff`。
+- CSV 文件名来自 `DbToCsvConverter` 的 `kDbBaseNames`（windows `.node` @7308656 起）：
+  `Roll and Pitch → insattitude_pitch`、`Azimuth → insattitude_azimuth`、
+  `SPAN Filter Updates → insupdate`。
+- `SPAN Filter Updates` 的条件名是同一模块 @7396664 起的 33 个字面量（位序）：
+  `Position update` / `Phase update` / `Zero velocity update` / `Wheel sensor update` /
+  `ALIGN (heading) update` / `External position update` / `INS solution convergence flag` /
+  `Doppler update` / `Pseudorange update` / `Velocity update` / `Reserved_10` / … / `Reserved`。
+
+### 12.3 消息来源与优先级（为什么 HEADING2 不进这张图）
+
+原生模块里有一张"每个 log → 每张图优先级"的表（windows `.node` @7450491 起），
+Heading & Attitude 相关项：
+
+```
+1465 INSPVAX    Roll and Pitch 1  Azimuth 1  SPAN Filter Updates 1
+507  INSPVA      2                 2           —
+508  INSPVAS     3                 3           —
+1457 INSATTX     4                 4           3
+263  INSATT     5                 5           —
+1889 INSPVACMP   6                 6           —
+1459 INSPOSX     —                 —           2
+1458 INSVELX     —                 —           4
+```
+
+**`1335 HEADING2` 与 `1761 DUALANTENNAALIGN` 不在这张表里**（全表 46 条，逐条查过）。
+也就是说原版的双天线航向**不喂任何一张 Graph 图表**：一台只有 `HEADING2` 的接收机，
+Heading & Attitude 页签是空的。本构建照此办理，`sourceMessages` 里没有这两个消息号。
+
+### 12.4 合成抓包与实测（`packages/graph/tools/make-heading-capture.ts`）
+
+`headingCapture()` 用 `逆向/tools/oracle.ts` 的 `frame()` 造 1231 B：
+
+| 帧 | 数量 | 内容（可辨认的序列） |
+|---|---|---|
+| INSPVAX #1465 | 6 @1 Hz，week 2442 / 470000.000 s 起 | roll `1.5…6.5`、pitch `-0.75…-5.75`、azimuth `100.125…105.125`；`extended_sol_stat` 位 0 每帧、位 4 第 3–4 帧、位 25 第 5–6 帧 |
+| HEADING2 #1335 | 3 | heading `45/46/47`（**诱饵**，必须不出现在任何 CSV 里） |
+| DUALANTENNAALIGN | 1 行 ASCII | 第二个诱饵（文本命令，解码器不认，消息计数里也没有） |
+
+`node packages/graph/tools/make-heading-capture.ts --out …` 之后
+`node packages/graph/tools/export-sbf-project.ts --capture … --out … --name heading` 实测：
+
+```
+#Start Time(GPS):      2442,470000.000
+#End Time(GPS):       2442,470005.001
+#Duration:                   00:00:05
+timestamp (GPS week sec),INS Azimuth
+2442  470000.000,100.125000
+2442  470001.000,101.125000
+…
+
+timestamp (GPS week sec),INS Pitch,INS Roll
+2442  470000.000,-0.750000,1.500000
+2442  470001.000,-1.750000,2.500000
+…
+
+name,start,end,value,min_diff
+ALIGN (heading) update,1477391602000.000000,1477391604000.000000,1,1.000000
+Alignment direction verified,1477391604000.000000,1477391605000.000000,1,1.000000
+Position update,1477391600000.000000,1477391605000.000000,1,1.000000
+```
+
+**数值来源已核对**：`100.125` 来自 `azimuth`、`-0.75` 来自 `pitch`、`1.5` 来自 `roll`；
+若列接错会看到 `45/46/47`（HEADING2）或 pitch/roll 互换，测试对此逐行断言。
+
+### 12.5 唯一"推断"的地方
+
+`SPAN Filter Updates` 的**区间规则**没有原版导出可证：代码复用了同族跨度表
+`Receiver Status.csv` 上已被 golden 证死的规则（位首次置位处开、清位的那一帧收，
+窗口末帧仍未清则收在末帧），`value` 恒为 `1`（golden 里 `value` 就是这个常数），
+`min_diff` 取该位相邻两次置位的最小间隔（秒，`%f`；渲染器乘 1000 后用它步进）。
+这三条只有**合成帧**验证，**没有**逐字节对照 —— 报告与测试里都标了"未实机验证"。
+
+### 12.6 代码落点
+
+- `packages/graph/src/csv.ts`：`ChartCsvSpec.sourceMessages` / `plot` 两个可选字段、
+  `plotTitlesOf()`、`chartRecords()` 的多源按时间取最优、`AZIMUTH_COLUMNS`、
+  `ROLL_AND_PITCH_COLUMNS`、`INS_UPDATE_NAMES`、`spanFilterUpdateSpans()`、
+  `renderSpanFilterUpdates()`，以及 `CSV_CHARTS` 里的三条（现在的总数是 16）。
+- `packages/graph/tools/export-sbf-project.ts`：`sectionOf()` 认得 INS 消息 →
+  `Heading_Attitude`；`plotSummaryOf()` 用 `plot.title` / `plot.message` 写原版那三个键；
+  `dataInfoOf()` 的时间窗也把 `sourceMessages` 算进去。
+- `packages/app/src/web/panels/graph.js`：`TABS` / `CHART_GROUPS` 加 `heading` 页签与 3 块图块，
+  `rowsAsSeries` 支持 `valueColumn`（跨度表最后一列是 `min_diff`，不能按位置取）。
+- `packages/graph/test/heading-attitude.test.ts`（10 项）+ `packages/app/test/graph-tabs.test.ts`
+  的两项（列名对齐、曲线数值）。
+- `export-sbf-project.ts#plotSummaryOf`：多源图表的计数按**不同时间戳**算（与原版
+  `INSERT OR IGNORE` 于 timestamp 一致），不是把各消息帧数相加。
+- 样本：`00_来源/samples/graph/synthetic/heading.sbf` → `00_来源/samples/graph/export/heading/`
+  （落地页第 3 张卡）。
+
+### 12.7 实测与回归
+
+- `node --test --test-force-exit "packages/*/test/*.test.ts"`：**1100 项，1099 通过**；
+  唯一红的是 `packages/session/test/session.test.ts` 的 heartbeat 偶发（负载相关，改动前就存在，
+  单跑 11/11 全过），与本任务无关。Graph 包单跑 **67/67**，app 的 `graph-*` 单跑 **74/74**。
+- `node ..\tools\golden-check.ts`：**14 份 golden 全字节相同**。
+- Playwright（1440×1000，`node packages/app/src/server.ts --port 7845`）：点 `heading` 卡 →
+  Heading & Attitude 页签 → 3 块图块都出 SVG，页脚"3 张图的 CSV 都在，全部画出来了"；
+  console **0 error**，无 pageerror（唯一 warning 仍是 Luciad/WebGPU 的
+  `ValidateTextureDescriptor`，与本改动无关）。
+- 截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-heading\heading-tab.png`。
+
+### 12.8 仍然没做到的
+
+1. **没有原版 CSV**：三张图的值只能说"来自正确的字段"，不能说"与原版逐字节相同"。
+   `SPAN Filter Updates` 的区间规则是推断（§12.5）。
+2. **PDF 的页序表没改**（`packages/app/src/pdf.ts` 的 `CHART_SPECS` 不在本任务边界内）：
+   三份新 CSV 仍会各出一页，但按"未知文件"走兜底（标题=文件名、折线），
+   排在已知图表之后，不是原版 Heading & Attitude 的位置。
+3. `HEADING2` / `DUALANTENNAALIGN` 不进图是**照原版照抄**的结果；哪天原版给它们加了图，
+   这里要跟着改（证据表在 §12.3）。

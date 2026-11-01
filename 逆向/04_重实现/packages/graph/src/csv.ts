@@ -69,6 +69,25 @@ export interface ChartCsvSpec {
   title: string;
   /** Message that feeds the chart (`PlotSummary` guarantees it is present). */
   message: string;
+  /**
+   * Every message that can feed this chart, **best first**.
+   *
+   * The `Heading & Attitude` plots are the reason this exists: the shipped native module
+   * (`resources/native_modules/<platform>/graph-node-wrapper.node`) carries one table that ranks
+   * each log by chart, e.g. `"1465": {"Priority": { … "Roll and Pitch":1, "Azimuth":1, "SPAN Filter Updates":1 }}`,
+   * `507` → 2, `508` → 3, `1457` → 4, `263` → 5, `1889` → 6. A chart therefore reads whichever of
+   * those logs is present, the best rank winning at any timestamp it occurs on.
+   * Defaults to `[message]`, which is what every pre-existing chart does.
+   */
+  sourceMessages?: string[];
+  /**
+   * The `PlotSummary` entry that stands for this chart, when Graph names it differently from the
+   * CSV title. The native HA parser writes `Heading_Attitude: {"INS Orientation Pitch": …,
+   * "INS Orientation Azimuth": …, "SPAN Filter Updates": …}` while the CSV files are
+   * `Roll and Pitch.csv` / `Azimuth.csv` / `SPAN Filter Updates.csv` (see `DbToCsvConverter`'s
+   * `kDbBaseNames`).
+   */
+  plot?: { title: string; message: string };
   columns: CsvColumn[];
   /**
    * Charts whose column *set* is data-dependent build their columns per export instead of at module
@@ -136,17 +155,38 @@ function csvHeader(project: GraphProject): string {
   return lines.join('\r\n') + '\r\n';
 }
 
+/** Every `PlotSummary` title that stands for a chart (its own title unless the spec renames it). */
+export function plotTitlesOf(spec: ChartCsvSpec): string[] {
+  return spec.plot ? [spec.plot.title] : [spec.title];
+}
+
 /**
- * Records of the chart's message inside the project window, in log order.
+ * Records of the chart's message(s) inside the project window, one row per timestamp.
  *
  * `oneRowPerTimestamp` collapses frames that share a timestamp (see `ChartCsvSpec`); the first
  * record in log order is the one Graph's `INSERT OR IGNORE` would have kept.
+ *
+ * A chart with several `sourceMessages` (the `Heading & Attitude` plots) reads them **best rank
+ * first**: at a timestamp that several of them share, the highest-priority log wins. Nothing is
+ * substituted — a chart still only ever reads the fields of the log that fed it.
  */
 export function chartRecords(project: GraphProject, capture: Capture, spec: ChartCsvSpec): CaptureRecord[] {
   const { StartTime, EndTime } = project.dataInfo;
-  const records = capture
-    .byName(spec.message)
-    .filter((record) => record.gpsMs >= StartTime && record.gpsMs < EndTime);
+  const inWindow = (record: CaptureRecord) => record.gpsMs >= StartTime && record.gpsMs < EndTime;
+  const sources = spec.sourceMessages ?? [spec.message];
+
+  if (sources.length > 1) {
+    const byTime = new Map<number, CaptureRecord>();
+    for (const name of sources) {
+      for (const record of capture.byName(name)) {
+        if (!inWindow(record) || byTime.has(record.gpsMs)) continue;
+        byTime.set(record.gpsMs, record);
+      }
+    }
+    return [...byTime.values()].sort((a, b) => a.gpsMs - b.gpsMs);
+  }
+
+  const records = capture.byName(sources[0]).filter(inWindow);
   if (!spec.oneRowPerTimestamp) return records;
   const seen = new Set<number>();
   return records.filter((record) => {
@@ -329,9 +369,131 @@ function hwMonitorColumns(project: GraphProject, capture: Capture): CsvColumn[] 
 }
 
 /**
- * The charts the CSV exporter can reproduce **byte-for-byte today**. Charts that exist in
+ * `Heading & Attitude` — the three plots this build used to omit (catalog group `HEADING_ATTITUDE`).
+ *
+ * There is **no original CSV** for any of them on this machine (`ANTENNA=SINGLE`, IMU/INS
+ * `UNAUTHORIZED`), so nothing below is a byte-for-byte comparison. What *is* evidence, read out of
+ * `resources/native_modules/{windows,linux}/graph-node-wrapper.node`:
+ *
+ *  - `INSATTITUDE`'s constructor builds two tables with
+ *    `createTable({timestamp,TEXT},{[INS Azimuth],REAL})` and
+ *    `createTable({timestamp,TEXT},{[INS Pitch],REAL},{[INS Roll],REAL})` — that is the column set
+ *    **and order** (`INS Pitch` before `INS Roll`), verified in the Linux symbol table at
+ *    `INSATTITUDE::INSATTITUDE` (`objdump -d 0x30ea60`, literals `0x6d617473656d6974` = "timestamp",
+ *    `0x54584554` = "TEXT", `0x4c414552` = "REAL", `[INS Azimuth]`, `[INS Pitch]`, `[INS Roll]`).
+ *  - `INSATTITUDE::addPoint` maps them to message fields: struct `+0x60` → `INS Roll`, `+0x70` →
+ *    `INS Pitch`, `+0x80` → `INS Azimuth`, and `INSLogDecoder::SetData` fills those three from
+ *    INSPVA/INSPVAX payload offsets `0x3c` / `0x44` / `0x4c`, i.e. `roll` / `pitch` / `azimuth`.
+ *    Each is written through `printf("%f")`, hence six decimals below.
+ *  - The same native table ranks the logs per chart: INSPVAX 1465 → 1, INSPVA 507 → 2,
+ *    INSPVAS 508 → 3, INSATTX 1457 → 4, INSATT 263 → 5, INSPVACMP 1889 → 6.
+ *    `HEADING2` (1335) and `DUALANTENNAALIGN` (1761) are **not** in that table, so a dual-antenna
+ *    heading does not feed any Graph chart — a synthetic capture with only those two exports no
+ *    Heading & Attitude CSV at all, exactly like the original.
+ */
+const INS_ATTITUDE_SOURCES = ['INSPVAX', 'INSPVA', 'INSPVAS', 'INSATTX', 'INSATT', 'INSPVACMP'];
+
+/** `Azimuth.csv` — one column, `INS Azimuth`, straight from the log's `azimuth` (degrees). */
+const AZIMUTH_COLUMNS: CsvColumn[] = [
+  { header: 'INS Azimuth', format: 'fixed6', value: (record) => field(record, 'azimuth') },
+];
+
+/** `Roll and Pitch.csv` — `INS Pitch` **before** `INS Roll`, the order `createTable` receives. */
+const ROLL_AND_PITCH_COLUMNS: CsvColumn[] = [
+  { header: 'INS Pitch', format: 'fixed6', value: (record) => field(record, 'pitch') },
+  { header: 'INS Roll', format: 'fixed6', value: (record) => field(record, 'roll') },
+];
+
+/**
+ * `SPAN Filter Updates.csv` — the other span table (`INSUPDATE`, `FILENAMEDB`), built by
+ * `createTable({name,TEXT},{start,TEXT},{end,TEXT},{value,TEXT},{min_diff,TEXT})`.
+ *
+ * The 33 names are the 33 literals in the same module, in bit order (`Position update` …
+ * `NVM Seed Indication 3`, then a catch-all `Reserved`). `min_diff` is **seconds** — the renderer
+ * multiplies it by 1000 before stepping the drawing (`transformFloatingBarData` @575248).
+ *
+ * The *span* rule is inferred, not measured: no original export exists here, so the code reuses the
+ * one rule that is proven for the sibling span table `Receiver Status.csv` (a span opens on the
+ * first record where the bit is set and closes on the record that clears it, or on the last record
+ * of the window). `value` is the literal `1`, the same constant the golden `Receiver Status.csv`
+ * writes. Marked as such in `03_分析/13_Graph分析页.md`; not claimed to be byte-identical.
+ */
+const INS_UPDATE_NAMES = [
+  'Position update', 'Phase update', 'Zero velocity update', 'Wheel sensor update',
+  'ALIGN (heading) update', 'External position update', 'INS solution convergence flag',
+  'Doppler update', 'Pseudorange update', 'Velocity update', 'Reserved_10',
+  'Dead reckoning update', 'Phase wind up update', 'Course over ground update',
+  'External velocity update', 'External attitude update', 'External heading update',
+  'External height update', 'Reserved_18', 'Reserved_19', 'Reserved_20', 'Reserved_21',
+  'Secondary INS solution', 'Reserved_23', 'Turn on biases estimated',
+  'Alignment direction verified', 'Alignment Indication 1', 'Alignment Indication 2',
+  'Alignment Indication 3', 'NVM Seed Indication 1', 'NVM Seed Indication 2',
+  'NVM Seed Indication 3', 'Reserved',
+];
+
+/** The status word the update bits live in: `extended_sol_stat` on the X messages, else the basic one. */
+function insStatusWord(record: CaptureRecord): number {
+  const path = record.byPath.has('extended_sol_stat') ? 'extended_sol_stat' : 'ins_solution_status';
+  return record.byPath.has(path) ? field(record, path) >>> 0 : 0;
+}
+
+interface UpdateSpan {
+  name: string;
+  start: number;
+  end: number;
+  /** Smallest gap between two consecutive records of the span, in seconds (`%f` in the table). */
+  minDiff: number;
+}
+
+/** Spans of each INS-update bit over the window, sorted by name (the golden span-table order). */
+export function spanFilterUpdateSpans(project: GraphProject, capture: Capture): UpdateSpan[] {
+  const records = chartRecords(project, capture, {
+    title: 'SPAN Filter Updates', message: 'INSPVAX', columns: [], sourceMessages: INS_ATTITUDE_SOURCES,
+  });
+
+  const spans: UpdateSpan[] = [];
+  // `extended_sol_stat` / `ins_solution_status` are 32-bit words: bits 0..31. The 33rd name
+  // (`Reserved`) is the module's catch-all, not a bit of its own.
+  for (let bit = 0; bit < INS_UPDATE_NAMES.length - 1; bit += 1) {
+    let start: number | null = null;
+    let lastSet = 0;
+    let previousSet: number | null = null;
+    let minDiff = Infinity;
+    for (const record of records) {
+      if (((insStatusWord(record) >>> bit) & 1) === 1) {
+        if (start === null) start = record.gpsMs;
+        if (previousSet !== null) minDiff = Math.min(minDiff, (record.gpsMs - previousSet) / 1000);
+        previousSet = record.gpsMs;
+        lastSet = record.gpsMs;
+      } else if (start !== null) {
+        spans.push({ name: INS_UPDATE_NAMES[bit], start, end: record.gpsMs, minDiff: minDiff === Infinity ? 0 : minDiff });
+        start = null;
+        previousSet = null;
+        minDiff = Infinity;
+      }
+    }
+    if (start !== null) {
+      spans.push({ name: INS_UPDATE_NAMES[bit], start, end: lastSet, minDiff: minDiff === Infinity ? 0 : minDiff });
+    }
+  }
+  return spans.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** The header + body of `SPAN Filter Updates.csv` (the six comment lines are added by `csv.ts`). */
+export function renderSpanFilterUpdates(project: GraphProject, capture: Capture): string {
+  const rows = spanFilterUpdateSpans(project, capture).map(
+    (span) => `${span.name},${span.start.toFixed(6)},${span.end.toFixed(6)},1,${span.minDiff.toFixed(6)}`,
+  );
+  return ['name,start,end,value,min_diff', ...rows].map((line) => line + '\r\n').join('');
+}
+
+/**
+ * The charts the CSV exporter can reproduce. Twelve of them are byte-identical to a shipped golden
+ * (`clean`: 12 files; `broad` adds `Velocity`); the three `Heading & Attitude` ones are implemented
+ * from the shipped native module's table/column/field evidence and have **no golden to compare
+ * against** — see the block above and `03_分析/13_Graph分析页.md`. Charts that exist in
  * `PlotSummary` but are missing here are silently skipped, exactly like Graph skips charts with no
- * data; see the "未完成" list in `03_分析/06_Graph应用.md`.
+ * data.
  */
 export const CSV_CHARTS: ChartCsvSpec[] = [
   { title: '2D Trajectory', message: 'BESTPOS', columns: [bestposLatitude, bestposLongitude] },
@@ -344,6 +506,18 @@ export const CSV_CHARTS: ChartCsvSpec[] = [
   { title: 'CPU Usage', message: 'BESTPOS', columns: CPU_USAGE_COLUMNS },
   { title: 'HW Monitor Status', message: 'HWMONITOR', columns: [], buildColumns: hwMonitorColumns, oneRowPerTimestamp: true },
   { title: 'Receiver Status', message: 'RXSTATUS', columns: [], render: renderReceiverStatus },
+  {
+    title: 'Azimuth', message: 'INSPVAX', columns: AZIMUTH_COLUMNS, sourceMessages: INS_ATTITUDE_SOURCES,
+    plot: { title: 'INS Orientation Azimuth', message: 'insattitude_azimuth' },
+  },
+  {
+    title: 'Roll and Pitch', message: 'INSPVAX', columns: ROLL_AND_PITCH_COLUMNS, sourceMessages: INS_ATTITUDE_SOURCES,
+    plot: { title: 'INS Orientation Pitch', message: 'insattitude_pitch' },
+  },
+  {
+    title: 'SPAN Filter Updates', message: 'INSPVAX', columns: [], sourceMessages: INS_ATTITUDE_SOURCES,
+    render: renderSpanFilterUpdates, plot: { title: 'SPAN Filter Updates', message: 'insUpdatestatus' },
+  },
   { title: 'Tracking Time', message: 'RANGE', columns: [], buildColumns: trackingTimeColumns },
   { title: 'GNSS Signal Strength', message: 'RANGE', columns: [], buildColumns: gnssSignalStrengthColumns },
   { title: 'Satellites and Signals', message: 'RANGE', columns: [], render: renderSatellitesAndSignals },
@@ -355,11 +529,15 @@ export function csvChartSpec(title: string): ChartCsvSpec | undefined {
 
 /**
  * Charts this project should export: the implemented specs that `PlotSummary` says have data.
- * `PlotSummary` decides — never a fixed list of 13 (R17 of the analysis).
+ * `PlotSummary` decides — never a fixed list (R17 of the analysis). A chart whose `PlotSummary`
+ * title differs from its CSV title (`Heading & Attitude`) is matched by `plotTitlesOf`.
  */
 export function availableCsvCharts(project: GraphProject): ChartCsvSpec[] {
   const titles = chartTitles(project.plotSummary);
-  return CSV_CHARTS.filter((spec) => titles.includes(spec.title) && Object.keys(chartMessages(project.plotSummary, spec.title)).length > 0);
+  return CSV_CHARTS.filter((spec) => {
+    const plotTitle = plotTitlesOf(spec).find((title) => titles.includes(title));
+    return !!plotTitle && Object.keys(chartMessages(project.plotSummary, plotTitle)).length > 0;
+  });
 }
 
 export interface CsvExportResult {

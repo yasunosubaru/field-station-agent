@@ -66,7 +66,7 @@ function renderBroadVelocity(): { buffer: Buffer; lines: string[] } {
 }
 
 test('Velocity is the 13th chart, fed by BESTVEL, with the catalog\'s five columns', () => {
-  assert.equal(CSV_CHARTS.length, 13, '12 张旧图 + Velocity');
+  assert.equal(CSV_CHARTS.length, 16, '12 张旧图 + Velocity + Heading & Attitude 三张');
   const spec = csvChartSpec('Velocity');
   assert.ok(spec);
   assert.equal(spec.message, 'BESTVEL');

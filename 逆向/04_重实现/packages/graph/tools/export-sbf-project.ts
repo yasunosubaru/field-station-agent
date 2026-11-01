@@ -18,6 +18,7 @@
  *   DataInfo.EndTime    last decoded record's GPS time + 1 ms  (the CSV window is `[start, end)`)
  *   PlotSummary         one entry per chart **whose message actually occurs in the capture**,
  *                       counted from the capture — the same rule R17 applies to a real `.gpf`
+ *                       (a `Heading & Attitude` chart counts every INS log that can feed it)
  *
  * A `project.json` sidecar records the derived metadata and the exact command, so the provenance
  * of the CSVs travels with them.
@@ -63,29 +64,43 @@ function parseArgs(argv: string[]): Args {
 }
 
 /** Chart message → the `PlotSummary` section Graph files it under, in the original's layout. */
-function sectionOf(message: string): 'PVT' | 'Tracking_Measurements' | 'Receiver_Status' {
+function sectionOf(message: string): 'PVT' | 'Heading_Attitude' | 'Tracking_Measurements' | 'Receiver_Status' {
   if (message === 'RANGE') return 'Tracking_Measurements';
   if (message === 'RXSTATUS') return 'Receiver_Status';
+  if (['INSPVAX', 'INSPVA', 'INSPVAS', 'INSATTX', 'INSATT', 'INSPVACMP'].includes(message)) return 'Heading_Attitude';
   return 'PVT';
 }
 
 /**
  * Build the `PlotSummary` a `.gpf` would carry, from the capture's own message counts: a chart is
  * present iff its message occurs. Nothing is hardcoded per project name.
+ *
+ * `Heading & Attitude` is the one group whose `PlotSummary` keys are not the CSV titles: Graph's own
+ * native parser writes `INS Orientation Pitch` / `INS Orientation Azimuth` / `SPAN Filter Updates`
+ * with the pseudo-messages `insattitude_pitch` / `insattitude_azimuth` / `insUpdatestatus`
+ * (`graph-node-wrapper.node`, the `PlotSummary` string block after `HAEdieLogParser`), so those
+ * names are reproduced rather than invented. `csv.ts` matches them back through `plotTitlesOf`.
  */
 export function plotSummaryOf(capture: Capture): PlotSummary {
   const summary: PlotSummary = {};
   const tracking: Record<string, Record<string, number>> = {};
   for (const spec of CSV_CHARTS) {
-    const count = capture.byName(spec.message).length;
+    const sources = spec.sourceMessages ?? [spec.message];
+    // A multi-source chart keeps one row per timestamp (`INSERT OR IGNORE` on the timestamp), so its
+    // count is the number of **distinct timestamps**, not the number of frames.
+    const count = sources.length > 1
+      ? new Set(capture.records.filter((record) => sources.includes(record.name)).map((record) => record.gpsMs)).size
+      : capture.byName(sources[0]).length;
     if (!count) continue;
     const section = sectionOf(spec.message);
+    const title = spec.plot?.title ?? spec.title;
+    const message = spec.plot?.message ?? spec.message;
     if (section === 'Tracking_Measurements') {
-      tracking[spec.title] = { [spec.message]: count };
+      tracking[title] = { [message]: count };
       continue;
     }
     const target = (summary[section] as Record<string, Record<string, number>> | undefined) ?? {};
-    target[spec.title] = { [spec.message]: count };
+    target[title] = { [message]: count };
     summary[section] = target;
   }
   if (Object.keys(tracking).length) summary.Tracking_Measurements = { Primary: tracking };
@@ -101,7 +116,7 @@ export function plotSummaryOf(capture: Capture): PlotSummary {
  * stretch the window to 7100 days (the first run produced exactly that).
  */
 export function dataInfoOf(records: CaptureRecord[]): DataInfo {
-  const plotted = new Set(CSV_CHARTS.map((spec) => spec.message));
+  const plotted = new Set(CSV_CHARTS.flatMap((spec) => spec.sourceMessages ?? [spec.message]));
   const window = records.filter((record) => plotted.has(record.name));
   const chosen = window.length ? window : records;
   if (!chosen.length) throw new Error('采集文件里没有任何可解码的记录');
@@ -197,7 +212,9 @@ function main(): void {
     duration: formatDuration(project.dataInfo.Duration),
     messages: project.messages,
     droppedFrames: dropped,
-    chartTitles: CSV_CHARTS.filter((spec) => capture.byName(spec.message).length).map((spec) => spec.title),
+    chartTitles: CSV_CHARTS
+      .filter((spec) => (spec.sourceMessages ?? [spec.message]).some((name) => capture.byName(name).length))
+      .map((spec) => spec.title),
     csv: written.map((path) => basename(path)),
     command: `node packages/graph/tools/export-sbf-project.ts --capture ${args.capture} --out ${args.out} --name ${args.name}`,
   };

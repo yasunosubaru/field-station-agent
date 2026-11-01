@@ -1,0 +1,13 @@
+﻿#Project Name:          heading
+#Project Directory:    H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\graph\export\heading
+#Data File Name:      heading.sbf
+#Start Time(GPS):      2442,470000.000
+#End Time(GPS):       2442,470005.001
+#Duration:                   00:00:05
+timestamp (GPS week sec),INS Pitch,INS Roll
+2442  470000.000,-0.750000,1.500000
+2442  470001.000,-1.750000,2.500000
+2442  470002.000,-2.750000,3.500000
+2442  470003.000,-3.750000,4.500000
+2442  470004.000,-4.750000,5.500000
+2442  470005.000,-5.750000,6.500000

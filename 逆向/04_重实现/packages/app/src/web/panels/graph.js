@@ -23,10 +23,12 @@
  *   real      `/api/graph/files` + `/api/graph/data` (the CSVs Graph already exported), the CSV /
  *             column pickers, the 20-row table, the line chart, the timeline playhead (rAF, Speed
  *             multiplier), the Export menu (CSV · HTML · KML · PDF — see `exportAs()`)
- *   real      the four tabs under Overview — PVT / Tracking & Measurements / Receiver Status /
- *             Project Information. Every tile is one plot of `06_Graph应用-附录/C_图表目录.json`
- *             — 13 of the catalog's 16 get a tile; the three Heading & Attitude plots have no tab
- *             — and every series is one column of that plot's CSV read through
+ *   real      the five tabs under Overview — PVT / Heading & Attitude / Tracking & Measurements /
+ *             Receiver Status / Project Information. Every tile is one plot of
+ *             `06_Graph应用-附录/C_图表目录.json` — all 16 now get a tile, including the three
+ *             Heading & Attitude plots (`Azimuth`, `Roll and Pitch`, `SPAN Filter Updates`), whose
+ *             columns come from the shipped native module's `INSATTITUDE` / `INSUPDATE` tables — and
+ *             every series is one column of that plot's CSV read through
  *             `/api/graph/data?file=&column=`. Titles, plot
  *             kinds and y-axis units are the catalog's, verbatim; `chartSvgFor()` draws the same
  *             axes/grid/typography as the Overview chart, only repeated per tile.
@@ -41,9 +43,11 @@
  *   honest    a tile whose CSV is missing, whose column cannot be read, or whose rows
  *             `/api/graph/data` truncates prints `--` plus the reason instead of a curve;
  *             `Project Information` shows no message counts because `DataSummary.json` is not behind
- *             `/api/graph/*`; the catalog's Heading & Attitude plots have no tab at all (this build
- *             has no INS pane), and `Velocity` is a real tile that only draws for a project whose
- *             export contains `Velocity.csv` — `clean` carries no BESTVEL, so there it says so
+ *             `/api/graph/*`; the three Heading & Attitude tiles only draw for a project whose
+ *             export contains their CSVs (a receiver with `ANTENNA=SINGLE` and no INS logs none of
+ *             the three, because Graph — and therefore this build — feeds them only from INS logs,
+ *             never from HEADING2), and `Velocity` is a real tile that only draws for a project
+ *             whose export contains `Velocity.csv` — `clean` carries no BESTVEL, so there it says so
  *             instead of inventing a curve
  *   real      the Pre-process flags: up to 10 timeline markers, added by right-clicking the scrub
  *             area (at that x) or by Add Flag on the playhead, with a comment, colour, hide/show,
@@ -432,6 +436,7 @@ export function saveFlagState(storage, projectKey, state) {
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'pvt', label: 'PVT' },
+  { id: 'heading', label: 'Heading & Attitude' },
   { id: 'tracking', label: 'Tracking & Measurements' },
   { id: 'receiver', label: 'Receiver Status' },
   { id: 'project', label: 'Project Information' },
@@ -758,9 +763,11 @@ export function constellationOf(name) {
 /**
  * One entry per tab: every plot of `C_图表目录.json` that has a tab in this build.
  * `catalog` is the tab's **full** catalog list, so the footer can name a plot that has no tile at
- * all (Heading & Attitude) separately from a tile whose CSV this project did not export
- * (`Velocity` on a project without BESTVEL) — the original's `PlotSummary` decides whether a
- * `ChartControls` exists, but a missing CSV must not silently delete the tile.
+ * all separately from a tile whose CSV this project did not export (`Velocity` on a project without
+ * BESTVEL) — the original's `PlotSummary` decides whether a `ChartControls` exists, but a missing
+ * CSV must not silently delete the tile. As of the Heading & Attitude work every catalog plot has
+ * a tile, so the "no tile" list is empty — the branch is kept because the next catalog gap will
+ * need it again.
  *
  *   kind  line      numeric series, one polyline per column
  *         bar       numeric series drawn as bars, y axis hidden (`show: chartType !== "bar"`)
@@ -784,6 +791,24 @@ export const CHART_GROUPS = [
         xColumn: 'Longitude', yColumn: 'Latitude' },
       { id: 'height', title: 'Height', file: 'Height.csv', kind: 'line', units: '(m)' },
       { id: 'velocity', title: 'Velocity', file: 'Velocity.csv', kind: 'line', units: '(m/s)' },
+    ],
+  },
+  {
+    id: 'heading',
+    label: 'Heading & Attitude',
+    catalog: ['Azimuth', 'Roll and Pitch', 'SPAN Filter Updates'],
+    charts: [
+      // `INS Azimuth` / `INS Pitch` / `INS Roll` are the column names the shipped native module's
+      // `INSATTITUDE` constructor creates (`[INS Azimuth] REAL`, `[INS Pitch] REAL`, `[INS Roll]
+      // REAL`), not renames made here. The CSV titles are `DbToCsvConverter`'s `kDbBaseNames`.
+      { id: 'azimuth', title: 'Azimuth', file: 'Azimuth.csv', kind: 'line', units: '(degrees)',
+        columns: ['INS Azimuth'] },
+      { id: 'roll-pitch', title: 'Roll and Pitch', file: 'Roll and Pitch.csv', kind: 'line',
+        units: '(degrees)', columns: ['INS Pitch', 'INS Roll'] },
+      // Span table like `Receiver Status`, but its last column is `min_diff`, so the tile must read
+      // `value` by name rather than by position.
+      { id: 'span-updates', title: 'SPAN Filter Updates', file: 'SPAN Filter Updates.csv',
+        kind: 'bar', rowsAsSeries: true, valueColumn: 'value', intervalTable: true },
     ],
   },
   {
@@ -1678,7 +1703,7 @@ const ICON_LAYERS = '<svg viewBox="0 0 112 112" aria-hidden="true">'
 /**
  * Pane markup. Overview is the map stage — the self-drawn basemap fills the stage, the chart sits in
  * a docked strip along its bottom edge (collapsible, `[data-act="dock"]`) and the playhead rides on
- * the docked chart. The three chart tabs get one tile per catalog plot; Project Information gets a
+ * the docked chart. The four chart tabs get one tile per catalog plot; Project Information gets a
  * single text card. Tiles start empty and are filled by `paintCard()` once their CSV has been read.
  */
 export function paneBody(tabId) {
@@ -2878,7 +2903,7 @@ export function mount(root, ctx) {
     zoomMap(1 / 1.8, event.clientX - rect.left, event.clientY - rect.top);
   }
 
-  /* ---- chart tabs: PVT / Tracking & Measurements / Receiver Status / Project Information ---- */
+  /* ---- chart tabs: PVT / Heading & Attitude / Tracking & Measurements / Receiver Status / Project Information ---- */
 
   /**
    * `/api/graph/data` returns **one** numeric column per call (`?column=`), so a tile with N series
@@ -3044,8 +3069,15 @@ export function mount(root, ctx) {
         };
       }
       const series = [];
+      // `valueColumn` names the column to plot. `Receiver Status` has it last, but the other span
+      // table (`SPAN Filter Updates`) ends with `min_diff`, so position alone would plot the wrong
+      // column. A missing name falls back to the last column, the previous behaviour.
+      const valueAt = spec.valueColumn && probe.table
+        ? probe.table.columns.indexOf(spec.valueColumn)
+        : -1;
       rows.forEach((row, index) => {
-        const value = Number(row[row.length - 1]);
+        const cell = row[valueAt >= 0 ? valueAt : row.length - 1];
+        const value = Number(cell);
         if (!Number.isFinite(value)) return;
         series.push({
           name: row[0],
@@ -3054,7 +3086,7 @@ export function mount(root, ctx) {
           points: [[index, value]],
         });
       });
-      if (!series.length) return { status: 'empty', reason: `${probe.name} 的 value 列读不出数字` };
+      if (!series.length) return { status: 'empty', reason: `${probe.name} 的 ${spec.valueColumn || 'value'} 列读不出数字` };
       return {
         status: 'ready',
         kind: spec.kind || 'bar',
@@ -3069,8 +3101,8 @@ export function mount(root, ctx) {
         columns: 1,
         file: probe.name,
         table: spec.intervalTable && probe.table ? probe.table : null,
-        note: '这张 CSV 的表结构是「条件 → 区间」（name,start,end,value），没有时间列，'
-          + '所以横轴是行序号、纵轴是 value；每个条件的 start/end 见下表。',
+        note: `这张 CSV 的表结构是「条件 → 区间」（${(probe.table ? probe.table.columns : []).join(',')}），`
+          + '没有时间列，所以横轴是行序号、纵轴是 value；每个条件的 start/end 见下表。',
       };
     }
 
@@ -3098,7 +3130,7 @@ export function mount(root, ctx) {
     if (!series.length) return { status: 'empty', reason: `${spec.file} 的数值列都读不到` };
     const first = payloads.find((payload) => payload && payload.series);
     const notes = [];
-    if (spec.intervalTable) notes.push('这张 CSV 的表结构是「条件 → 区间」（name,start,end,value），没有时间列。');
+    if (spec.intervalTable) notes.push('这张 CSV 的表结构是「条件 → 区间」，没有时间列。');
     if (probe.rows < 2) {
       notes.push(`只有 1 行样本（这份 CSV 只回了一次报文），每列只有一个点，连不成线，但数是真的。`);
     }
@@ -3233,8 +3265,8 @@ export function mount(root, ctx) {
       return;
     }
     // Two different gaps, and the footer must not confuse them: a catalogue plot with no tile at
-    // all (Heading & Attitude), and a tile whose CSV this project did not export (`Velocity` for a
-    // project without BESTVEL). Both are named; neither is filled with another column.
+    // all, and a tile whose CSV this project did not export (`Velocity` for a project without
+    // BESTVEL). Both are named; neither is filled with another column.
     const tileless = group.catalog.filter((title) => !group.charts.some((chart) => chart.title === title));
     const fileless = group.charts.filter((chart) => !state.files.some((file) => file.name === chart.file));
     const parts = [
