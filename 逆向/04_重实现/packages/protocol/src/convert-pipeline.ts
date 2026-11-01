@@ -62,6 +62,9 @@ export const PASSTHROUGH_ID = 1342;
 /** Compressed observation logs Convert unpacks into ordinary `RANGE` rows. */
 const RANGECMP2_ID = 1273;
 const RANGECMP4_ID = 2050;
+const RANGECMP_IDS = [RANGECMP2_ID, RANGECMP4_ID];
+/** The ordinary observation log those two unpack into. */
+const RANGE_ID = 43;
 
 export interface ConvertOptions {
   format: ConvertFormat;
@@ -148,10 +151,13 @@ function textLinesFor(
   tables: EdieTables,
   textAt: Map<number, string | string[]>,
   render: (frame: SbfFrame, layout: EdieTables['messages'][string]) => readonly string[],
+  /** Per log id, how many output rows it produced (`summary.ts` reports the output, not the input). */
+  rendered: Map<number, number> = new Map(),
 ): string[] {
   const rangeLayout = tables.messages['43'];
   const carry = { cmp2: lockTimeCarry(), cmp4: lockTimeCarry() };
   const lines: string[] = [];
+  const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
   frames.forEach((frame, index) => {
     const text = textAt.get(index);
     if (text !== undefined) {
@@ -166,13 +172,21 @@ function textLinesFor(
       if (!rangeLayout) return;
       // `Convert` unpacks the compressed block into ordinary RANGE rows and lets the normal writer
       // print them: b2's 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 become 699 RANGE lines.
-      const unpacked = { ...frame, payload: buildRangePayload(unpackRangeCmp(frame, carry)) };
+      const observations = unpackRangeCmp(frame, carry);
+      const unpacked = { ...frame, payload: buildRangePayload(observations) };
       lines.push(...render(unpacked, rangeLayout));
+      // One `RANGE` record per compressed record — its observations are that record's array, not
+      // separate rows (b2: 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 → 699 RANGE).
+      bump(RANGE_ID, 1);
       return;
     }
     const layout = tables.messages[String(frame.header.messageId)];
     if (!layout) return;
-    lines.push(...render(frame, layout));
+    const produced = render(frame, layout);
+    lines.push(...produced);
+    // A record that prints nothing (`RXCONFIG` with an embedded message the dictionary lacks) is
+    // input but not output — that is why b1's summary reads `RXCONFIG 278 → 256`.
+    if (produced.length) bump(frame.header.messageId, 1);
   });
   return lines;
 }
@@ -181,6 +195,15 @@ function textLinesFor(
 export function countLogs(
   converted: readonly SbfFrame[],
   tables: EdieTables,
+  options: {
+    expandRanges?: boolean;
+    /** The frame list Convert walked, needed to count the text records that produced no line. */
+    frames?: readonly Frame[];
+    /** Frame index → the line(s) `text-log.ts` emitted for it. */
+    textAt?: Map<number, string | string[]>;
+    /** Per-log id row counts from the writer (`textLinesFor`), when the format has one. */
+    rendered?: Map<number, number>;
+  } = {},
 ): Map<number, { name: string; source: number; output: number }> {
   const counts = new Map<number, { name: string; source: number; output: number }>();
   for (const frame of converted) {
@@ -191,7 +214,92 @@ export function countLogs(
     if (frame.crcOk) entry.output += 1;
     counts.set(frame.header.messageId, entry);
   }
+  if (options.rendered) {
+    // The suite reports what came out: a record that printed nothing (`RXCONFIG` with an embedded
+    // message the dictionary lacks) counts as input only, and a `RANGECMP2/4` block counts as the
+    // `RANGE` rows it unpacked into (`b1: RXCONFIG 278 → 256`; `b2: RANGE 638 → 699,
+    // RANGECMP2 31 → 0, RANGECMP4 30 → 0`).
+    for (const [id, entry] of counts) entry.output = options.rendered.get(id) ?? 0;
+  } else if (options.expandRanges) {
+    // The ASCII family unpacks `RANGECMP2/4` into ordinary `RANGE` rows, and the summary follows the
+    // output, not the input: `golden-b2-20261101.ABBREV_Summary.txt` reads `RANGE 638 → 699`,
+    // `RANGECMP2 31 → 0`, `RANGECMP4 30 → 0`. BINARY copies the compressed records verbatim, so it
+    // keeps 1:1 and the flag stays off for every other format.
+    let expanded = 0;
+    for (const id of RANGECMP_IDS) {
+      const entry = counts.get(id);
+      if (!entry) continue;
+      expanded += entry.source;
+      entry.output = 0;
+    }
+    if (expanded) {
+      const range = counts.get(RANGE_ID)
+        ?? { name: tables.messages[String(RANGE_ID)]?.name ?? 'RANGE', source: 0, output: 0 };
+      range.output += expanded;
+      counts.set(RANGE_ID, range);
+    }
+  }
+  if (options.frames && options.textAt) {
+    countTextRecords(counts, options.frames, options.textAt, tables);
+  }
   return counts;
+}
+
+/** Layout name (upper case, no version letter) → message id. */
+function idsByName(tables: EdieTables): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const [id, layout] of Object.entries(tables.messages)) {
+    map.set(String(layout.name).toUpperCase(), Number(id));
+  }
+  return map;
+}
+
+/** `#BESTPOSA,…` / `<RANGEA …` → `BESTPOS` / `RANGE`: the version letter is not part of the name. */
+function textRecordId(line: string, byName: Map<string, number>): { id: number; name: string } | undefined {
+  const match = /^[<#]\s*([A-Za-z][A-Za-z0-9_]*)/.exec(line);
+  if (!match) return undefined;
+  const raw = match[1].toUpperCase();
+  const direct = byName.get(raw);
+  if (direct !== undefined) return { id: direct, name: raw };
+  const stripped = raw.replace(/[A-Z]$/, '');
+  const fallback = byName.get(stripped);
+  return fallback === undefined ? undefined : { id: fallback, name: stripped };
+}
+
+/**
+ * Add the text records to the table the way the suite counts them.
+ *
+ * A text record the parser resolves counts as one input and one output; one it resolves by name but
+ * cannot render (an `RXCONFIG` whose embedded message the dictionary lacks) counts as input only.
+ * `[text][USB2]` markers and `<OK` replies resolve to nothing and are not counted at all.
+ */
+function countTextRecords(
+  counts: Map<number, { name: string; source: number; output: number }>,
+  frames: readonly Frame[],
+  textAt: Map<number, string | string[]>,
+  tables: EdieTables,
+): void {
+  const byName = idsByName(tables);
+  const bump = (id: number, name: string, output: boolean) => {
+    const entry = counts.get(id) ?? { name, source: 0, output: 0 };
+    entry.source += 1;
+    if (output) entry.output += 1;
+    counts.set(id, entry);
+  };
+  for (const [index, value] of textAt) {
+    const line = Array.isArray(value) ? value[0] : value;
+    // An empty block means the record was resolved by name but printed nothing (the `RXCONFIG`
+    // case): it is input, not output.
+    const emitted = Array.isArray(value) ? value.length > 0 : String(value ?? '').length > 0;
+    const found = textRecordId(String(line ?? ''), byName);
+    if (found) bump(found.id, found.name, emitted);
+    void index;
+  }
+  frames.forEach((frame, index) => {
+    if (frame.kind !== 'text' || textAt.has(index)) return;
+    const found = textRecordId(`${frame.prefix}${frame.text}`, byName);
+    if (found) bump(found.id, found.name, false);
+  });
 }
 
 /**
@@ -213,16 +321,27 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
 
   const yy = String(at.getFullYear() % 100).padStart(2, '0');
   const files: ConvertFile[] = [];
+  /** Row counts from the writer, and the text lines it placed (only the ASCII family has them). */
+  let countsRendered: Map<number, number> | undefined;
+  let countsText: Map<number, string | string[]> | undefined;
 
   if (format === 'ASCII') {
-    const lines = textLinesFor(frames, tables, textLogLines(frames, tables), (frame, layout) => {
+    const rendered = new Map<number, number>();
+    const textMap = textLogLines(frames, tables);
+    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => {
       const line = encodeAsciiLog(frame, layout, tables);
       return line ? [line] : [];
-    });
+    }, rendered);
     files.push(lineFile(`${base}.ASCII`, lines));
+    countsRendered = rendered;
+    countsText = textMap;
   } else if (format === 'ABBREV_ASCII') {
-    const lines = textLinesFor(frames, tables, abbrevTextLogLines(frames, tables), (frame, layout) => encodeAbbrevLines(frame, layout, tables));
+    const rendered = new Map<number, number>();
+    const textMap = abbrevTextLogLines(frames, tables);
+    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => encodeAbbrevLines(frame, layout, tables), rendered);
     files.push(lineFile(`${base}.ABBREV_ASCII`, lines));
+    countsRendered = rendered;
+    countsText = textMap;
   } else if (format === 'KML') {
     const points: KmlPoint[] = [];
     for (const frame of accepted) {
@@ -266,6 +385,11 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
     files.push({ name: `${base}.BINARY`, text: null, bytes: encodeBinaryCapture(accepted).bytes });
   }
 
+  const counts = countLogs(converted, tables, {
+    rendered: countsRendered,
+    ...(countsText ? { frames, textAt: countsText } : {}),
+  });
+
   return {
     format,
     formatDirectory: formatDirectory(format),
@@ -275,6 +399,6 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
     passthrough,
     converted,
     accepted,
-    counts: countLogs(converted, tables),
+    counts,
   };
 }

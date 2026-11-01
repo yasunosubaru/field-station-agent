@@ -9,6 +9,19 @@
 import type { SbfFrame } from './framing.ts';
 
 /**
+ * Time status whose stamp is a **reference** epoch, not the observation time (`SATTIME`, 200).
+ *
+ * An `ALMANAC` / `RAWALM` / `GLOALM` record carries the almanac's reference epoch in its
+ * `milliseconds`, minutes or hours away from the file's real span. Measured on
+ * `b2-20261101.sbf`: the first records are `ALMANAC 577140.000` and `RANGE 577758.950`, and the
+ * suite's Summary starts at **577758.950** — the first record whose status is not SATTIME. Records
+ * of other statuses that sit inside the span change nothing (b1 has 172 SATTIME records, all
+ * interior), and `clean-9600.gps` (FINESTEERING 180 / SATTIME 200 only) gives the same numbers as
+ * first-of-all / last-of-all.
+ */
+const REFERENCE_TIME_STATUS = 200;
+
+/**
  * Convert prints the GPS seconds-of-week as if they were UTC — the known "no leap seconds" defect of
  * the original (`00A §8 D10`). Verified against `Summary_clean-9600.txt`: week 2442 / 463097.35 →
  * `2026-10-30T08:38:17.350Z`, i.e. no 18 s correction.
@@ -68,6 +81,14 @@ function pad(value: string | number, width: number, side: 'start' | 'end'): stri
   return side === 'start' ? text.padStart(width) : text.padEnd(width);
 }
 
+/**
+ * Whole seconds between the two stamps, computed the way the suite does it: each endpoint is
+ * truncated to its second **before** subtracting.
+ *
+ * Measured on three goldens — b1 `570227.071 → 570255.15` = 28 (round would give 28, ceil 29),
+ * b2 `577758.95 → 577792.05` = 34 (round would give 33), b3 `583814.15 → 583859.7` = 45
+ * (round would give 46). Only `floor(finish) - floor(start)` fits all three.
+ */
 function durationText(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
   const hours = Math.floor(total / 3600);
@@ -83,8 +104,12 @@ function isoSeconds(date: Date): string {
 
 export function buildSummary(input: SummaryInput, logNames: Map<number, { name: string; source: number; output: number }>): string {
   const frames = input.frames;
-  const first = frames[0];
-  const last = frames[frames.length - 1];
+  // The span is the first .. last record that carries an observation time; reference epochs
+  // (SATTIME) are skipped when there is anything else to measure from.
+  const timed = frames.filter((frame) => frame.header.timeStatus !== REFERENCE_TIME_STATUS);
+  const window = timed.length ? timed : frames;
+  const first = window[0];
+  const last = window[window.length - 1];
   const startMs = first.header.milliseconds / 1000;
   const finishMs = last.header.milliseconds / 1000;
   const startUtc = gpsAsUtc(first.header.week, first.header.milliseconds);
@@ -122,7 +147,7 @@ export function buildSummary(input: SummaryInput, logNames: Map<number, { name: 
   lines.push(`      Start time : ${isoSeconds(startUtc)}`);
   lines.push(`      Finish time: ${isoSeconds(finishUtc)}`);
   lines.push('');
-  lines.push(`    Total Duration: ${durationText(finishMs - startMs)}`);
+  lines.push(`    Total Duration: ${durationText(Math.floor(finishMs) - Math.floor(startMs))}`);
   lines.push('      ');
   lines.push('');
   lines.push(`The following ${logNames.size} log(s) were converted successfully to ${input.formatName} `);
