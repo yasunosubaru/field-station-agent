@@ -1,0 +1,10 @@
+﻿#Project Name:          b1
+#Project Directory:    H:\Archive\文件夹 老版\personal content\课程资料\其他\大创项目\野外台站智能体\逆向\00_来源\samples\graph\export\b1
+#Data File Name:      b1-20261101.sbf
+#Start Time(GPS):      2442,570227.100
+#End Time(GPS):       2442,570255.151
+#Duration:                   00:00:28
+name,start,end,value
+Ethernet Not Connected,1477491827527.000000,1477491830827.000000,1
+Link Overrun,1477491827527.000000,1477491830827.000000,1
+RF Calibration Data Present,1477491827527.000000,1477491830827.000000,1

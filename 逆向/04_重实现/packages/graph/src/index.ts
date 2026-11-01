@@ -8,6 +8,7 @@
  *  - `exportKml`     `clean.kml`, byte-identical
  *  - `buildHtmlReport`  self-contained `<project>.html` (inline CSS + SVG + first rows of each CSV)
  *  - `buildPdfReport`   hand-written PDF 1.4, one page per chart (no library, no embedded fonts)
+ *  - `export-projects`  one project = one directory under `samples/graph/export/` (Recent Projects)
  *
  * Not implemented: the ECharts interactive report and map rendering.
  */
@@ -21,3 +22,4 @@ export * from './range-charts.ts';
 export * from './kml.ts';
 export * from './html.ts';
 export * from './pdf.ts';
+export * from './export-projects.ts';

@@ -55,8 +55,8 @@ export type ColumnFormat = 'trim6' | 'fixed6' | 'fixed1' | 'int' | 'text';
 export interface CsvColumn {
   header: string;
   format: ColumnFormat;
-  /** Value of the column for a record. */
-  value(record: CaptureRecord): string | number;
+  /** Value of the column for a record; `null` renders an empty cell (a satellite not tracked yet). */
+  value(record: CaptureRecord): string | number | null;
 }
 
 export interface ChartCsvSpec {
@@ -84,7 +84,8 @@ const COMMENT_PREFIX = {
   duration: '#Duration:                   ',
 } as const;
 
-function renderValue(format: ColumnFormat, value: string | number): string {
+function renderValue(format: ColumnFormat, value: string | number | null): string {
+  if (value === null || value === undefined) return '';
   switch (format) {
     case 'trim6':
       return formatTrimmed(Number(value), 6);

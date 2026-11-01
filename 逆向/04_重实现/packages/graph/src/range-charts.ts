@@ -39,35 +39,85 @@ import type { GraphProject } from './project.ts';
 import type { CsvColumn } from './csv.ts';
 import { formatGpsColumn } from './format.ts';
 
-/** `(system, 5-bit signal type)` → column name and flat-enum rank. */
+/**
+ * `(system, 5-bit signal type)` → column name and flat-enum rank.
+ *
+ * The 12 pairs the golden happens to contain were matched empirically (§11.3). The rest come from
+ * OEM7 *Commands and Logs Reference Manual* Table 182 ("Channel tracking status", bits 21-25), whose
+ * per-system numbering matches those 12 exactly — e.g. GPS 0 = L1 C/A, 16 = L1C (P), 9 = L2P (Y),
+ * 17 = L2C (M), 14 = L5 (Q); BeiDou 4 = B1 (I) D2; QZSS 16 = L1C (P). The rank is the position in
+ * the 72-name signal enum extracted from `graph-node-wrapper.node` (GPS_L1_CA 0 … QZSS_L1_CD 46 …
+ * B3I_D2 44), so a constellation's columns keep the original's order.
+ *
+ * Without the manual's pairs a **real** receiver capture cannot be exported at all: `b1-20261101.sbf`
+ * tracks QZSS L1C/B (5/24), BeiDou B2a (4/9) and B2b (4/11), and the first export threw
+ * `unknown RANGE signal system=5 signal=24`.
+ */
 export const RANGE_SIGNALS: Record<number, Record<number, { name: string; rank: number }>> = {
-  // system 0 — GPS
+  // system 0 — GPS (0 L1C/A, 5 L2P, 9 L2P(Y), 14 L5(Q), 16 L1C(P), 17 L2C(M))
   0: {
     0: { name: 'GPS_L1_CA', rank: 0 },
+    5: { name: 'GPS_L2_P', rank: 7 },
     16: { name: 'GPS_L1_CP', rank: 2 },
     9: { name: 'GPS_L2_PY', rank: 8 },
     17: { name: 'GPS_L2_CM', rank: 9 },
     14: { name: 'GPS_L5_Q', rank: 12 },
   },
-  // system 4 — BEIDOU
+  // system 1 — GLONASS (0 L1C/A, 1 L2C/A, 5 L2P, 6 L3(Q))
+  1: {
+    0: { name: 'GLONASS_L1_CA', rank: 12 },
+    1: { name: 'GLONASS_L2_CA', rank: 14 },
+    5: { name: 'GLONASS_L2_P', rank: 15 },
+    6: { name: 'GLONASS_L3_Q', rank: 16 },
+  },
+  // system 2 — SBAS (0 L1C/A, 6 L5(I))
+  2: {
+    0: { name: 'SBAS_L1_CA', rank: 58 },
+    6: { name: 'SBAS_L5_I', rank: 59 },
+  },
+  // system 3 — Galileo (2 E1(C), 6 E6B, 7 E6C, 12 E5a(Q), 17 E5b(Q), 20 E5AltBOC(Q))
+  3: {
+    2: { name: 'GALILEO_E1_C', rank: 18 },
+    6: { name: 'GALILEO_E6_B', rank: 30 },
+    7: { name: 'GALILEO_E6_C', rank: 29 },
+    12: { name: 'GALILEO_E5A_Q', rank: 21 },
+    17: { name: 'GALILEO_E5B_Q', rank: 24 },
+    20: { name: 'GALILEO_E5ALTBOC_Q', rank: 27 },
+  },
+  // system 4 — BEIDOU (0/4 B1I, 1/5 B2I, 2/6 B3I, 7 B1C(P), 9 B2a(P), 11 B2b(I))
   4: {
     0: { name: 'BEIDOU_B1I_D1', rank: 32 },
     4: { name: 'BEIDOU_B1I_D2', rank: 33 },
+    7: { name: 'BEIDOU_B1C_P', rank: 34 },
+    9: { name: 'BEIDOU_B2A_P', rank: 37 },
     1: { name: 'BEIDOU_B2I_D1', rank: 40 },
+    5: { name: 'BEIDOU_B2I_D2', rank: 41 },
+    11: { name: 'BEIDOU_B2B_I', rank: 42 },
     2: { name: 'BEIDOU_B3I_D1', rank: 43 },
     6: { name: 'BEIDOU_B3I_D2', rank: 44 },
   },
-  // system 5 — QZSS
+  // system 5 — QZSS (0 L1C/A, 14 L5(Q), 16 L1C(P), 17 L2C(M), 24 L1C/B, 27 L6P, 28 L6D)
   5: {
     0: { name: 'QZSS_L1_CA', rank: 45 },
+    24: { name: 'QZSS_L1_CD', rank: 46 },
     16: { name: 'QZSS_L1_CP', rank: 47 },
     17: { name: 'QZSS_L2_CM', rank: 49 },
     14: { name: 'QZSS_L5_Q', rank: 53 },
+    27: { name: 'QZSS_L6_P', rank: 55 },
+    28: { name: 'QZSS_L6_D', rank: 56 },
+  },
+  // system 6 — NavIC (0 L5 SPS)
+  6: {
+    0: { name: 'NAVIC_L5_SPS', rank: 64 },
+  },
+  // system 7 — Other (19 L-band)
+  7: {
+    19: { name: 'LBAND_LBAND', rank: 80 },
   },
 };
 
 /** Constellation display name per system id (the prefix the goldens use). */
-const SYSTEM_NAME: Record<number, string> = { 0: 'GPS', 1: 'GLONASS', 2: 'SBAS', 3: 'GALILEO', 4: 'BEIDOU', 5: 'QZSS', 6: 'NAVIC' };
+const SYSTEM_NAME: Record<number, string> = { 0: 'GPS', 1: 'GLONASS', 2: 'SBAS', 3: 'GALILEO', 4: 'BEIDOU', 5: 'QZSS', 6: 'NAVIC', 7: 'OTHER' };
 
 /** Observed `_Mean` column order inside each constellation (see the module comment). */
 const MEAN_ORDER: Record<string, string[]> = {
@@ -108,11 +158,19 @@ function obsOf(record: CaptureRecord): Obs[] {
   return list;
 }
 
+/**
+ * Signal name/rank for one observation.
+ *
+ * A pair the tables do not know (a firmware older/newer than Table 182, or a system-7 "Other"
+ * signal) is **not** fatal any more: it degrades to `<SYSTEM>_S<type>` ranked last, which the module
+ * comment above already describes as the fallback ordering. Throwing here meant one unknown signal
+ * aborted the export of every RANGE-fed chart.
+ */
 function signalInfo(obs: Obs): { name: string; rank: number } {
   const table = RANGE_SIGNALS[obs.system];
   const info = table?.[obs.signal];
-  if (!info) throw new Error(`unknown RANGE signal system=${obs.system} signal=${obs.signal}`);
-  return info;
+  if (info) return info;
+  return { name: `${SYSTEM_NAME[obs.system] ?? `SYS${obs.system}`}_S${obs.signal}`, rank: 900 + obs.signal };
 }
 
 /** RANGE records inside the project window, in log order. */
@@ -176,8 +234,8 @@ export function trackingTimeColumns(project: GraphProject, capture: Capture): Cs
       format: 'fixed6' as const,
       value: (record: CaptureRecord) => {
         const obs = obsOf(record).find((o) => o.system === system && o.signal === signal && o.prn === column.prn);
-        if (!obs) throw new Error(`RANGE record has no ${column.name}_${column.prn}`);
-        return obs.lockTime;
+        // Satellite not in this epoch's `obs[]` (not yet risen / already set): empty cell, not an error.
+        return obs ? obs.lockTime : null;
       },
     };
   });
@@ -192,8 +250,8 @@ export function gnssSignalStrengthColumns(project: GraphProject, capture: Captur
       format: 'fixed6' as const,
       value: (record: CaptureRecord) => {
         const obs = obsOf(record).find((o) => o.system === system && o.signal === signal && o.prn === column.prn);
-        if (!obs) throw new Error(`RANGE record has no ${column.name}_${column.prn}`);
-        return obs.cno;
+        // Same rule as `Tracking Time`: an epoch without the satellite leaves the cell empty.
+        return obs ? obs.cno : null;
       },
     };
   });

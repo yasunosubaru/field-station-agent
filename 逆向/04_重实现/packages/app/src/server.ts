@@ -38,7 +38,16 @@ import { LiveLink, type LiveTarget } from './live.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, readTextRecords, summarizeLogs } from './logs.ts';
 import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
-import { GRAPH_CSV_DIR, graphData, listGraphCsv, readGraphCsv } from './graphcsv.ts';
+import { GRAPH_CSV_DIR, graphData, listGraphCsv } from './graphcsv.ts';
+import {
+  GraphCsvError,
+  listExportProjects,
+  listProjectCsv,
+  projectCsvText,
+  projectGraphData,
+  resolveExportProject,
+  type ExportProject,
+} from '../../graph/src/export-projects.ts';
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
 import {
   HttpError,
@@ -290,6 +299,7 @@ function health() {
       '/api/playback/frames',
       '/api/playback/frame',
       '/api/playback/export',
+      '/api/graph/projects',
       '/api/graph/files',
       '/api/graph/data',
       '/api/graph/pdf',
@@ -466,82 +476,159 @@ async function handlePlaybackExport(req: IncomingMessage, res: ServerResponse, m
   }, method);
 }
 
-function handleGraphFiles(res: ServerResponse, method: string): void {
-  const files = listGraphCsv();
-  sendJson(res, 200, {
-    ok: true,
-    directory: relative(REPO_DIR, GRAPH_CSV_DIR).split('\\').join('/'),
-    count: files.length,
-    files,
-  }, method);
+/* ---------------- Graph projects (one export directory per project) ----------------
+ *
+ * Graph's landing page ("Recent Projects") lists the projects it has processed; this build's
+ * projects are the export directories under `samples/graph/export/`, discovered by
+ * `packages/graph/src/export-projects.ts` (no project name is hardcoded).
+ *
+ *   GET /api/graph/projects                 every project + CSV count + GPS time range + path
+ *   GET /api/graph/files[?project=<key>]    the CSVs of one project (no param: the shipped `csv/`)
+ *   GET /api/graph/data?file=…[&project=…]  one CSV of one project
+ *   GET /api/graph/pdf[?project=…][&file=…] same, as a PDF
+ *
+ * `project` accepts the export directory name (`csv`, `b1`) **or** the CSV's `#Project Name:`
+ * (`clean`, `b1`). Without it the routes keep their historical single-project behaviour, which is
+ * the shipped `export/csv/` directory — every pre-existing test keeps its contract.
+ */
+
+/** `<repo>/逆向/00_来源/samples/graph/export` */
+const GRAPH_EXPORT_DIR = resolve(SAMPLES_DIR, 'graph', 'export');
+
+function relativeToRepo(path: string): string {
+  return relative(REPO_DIR, path).split('\\').join('/');
+}
+
+/** `GraphCsvError` already carries the HTTP status; anything else keeps the 500 path. */
+function rethrowGraphError(error: unknown): never {
+  if (error instanceof GraphCsvError) throw new HttpError(error.status, error.message);
+  throw error;
+}
+
+/** `?project=clean|b1|csv` → that project; a null param means "the default one". */
+function graphProjectOrThrow(raw: string | null): ExportProject {
+  const { project, available } = resolveExportProject(GRAPH_EXPORT_DIR, raw);
+  if (!project) {
+    const wanted = raw === null ? '默认工程' : raw.trim();
+    throw new HttpError(404, `没有工程 ${wanted}（现有：${available.join('、') || '无'}）`);
+  }
+  return project;
+}
+
+function graphProjectJson(project: ExportProject): Record<string, unknown> {
+  return {
+    key: project.key,
+    name: project.name,
+    directory: relativeToRepo(project.directory),
+    csvDirectory: relativeToRepo(project.csvDirectory),
+    csvCount: project.csvCount,
+  };
+}
+
+function handleGraphProjects(res: ServerResponse, method: string): void {
+  try {
+    const projects = listExportProjects(GRAPH_EXPORT_DIR).map((project) => ({
+      ...graphProjectJson(project),
+      bytes: project.bytes,
+      startTime: project.startTime,
+      endTime: project.endTime,
+      duration: project.duration,
+      dataFileName: project.dataFileName,
+      modified: project.modified,
+    }));
+    const { project: fallback } = resolveExportProject(GRAPH_EXPORT_DIR, null);
+    sendJson(res, 200, {
+      ok: true,
+      root: relativeToRepo(GRAPH_EXPORT_DIR),
+      count: projects.length,
+      default: fallback?.key ?? '',
+      projects,
+    }, method);
+  } catch (error) {
+    rethrowGraphError(error);
+  }
+}
+
+function handleGraphFiles(url: URL, res: ServerResponse, method: string): void {
+  const wanted = url.searchParams.get('project');
+  try {
+    if (wanted === null) {
+      const files = listGraphCsv();
+      const fallback = graphProjectOrThrow(null);
+      sendJson(res, 200, {
+        ok: true,
+        project: graphProjectJson(fallback),
+        directory: relative(REPO_DIR, GRAPH_CSV_DIR).split('\\').join('/'),
+        count: files.length,
+        files,
+      }, method);
+      return;
+    }
+    const project = graphProjectOrThrow(wanted);
+    const files = listProjectCsv(project);
+    sendJson(res, 200, {
+      ok: true,
+      project: graphProjectJson(project),
+      directory: relativeToRepo(project.csvDirectory),
+      count: files.length,
+      files,
+    }, method);
+  } catch (error) {
+    rethrowGraphError(error);
+  }
 }
 
 function handleGraphData(url: URL, res: ServerResponse, method: string): void {
   const column = url.searchParams.get('column');
-  sendJson(res, 200, { ok: true, ...graphData(url.searchParams.get('file'), column) }, method);
+  const wanted = url.searchParams.get('project');
+  try {
+    if (wanted === null) {
+      sendJson(res, 200, { ok: true, ...graphData(url.searchParams.get('file'), column) }, method);
+      return;
+    }
+    const project = graphProjectOrThrow(wanted);
+    sendJson(res, 200, { ok: true, ...projectGraphData(project, url.searchParams.get('file'), column) }, method);
+  } catch (error) {
+    rethrowGraphError(error);
+  }
 }
 
 /**
- * `GET /api/graph/pdf[?project=<name>][?file=<one csv>]` — what Graph's *Export → PDF* downloads.
+ * `GET /api/graph/pdf[?project=<key|name>][?file=<one csv>]` — what Graph's *Export → PDF* downloads.
  *
  * Built server-side from the CSVs that project already exported, so the bytes are a real PDF 1.4
  * rather than a print dialog: see `pdf.ts`.
  *
- *   (nothing)   every CSV in the export directory, in the catalogue's tab order
- *   ?project=   only the CSVs whose `#Project Name:` comment is that project — 404 (naming the
- *               projects that do exist) when none is, so a typo cannot silently download a report
- *               of somebody else's data
+ *   (nothing)   the default project, every one of its CSVs in the catalogue's tab order
+ *   ?project=   that project's CSVs — 404 (naming the projects that do exist) when no such
+ *               directory/name exists, so a typo cannot silently download somebody else's report
  *   ?file=      one chart, exactly as the panel's single-graph export wants it
  *
  * `file` wins over `project` because it is the narrower request. Page order comes from
  * `graphPdfOrder`, so page 2 is `Position Type` (the original's first PVT chart) rather than the
  * alphabetically-first `2D Trajectory`.
  */
-function projectOfCsv(data: { comments: { projectName: string } }): string {
-  return (data.comments.projectName || '').trim();
-}
-
 function handleGraphPdf(url: URL, res: ServerResponse, method: string): void {
   const only = url.searchParams.get('file');
-  const project = url.searchParams.get('project');
-  const known = listGraphCsv();
-  if (known.length === 0) throw new HttpError(404, '没有可导出的 CSV');
+  try {
+    const project = graphProjectOrThrow(url.searchParams.get('project'));
+    const known = listProjectCsv(project);
+    if (known.length === 0) throw new HttpError(404, '没有可导出的 CSV');
 
-  let names: string[];
-  if (only) {
-    names = [only];
-  } else if (project !== null) {
-    const wanted = project.trim();
-    if (!wanted || wanted.length > 200 || wanted.includes('\0')) throw new HttpError(400, 'project 不合法');
-    let available: string[] = [];
-    names = [];
-    for (const entry of known) {
-      // `readGraphCsv` caches by path+size+mtime, so reading every file here costs one stat each.
-      const data = readGraphCsv(entry.name);
-      const name = projectOfCsv(data);
-      if (name && !available.includes(name)) available.push(name);
-      if (name.toLowerCase() === wanted.toLowerCase()) names.push(entry.name);
-    }
-    if (names.length === 0) {
-      throw new HttpError(404, `没有工程 ${wanted} 导出的 CSV（现有：${available.join('、') || '无'}）`);
-    }
-  } else {
-    names = known.map((entry) => entry.name);
+    const names = only ? [only] : known.map((entry) => entry.name);
+    const sources = graphPdfOrder(names).map((name) => ({ name, text: projectCsvText(project, name) }));
+    const report = graphPdfReport(sources);
+    sendBytes(res, 200, report.bytes, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${report.fileName}"`,
+      'X-PDF-Pages': String(report.pages),
+      'X-PDF-Charts': String(report.charts),
+      'X-PDF-Bytes': String(report.bytes.byteLength),
+      'X-PDF-Project': report.project,
+    }, method);
+  } catch (error) {
+    rethrowGraphError(error);
   }
-
-  const sources = graphPdfOrder(names).map((name) => {
-    const data = readGraphCsv(name);
-    return { name: data.name, text: data.text };
-  });
-  const report = graphPdfReport(sources);
-  sendBytes(res, 200, report.bytes, {
-    'Content-Type': 'application/pdf',
-    'Content-Disposition': `attachment; filename="${report.fileName}"`,
-    'X-PDF-Pages': String(report.pages),
-    'X-PDF-Charts': String(report.charts),
-    'X-PDF-Bytes': String(report.bytes.byteLength),
-    'X-PDF-Project': report.project,
-  }, method);
 }
 
 /* ---------------- Luciad 引擎模块（唯一的动态静态资源） ---------------------
@@ -1010,8 +1097,12 @@ const server = createServer((req, res) => {
         await handlePlaybackExport(req, res, method, url);
         return;
       }
+      if (path === '/api/graph/projects') {
+        handleGraphProjects(res, method);
+        return;
+      }
       if (path === '/api/graph/files') {
-        handleGraphFiles(res, method);
+        handleGraphFiles(url, res, method);
         return;
       }
       if (path === '/api/graph/data') {

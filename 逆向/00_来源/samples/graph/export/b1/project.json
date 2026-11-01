@@ -1,0 +1,71 @@
+{
+  "projectName": "b1",
+  "projectDirectory": "H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体\\逆向\\00_来源\\samples\\graph\\export\\b1",
+  "dataFileName": "b1-20261101.sbf",
+  "capture": "H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体\\逆向\\00_来源\\samples\\live-20261031\\b1-20261101.sbf",
+  "startTime": "2442,570227.100",
+  "endTime": "2442,570255.151",
+  "duration": "00:00:28",
+  "messages": {
+    "VERSION": 1,
+    "RANGE": 530,
+    "MODELFEATURES": 1,
+    "SERIALCONFIG": 3,
+    "IONUTC": 1,
+    "RXSTATUS": 5,
+    "GPSEPHEM": 32,
+    "GALEPHEMERIS": 27,
+    "BDSEPHEMERIS": 39,
+    "GLOEPHEMERIS": 12,
+    "BESTPOS": 51,
+    "RAWEPHEM": 34,
+    "RXCONFIG": 278,
+    "ITPSDFINAL": 127,
+    "PSRDOP": 13,
+    "SATVIS2": 24,
+    "ITDETECTSTATUS": 6,
+    "TIME": 6,
+    "ITPSDDETECT": 50,
+    "BESTVEL": 25,
+    "BESTXYZ": 25,
+    "TRACKSTAT": 12,
+    "BESTSATS": 5,
+    "PORTSTATS": 7,
+    "HWMONITOR": 7
+  },
+  "droppedFrames": [
+    {
+      "name": "RANGE",
+      "gpsMs": 1477491828250
+    }
+  ],
+  "chartTitles": [
+    "2D Trajectory",
+    "Height",
+    "Position Status",
+    "Position Type",
+    "Position SD",
+    "Solution Statistics",
+    "CPU Usage",
+    "HW Monitor Status",
+    "Receiver Status",
+    "Tracking Time",
+    "GNSS Signal Strength",
+    "Satellites and Signals"
+  ],
+  "csv": [
+    "2D Trajectory.csv",
+    "Height.csv",
+    "Position Status.csv",
+    "Position Type.csv",
+    "Position SD.csv",
+    "Solution Statistics.csv",
+    "CPU Usage.csv",
+    "HW Monitor Status.csv",
+    "Receiver Status.csv",
+    "Tracking Time.csv",
+    "GNSS Signal Strength.csv",
+    "Satellites and Signals.csv"
+  ],
+  "command": "node packages/graph/tools/export-sbf-project.ts --capture ../00_来源/samples/live-20261031/b1-20261101.sbf --out ../00_来源/samples/graph/export/b1 --name b1"
+}

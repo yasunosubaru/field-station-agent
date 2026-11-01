@@ -6,7 +6,9 @@
  * their own app bar. Inside the shell that app bar is the shell's own banner, so what this panel
  * rebuilds is everything **below** it, in two views:
  *
- *   home       logo · blurb · "Graph" · New Project / Open Project · Recent Projects
+ *   home       logo · blurb · "Graph" · New Project / Open Project · Recent Projects — one card per
+ *              export project under `samples/graph/export/` (`/api/graph/projects`), so a second
+ *              project (the converted `b1` capture) is a second card and a click away.
  *   workspace  black menu bar (Overview / PVT / Tracking & Measurements / Receiver Status /
  *              Project Information + Export) · map stage (Legend, map controls, the chart) ·
  *              bottom timeline (Flags, Start/End GPS, transport, clock, Speed, Show Events)
@@ -1562,6 +1564,10 @@ export function mount(root, ctx) {
     tab: 'overview',
     files: [],
     directory: '',
+    /* every export project under samples/graph/export/ (`/api/graph/projects`) */
+    projects: [],
+    /* the export directory name the current work session is reading (`csv`, `b1` …) */
+    projectKey: '',
     project: '',
     date: '',
     data: null,
@@ -2386,11 +2392,17 @@ export function mount(root, ctx) {
   const pending = new Map();
 
   function fetchData(file, column) {
-    const key = column ? `${file}#${column}` : file;
+    // The cache key carries the project: `clean` and `b1` both export `Height.csv`, and a key of the
+    // file name alone would hand the second project the first one's payload.
+    const project = state.projectKey;
+    const key = `${project}|${column ? `${file}#${column}` : file}`;
     if (state.payloads.has(key)) return Promise.resolve(state.payloads.get(key));
     if (pending.has(key)) return pending.get(key);
+    const query = { file };
+    if (column) query.column = column;
+    if (project) query.project = project;
     const promise = api
-      .get('/graph/data', column ? { file, column } : { file })
+      .get('/graph/data', query)
       .then((body) => {
         state.payloads.set(key, body);
         pending.delete(key);
@@ -2820,23 +2832,85 @@ export function mount(root, ctx) {
 
   /* ---- data ---- */
 
+  /**
+   * One card in **Recent Projects**. The original's Welcome window lists one entry per processed
+   * project (manual §6.2 / §6.2.1) and each is clickable; here the entries come from
+   * `/api/graph/projects`, so the card count is whatever `samples/graph/export/` actually holds.
+   */
+  function projectCard(project) {
+    const active = project.key === state.projectKey;
+    const when = gpsDateLabel(project.startTime) || String(project.modified || '').slice(0, 10);
+    const facts = [`${project.csvCount} 份 CSV`, project.duration].filter(Boolean).join(' · ');
+    return `<button type="button" class="gp-card" role="listitem" data-project="${esc(project.name)}"`
+      + ` data-project-key="${esc(project.key)}" aria-current="${active ? 'true' : 'false'}"`
+      + ` title="${esc(`${project.name} · ${facts} · ${project.dataFileName || ''} — ${project.csvDirectory || project.directory || ''}`)}">`
+      + `<span class="gp-card-logo">${ICON_LAYERS}</span>`
+      + '<span class="gp-card-text">'
+      + `<span class="gp-card-date">${esc(when || '—')}</span>`
+      + `<span class="gp-card-name">${esc(project.name)} · ${project.csvCount} 份 CSV</span>`
+      + '</span></button>';
+  }
+
   function renderCards() {
     if (!el.cards) return;
-    if (!state.project) {
+    if (!state.projects.length) {
       el.cards.innerHTML = '';
-      el.homeStatus.textContent = '正在读取 /api/graph/files…';
+      el.homeStatus.textContent = '正在读取 /api/graph/projects…';
       return;
     }
-    const rows = state.files.length;
-    el.cards.innerHTML = `
-      <button type="button" class="gp-card" role="listitem" data-project="${esc(state.project)}">
-        <span class="gp-card-logo">${ICON_LAYERS}</span>
-        <span class="gp-card-text">
-          <span class="gp-card-date">${esc(state.date || '—')}</span>
-          <span class="gp-card-name">${esc(state.project)}</span>
-        </span>
-      </button>`;
-    el.homeStatus.textContent = `${state.project} · ${rows} 份 CSV · ${state.directory}`;
+    el.cards.innerHTML = state.projects.map(projectCard).join('');
+    const active = state.projects.find((project) => project.key === state.projectKey);
+    el.homeStatus.textContent = active
+      ? `${state.projects.length} 个工程 · 当前 ${active.name} · ${state.files.length} 份 CSV · ${active.csvDirectory || state.directory}`
+      : `${state.projects.length} 个工程 · 选一张卡片进入工作区`;
+  }
+
+  /** Every project the server can see (`/api/graph/projects`), then the default one's files. */
+  async function loadProjects() {
+    try {
+      const body = await api.get('/graph/projects');
+      state.projects = body.projects || [];
+      if (!state.projectKey) state.projectKey = body.default || (state.projects[0] && state.projects[0].key) || '';
+      renderCards();
+      await loadFiles();
+    } catch (error) {
+      renderCards();
+      el.homeStatus.textContent = `读取工程列表失败：${error.message}`;
+      showNotice(`读取工程列表失败：${error.message}`);
+      resumeDeferred();
+    }
+  }
+
+  /**
+   * Switch the work session to another project.
+   *
+   * Every cache in this panel is keyed by **file name**, and two projects export the same twelve
+   * names — so the payloads/models map has to be dropped here, or PVT would keep painting `clean`'s
+   * cached series while the header says `b1`.
+   */
+  async function openProject(key) {
+    if (!key) return;
+    if (key !== state.projectKey) {
+      state.projectKey = key;
+      state.payloads = new Map();
+      state.models = new Map();
+      state.started = new Set();
+      state.chipOff = new Set();
+      state.filesLoaded = false;
+      state.deferredTab = '';
+      state.files = [];
+      state.data = null;
+      state.file = '';
+      state.column = '';
+      state.project = '';
+      state.span = 0;
+      state.duration = 0;
+      state.current = 0;
+      state.geometry = null;
+      stopPlayback();
+    }
+    await loadFiles();
+    renderCards();
   }
 
   function fillFileSelect() {
@@ -2877,7 +2951,7 @@ export function mount(root, ctx) {
     el.pickerTitle.textContent = which === 'new' ? 'New Project' : 'Open Project';
     el.pickerHint.textContent = which === 'new'
       ? '本构建没有 Graph 的工程引擎（.gpf 解析与录制）。新建工程的落地方式就是挑一份 Graph 导出的 CSV。'
-      : '列出 /api/graph/files 里的 CSV（samples/graph/ 下的导出批次），选一份进入工作区。';
+      : `列出当前工程 ${state.project || state.projectKey || ''} 的 CSV（/api/graph/files?project=），选一份进入工作区。`;
     fillPicker();
   }
 
@@ -2891,9 +2965,13 @@ export function mount(root, ctx) {
 
   async function loadFiles() {
     try {
-      const body = await api.get('/graph/files');
+      const body = await api.get('/graph/files', state.projectKey ? { project: state.projectKey } : null);
       state.files = body.files || [];
       state.directory = body.directory || '';
+      if (body.project && body.project.key) {
+        state.projectKey = body.project.key;
+        state.project = body.project.name || state.project;
+      }
       fillFileSelect();
       const preferred = state.files.find((file) => file.name === PREFERRED_CSV) || state.files[0];
       if (preferred) {
@@ -2915,7 +2993,10 @@ export function mount(root, ctx) {
     if (!name) return;
     showNotice('');
     try {
-      const data = await api.get('/graph/data', column ? { file: name, column } : { file: name });
+      const query = { file: name };
+      if (column) query.column = column;
+      if (state.projectKey) query.project = state.projectKey;
+      const data = await api.get('/graph/data', query);
       state.data = data;
       state.file = data.name;
       state.column = data.column || '';
@@ -3121,12 +3202,13 @@ ${svgMarkup}
    * name. Here the bytes are a real PDF 1.4 written from the CSVs, so the download is the report
    * Graph's own *Export ▸ PDF* produces: cover page plus one page per chart.
    *
-   * `?project=` narrows the document to the project the panel is showing (every CSV whose
-   * `#Project Name:` matches), which is what the suite exports. Without a project the whole export
-   * directory goes in.
+   * `?project=` narrows the document to the project the panel is showing — the export directory key
+   * (`b1`) or the CSV's `#Project Name:` (`clean`); the server accepts both. Without a project the
+   * default project's CSVs go in.
    */
   async function exportPdf() {
-    const project = state.project || (state.data && state.data.comments && state.data.comments.projectName) || '';
+    const project = state.projectKey || state.project
+      || (state.data && state.data.comments && state.data.comments.projectName) || '';
     const url = project ? `/api/graph/pdf?project=${encodeURIComponent(project)}` : '/api/graph/pdf';
     try {
       const response = await fetch(url, { headers: { accept: 'application/pdf' } });
@@ -3231,8 +3313,13 @@ ${svgMarkup}
 
     const card = target.closest('[data-project]');
     if (card) {
-      setView('work');
-      setTab('overview');
+      const key = card.dataset.projectKey || state.projectKey;
+      el.homeStatus.textContent = `正在打开 ${card.dataset.project || key}…`;
+      void openProject(key).then(() => {
+        if (!state.alive) return;
+        setView('work');
+        setTab('overview');
+      });
       return;
     }
 
@@ -3382,7 +3469,9 @@ ${svgMarkup}
   setLegend(false);
   setDock(true);
   updateTimeline();
-  void loadFiles();
+  // The landing page lists every export project first; `loadProjects` then opens the default one's
+  // CSVs, which is the single-project behaviour this panel had before (the shipped `clean`).
+  void loadProjects();
   void loadMap();
 }
 
