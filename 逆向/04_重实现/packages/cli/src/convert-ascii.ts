@@ -1,22 +1,20 @@
 /**
- * Convert a binary SBF capture into the suite's ASCII log format.
+ * Convert a binary SBF capture into the suite's ASCII log format, on stdout or into one file.
  *
  *   node packages/cli/src/convert-ascii.ts <capture.bin> [-o <out.ASCII>]
  *
- * The output is the same text `NovAtelApplicationSuite.exe -a <capture>` produces: same header,
- * same field order and precision, same trailing CRC. Records with a mismatching CRC are dropped,
- * as Convert does (see the `ascii-log.ts` header for why that differs from the view parser).
+ * The output is the same bytes `NovAtelApplicationSuite.exe -a <capture>` and
+ * `convert.ts --to ASCII` produce: same header, same field order and precision, same trailing CRC,
+ * text records in capture order, RANGECMP2/4 unpacked, bad-CRC records dropped. The conversion is
+ * `protocol/src/convert-pipeline.ts` — this file only handles the command line and the sink.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { Buffer } from 'node:buffer';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SbfDeframer, type Frame } from '../../protocol/src/framing.ts';
-import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
-import { buildRangePayload, decodeRangeCmp2, decodeRangeCmp4 } from '../../protocol/src/rangecmp.ts';
-import { textLogLines } from '../../protocol/src/text-log.ts';
+import { convertFrames } from '../../protocol/src/convert-pipeline.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -36,55 +34,22 @@ function main(): void {
   }
 
   const tables = JSON.parse(readFileSync(join(DATA, 'edie-layouts.json'), 'utf8')) as EdieTables;
-  const bytes = new Uint8Array(readFileSync(capture));
+  const frames: Frame[] = [
+    ...new SbfDeframer({ crcMode: 'validate' }).push(new Uint8Array(readFileSync(capture))),
+  ];
+  const outcome = convertFrames(frames, { format: 'ASCII', at: new Date(), tables, name: basename(capture) });
+  const file = outcome.files[0];
+  const bytes = Buffer.from(file.bytes);
 
-  const frames: Frame[] = [];
-  for (const frame of new SbfDeframer({ crcMode: 'validate' }).push(bytes)) frames.push(frame);
+  if (output) writeFileSync(output, bytes);
+  else process.stdout.write(bytes);
 
-  // Text records (the receiver's own ASCII logs) are converted too, in capture order.
-  const textLines = textLogLines(frames, tables);
-  const lines: string[] = [];
-  let skippedUnknown = 0;
-  let skippedCrc = 0;
-  for (const [index, frame] of frames.entries()) {
-    const text = textLines.get(index);
-    if (text !== undefined) {
-      lines.push(text);
-      continue;
-    }
-    if (frame.kind !== 'sbf') continue;
-    // `PASSTHROUGH` (1342) is a port-forwarding record the suite parses and writes to no output;
-    // `convert.ts` drops it from every format and this tool has to agree.
-    if (frame.header.messageId === 1342) continue;
-    if (frame.header.messageId === 1273 || frame.header.messageId === 2050) {
-      const observations = frame.header.messageId === 1273
-        ? decodeRangeCmp2(frame.payload)
-        : decodeRangeCmp4(frame.payload);
-      const rangeLayout = tables.messages['43'];
-      if (!rangeLayout) continue;
-      lines.push(encodeAsciiLog({ ...frame, payload: buildRangePayload(observations) }, rangeLayout, tables));
-      continue;
-    }
-    const layout = tables.messages[String(frame.header.messageId)];
-    if (!layout) {
-      skippedUnknown += 1;
-      continue;
-    }
-    const line = encodeAsciiLog(frame, layout, tables);
-    if (!line) {
-      skippedCrc += 1;
-      continue;
-    }
-    lines.push(line);
-  }
-
-  const text = `${lines.join('\r\n')}\r\n`;
-  // `latin1`, not `writeFileSync(file, text)`'s default UTF-8: a `%c` field (BESTUTM's zone letter)
-  // is one raw byte, and UTF-8 would widen anything >= 0x80 into two (`convert.ts` does the same).
-  if (output) writeFileSync(output, Buffer.from(text, 'latin1'));
-  else process.stdout.write(text);
-
-  console.error(`records: ${lines.length}   dropped (bad CRC): ${skippedCrc}   dropped (no layout): ${skippedUnknown}`);
+  const lines = file.text ? file.text.split('\r\n').length - 1 : 0;
+  const skippedCrc = outcome.converted.length - outcome.accepted.length;
+  // Records whose layout the dictionary does not carry reach no output either; `PASSTHROUGH` is
+  // dropped before that lookup, as in `convert.ts`.
+  const skippedUnknown = outcome.converted.filter((frame) => !tables.messages[String(frame.header.messageId)]).length;
+  console.error(`records: ${lines}   dropped (bad CRC): ${skippedCrc}   dropped (no layout): ${skippedUnknown}`);
 }
 
 main();

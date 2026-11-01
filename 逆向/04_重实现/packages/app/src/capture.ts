@@ -20,6 +20,14 @@ export interface CaptureData {
   mtimeMs: number;
   /** Every binary record the de-framer emitted (mirror mode already dropped zero-CRC fields). */
   frames: SbfFrame[];
+  /**
+   * Every frame in capture order, text records included, as **Convert** reads them: a second pass in
+   * `validate` mode, which drops a record whose CRC does not match and re-scans inside it. The two
+   * modes disagree on damaged captures (b1: 1322 binary frames under `mirror`, 1325 here), and
+   * Convert must see the same list the CLI feeds its pipeline or the GUI's file would differ from
+   * the CLI's byte for byte.
+   */
+  allFrames: Frame[];
   /** Records the samples tree contains, including text records. */
   totalRecords: number;
   accepted: number;
@@ -47,15 +55,20 @@ export function loadCapture(capture: ResolvedCapture): CaptureData {
   }
 
   const input = readFileSync(capture.absolutePath);
+  const view = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
   const deframer = new SbfDeframer({ crcMode: 'mirror' });
   const frames: SbfFrame[] = [];
   let totalRecords = 0;
   let textRecords = 0;
-  for (const frame of deframer.push(new Uint8Array(input.buffer, input.byteOffset, input.byteLength)) as Frame[]) {
+  for (const frame of deframer.push(view) as Frame[]) {
     totalRecords += 1;
     if (frame.kind === 'sbf') frames.push(frame);
     else textRecords += 1;
   }
+
+  // Convert's own view of the same bytes (see `CaptureData.allFrames`); a separate pass because
+  // `mirror` keeps a nonzero-CRC record whatever its CRC, so the two lists cannot share frames.
+  const allFrames: Frame[] = [...new SbfDeframer({ crcMode: 'validate' }).push(view)];
 
   const accepted = frames.filter((frame) => frame.crcOk).length;
   const data: CaptureData = {
@@ -64,6 +77,7 @@ export function loadCapture(capture: ResolvedCapture): CaptureData {
     bytes: capture.bytes,
     mtimeMs: capture.mtimeMs,
     frames,
+    allFrames,
     totalRecords,
     accepted,
     dropped: frames.length - accepted,

@@ -1,23 +1,26 @@
 /**
- * The Convert pipeline, lifted out of `packages/cli/src/convert.ts` so the HTTP shell and the CLI
- * cannot drift. Same rules: mirror-mode de-framing, only CRC-good records are written, ASCII and
- * abbreviated ASCII end every line with CRLF, BINARY is the verbatim accepted records.
+ * The Convert panel's wrapper around the shared pipeline.
+ *
+ * The conversion itself — which records are written, `PASSTHROUGH`, the RANGECMP2/4 unpacking, text
+ * records, and the latin1 byte encoding — is `protocol/src/convert-pipeline.ts`, the same code
+ * `packages/cli/src/convert.ts` writes to disk with. This file only turns one output file into
+ * something the browser can preview and download: a label, a content type, a 200-line preview or a
+ * hex dump, and the byte count.
  *
  * Nothing here touches the filesystem; the caller owns the bytes.
  */
 
-import { decodeEdie } from '../../protocol/src/edie.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
-import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbrev-log.ts';
-import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
-import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
-import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
-import { buildRinex3Obs, type Rinex3Version } from '../../protocol/src/rinex3.ts';
-import { formatDirectory } from '../../protocol/src/summary.ts';
+import {
+  CONVERT_FORMATS,
+  convertFrames,
+  isConvertFormat,
+  type ConvertFormat,
+} from '../../protocol/src/convert-pipeline.ts';
 import type { CaptureData } from './capture.ts';
 
-export const CONVERT_FORMATS = ['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21', 'RINEX301', 'RINEX302', 'RINEX303', 'RINEX304'] as const;
-export type ConvertFormat = (typeof CONVERT_FORMATS)[number];
+export { CONVERT_FORMATS, isConvertFormat };
+export type { ConvertFormat };
 
 export const FORMAT_LABELS: Record<ConvertFormat, string> = {
   ASCII: 'ASCII 日志',
@@ -84,76 +87,28 @@ function textPreview(text: string): { preview: string; shownLines: number; trunc
   return { preview: shown.join('\n'), shownLines: shown.length, truncated: lines.length > PREVIEW_LINES };
 }
 
-export function isConvertFormat(value: unknown): value is ConvertFormat {
-  return typeof value === 'string' && (CONVERT_FORMATS as readonly string[]).includes(value.toUpperCase());
-}
-
+/**
+ * Convert one capture and describe the file for the browser.
+ *
+ * Only the first output file is previewed: for every format except RINEX that is the only file, and
+ * for RINEX it is the observation file — the navigation files the CLI also writes are not offered
+ * for download here (see `FORMAT_NOTES`). The bytes are the pipeline's, untouched, so the download
+ * is byte-for-byte the file `convert.ts` would have written.
+ */
 export function convertCapture(
   data: CaptureData,
   tables: EdieTables,
   format: ConvertFormat,
   at: Date,
 ): ConvertArtifact {
-  const accepted = data.frames.filter((frame) => frame.crcOk);
-  const base = data.name.replace(/\.[^.]+$/, '');
-  let payload: string | Uint8Array;
+  const outcome = convertFrames(data.allFrames ?? data.frames, { format, at, tables, name: data.name });
+  const file = outcome.files[0];
+  if (!file) throw new Error(`convert: ${format} produced no file`);
 
-  if (format === 'ASCII') {
-    const lines: string[] = [];
-    for (const frame of accepted) {
-      const layout = tables.messages[String(frame.header.messageId)];
-      if (!layout) continue;
-      const line = encodeAsciiLog(frame, layout, tables);
-      if (line) lines.push(line);
-    }
-    payload = `${lines.join('\r\n')}\r\n`;
-  } else if (format === 'ABBREV_ASCII') {
-    const lines: string[] = [];
-    for (const frame of accepted) {
-      const layout = tables.messages[String(frame.header.messageId)];
-      if (!layout) continue;
-      lines.push(...encodeAbbrevLines(frame, layout, tables));
-    }
-    payload = `${lines.join('\r\n')}\r\n`;
-  } else if (format === 'KML') {
-    const points: KmlPoint[] = [];
-    for (const frame of accepted) {
-      if (frame.header.messageId !== 42) continue; // BESTPOS is the only position log Convert maps
-      const layout = tables.messages['42'];
-      if (!layout) continue;
-      const values = decodeEdie(frame.payload, layout, tables);
-      const get = (path: string) => values.find((value) => value.path === path);
-      points.push({
-        week: frame.header.week,
-        milliseconds: frame.header.milliseconds,
-        latitude: Number(get('latitude')?.value),
-        longitude: Number(get('longitude')?.value),
-        height: Number(get('orthometric_height')?.value),
-        latitudeDeviation: Number(get('latitude_std_dev')?.value),
-        longitudeDeviation: Number(get('longitude_std_dev')?.value),
-        heightDeviation: Number(get('height_std_dev')?.value),
-        positionType: String(get('position_type')?.text ?? ''),
-      });
-    }
-    payload = buildKml(points, { name: `${base}_BESTPOS` });
-  } else if (format === 'RINEX21') {
-    payload = buildRinex21Obs(accepted, tables, { builtAt: at });
-  } else if (format.startsWith('RINEX30')) {
-    const version = `${format.slice(5, 6)}.${format.slice(6)}` as Rinex3Version;
-    payload = buildRinex3Obs(accepted, tables, version, { builtAt: at });
-  } else {
-    payload = encodeBinaryCapture(accepted).bytes;
-  }
-
-  const isText = typeof payload === 'string';
-  // convert.ts writes the payload as a UTF-8 string; ASCII/KML/RINEX are pure ASCII so the bytes
-  // are identical either way, and BINARY arrives as a Uint8Array.
-  const bytes = isText ? Buffer.from(payload, 'utf8') : Buffer.from(payload);
-  const text = isText ? payload : null;
-  const outputBase = format === 'KML' ? `${base}_BESTPOS` : base;
-  const extension = format === 'RINEX21' || format.startsWith('RINEX30')
-    ? `${String(at.getFullYear() % 100).padStart(2, '0')}O`
-    : format;
+  const text = file.text;
+  const bytes = Buffer.from(file.bytes);
+  const dot = file.name.lastIndexOf('.');
+  const extension = dot > 0 ? file.name.slice(dot + 1) : format;
   const lineTotal = text ? Math.max(0, (text.match(/\n/g) ?? []).length) : Math.ceil(bytes.length / HEX_BYTES_PER_LINE);
 
   let preview: string;
@@ -170,13 +125,13 @@ export function convertCapture(
   return {
     format,
     label: FORMAT_LABELS[format],
-    formatDirectory: formatDirectory(format),
-    fileName: `${outputBase}.${extension}`,
+    formatDirectory: outcome.formatDirectory,
+    fileName: file.name,
     extension,
     bytes,
     text,
     lineTotal,
-    binary: !isText,
+    binary: text === null,
     contentType: format === 'BINARY'
       ? 'application/octet-stream'
       : format === 'KML'
