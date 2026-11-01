@@ -327,3 +327,14 @@ test('Summary: the time range follows the window, not --decimate', () => {
     assert.match(run.summary, /Finish time: 2442, 577792\.05\n/);
   });
 });
+
+test('b7: dropped RXCONFIG records stay in .UNKNOWN but not in the Summary UNKNOWN row', () => {
+  // The suite's b7 run: `.UNKNOWN` 3 935 B (22 RXCONFIGs whose embedded message is not in the
+  // dictionary are dropped from the converted file but keep their bytes in the sidecar), Summary
+  // UNKNOWN row 206 (only the responses). Ours used to report 3 720 for the row.
+  withRun('b7-20261101', ['--unknown-bytes=file'], (run) => {
+    const sidecar = readFileSync(join(run.formatDir, 'b7-20261101.UNKNOWN'));
+    assert.equal(sidecar.length, 3935);
+    assert.match(run.summary, /^\s+0 \| UNKNOWN\s*\|\s+206 \|/m);
+  });
+});

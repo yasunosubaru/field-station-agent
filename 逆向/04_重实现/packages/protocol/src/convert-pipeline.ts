@@ -710,6 +710,7 @@ export function unknownSpans(
   skipped: readonly Frame[] = [],
 ): UnknownSpans {
   const resolved = resolvedTextFrames(frames, tables);
+  const layoutNames = new Set(Object.values(tables.messages).map((message) => message.name));
   const parsed: Span[] = [];
   const written: Span[] = [];
   const dropped: Span[] = [];
@@ -731,7 +732,24 @@ export function unknownSpans(
       if (encodeAsciiLog(frame, layout, tables)) written.push(span);
       return;
     }
-    if (!resolved.has(index)) return;
+    if (!resolved.has(index)) {
+      /**
+       * A text record whose **outer** name the dictionary knows is not "unknown bytes" even when
+       * the record produces no output: b7's 22 `RXCONFIG`s whose embedded message is absent from
+       * the dictionary are dropped from the converted file, but the suite's Summary UNKNOWN row
+       * still counts only the 206 bytes of responses (`b7`: `.UNKNOWN` 3 935 B, row 206). The
+       * outer span stays out of `.UNKNOWN`'s *input* list here; `written` below still leaves those
+       * 22 records in the file.
+       */
+      const match = /^#([A-Z][A-Z0-9_]*),/.exec(frame.text);
+      if (frame.prefix === '#' && match) {
+        const name = match[1];
+        if (layoutNames.has(name) || layoutNames.has(name.slice(0, -1))) {
+          parsed.push({ start: frame.offset, end: frame.offset + frame.text.length });
+        }
+      }
+      return;
+    }
     const end = frame.offset + frame.text.length;
     parsed.push({ start: frame.offset, end });
     written.push({ start: frame.offset, end });
