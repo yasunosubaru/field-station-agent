@@ -182,6 +182,7 @@ test('each chart page has its section, title, axis labels and legend', () => {
   // y-axis units, verbatim from the catalog (the rotated label escapes its parentheses).
   const unitsOf = new Map(CHART_SPECS.filter((spec) => spec.units).map((spec) => [spec.file, spec.units!]));
   for (const [file, units] of unitsOf) {
+    if (!ORDERED.some((source) => source.name === file)) continue;
     const page = PAGES[ORDERED.findIndex((source) => source.name === file) + 1];
     if (!page) continue;
     const escaped = units.replace(/[()]/g, (char) => `\\${char}`);
