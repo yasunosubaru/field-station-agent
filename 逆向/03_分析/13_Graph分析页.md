@@ -198,14 +198,10 @@ Graph 并不直接画 `BESTVEL` 的字段，而是把 `horizontal_speed` + `grou
 
 | 结果 | 文件 |
 |---|---|
-| **`META-ONLY`（数据行逐字节相同）9 份** | `2D Trajectory`、`CPU Usage`、`Position SD`、`Position Status`、`Position Type`、`Satellites and Signals`、`Solution Statistics`、`Tracking Time`、**`Velocity`** |
-| `DATA-DIFF`（本轮之外就有的差异）4 份 | `GNSS Signal Strength`（表头尾部 3 个 `_Mean` 列顺序不同 → 1199 行全差，见 `13_Graph列序分析.md`）、`HW Monitor Status`（我方 65 行 vs 原版 59 行，行也错位）、`Height`（尾零：golden `65.931110`，我方 `65.93111`，60 行里 12 行）、`Receiver Status`（span 的 `end` 只等于 `start`，7 行里 5 行） |
+| **`META-ONLY`（数据行逐字节相同）12 份** | `2D Trajectory`、`CPU Usage`、`Position SD`、`Position Status`、`Position Type`、`Satellites and Signals`、`Solution Statistics`、`Tracking Time`、`Velocity`、**`Height`**、**`HW Monitor Status`**、**`Receiver Status`** |
+| `DATA-DIFF` **1 份** | `GNSS Signal Strength`：60 个逐卫星列与全部 1199×61 个数值都相同，**只剩 3 个 `_Mean` 列的排列**（见 §8.2.4） |
 
-- 这 4 份的差异**不是本轮引入的**：改动前的同一份代码（`CSV_CHARTS` 还没有 `Velocity`）对同样的
-  oracle 就是这些差异；`clean` 的 golden 逐字节过（见 `06_Graph应用.md`），而 `broad` 的这 4 张本来就是
-  已知未完成项。本轮只保证 12 份的字节不变，实际一份都没变。
-- `Velocity` 是 `META-ONLY`：表头 + 60 行数据全部逐字节相同。
-- 那 5 行项目信息为什么必然不同（我方没有 `.gpf`）：`#Project Directory:`（输出目录）、
+- 这 5 行项目信息为什么必然不同（我方没有 `.gpf`）：`#Project Directory:`（输出目录）、
   `#Data File Name:`（`broad-clean.gps` vs 原版的 `broad.gps`）、
   `#Start Time` / `#End Time` / `#Duration`（原版 `2442,467940.000 – 2442,468009.000 / 00:01:09`；
   我方按"实际画图的报文"取窗，得到 `2442,467949.100 – 2442,468009.001 / 00:00:59`）。
@@ -214,6 +210,94 @@ Graph 并不直接画 `BESTVEL` 的字段，而是把 `horizontal_speed` + `grou
 - **`b1` 其实有 BESTVEL**（25 条，`2442 570231–570255`，全在时间窗内），所以任务书里
   "b1 没有 BESTVEL" 那条前提不成立：b1 重导后是 13 份，多出来的 `Velocity.csv` 是 25 行的真曲线，
   不是空文件。样本已按工具重铺（只新增 `Velocity.csv` + `project.json` 的两行数组）。
+
+#### 8.2.1 `Height`：六位小数不裁尾零（`format: 'fixed6'`）
+
+oracle 60 行里 **12 行**的第六位是 `0`（`65.931110`、`65.922480`…），我方原来按 `Latitude` /
+`Position SD` 那套 `trim6` 写成 `65.93111`。改成 `fixed6`（`formatFixedHalfEven`，与 `Tracking Time`
+同一套 `%.6f`）后 60 行逐字节相同。
+
+逐列量了 oracle 的格式（每张图每个数字列统计"六位小数 / 被裁短 / 尾零"）：`Position SD` 三列确实
+有 5/9/6 个格子是裁短的 → `trim6`；`2D Trajectory` 的 `Latitude`/`Longitude` 60 格全是六位且没有一格
+尾零 → `trim6` 与 `fixed6` 输出相同，保留 `trim6` 并把"测不出"记在这里；`Solution Statistics` 的两列
+是 `0.000000`、`Velocity` 五列、`Tracking Time`/`GNSS Signal Strength` 全部 `fixed6`（本来就是）。
+**没有**顺手改别的图。
+
+#### 8.2.2 `HW Monitor Status`：65 帧 → 59 行，因为同一 payload 记了两个端口
+
+`broad-clean.gps` 里 65 条 `HWMONITOR`，但只有 **59 个时间戳**：多出的 6 条是**成对**的
+（`gpsMs` 相同、payload 逐字节相同、`portAddress` 一个 189 一个 188），位置正好在每 10 s 边界
+（467950/467960/…/468000）。`USBT` 的 60 s 抓包 `samples/raw/usb1-broad-60s.bin` 里也是这样，
+所以不是 `broad-clean.gps` 被谁拷坏了，而是接收机把同一条 `HWMONITOR` 同时记到两个口
+（1 s 的 189 + 10 s 的 188）。
+
+原版的 CSV 是 **59 行** = 时间戳个数。`graph-node-wrapper.node` 里能直接读到建表与插行方式：
+
+```
+CREATE TABLE IF NOT EXISTS navigation (timestamp INTEGER PRIMARY KEY, …);
+INSERT OR IGNORE INTO "…
+```
+
+即每条曲线的表主键是 `timestamp`、插入是 `OR IGNORE`，重复时间戳的第二条被丢掉（第一条赢）。
+`csv.ts` 因此加了 `ChartCsvSpec.oneRowPerTimestamp`，只挂在 `HW Monitor Status` 上：**只有这一张图
+有 oracle 证明**这个折叠；`BESTPOS` / `RANGE` 在 `broad-clean.gps` 里没有重复时间戳，没有证据，
+所以一行都没动（`b1` 的 `BESTPOS` 有 25 对重复，也没有跟着改）。
+
+#### 8.2.3 `Receiver Status`：`end` 是"把条件清成假的那条记录"
+
+原版 7 行里 5 行曾经被我方写成 `end == start`。实测 `broad` 的 RXSTATUS 时间轴（11 个时间戳）后，
+规则是：
+
+- span 从第一条条件为真的记录开始，到**第一条条件转假的记录**结束（那条记录的 `timestamp`，
+  不是"最后一条仍为真"的记录）：`Antenna 1 Gain High` `…562896 → …564995`（bit 14 在 564995 清零）、
+  `Jamming Detected` `…552895→…556995`、`…575910→…582009`、`…583896→…588995`；
+- 到窗口最后一条仍为真、没有清零记录的，`end` = 窗口内**最后一条 RXSTATUS 的 `timestamp`**：
+  `Ethernet Not Connected` / `RF Calibration Data Present` 都到 `…604996`。`clean` 的 5 行全是这种
+  （都到 `1477384700900`），所以旧规则在 `clean` 上看不出错。
+
+#### 8.2.4 `GNSS Signal Strength` 的 3 个 `_Mean` 列：**推不出规则，本轮不改**
+
+| 数据集 | GPS `_Mean` 顺序（signal 号） |
+|---|---|
+| `clean`（第一份 oracle） | `0 9 17 16 14` = `L1_CA, L2_PY, L2_CM, L1_CP, L5_Q` |
+| `broad`（第二份 oracle） | `0 17 16 9 14` = `L1_CA, L2_CM, L1_CP, L2_PY, L5_Q` |
+
+两份输入在这件事上**没有可区分的输入差异**，实测：
+
+- 键集合完全相同：GPS 都是 `{0,9,17,16,14}`（`14_Graph第二份样本.md §1.3`）；
+- 首次出现序完全相同：都是 `0@0 → 9@1 → 17@2 → 14@8 → 16@15/27`；
+- **每一条 RANGE 记录内部的 `obs[]` 顺序也完全相同**：`L1_CA, L2_PY, L2_CM, L5_Q, L1_CP`，
+  1199 条与 100 条逐条一致（每条记录的第一批 GPS 观测把 5 个信号全部走一遍，两种输入各只有一种
+  顺序；本轮探针逐记录统计过）。
+
+也就是说：`_Mean` 的列序**不是这份抓包的函数**。任何"按数据算"的规则（枚举序、保留序/首现序、
+PRN 序、计数/均值序、哈希桶序）在两份输入上都会给出同样的 gps 顺序，而 oracle 不同 —— 这与
+`13_Graph列序分析.md`、`14_Graph第二份样本.md §5.2` 的结论一致，本轮又补了两条可复算的证据：
+
+1. **嵌套 `unordered_map<string, METRIC_MEAN>` 模型不可能**：`GPS` 内层键集合与插入序都相同，
+   同一容器只能给出同一个迭代序；要不同只能靠不同的桶数。把 5 种字符串哈希（libstdc++
+   `_Hash_bytes`/murmur64、FNV-1a 32/64、djb2、sdbm）× 3 种键形（全名 / 去星座前缀 / `+_Mean`）×
+   6 种迭代约定 × 桶数 2..97 全试，**两个数据集各自的 3 组靶序一组都命中不了**（更不用说同时）。
+2. **扁平（带星座前缀的 key）模型**也不成立：桶数会随键数（宽 10 / clean 14）变（13 vs 29），
+   但上面同一批哈希/约定/桶数组合里，**没有任何一组能同时命中两份的 10/14 列靶序**。
+
+最可能的解释是原版在 `_Mean` 这一侧的插入序不来自数据（并行/分块建表），属于**跨会话不可复现的
+观测**；`Signals_*` 侧两份输入顺序恒定，不受影响。
+
+因此 `range-charts.ts` 的 `MEAN_ORDER` **保持抄 `clean` 的观测序**（这是现有设计：`06_Graph应用.md
+§11.6`、`13_Graph列序分析.md §6` 都写明"换输入会退化"），`broad` 这三个列名因此与原版不同。
+**没有**为了过对比把 `broad` 的顺序硬写进表里——那只会把"一个已知未解项"伪装成"已解"。
+`packages/graph/test/broad-parity.test.ts` 用一个专门的用例把这件事钉死：按列名对齐后
+**1199 行 × 61 格全部相同**，差异只有这 3 个列名的排列，且 `clean` 的 14 列顺序不得变化。
+
+#### 8.2.5 `clean` / `b1` 的回归
+
+- `clean`：12 份 oracle 仍逐字节相同（`_probe-regress.ts` 实跑）。
+- `b1`：重导后 13 份仍与样本逐字节相同，但**样本里两份 CSV 按新规则重铺过**（它们是我方产物，
+  不是 oracle）：`HW Monitor Status.csv` 7 → 5 行（去掉 2 条重复端口帧）、`Height.csv` 6 个格子补上
+  尾零（`64.81725` → `64.817250` 等）。其余 11 份一字未动。`b1-20261101.sbf` 里 `BESTPOS` 也有 25 对
+  同 payload 重复，但**没有**跟着折叠（没有 oracle 证明 `BESTPOS` 的折叠方式）。
+
 
 ### 8.3 前端
 
@@ -427,3 +511,89 @@ curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
 2. 与 graph 一样**不做子集**：含中文的 app 报告 ~5 MB（整份 SimHei，Flate 后 ≈4.98 MB）。
 3. app 的 `advance()` 里 ASCII 仍用经验宽度（0.278/0.64/0.53 em 的估算），只有中文 run 用真实
    TTF advance；这是原文件的既有取舍，本轮没改。
+
+## 11 Flags：Pre-process 时间轴标记（A3）
+
+> 本节是本轮新增。`packages/app/src/web/panels/graph.js` 里的 `Flags (0/10)` 原来只是字面量
+> （文件里自己写着 “no flag store exists in this build”），现在接上了真正的 flag store。
+> 原版语义逐条从 `逆向/01_解包/Graph/out/renderer/assets/index-B86bHcCD.js` 量出，`@` 后是
+> bundle 的**字节偏移**；`06_Graph应用.md §3.4/§6.6/R32` 是早先的记录，可互相核对。
+
+### 11.1 原版量到的语义
+
+| 项 | 原版行为 | 证据 |
+|---|---|---|
+| 上限 | 10 个 | `MAX_FLAGS = 10` `@1410884`；`N0_FLAGS_TEXT` “You can add up to 10 flags” `@366399` |
+| 计数口径 | `allFlags` 去掉 `trashFlag` | `getTotalFlags` `@1414959`；`TimelineFlagsInfo` 的 `(n/10)` `@13839509` |
+| 存储 | 工程 `.gpf` 的 `FlagsInitialState: {allFlags,isFlagsPanelOpen}`，关窗时回写 | `@16246801`、`@16247254`；`06_Graph应用.md §6.6` |
+| 恢复 | `newFlagId = max(id) + 1` | `setStoreDefaults` `@554660` |
+| 标记对象 | `{id, timeCaptured(ms), color, latitude, longitude, height, description, state}` | `addFlag` payload `@1424990`、slice `@191629` |
+| 状态 | `activeFlag / hiddenFlag / hoverFlag / trashFlag / selectedFlag` | `FlagsStatus` `@191150` |
+| 怎么加 | 地图轨迹单击（裁剪区内，先过 `canAddFlag`）`@13681498`；图/时间轴右键 `@15708071`（取 `globalHover` 的时间）；弹窗 **Apply** 才落库 | `AddFlagFooter` `@1423811` |
+| 重复 | `abs(timeCaptured − t) < 1000 ms` 且不在回收站 | `@1424277`；`HAS_ALREADY_DUPLICATEACTIVE_FLAG` |
+| 标签 | `description`（弹窗 “Type a comment (optional)”） | addFlag payload `@1424990` |
+| 跳转 | 时间轴/面板点击 = **选中并打开编辑**（`selectedFlag`），**不移动播放头**；时间轴标记可拖拽改时间 | `handleFlagClick` `@13822690`、`@15707363`；拖拽 `@13846897` |
+| 删除 | **软删**：`state = trashFlag`；回收站可 Restore / Empty trash；恢复同样守 10 个与重复时间点 | `handleEditDelete` `@1425006`（按钮绑定 `@1424380`）；eye tooltip `@1454591`；`deleteTrash` `@191920` |
+| 隐藏 | 眼睛在 `activeFlag ↔ hiddenFlag`，隐藏的不画在时间轴 | `@1454591`；`FlagsList` `@13821924` |
+| 颜色 | 每个 flag 一个 `ColorPicker`，默认 `#F95B61` | `@1410884`、`@1455340` |
+| 取消 | Add 弹窗 Cancel 不入库 | `handleClose('cancel')` `@1424056` |
+
+### 11.2 本重实现（`graph.js`）
+
+- **纯函数 store**：`addFlag / updateFlag / trashFlag / restoreFlag / emptyTrash /
+  toggleFlagVisibility / selectFlag / clearFlagSelection`，判定用 `canAddFlag / flagAtTime /
+  nextFlagId / flagTotal`；state 形状与原版 slice 一致
+  （`{allFlags, editFlagId, newFlagId, isFlagsPanelOpen}`），可以直接被 Node 单测。
+- **时间**：`timeCaptured` 保持原版的**毫秒时间戳**。CSV 有 `#Start Time(GPS)` 时用
+  `parseGpsStamp` + `gpsSecondsToMs` 换成 epoch ms（`timeBase: 'gps'`）；没有 GPS 头的 CSV
+  退回本文件 elapsed 毫秒（`timeBase: 'elapsed'`）。`timeBase` 是**本地补的字段**——原版只有
+  工程绝对时间，没有“文件无 GPS 头”这种情况。
+- **交互**：右键时间轴 → 该 x 的草稿时间 + 评论框，Add Flag / Enter 落库；`Flags (n/10)`
+  打开面板；列表可点击跳转、隐藏/显示、移入回收站、改色，回收站里 Restore / Empty trash；
+  时间轴标记悬停出 tooltip（`flag #n`、GPS 时间、lat/lon/高度、评论），与原版 tooltip 的三行
+  一致（`FlagsList` `@13821924`）。
+- **持久化**：`localStorage`，键 `nas.graph.flags.v1::<projectKey>`，值是 `FlagsInitialState`
+  的两个字段；切工程换桶，刷新/重开按工程恢复。原版是 `.gpf`（见 11.3）。
+- **上限/重复/回收站/恢复限制**与原版同一条判定：`FLAG_LIMIT = 10`、
+  `FLAG_DUPLICATE_WINDOW_MS = 1000`；恢复先查上限、再查重复（顺序同原版 tooltip）。
+
+### 11.3 与原版不一致 / 本地实现（不声称 1:1）
+
+1. **持久化介质**：原版写工程 `.gpf`（`FlagsInitialState`，关窗握手 `@16246025`）；本构建没有
+   `.gpf` 解析，改存 `localStorage`，仍按工程分桶。字段名与形状照抄，**介质不同**。
+2. **点击跳转**：原版点击标记/列表行是选中并打开编辑，**不移动播放头**；这里“点击跳到该时间”
+   是本地加的（任务要求），列表按钮 `title` 与本节都标了“本地”。
+3. **“在当前 playhead 加”**：原版只有右键 / 地图点选 / 弹窗；`ADD_FLAG_TS` 文案在包里定义但
+   **没有任何调用点**（只出现在 i18n 表 `@367735`、`@378006`）。面板的 Add Flag 用 playhead
+   是本地实现（草稿时间在标签里可见，右键会改成那个点）。
+4. **拖拽标记改时间**：原版时间轴标记可拖动（`calculateFlagTimeFromMouse` `@13846849`，落到
+   最近定位点）；本实现**没做拖拽**。
+5. **地图侧 flag**：原版在地图 `flagsLayer` 上也画/加 flag（`flagsLayer` 图层名见
+   `06_Graph应用.md §6.7`；地图单击入口 `@13681498`）；这里只有时间轴与面板，地图上没有标记。
+6. **单条永久删除**：原版只有 Empty trash（没有单条永久删），本实现相同。
+7. **颜色**：默认值与原版一致；颜色只影响时间轴标记与列表色块，地图不渲染 flag，所以看不出
+   差别。
+
+### 11.4 测试与截图
+
+`packages/app/test/graph-flags.test.ts` **18 项**：上限（10 个后第 11 个 `limit`）、1 s 重复
+窗口（999 / 1000 ms 边界）、增删/回收站/恢复（含恢复时 `limit` 与 `duplicate`）、隐藏、单选中、
+GPS↔ms 往返、`flagOffsetSeconds`（无 GPS 头返回 `null`）、每工程一桶 + save/load + 切工程不串 +
+坏 JSON/无 storage、`.gpf` 形状读取 + `newFlagId = max(id)+1`。
+
+实测（Playwright，1600×1000，`node packages/app/src/server.ts --port 7799`，b1 的
+`2D Trajectory.csv`，28 s）：
+
+- 右键加 5 个 → `(5/10)`、时间轴 5 个标记；补到 10 → 第 11 个提示
+  `Maximum number of flags reached`；空出一个后右键同一点 → `There's already a flag at this timestamp`；
+- 点 `flag #1` → 时钟 `00:00:00` → `00:00:03`；
+- 隐藏 → 计数仍 `(10/10)`、标记 9；删除 → `(9/10)`、标记 8、提示 `Flag moved to trash`；
+  Restore → `(10/10)`、`Flag restored successfully`；Empty trash → 回收站空；
+- 刷新后 b1 仍是 9 个；切到 `csv` 工程 `(0/10)`，切回 b1 恢复 —— 不串；
+- console errors **0**，无 pageerror（唯一 warning 是 Luciad/WebGPU 的
+  `ValidateTextureDescriptor`，与本改动无关）。
+
+截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-flags\`）：
+`flags-timeline-tooltip.png`（4 个标记 + tooltip + `(4/10)`）、`flags-panel-list.png`
+（面板列表：时间/偏移/坐标/评论/颜色/眼睛/垃圾桶）、`flags-panel-full.png`（整页）。
+
