@@ -41,7 +41,7 @@
  */
 
 import { novatelCrc32 } from './crc.ts';
-import { escapePassThrough, formatField, portName } from './ascii-log.ts';
+import { escapePassThrough, formatField, portName, wireFields } from './ascii-log.ts';
 import {
   denseSegmentSize,
   readCountAt,
@@ -63,20 +63,37 @@ const ELEMENT_INDENT = 9;
 
 function readScalar(bytes: Uint8Array, type: string, at: number): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const need = type === 'f64' ? 8 : type === 'u8' ? 1 : type === 'u16' ? 2 : 4;
+  // The dictionary spells integers eight ways (a generated C struct), not four: the width decides
+  // the read, not the spelling. Reading a `ULONG`/`USHORT` as one byte still lands on the right
+  // offset (offsets are absolute) but prints the low byte only — `GLOCLOCK`'s `toe` came out `192`
+  // instead of `81600`. Same table as `edie.ts#readScalar`.
+  const need = LONG_TYPES.has(type) ? 8 : type === 'f64' ? 8 : type === 'u8' || type === 'char' || type === 'hexbyte' ? 1 : type === 'u16' || type === 'ushort' || type === 'short' ? 2 : 4;
   if (at < 0 || at + need > view.byteLength) return 0;
   switch (type) {
     case 'u8':
+    case 'char':
+    case 'hexbyte':
       return view.getUint8(at);
     case 'u16':
+    case 'ushort':
       return view.getUint16(at, true);
+    case 'short':
+      return view.getInt16(at, true);
     case 'u32':
     case 'enum':
     case 'satid':
     case 'bool':
+    case 'uint':
+    case 'ulong':
       return view.getUint32(at, true);
     case 'i32':
+    case 'int':
+    case 'long':
       return view.getInt32(at, true);
+    case 'longlong':
+      return Number(view.getBigInt64(at, true));
+    case 'ulonglong':
+      return Number(view.getBigUint64(at, true));
     case 'f32':
       return view.getFloat32(at, true);
     case 'f64':
@@ -85,6 +102,8 @@ function readScalar(bytes: Uint8Array, type: string, at: number): number {
       return view.getUint8(at);
   }
 }
+
+const LONG_TYPES = new Set(['longlong', 'ulonglong']);
 
 function readStringValue(bytes: Uint8Array, segment: EdieString, at: number): string {
   if (String(segment.format ?? '').endsWith('Z')) {
@@ -163,7 +182,9 @@ export function encodeAbbrevRecord(
 
   const body = new Body();
   const state: RenderState = { unresolvedEmbedded: false };
-  renderSegments(payload, layout.fields, 0, tables, body, depth, state);
+  // The same `pack(4)` correction the ASCII writer applies: a record whose payload is exactly the
+  // aligned size of a dense layout is read with aligned offsets (GLOCLOCK, RAWGPSSUBFRAME).
+  renderSegments(payload, wireFields(layout, payload.length), 0, tables, body, depth, state);
   if (state.unresolvedEmbedded) return undefined;
   return { header: head, lines: body.lines };
 }

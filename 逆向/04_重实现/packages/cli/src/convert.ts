@@ -8,18 +8,29 @@
  *   <out>/<name>/Converted_On_<YYYYMMDD>_T<HHMM>/<FORMAT_DIR>/<name>.<EXT>
  *   <out>/<name>/Converted_On_<YYYYMMDD>_T<HHMM>/Summary_<name>.txt
  *
- * Supported so far: ASCII (byte-identical to the suite), abbreviated ASCII (byte-identical) and
+ * Supported so far: ASCII (byte-identical to the suite), abbreviated ASCII (byte-identical for the
+ * binary records below `abbrev-log.ts`'s known gaps, text records matching line for line) and
  * BINARY (verbatim copy of the accepted records).
+ *
+ * Two byte-level facts this file owns, both measured against the suite:
+ *
+ *  - the ASCII-family files are written **latin1**, not UTF-8. `%c` prints one raw byte — BESTUTM's
+ *    `zone_letter` is written as the byte itself, and a value >= 0x80 would become two bytes under
+ *    `writeFileSync(file, string)`'s default UTF-8, silently breaking the file;
+ *  - `PASSTHROUGH` (1342) is a port-forwarding record the suite parses and then writes to no output
+ *    at all, so it never reaches a converted file — not even BINARY, where every other accepted
+ *    record is copied verbatim.
  */
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SbfDeframer, type Frame, type SbfFrame } from '../../protocol/src/framing.ts';
 import { encodeAsciiLog } from '../../protocol/src/ascii-log.ts';
 import { buildRangePayload, decodeRangeCmp2, decodeRangeCmp4, lockTimeCarry } from '../../protocol/src/rangecmp.ts';
-import { textLogLines } from '../../protocol/src/text-log.ts';
+import { abbrevTextLogLines, textLogLines } from '../../protocol/src/text-log.ts';
 import { encodeAbbrevLines, encodeBinaryCapture } from '../../protocol/src/abbrev-log.ts';
 import { buildKml, type KmlPoint } from '../../protocol/src/kml.ts';
 import { buildRinex21Obs } from '../../protocol/src/rinex21.ts';
@@ -35,9 +46,27 @@ const DATA = resolve(here, '..', '..', 'protocol', 'data');
 
 const FORMATS = new Set(['ASCII', 'ABBREV_ASCII', 'BINARY', 'KML', 'RINEX21', 'RINEX301', 'RINEX302', 'RINEX303', 'RINEX304']);
 
+/** `PASSTHROUGH`: the receiver's port-forwarding record. The suite parses it and writes nothing. */
+const PASSTHROUGH_ID = 1342;
+
 function stamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_T${pad(date.getHours())}${pad(date.getMinutes())}`;
+}
+
+/**
+ * Encode one output file. The suite's ASCII-family files are byte streams — `%c` puts one raw byte
+ * on the wire — so `latin1` is the encoding that reproduces them, where `writeFileSync(file,
+ * string)`'s UTF-8 would widen anything >= 0x80. A character above U+00FF cannot have come from
+ * that byte stream, so it is an error rather than a silent truncation.
+ */
+function latin1Bytes(text: string, name: string): Buffer {
+  const bytes = Buffer.from(text, 'latin1');
+  if (bytes.length !== text.length) {
+    const at = [...text].findIndex((char) => char.charCodeAt(0) > 0xff);
+    throw new Error(`${name}: U+${text.charCodeAt(at).toString(16).toUpperCase()} at ${at} is not a latin1 byte`);
+  }
+  return bytes;
 }
 
 function main(): void {
@@ -70,7 +99,13 @@ function main(): void {
     if (frame.kind === 'sbf') all.push(frame);
   }
 
-  const accepted = all.filter((frame) => frame.crcOk);
+  // `PASSTHROUGH` is not a log as far as Convert is concerned: it is parsed and dropped, so it must
+  // not surface in any output (BINARY included) or in the summary's per-log counts.
+  const isPassthrough = (frame: SbfFrame): boolean => frame.header.messageId === PASSTHROUGH_ID;
+  const passthrough = all.filter(isPassthrough);
+  const converted = all.filter((frame) => !isPassthrough(frame));
+
+  const accepted = converted.filter((frame) => frame.crcOk);
   const outputRoot = outRoot ? resolve(outRoot) : join(dirname(inputPath), 'converted');
   const convertedDir = join(outputRoot, base, `Converted_On_${stamp(at)}`);
   const formatDir = join(convertedDir, formatDirectory(format));
@@ -92,6 +127,7 @@ function main(): void {
         return;
       }
       if (frame.kind !== 'sbf' || !frame.crcOk) return;
+      if (isPassthrough(frame)) return;
       // Convert unpacks RANGECMP2/4 into ordinary RANGE rows (b2: 699 RANGEA = 638 + 31 + 30);
       // rebuild a RANGE payload and let the normal writer print it.
       if (frame.header.messageId === 1273 || frame.header.messageId === 2050) {
@@ -116,12 +152,39 @@ function main(): void {
     });
     outputs.push({ name: `${base}.ASCII`, data: `${lines.join('\r\n')}\r\n` });
   } else if (format === 'ABBREV_ASCII') {
+    // Text records are records like any other: the suite re-renders them into abbreviated ASCII in
+    // capture order, so `frames` — not `accepted` — drives this loop too, exactly as in the ASCII
+    // branch (`protocol/src/text-log.ts#abbrevTextLogLines`). Measured on
+    // `golden-b1-20261101.ABBREV_ASCII`: the capture's 99 text records add 39 BESTPOS, 26 RANGE,
+    // 24 SATVIS2, 6 RXSTATUS, 2 TIMESYNC and 2 HWMONITOR records, one record per text header line.
+    const textLines = abbrevTextLogLines(frames, tables);
+    const rangeCarry2 = lockTimeCarry();
+    const rangeCarry4 = lockTimeCarry();
     const lines: string[] = [];
-    for (const frame of accepted) {
+    frames.forEach((frame, index) => {
+      const text = textLines.get(index);
+      if (text !== undefined) {
+        lines.push(...text);
+        return;
+      }
+      if (frame.kind !== 'sbf' || !frame.crcOk) return;
+      if (isPassthrough(frame)) return;
+      // RANGECMP2/4 expand into ordinary `<RANGE` records here too: `golden-b2-20261101.ABBREV_ASCII`
+      // counts 638 RANGE in, 699 out, with RANGECMP2 (31) and RANGECMP4 (30) at zero — the same
+      // unpacking the ASCII branch does.
+      if (frame.header.messageId === 1273 || frame.header.messageId === 2050) {
+        const observations = frame.header.messageId === 1273
+          ? decodeRangeCmp2(frame.payload, { epochMs: frame.header.milliseconds, lockCarry: rangeCarry2 })
+          : decodeRangeCmp4(frame.payload, { epochMs: frame.header.milliseconds, lockCarry: rangeCarry4 });
+        const rangeLayout = tables.messages['43'];
+        if (!rangeLayout) return;
+        lines.push(...encodeAbbrevLines({ ...frame, payload: buildRangePayload(observations) }, rangeLayout, tables));
+        return;
+      }
       const layout = tables.messages[String(frame.header.messageId)];
-      if (!layout) continue;
+      if (!layout) return;
       lines.push(...encodeAbbrevLines(frame, layout, tables));
-    }
+    });
     outputs.push({ name: `${base}.ABBREV_ASCII`, data: `${lines.join('\r\n')}\r\n` });
   } else if (format === 'KML') {
     const points: KmlPoint[] = [];
@@ -164,13 +227,15 @@ function main(): void {
   const written: string[] = [];
   for (const output of outputs) {
     const file = join(formatDir, output.name);
-    writeFileSync(file, output.data);
+    // `latin1`, not the `writeFileSync(file, string)` default of UTF-8: the ASCII-family formats
+    // carry raw bytes (`%c` prints one byte), and UTF-8 would widen anything >= 0x80 to two bytes.
+    writeFileSync(file, typeof output.data === 'string' ? latin1Bytes(output.data, output.name) : output.data);
     written.push(file);
   }
 
   // Per-log record counts for the summary table.
   const counts = new Map<number, { name: string; source: number; output: number }>();
-  for (const frame of all) {
+  for (const frame of converted) {
     const layout = tables.messages[String(frame.header.messageId)];
     if (!layout) continue;
     const entry = counts.get(frame.header.messageId) ?? { name: layout.name, source: 0, output: 0 };
@@ -196,7 +261,10 @@ function main(): void {
   console.log(`format    : ${format}`);
   for (const file of written) console.log(`output    : ${file} (${statSync(file).size} bytes)`);
   console.log(`summary   : ${join(convertedDir, `Summary_${base}.txt`)}`);
-  console.log(`dropped   : ${all.length - accepted.length} (bad CRC)`);
+  console.log(
+    `dropped   : ${converted.length - accepted.length} (bad CRC)`
+    + (passthrough.length ? `, ${passthrough.length} PASSTHROUGH (not a converted log)` : ''),
+  );
 }
 
 main();

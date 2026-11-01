@@ -676,3 +676,39 @@ remote-23types ABBREV  IDENTICAL 4 357 514 B（42 106 行；用本机套件 --ab
   记录两者相同（六份 golden 已证），只有人工构造的非规范格式才会分叉。
 - **`$` + `$` 无 CRLF**：套件打印合并行（校验和对**第一个** `*` 算），我们到最后一个 `*`。
 - **`<` 只有 header 没有 body** 时套件不输出，我们会打印一条空 body 记录。
+
+## 9.x.11 ABBREV 也吃 pack(4) 与八种整数、`#…*crc` 按字节算（2026-11-01）
+
+上一节把 ASCII 侧修好了，ABBREV 侧还留着同一批缺陷：b3 的 ABBREV 仍有 40 行不同
+（GLOCLOCK 1、GALINAVEPHEMERIS 27、RAWGPSSUBFRAME 12），根因是 `abbrev-log.ts` 自己那份
+`readScalar` 只认 4 种拼写、且没有 `wireFields` 的对齐修正。
+
+- `ascii-log.ts` 的 `wireFields` 改为导出，`abbrev-log.ts` 在顶层
+  `renderSegments(payload, wireFields(layout, payload.length), …)` 用它；
+- `abbrev-log.ts#readScalar` 补齐 8 种整数拼写与 `int16/int32/bigint64/biguint64`，
+  与 `edie.ts#readScalar` 同一张宽度表。
+
+**复验**：b3 ABBREV `--abbrev` 现生成 oracle 79 143 行 / 7 116 268 B，与 ours **逐字节相同**
+（修前 40 行不同）。b1/b2/live-nav/live-nav2 的 ABBREV 亦逐字节相同；八份 ASCII golden 全同。
+golden-b3-20261101.ABBREV_ASCII 已入库，并加了一条测试断言整份文件。
+
+### `#…*crc` 的校验和算在 UTF-8 上是错的
+
+`novatelCrc32(new TextEncoder().encode(sentence))` 会把 `%c ≥ 0x80` 的一个字节编成两字节：
+BESTUTM 的区字母 0xC8 应算 `C8`，实际算了 `C3 88`。套件对同一条记录给 `*a59003d5`，
+`TextEncoder` 给 `4d302fbb`。
+
+新增 `ascii-log.ts#latin1Bytes`（< U+0100 一字符一字节，≥ U+0100 退回 UTF-8），替换
+`ascii-log.ts` 与 `text-log.ts` 里三处 `TextEncoder`。
+
+**复验**（本机套件 `-a` 与我们的 CLI 对同一份合成抓包）：
+
+```
+3 条 BESTUTM，区字母 C8 / FF / 41
+oracle 654 B  ours 654 B  两侧 SHA-256 相同
+逐行 CRC  a59003d5 / 375f19a2 / c4355cf5  三行全 MATCH
+```
+
+仍有的同类问题：`packages/app/src/convert.ts`（GUI 的 Convert 预览）还按 UTF-8 写字符串、
+不过滤 PASSTHROUGH(1342)，且不接文本记录与 RANGECMP 展开——它与 CLI 已经漂移，
+是一条独立待办。

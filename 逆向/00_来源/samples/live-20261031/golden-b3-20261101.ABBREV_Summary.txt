@@ -1,0 +1,62 @@
+
+The following conversion was completed at 2026-11-01T09:47:36.640Z
+
+
+Input File was b3.sbf, 3375904 bytes from C:\Users\SunCh\AppData\Local\Temp\opencode\ora-b3\in
+
+
+Converted files were output to C:\Users\SunCh\AppData\Local\Temp\opencode\ora-b3\out\b3
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2442, 583814.15
+      Finish time: 2442, 583859.7
+
+    UTC Time:
+      Start time : 2026-10-31T18:10:14.150Z
+      Finish time: 2026-10-31T18:10:59.700Z
+
+    Total Duration: 00:00:45
+      
+
+The following 30 log(s) were converted successfully to ABBREV_ASCII 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+    1584 | BDSALMANAC                    |      55 |      55 |
+    2372 | BDSBCNAV2EPHEMERIS            |      30 |      30 |
+    1607 | BDSCLOCK                      |       1 |       1 |
+    1590 | BDSIONO                       |      36 |      36 |
+    1695 | BDSRAWNAVSUBFRAME             |      31 |      31 |
+      42 | BESTPOS                       |      45 |      45 |
+    2230 | BESTVELX                      |      30 |      30 |
+    1120 | GALALMANAC                    |      26 |      26 |
+    1309 | GALINAVEPHEMERIS              |      27 |      27 |
+    1127 | GALIONO                       |       1 |       1 |
+     719 | GLOCLOCK                      |       1 |       1 |
+     792 | GLORAWEPHEM                   |     372 |     372 |
+     963 | HWMONITOR                     |       4 |       4 |
+    1669 | IPSTATS                       |       1 |       1 |
+    1907 | J1939STATUS                   |       2 |       2 |
+     161 | NAVIGATE                      |       1 |       1 |
+      72 | PORTSTATS                     |       4 |       4 |
+    1163 | PSRDOP2                       |      30 |      30 |
+    1162 | PSRSATS                       |       1 |       1 |
+     881 | PSRTIME                       |      30 |      30 |
+     100 | PSRVEL                        |       1 |       1 |
+      43 | RANGE                         |     912 |     912 |
+      41 | RAWEPHEM                      |      20 |      20 |
+      25 | RAWGPSSUBFRAME                |      31 |      31 |
+     407 | RAWGPSWORD                    |      30 |      30 |
+    2060 | SAFEMODESTATUS                |       1 |       1 |
+    1451 | SATXYZ2                       |       1 |       1 |
+     492 | TIMESYNC                      |       1 |       1 |
+    1777 | UPTIME                        |       1 |       1 |
+       0 | UNKNOWN                       |     224 |       0 |
+
+
+
+
+

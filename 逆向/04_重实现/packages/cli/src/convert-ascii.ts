@@ -9,6 +9,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,6 +53,9 @@ function main(): void {
       continue;
     }
     if (frame.kind !== 'sbf') continue;
+    // `PASSTHROUGH` (1342) is a port-forwarding record the suite parses and writes to no output;
+    // `convert.ts` drops it from every format and this tool has to agree.
+    if (frame.header.messageId === 1342) continue;
     if (frame.header.messageId === 1273 || frame.header.messageId === 2050) {
       const observations = frame.header.messageId === 1273
         ? decodeRangeCmp2(frame.payload)
@@ -75,7 +79,9 @@ function main(): void {
   }
 
   const text = `${lines.join('\r\n')}\r\n`;
-  if (output) writeFileSync(output, text);
+  // `latin1`, not `writeFileSync(file, text)`'s default UTF-8: a `%c` field (BESTUTM's zone letter)
+  // is one raw byte, and UTF-8 would widen anything >= 0x80 into two (`convert.ts` does the same).
+  if (output) writeFileSync(output, Buffer.from(text, 'latin1'));
   else process.stdout.write(text);
 
   console.error(`records: ${lines.length}   dropped (bad CRC): ${skippedCrc}   dropped (no layout): ${skippedUnknown}`);

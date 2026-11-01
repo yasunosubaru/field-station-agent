@@ -404,6 +404,26 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
 }
 
 /**
+ * A rendered token string as the wire holds it: **one byte per character** below U+0100.
+ *
+ * Every `#…*crc` checksum in this package is taken over the record's own bytes, and those bytes are
+ * latin-1, not UTF-8: `%c` prints `String.fromCharCode(byte)`, so a zone letter of 0xC8 is the
+ * single byte `C8`. Hashing the JS string with `TextEncoder` would hash `C3 88` instead — the line
+ * bytes then match the suite while the checksum does not (measured: suite `a59003d5` for 0xC8,
+ * `TextEncoder` `4d302fbb`). Characters at or above U+0100 cannot come out of a byte-oriented
+ * writer; they fall back to their UTF-8 bytes so the hash is at least defined.
+ */
+export function latin1Bytes(text: string): Uint8Array {
+  const out: number[] = [];
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code < 0x100) out.push(code);
+    else for (const byte of new TextEncoder().encode(char)) out.push(byte);
+  }
+  return Uint8Array.from(out);
+}
+
+/**
  * `%P` — a pass-through payload copied out **escaped**, as one token: bytes 0x20..0x7E print
  * verbatim except `\` (0x5C) which doubles, and everything else becomes `\xNN` in lowercase hex.
  *
@@ -481,7 +501,7 @@ function packedFixedSize(segments: EdieSegment[]): { dense: number; aligned: num
  * never seen — and every variable-length one, for which `packedFixedSize` returns null — is read
  * exactly as before.
  */
-function wireFields(layout: EdieLayout, payloadLength: number): EdieSegment[] {
+export function wireFields(layout: EdieLayout, payloadLength: number): EdieSegment[] {
   const sizes = packedFixedSize(layout.fields);
   if (!sizes || sizes.aligned === sizes.dense || payloadLength !== sizes.aligned) return layout.fields;
   let cursor = 0;
@@ -727,7 +747,7 @@ function render(
   ].join(',');
 
   const sentence = `${head};${body.join(',')}`;
-  const value = novatelCrc32(new TextEncoder().encode(sentence));
+  const value = novatelCrc32(latin1Bytes(sentence));
   const crc = hex(options.invertCrc ? (value ^ 0xffffffff) >>> 0 : value, 8);
   return `#${sentence}*${crc}`;
 }

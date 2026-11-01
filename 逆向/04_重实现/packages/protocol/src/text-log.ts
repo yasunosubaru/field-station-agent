@@ -49,7 +49,7 @@
  */
 
 import { novatelCrc32 } from './crc.ts';
-import { formatField } from './ascii-log.ts';
+import { formatField, latin1Bytes } from './ascii-log.ts';
 import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
 import type { Frame } from './framing.ts';
 
@@ -234,7 +234,7 @@ export function encodeTextLog(
   if (layout) renderBody(layout.fields, body, tables, rendered);
   else rendered.push(...body);
   const sentence = `${record.name}${options.versionLetter ?? 'A'},${head.join(',')};${rendered.join(',')}`;
-  const crc = novatelCrc32(new TextEncoder().encode(sentence)).toString(16).padStart(8, '0');
+  const crc = novatelCrc32(latin1Bytes(sentence)).toString(16).padStart(8, '0');
   return `#${sentence}*${crc}`;
 }
 
@@ -254,7 +254,7 @@ export function passThroughAscii(text: string, names: ReadonlySet<string> = new 
   const match = /^#([A-Z][A-Z0-9_]*),[\s\S]*\*([0-9a-fA-F]{8})$/.exec(line);
   if (!match) return undefined;
   if (names.size > 0 && hashName(match[1], names) === undefined) return undefined;
-  const sum = novatelCrc32(new TextEncoder().encode(line.slice(1, line.lastIndexOf('*'))));
+  const sum = novatelCrc32(latin1Bytes(line.slice(1, line.lastIndexOf('*'))));
   return sum === parseInt(match[2], 16) ? line : undefined;
 }
 
