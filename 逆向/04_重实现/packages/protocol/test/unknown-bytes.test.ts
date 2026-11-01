@@ -338,3 +338,217 @@ test('b7: dropped RXCONFIG records stay in .UNKNOWN but not in the Summary UNKNO
     assert.match(run.summary, /^\s+0 \| UNKNOWN\s*\|\s+206 \|/m);
   });
 });
+
+/* -------------------------------------------------------------------------------------------
+ * Time Interval × --unknown-bytes=interleave
+ *
+ * Measured on the 2.11.0 suite, 2026-11-02. The two numbers the suite reports for the same window
+ * (b1 `--start-time=2442,570250 --finish-time=2442,570255`) settle the rule:
+ *
+ *   981 856 B   the windowed stream on its own (no unknown flag; `file` gives the same ASCII)
+ *   985 626 B   the same run with `--unknown-bytes=interleave`
+ *     3 770 B   the windowed `.UNKNOWN` (`b1` 5 386 − the 22 silent `RXCONFIG`s, 1 616)
+ *
+ * and 981 856 + 3 770 = 985 626, byte for byte. So a window does **not** switch interleaving off,
+ * and the runs are the *windowed* account — the bytes of the records the window skipped are in
+ * neither the stream nor the splice. No re-basing happens either: blocks and runs are ordered by
+ * their capture offsets, so the first block is simply the first record the window kept and all the
+ * junk before it lands at the top of the file (b1: 3 662 B of it, 3 770 − the eighteen `[USB2]`
+ * runs that sit between kept records, which are spliced at their own offsets).
+ *
+ * The same holds for `--abbrev` (1 115 767 = 1 111 997 + 3 770), `-b` (514 764 = 510 994 + 3 770)
+ * and b2 (3 057 948 = 3 050 892 + 7 056, b2 skipping no record in that window). `--decimate=5` on
+ * the same window is 64 787 B, also exact.
+ * ---------------------------------------------------------------------------------------- */
+
+/** The suite's own SHA-256 for the files below — the digest is the assertion, not the length. */
+const WINDOW_SHA = {
+  /** b1 `-a --start-time=2442,570250 --finish-time=2442,570255` */
+  b1Plain: '74780fa897297d4a2d7f6b47d506fb8e9de737fa60618a8fc9e6aa025435e5e9',
+  /** the same, `--unknown-bytes=interleave` */
+  b1Interleaved: '5da0389120022758b012361268dde6422b83f0b5069146ead542e0c271b8cb48',
+  /** the same, `--abbrev … --unknown-bytes=interleave` */
+  b1Abbrev: '2e8c7f55b943bb59c5bc0106bc7db9c9ece09d944ed230fc5d43f93898560862',
+  /** the same, `-b … --unknown-bytes=interleave` */
+  b1Binary: '9c8f55c3fcada6e4cdf8dd3ca987dc5bd5cc23b9b755b3b54a0ad747b21db608',
+  /** b2 `-a --start-time=2442,577759 --finish-time=2442,577780 --unknown-bytes=interleave` */
+  b2Interleaved: 'e3c5909d2c8f5da9665fef3fa0546ba3d44df30f18956479ee9a5f9ec55593ae',
+  /** b1 `-a --start-time=2442,570249.5 --finish-time=2442,570254.5 --unknown-bytes=interleave` */
+  b1Fractional: 'f6ebf66330a7651fcf8035257d8050176e7e9fce5b0cb052b247f7c0581124e8',
+  /** b1 `-a --start-time=2442,570251 --finish-time=2442,570253.75 --unknown-bytes=interleave` */
+  b1FractionalNarrow: '36aaf1f61a766092b71bdaf8eaf9ed92998297841f4adb85e97dbe02bfe50cf3',
+  /** b1 `-a --decimate=5 --unknown-bytes=interleave` (no window) */
+  b1Decimated: '1df4308d1ceff24e3402f8424f323e123c7974f7e3575f8c65f522f49e25e708',
+  /** b1 `-a --decimate=5 --start-time=…570250 --finish-time=…570255 --unknown-bytes=interleave` */
+  b1WindowDecimated: '33ec9e7a14c1542b137ecd4b5091806d5ce37d8cf1ba95fb3ea6da21c7243549',
+} as const;
+
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+
+interface FormatRun {
+  out: string;
+  bytes: Uint8Array;
+  unknown: Uint8Array | undefined;
+  summary: string;
+}
+
+/** One CLI run in a format of its choosing (`convert()` above is fixed to `ABBREV_ASCII`). */
+function runFormat(
+  capture: (typeof CAPTURES)[number],
+  format: 'ASCII' | 'ABBREV_ASCII' | 'BINARY',
+  extra: readonly string[],
+): FormatRun {
+  const out = mkdtempSync(join(tmpdir(), 'window-interleave-'));
+  execFileSync(
+    process.execPath,
+    [cli, join(live, `${capture}.sbf`), '--to', format, '--out', out, '--at', '2026-11-01T00:00:00', ...extra],
+    { stdio: 'pipe' },
+  );
+  const root = join(out, capture);
+  const stamp = readdirSync(root).find((name) => name.startsWith('Converted_On_'));
+  assert.ok(stamp, 'a Converted_On_<stamp> directory');
+  const formatDir = join(root, stamp, format);
+  const name = `${capture}.${format}`;
+  assert.ok(readdirSync(formatDir).includes(name), `${name} written`);
+  const unknownName = `${capture}.UNKNOWN`;
+  return {
+    out,
+    bytes: new Uint8Array(readFileSync(join(formatDir, name))),
+    unknown: readdirSync(formatDir).includes(unknownName)
+      ? new Uint8Array(readFileSync(join(formatDir, unknownName)))
+      : undefined,
+    summary: readFileSync(join(root, stamp, `Summary_${capture}.txt`), 'utf8'),
+  };
+}
+
+const WINDOW = ['--start-time=2442,570250', '--finish-time=2442,570255'] as const;
+
+test('b1: a Time Interval plus interleave is the suite file, byte for byte', () => {
+  const plain = runFormat('b1-20261101', 'ASCII', WINDOW);
+  const spliced = runFormat('b1-20261101', 'ASCII', [...WINDOW, '--unknown-bytes=interleave']);
+  const sidecar = runFormat('b1-20261101', 'ASCII', [...WINDOW, '--unknown-bytes=file']);
+  try {
+    assert.equal(plain.bytes.length, 981856);
+    assert.equal(sha256(plain.bytes), WINDOW_SHA.b1Plain);
+    assert.equal(spliced.bytes.length, 985626);
+    assert.equal(sha256(spliced.bytes), WINDOW_SHA.b1Interleaved);
+    // The splice is exactly the windowed `.UNKNOWN`, and nothing else moves.
+    assert.ok(sidecar.unknown, 'the windowed run writes a sidecar');
+    assert.equal(sidecar.unknown.length, 3770);
+    assert.equal(plain.bytes.length + sidecar.unknown.length, spliced.bytes.length);
+    // The file opens with the capture's own first junk bytes, not with a `#` line.
+    assert.equal(latin1Text(spliced.bytes.subarray(0, 13)), '\r\n<OK\r\n[USB2]');
+    // …then 3 662 B of junk (the rest of 3 770 − eighteen `[USB2]` runs spliced between the kept
+    // records), and only then the first kept record's line. That record's bytes sit *before* the
+    // first kept SBF record and are kept by the record's own stamp, not by capture order — see
+    // `applyTimeWindow`.
+    const firstLine = plain.bytes.subarray(0, 22);
+    assert.equal(latin1Text(firstLine), '#RXSTATUSA,USB2,0,69.0');
+    assert.equal(
+      Buffer.from(spliced.bytes).indexOf(Buffer.from(firstLine)),
+      3662,
+    );
+    // The Summary's sentence is the kept unknown size, as with any `file`/`interleave` run.
+    assert.match(spliced.summary, /^3770 bytes could not be converted\.$/m);
+    assert.match(spliced.summary, /^\s+0 \| UNKNOWN\s*\|\s+3695 \|/m);
+    assert.match(spliced.summary, /Start time : 2442, 570250\n/);
+  } finally {
+    for (const run of [plain, spliced, sidecar]) rmSync(run.out, { recursive: true, force: true });
+  }
+});
+
+test('b1: --abbrev and -b interleave the same 3 770 bytes on a window', () => {
+  const abbrev = runFormat('b1-20261101', 'ABBREV_ASCII', [...WINDOW, '--unknown-bytes=interleave']);
+  const binary = runFormat('b1-20261101', 'BINARY', [...WINDOW, '--unknown-bytes=interleave']);
+  try {
+    assert.equal(abbrev.bytes.length, 1115767);
+    assert.equal(sha256(abbrev.bytes), WINDOW_SHA.b1Abbrev);
+    assert.equal(binary.bytes.length, 514764);
+    assert.equal(sha256(binary.bytes), WINDOW_SHA.b1Binary);
+    // Both are the plain windowed stream + the same 3 770 unknown bytes.
+    assert.equal(abbrev.bytes.length, 1111997 + 3770);
+    assert.equal(binary.bytes.length, 510994 + 3770);
+  } finally {
+    for (const run of [abbrev, binary]) rmSync(run.out, { recursive: true, force: true });
+  }
+});
+
+test('b2: a Time Interval plus interleave adds its whole .UNKNOWN (7 056 B)', () => {
+  const window = ['--start-time=2442,577759', '--finish-time=2442,577780'];
+  const plain = runFormat('b2-20261101', 'ASCII', window);
+  const spliced = runFormat('b2-20261101', 'ASCII', [...window, '--unknown-bytes=interleave']);
+  try {
+    assert.equal(plain.bytes.length, 3050892);
+    assert.equal(spliced.bytes.length, 3057948);
+    assert.equal(sha256(spliced.bytes), WINDOW_SHA.b2Interleaved);
+    assert.equal(spliced.bytes.length - plain.bytes.length, 7056);
+  } finally {
+    for (const run of [plain, spliced]) rmSync(run.out, { recursive: true, force: true });
+  }
+});
+
+test('b1: a window boundary between two records (fractional seconds) still matches', () => {
+  const wide = runFormat('b1-20261101', 'ASCII', [
+    '--start-time=2442,570249.5', '--finish-time=2442,570254.5', '--unknown-bytes=interleave',
+  ]);
+  const narrow = runFormat('b1-20261101', 'ASCII', [
+    '--start-time=2442,570251', '--finish-time=2442,570253.75', '--unknown-bytes=interleave',
+  ]);
+  try {
+    assert.equal(wide.bytes.length, 968073);
+    assert.equal(sha256(wide.bytes), WINDOW_SHA.b1Fractional);
+    assert.equal(narrow.bytes.length, 521134);
+    assert.equal(sha256(narrow.bytes), WINDOW_SHA.b1FractionalNarrow);
+  } finally {
+    for (const run of [wide, narrow]) rmSync(run.out, { recursive: true, force: true });
+  }
+});
+
+test('b1: --decimate and a Time Interval both keep interleaving', () => {
+  const decimated = runFormat('b1-20261101', 'ASCII', ['--decimate=5', '--unknown-bytes=interleave']);
+  const both = runFormat('b1-20261101', 'ASCII', [
+    '--decimate=5', ...WINDOW, '--unknown-bytes=interleave',
+  ]);
+  try {
+    assert.equal(decimated.bytes.length, 189915);
+    assert.equal(sha256(decimated.bytes), WINDOW_SHA.b1Decimated);
+    assert.equal(both.bytes.length, 64787);
+    assert.equal(sha256(both.bytes), WINDOW_SHA.b1WindowDecimated);
+  } finally {
+    for (const run of [decimated, both]) rmSync(run.out, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The boundary rule, on a capture small enough to state: a junk run has **no time**, so a Time
+ * Interval never cuts one. What a window does is drop the *records* it leaves out, and the bytes of
+ * a dropped record leave the account with it — the junk on either side of it stays whole and simply
+ * becomes adjacent. Measured on b1 the same way: the windowed `.UNKNOWN` is 3 770 B rather than
+ * 5 386 B because the 22 silent `RXCONFIG`s (1 616 B) are off-window, and every byte of the
+ * remaining junk — the file's opening `\r\n<OK\r\n[USB2]` included — is still there.
+ */
+test('a window keeps every junk run whole and drops only the skipped records’ own bytes', () => {
+  const junk = '\r\n[USB2]\r\n';
+  const payload = new Uint8Array(32);
+  const early = sealed(42, payload, { week: 2442, milliseconds: 570_000_000, timeStatus: 180 });
+  const late = sealed(42, payload, { week: 2442, milliseconds: 580_000_000, timeStatus: 180 });
+  const capture = concat(latin1Bytes(junk), early, latin1Bytes(junk), late, latin1Bytes(junk));
+  const frames = framesFrom(capture);
+  const window = { startTime: { week: 2442, seconds: 570100 }, finishTime: { week: 2442, seconds: 580100 } };
+  const base = { format: 'ASCII' as const, at: new Date('2026-11-01T00:00:00Z'), tables, name: 'probe.sbf', source: capture };
+
+  const plain = convertFrames(frames, { ...base, ...window });
+  const sidecar = convertFrames(frames, { ...base, ...window, unknownBytes: 'file' });
+  const spliced = convertFrames(frames, { ...base, ...window, unknownBytes: 'interleave' });
+
+  // The early record's bytes are gone; the three junk runs are whole.
+  assert.equal(latin1Text(sidecar.unknown), `${junk}${junk}${junk}`);
+  // Ordering is by capture offset: both leading runs, then the kept record, then the trailing run.
+  const record = plain.files[0].bytes;
+  assert.ok(record.length > 0, 'the kept record renders');
+  assert.equal(
+    latin1Text(spliced.files[0].bytes),
+    `${junk}${junk}${latin1Text(record)}${junk}`,
+  );
+});
+

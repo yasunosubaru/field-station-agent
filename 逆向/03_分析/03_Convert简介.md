@@ -80,6 +80,36 @@
 payload** 的合成记录还有已知差异（`ascii-log.ts` 对截断 payload 的默认值，真实捕获 14 份 golden 全同），
 拼接逻辑一致。
 
+**Time Interval × `interleave`**（2026-11-02 补测；b1 `--start-time=2442,570250
+--finish-time=2442,570255`，套件 2.11.0 与本仓库 CLI 同参数各跑一遍比 sha256）：
+
+| 跑法 | 套件 | 我们 |
+|---|---:|---:|
+| `-a`（不带未知字节开关） | 981 856 B | 981 856 B，sha `74780fa8…` |
+| `-a --unknown-bytes=interleave` | 985 626 B | 985 626 B，**sha `5da03891…` 相同** |
+| `-a --unknown-bytes=file` | 981 856 B + `.UNKNOWN` 3 770 B | 相同 |
+| `--abbrev … --unknown-bytes=interleave` | 1 115 767 B | sha 同（= 1 111 997 + 3 770） |
+| `-b … --unknown-bytes=interleave` | 514 764 B | sha 同（= 510 994 + 3 770） |
+| b2 窗口 `577759→577780` + interleave | 3 057 948 B | sha 同（= 3 050 892 + 7 056） |
+| b1 窗口 `570249.5→570254.5` + interleave | 968 073 B | sha 同 |
+| b1 窗口 `570251→570253.75` + interleave | 521 134 B | sha 同 |
+| b1 只 `--decimate=5` + interleave | 189 915 B | sha 同 |
+| b1 窗口 + `--decimate=5` + interleave | 64 787 B | sha 同 |
+
+四条规则：
+
+1. **窗口不关交错**：`981 856 + 3 770 = 985 626`，插回去的正是**窗口口径**的 `.UNKNOWN`——窗口
+   跳过的记录，其字节在正文和拼接里都不出现。
+2. **按捕获偏移排，不按窗口内相对位置**：块和垃圾段都用各自的捕获偏移排序，第一个块就是窗口
+   保留下来的第一条记录，它前面所有垃圾因此落在文件开头（b1 是 3 662 B，其余 108 B 是 18 段
+   `[USB2]`，各自插在保留记录之间）。所以文件首行不是 `#`。
+3. **垃圾段不会被时间边界切开**：垃圾本身没有时间，边界只决定「哪些记录被跳过」。被跳过记录的
+   整段字节剔除，它两侧的垃圾因此相邻、连续输出（b1 那 22 条 `week 0` 的 `RXCONFIG`，1 616 B）。
+4. 同时修掉一条真偏差：窗口下**文本记录按自己的时间戳筛**，不是按捕获位置。b1 窗口要写的那条
+   `<RXSTATUS USB2 … 570250.000` + 四条 `<SATVIS2 USB2 … 570250.000`（合计 3 787 B），字节位置在
+   第一条保留 SBF 记录**之前**，套件写了而我们以前丢了——`981 856 − 978 069 = 3 787` 就是它，
+   跟交错无关。现在 `applyTimeWindow` 先按记录头的时间戳筛文本，续行跟着记录头走。
+
 ---
 
 ## 分片、抽稀与压缩记录展开（2026-11-01 实测，手册 4.5.3–4.5.6）
@@ -355,13 +385,14 @@ node 逆向\tools\probe-text-layouts.ts                  # SETNAV/LOGLIST/SENDHE
 | `cli/src/convert.ts` | 五个开关的解析 + 分片模式优先级（`splitMode`） |
 | `convert-pipeline.ts#partitionBlocks` | `size` / `time` / `daily` 三种切法（按输出块切，块 = 一行 / 一个多行记录块 / 一帧）；`daily` 的日钟、两套状态闸门与回拨见 `DAILY_CLOCK_*` |
 | `convert-pipeline.ts#decimateFrames` | 抽稀（记录 + 文本记录各自的时间） |
-| `convert-pipeline.ts#unknownSpans` | `.UNKNOWN` 的两套口径（预扫描计数 / 实际产物）、`interleave`、以及 `--decimate` 丢掉的记录不进 `.UNKNOWN` |
+| `convert-pipeline.ts#applyTimeWindow` | 窗口的 SBF 侧（自己的 GPS 时间）与文本侧（记录头的时间戳；无戳的 `<OK`/`[USB2]` 按位置） |
+| `convert-pipeline.ts#unknownSpans` | `.UNKNOWN` 的两套口径（预扫描计数 / 实际产物）、`interleave`、以及 `--decimate`/窗口丢掉的记录不进 `.UNKNOWN` |
 | `convert-pipeline.ts#buildRangeBinaryPayload` | BINARY 展开时的 float32 存储规则与 CMP5 `sd_adr` 表 |
 | `convert-pipeline.ts#binaryBlocks` | BINARY 的块序列（展开、跳过打不出行的记录、把文本记录编码成帧插回原位） |
 | `protocol/src/binary-log.ts` | 文本记录 → SBF 帧（头部映射、`pack(4)` 正文、float/枚举/字符串/数组/`%R`、CRC） |
 | `protocol/test/text-to-binary.test.ts` | 12 条用例：b1/b7 整文件 sha256、b1 `--decimate=5`、七类记录逐字段头部、BESTPOS/RANGE/SATVIS2/RXSTATUS/TIMESYNC/HWMONITOR 正文、固定与变长字符串、`%R` 内嵌帧与取反 CRC、三条失败路径 |
 | `protocol/test/convert-cli-options.test.ts` | 19 条用例：四种 `--limit-output-size` 产物、五种 `--limit-output-duration` 边界（含合成捕获）、`--daily-utc` 的状态矩阵（二进制 / 文本两套闸门、回拨、起点）、b7 三片逐字节、三种 `--decimate`（含对齐基准与文本记录）、`--expand-cmp` 两档 |
-| `protocol/test/unknown-bytes.test.ts` | `.UNKNOWN` 的五个口径：四份 golden、ignore/SKIP、interleave、`--decimate=5` 的 4 014 B，以及合成捕获上「网格外打不出行的记录消失、网格上的留下」 |
+| `protocol/test/unknown-bytes.test.ts` | `.UNKNOWN` 的六个口径：四份 golden、ignore/SKIP、interleave、`--decimate=5` 的 4 014 B、合成捕获上「网格外打不出行的记录消失、网格上的留下」，以及窗口 + interleave（b1 ASCII/ABBREV/BINARY 与 b2 的 sha256、两个小数窗口、窗口+抽稀、合成捕获的整段垃圾规则） |
 
 复验命令：
 
@@ -426,7 +457,9 @@ Prefix/Suffix 的**落点**没有 CLI 开关可测（`cli.js:228-232` 恒发 `{v
 顺带纠正一条旧口径：**时间窗不缩小未知字节的账**。套件带 `--start-time/--finish-time` 跑
 `--unknown-bytes=file` 时照样写完整的 7 056 B `.UNKNOWN`，Summary 的 UNKNOWN 行照样 6 875；
 以前实现里「窗口一开就不报未知字节」是把未测的组合按保守值处理，现在按实测改成整份捕获口径
-（`unknownSpans` 走**未裁剪**的帧表）。`interleave` + 窗口仍未测，所以这条组合保持关闭。
+（`unknownSpans` 走**未裁剪**的帧表）。这条只在 b2 上成立：b1 的窗口是 3 770 B（见前文
+「`--unknown-bytes`」一节），窗口跳过的记录不进 `.UNKNOWN`；`interleave` + 窗口也已按同一口径
+实测通过（985 626 B，sha 相同），不再关闭。
 
 ### 3. GUI 里**没有**的东西（没有加控件）
 
@@ -476,9 +509,9 @@ Prefix/Suffix 的**落点**没有 CLI 开关可测（`cli.js:228-232` 恒发 `{v
   `messageIdFilter` 等写法都崩），所以时间窗的 oracle 用的是**套件 CLI** 同参数（`cli.js:276-289`
   把 `--start-time/--finish-time` 原样写进同一个 `timeInterval` 字段），并附上 `1 362 914 B` 的
   逐字节产物。
-- 既有未复刻项未动：`--decimate` + `--unknown-bytes=file` 在 b1 上仍是 5386 B（套件 4014 B）；
-  `--daily-utc` 的 b7 三片。窗口 + `interleave` 组合未测，保持关闭。（**文本记录进 BINARY 已复刻**，
-  见上一节；b1/b7 的 `-b` 现在与套件逐字节相同。）
+- 既有未复刻项未动：`--daily-utc` 的 b7 三片。窗口 + `interleave` 组合已复刻（见
+  「`--unknown-bytes`」一节，b1 985 626 B 逐字节相同），`--decimate=5` 的 `.UNKNOWN` 也已是套件的
+  4 014 B。（**文本记录进 BINARY 已复刻**，见上一节；b1/b7 的 `-b` 现在与套件逐字节相同。）
 - 面板的点击交互（radio 走 `click` 委派，因为弹窗里套了一层 `<label>`，点文字不触发外层 input）
   只有 Playwright 端到端覆盖，没有 DOM 单测——`packages/view` 的 minidom 不属于本条任务的改动范围。
 

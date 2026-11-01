@@ -1172,17 +1172,29 @@ function textName(line: string): string {
  * `--start-time` / `--finish-time` / `--limit-duration` (manual 4.5.4), and the GUI's Time
  * Interval, which is the same object.
  *
- * The window is applied to the SBF records by their own GPS stamp. A text record carries no stamp,
- * so it survives only when its position in the capture sits between the first and the last kept
- * record — capture order is the only time information it has. WEEK `0` means "the week of the first
- * log", as the manual says. Measured against the suite: b2 `--start-time=2442,577760
- * --finish-time=2442,577770` writes 1 362 914 B / 262 lines, exactly what this returns.
+ * The window is applied to the SBF records by their own GPS stamp. A **text** record has a stamp
+ * too — the header line prints `…,<week>,<seconds of week>,…` — and the suite filters it by that
+ * stamp, not by capture order: b1 `--start-time=2442,570250 --finish-time=2442,570255` writes the
+ * `<RXSTATUS USB2 … 570250.000` + four `<SATVIS2 USB2 … 570250.000` records whose bytes sit *before*
+ * the first kept SBF record (3 787 B, measured 2026-11-02). Text records that do not carry a stamp
+ * (`$GPGGA`, the `<OK` replies, `[USB2]` markers) still survive on position alone: they stay when
+ * they sit between the first and the last kept record, which is what the suite does with the
+ * continuation rows of a record that straddles the boundary.
+ *
+ * WEEK `0` means "the week of the first log", as the manual says. Measured against the suite: b2
+ * `--start-time=2442,577760 --finish-time=2442,577770` writes 1 362 914 B / 262 lines, exactly what
+ * this returns.
+ *
+ * `textStamps` is the header-frame index → its own GPS time in absolute milliseconds (the same
+ * number `from`/`to` are in), from `textRecordStamps(textLogLines(…))`; only the caller has the
+ * dictionary needed to render those headers. Without it the text side falls back to capture order.
  */
 export function applyTimeWindow(
   frames: readonly Frame[],
   startTime: ConvertTimePoint | undefined,
   finishTime: ConvertTimePoint | undefined,
   limitDuration: number | undefined,
+  textStamps?: ReadonlyMap<number, number>,
 ): readonly Frame[] {
   if (!startTime && !finishTime && !Number.isFinite(limitDuration)) return frames;
   const sbf = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
@@ -1215,8 +1227,35 @@ export function applyTimeWindow(
     return inside;
   });
   if (firstIndex < 0) return [];
+
+  /**
+   * The text side: a record whose header carries a stamp is kept by that stamp; its continuation
+   * rows (`<     …`) follow it, and a `<OK`/`<ERROR` reply closes it (that is the same little state
+   * machine `resolvedTextFrames` replays). A frame that is not part of a text record at all
+   * (`[USB2]`, `#BESTPOSA…` without rows) never opens one.
+   */
+  let openText = false;
+  const keepText = frames.map((frame, index) => {
+    if (frame.kind !== 'text' || !textStamps) return false;
+    const stamp = textStamps.get(index);
+    if (stamp !== undefined) {
+      openText = stamp >= from && stamp <= to;
+      return openText;
+    }
+    if (frame.prefix !== '<') return false;
+    const tokens = frame.text.slice(1).trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return openText;
+    if (RESPONSE_WORDS.has(tokens[0]) || tokens[0].startsWith('?')) {
+      openText = false;
+      return false;
+    }
+    return openText;
+  });
+
   return frames.filter((frame, index) =>
-    keep[index] || (frame.kind !== 'sbf' && index > firstIndex && index < lastIndex));
+    keep[index]
+    || keepText[index]
+    || (frame.kind !== 'sbf' && index > firstIndex && index < lastIndex));
 }
 
 /**
@@ -1236,19 +1275,36 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
 
   // The GUI's Time Interval and the CLI's `--start-time`/`--finish-time`/`--limit-duration` are one
   // rule, so the window is applied here rather than in the CLI.
-  const inputFrames = applyTimeWindow(captureFrames, options.startTime, options.finishTime, options.limitDuration);
-  const windowed = inputFrames !== captureFrames;
-  /* The Summary's time range follows this stream (post-window, pre-decimation), not `accepted`. */
-  const summaryFrames = inputFrames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
-
-  // `--decimate` filters the record stream itself, so the summary's Source # column follows it:
-  // the suite's b1 run at `--decimate=5` lists `BESTPOS 17 → 17` where the full capture has 32.
+  //
+  // Text records are windowed by their own header stamp, which means the header has to be rendered
+  // first — that needs the dictionary, so the caller (`convertFrames`) supplies the map. Only a run
+  // that actually asks for a window pays for it.
   const writesText = format === 'ASCII' || format === 'ABBREV_ASCII';
   // `BINARY` needs the text records too: it writes one re-encoded frame for each, decimates by the
   // record's own header and counts it in the summary (`b1` BESTPOS 90 = 51 binary + 39 text).
   const consumesText = writesText || format === 'BINARY';
   const textLinesOf = (list: readonly Frame[]) =>
     format === 'ABBREV_ASCII' ? abbrevTextLogLines(list, tables) : textLogLines(list, tables);
+  const wantsWindow = Boolean(options.startTime || options.finishTime || Number.isFinite(options.limitDuration));
+  const captureText = wantsWindow && consumesText ? textLinesOf(captureFrames) : undefined;
+  const windowTextStamps = captureText
+    ? new Map<number, number>(
+      [...textRecordStamps(captureText)].map(([index, stamp]) => [index, absoluteMilliseconds(stamp)]),
+    )
+    : undefined;
+  const inputFrames = applyTimeWindow(
+    captureFrames,
+    options.startTime,
+    options.finishTime,
+    options.limitDuration,
+    windowTextStamps,
+  );
+  const windowed = inputFrames !== captureFrames;
+  /* The Summary's time range follows this stream (post-window, pre-decimation), not `accepted`. */
+  const summaryFrames = inputFrames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
+
+  // `--decimate` filters the record stream itself, so the summary's Source # column follows it:
+  // the suite's b1 run at `--decimate=5` lists `BESTPOS 17 → 17` where the full capture has 32.
   const inputText = consumesText ? textLinesOf(inputFrames) : undefined;
   const inputStamps: Array<RecordStamp | undefined> = stampsFor(
     inputFrames,
@@ -1285,7 +1341,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   if (interval) {
     const captureStamps = stampsFor(
       captureFrames,
-      textRecordStamps(consumesText ? textLinesOf(captureFrames) : new Map<number, RecordStamp>()),
+      textRecordStamps(captureText ?? (consumesText ? textLinesOf(captureFrames) : new Map<number, RecordStamp>())),
     );
     const keptByDecimation = new Set<Frame>(decimateFrames(captureFrames, captureStamps, interval));
     for (const frame of captureFrames) if (!keptByDecimation.has(frame)) skipped.push(frame);
@@ -1316,11 +1372,20 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     ? unknownSpans(captureFrames, tables, source.length, skipped)
     : undefined;
   const textFamily = format === 'ASCII' || format === 'ABBREV_ASCII' || format === 'BINARY';
-  // The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`).
-  // Interleave splices runs from the whole capture, so it is only meaningful without a window
-  // (window + interleave is unmeasured on the suite; the count and `.UNKNOWN` are not).
+  /**
+   * The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`), and it
+   * does not combine with a split.
+   *
+   * A **Time Interval does not stop it**: measured on b1 `--start-time=2442,570250
+   * --finish-time=2442,570255 --unknown-bytes=interleave` (2026-11-02) the suite writes 985 626 B =
+   * the windowed stream (981 856 B) + exactly the windowed `.UNKNOWN` (3 770 B) spliced back at its
+   * capture offsets. So the runs are `spans.fileRuns` — the windowed account, which already drops
+   * the bytes of the records the window skipped — and no window-relative re-basing happens: the
+   * bytes keep their capture offsets and the first block is simply the first record the window kept.
+   * `interleave` copes with that because it orders blocks and runs by the same capture offset.
+   */
   const interleaving = mode === 'interleave' && textFamily && splitMode === undefined
-    && !windowed && spans !== undefined && source !== undefined;
+    && spans !== undefined && source !== undefined;
 
   if (format === 'ASCII') {
     const rendered = new Map<number, number>();
@@ -1497,6 +1562,11 @@ function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
  * `--unknown-bytes=interleave`: put the unknown bytes back where the capture had them, ordered by
  * capture offset. Measured on a synthetic capture through `-a` / `--abbrev` / `-b`: the bytes are
  * spliced verbatim between the records, so the file is no longer line-oriented.
+ *
+ * A Time Interval needs no special case here: `runs` is the windowed account (the bytes of the
+ * records the window skipped are not in it), the blocks carry the capture offset of the records the
+ * window kept, and ordering both by that one number reproduces the suite's file byte for byte
+ * (b1 window: 985 626 B = 981 856 B of records + the 3 770 B of `.UNKNOWN`).
  */
 function interleave(
   name: string,

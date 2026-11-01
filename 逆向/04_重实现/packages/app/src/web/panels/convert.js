@@ -249,6 +249,9 @@ export function outputSettings(fields = {}) {
     if (rate !== 0) body.decimate = 1 / rate;
   }
 
+  // `INTERLEAVE` travels on its own: the pipeline splices the window's own unknown bytes back in,
+  // so choosing Unknown Data *and* a Time Interval is not a downgrade (b1: 985 626 B, the suite's
+  // file byte for byte). Nothing here may drop one because the other is set.
   body.unknown = fields.unknown === 'INTERLEAVE' ? 'interleave' : 'separate';
 
   if (fields.destinationMode === 'SELECTED') {
