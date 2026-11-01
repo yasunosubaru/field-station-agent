@@ -1317,3 +1317,242 @@ OK   live-nav2.sbf  ABBREV_ASCII  suite 3084110 B 9b36c522bb176dd9   ours 308411
 - **`USERI2CREAD` / `USERCANDATA` / `FILESYSTEMCAPACITY` 是 COMMAND 或固件拒发**，任何真机抓包
   都不会有这几行；本节给的是「套件对这样一个帧会打什么」，不是「接收机会发什么」。
 - **`%` 短 ASCII** 仍然不实现（§9.x.6 已记：六种形状套件全丢）。
+
+
+## 9.x.15 B1 第六批（b6）：9 类新类型 / 786 行逐字节；**这批的价值是一张「字典已探尽」的账**（2026-11-01）
+
+前五批是「找名字 → 抓 → 对」。这一批把剩下能找的名字**全部找完了**：608 条字典里 323 个 LOG 名，
+本批探了 126 个，出 9 类新数据；其余 197 个要么前批已经探过、要么已经在 golden 里、要么是
+b5 证明过「解压成 `RANGE`、自己不出行」的压缩测距版本。所以这节记的第一件事是一个**探法错误**
+（差一点就把这 9 类全判成「不出」），第二件才是覆盖面。
+
+### 先说错误：`LOG <名>` 与 `LOG <名>B` 是两条完全不同的日志
+
+第一版 `b6-probe.ps1` 照 b5 的形状写，但候选名直接从字典的 `name` 抄，于是发出的是
+
+```
+LOG LBANDTRACKSTAT ONCE          <- 这一条要的是 ASCII 日志
+```
+
+接收机照常回 `<OK`，端口上却一条二进制都没有——于是同一批 126 个名字**全部**落进
+「被拒 / 不出」，DATA 为零。二十分钟后改用
+
+```
+LOG LBANDTRACKSTATB ONCE         <- 二进制日志
+```
+
+同样是这 126 个名字，立刻出 9 类。**b4 / b5 的探针一直是对的**（它们的候选表里写的就是
+`VALIDMODELSB`、`INSVELXB`…），错的是这一批第一版自己「规范化」掉了那个后缀。
+
+教训有两条，都写进 `b6-probe.ps1` 的注释里了：
+
+- 二进制日志名 = 字典名 + `B`，ASCII 日志名 = 字典名。ASCII 日志回的是一行文本，
+  `.sbf` 里永远不会有它，探测只看二进制头的人会把它记成「收下但不出」。
+- **「`<OK` 但没数据」这个结论，只有在确认自己问对了日志之后才成立。** 判据要跟着方法走，
+  不能只看接收机说了 `<OK`。
+
+### 怎么抓的
+
+`tools/remote/b6-probe.ps1`（探测）→ `tools/remote/b6-capture.ps1`（抓包，两段、段间裸
+`UNLOGALL`）。候选表不是猜的，是算出来的：
+
+| 口径 | 数 |
+|---|---|
+| 字典里的消息总数 | 608 |
+| 其中 `type: LOG` | 323（另有 281 条 COMMAND；4 条没有 `type`：`BDSBCNAV3RAWMESSAGE2` 与 `RANGECMP5` 在 b5 已覆盖，`PROFILERESPONSE` 与 `GALHASRAWMT` 在 b5 的探针名单里已判定不出） |
+| 名字已在 17 份 golden 里出现过 | 108 |
+| **从未覆盖过** | **215** |
+| 其中 b4 / b5 已探过（结论照旧） | 83 |
+| 其中 b5 已证明「解压成 `RANGE`、自己不出行」 | 4（`RANGECMP` / `2` / `3` / `4`） |
+| 其中属于 SPAN 家族、前批已用 `RAWIMUSX` / `INSSTDEV` 判定被拒 | 2（`RAWIMUX` / `SYNCRELINSPVA`） |
+| **本批实际探测** | **126** |
+
+探测口径同前五批：一条 `LOG <名>B ONCE`、单独 1.5 s 回复窗口、按**报文 id** 判，
+41/42/43 与 93/72/963 一律不计（理由见 §9.x.12）。
+
+另外做了一次**`ONTIME` 复核**（`b6-retry.ps1`）：`ONCE` 只会在该日志的下一个「该出」时刻出一次，
+一个只在变化时输出的日志可能永远不出，于是把 44 个 `OK-NODATA` 的名字改成
+`LOG <名>B ONTIME 1` 连续 25 s（两相，19 + 25 个名字）。结果**只有 `ETHSTATUS` 出了东西**，
+其余一个 id 都没有。所以「`ONCE` 不出」这一条不是方法问题，是这台机器真的不出。
+
+这条复核还顺带问出了**第三种拒绝**（前五批没见过）：
+
+```
+<ERROR:Trigger ONTIME not valid for this log
+```
+
+9 个 `ONTIME 1` 里有 **3 个**收到这一句，分别是 `PPPSEEDAPPLICATIONSTATUS`、`PPPSEEDSTORESTATUS`、
+`TECTONICSCOMPENSATION`——它们的记录数因此停在 1（`ONCE` 的那一条），而另外 6 个是 15–17 条。
+这三个日志**只能「变化时出」**，周期性触发器对它们非法。也就是说：对它们而言「`<OK` 但一条不出」
+里的那个「一条」其实**出过**，只是状态没变就不会再出。这条不影响本批的 9 类（它们都有记录），
+但它解释了上一批 41 个 `OK-NODATA` 里可能有一部分属于同一类「只在变化时出」的日志。
+
+### 三类清单（126 个名字）
+
+**收下并抓到（9 类，全部进 golden）**
+
+| 类 | id | 条数 | | 类 | id | 条数 |
+|---|---|---|---|---|---|---|
+| `PASSCOM3` | 235 | 1 | | `LBANDTRACKSTAT` | 1201 | 17 |
+| `SOURCETABLE` | 1344 | 17 | | `LBANDBEAMTABLE` | 1718 | 17 |
+| `TERRASTARSTATUS` | 1729 | 17 | | `OCEANIXSTATUS` | 2160 | 16 |
+| `PPPSEEDAPPLICATIONSTATUS` | 2250 | 1 | | `PPPSEEDSTORESTATUS` | 2251 | 1 |
+| `TECTONICSCOMPENSATION` | 2291 | 1 | | | | |
+
+这一批的形状比前几批**窄**：9 类里有 7 类只有 2–7 个字段，只有 `LBANDTRACKSTAT`
+（1 个计数 + 5 个 16 字段块）和 `LBANDBEAMTABLE`（1 个计数 + 6 个 6 字段波束）是宽的。
+值得单独记的三条：
+
+- **`TECTONICSCOMPENSATION` 打出了这台机器配的负荷网格名**：`AVAILABLE,"Yangtze",-0.034,-0.008,-0.011`
+  —— 一个带引号的字符串 + 三个三位小数的分量，和 `LBANDBEAMTABLE` 的 `"AORW"` / `"IOR"` / `"98W"`
+  一样，都是「枚举字段其实是自由文本」的又一处。
+- **`PASSCOM3` 是这台机器唯一真的在转发的透传口**：payload 8 B = 长度 4 + 4 B 数据，
+  打出来是 `4,\xed\xff\xf7\xb9`（`%P` 转义）。`PASSCOM1` / `PASSCOM2` / `PASSCOM4..10` /
+  `PASSUSB1..3` / `PASSICOM1..7` / `PASSNCOM1..3` / `PASSAUX` 全部 `<OK` 但不出——
+  **不是名字错，是那些口上没有数据被转发**。
+- **`LBANDTRACKSTAT` 的 5 个块全是零**（`"",0,0,0000,0003,0,0.000,…`）：这台机器没有 L-Band
+  信号，`TERRASTARSTATUS` 也照实写着 `DISABLE,NO_SIGNAL`。布局能验的只有「字段数与偏移对」，
+  值域验不了，所以本批没有一条断言依赖这些数值。
+
+**被拒：`<ERROR:Message is invalid for this model`（50 个，固件选项没开）**
+
+`BSLNXYZ` `RTKDOP2` `MATCHEDSATS` `DUALANTENNAHEADING` `GPHDTDUALANTENNA`
+`RAWIMUSX` `INSSTDEVS` `INSATTX` `INSPOSX` `INSPVACMP` `INSPVASDCMP` `INSVELUSER`
+`IMURATEPVA` `IMURATEPVAS` `IMURATECORRIMUS` `INSATTQS` `CORRIMUS` `INSATT` `INSPOS` `INSSPD`
+`INSVEL` `INSPVA` `INSATTS` `INSPOSS` `INSSPDS` `INSVELS` `INSPVAS` `RAWIMU` `RAWIMUS`
+`VARIABLELEVERARM` `GIMBALLEDPVA` `INSUPDATESTATUS` `INSCALSTATUS` `INSSEEDSTATUS` `SYNCHEAVE`
+`DELAYEDHEAVE` `MARK2PVA` `MARK3PVA` `MARK4PVA` `TAGGEDMARK1PVA` `TAGGEDMARK2PVA`
+`TAGGEDMARK3PVA` `TAGGEDMARK4PVA` `RELINSPVA` `SKCALIBRATESTATUS` `SPRINKLERDATA`
+`SPRINKLERDATAH` `TRANSFERPORTSTATUS` `LUAOUTPUT` `WIFIAPSETTINGS`
+
+这一批把**整个 SPAN/IMU 族**（含 `ONCE` 与 `ONTIME` 两轮）与**整个 RTK 授权族**探穿了，
+结论和前两批一致且更完整：这台 OEM729 没有 SPAN、没有 RTK、没有双天线、没有 Wi-Fi AP 设置、
+没有 LUA 输出、没有洒水器/传输口。**这不是「名字写错」**，接收机原话就是上面那一句。
+
+**被拒：`<ERROR:Invalid Message. Field = 2`（18 个，名字根本不存在）**
+
+`RAWLBANDPACKET` `SBAS32` `SBAS33` `SBAS34` `SBAS35` `GPGGARTK` `CORRIMUDATA`
+`INSCOV` `INSCOVS` `IMUTOANTOFFSETS` `BESTLEVERARM` `BESTLEVERARM2` `PASSXCOM1`
+`PASSXCOM2` `PASSXCOM3` `PASSETH1` `INSUPDATE` `CORRIMUDATAS`
+
+值得单独记的一条：**试过的 13 个 `SBAS` 页名全部存在、`SBAS32/33/34/35` 却一个都不存在**
+——同一个 `SBAS<n>` 家族里接收机只认一部分 PRN 的页名（4 个不在册的被拒原话就是
+`<ERROR:Invalid Message. Field = 2`，不是「模型不支持」）。
+`CORRIMUDATA` / `INSCOV` 也属此列（字典有、接收机没有），而 `CORRIMUS` / `INSCOVS` 是被
+「模型不支持」拒的：**同一个概念，两个拼写，两种错误**。
+
+**不出（49 个：`<OK` 收下，1.5 s 与 25 s 两轮都没有一条记录）**
+
+- 没有 SBAS 星：`SBAS18` `SBASALMANAC` `SBAS0` `SBAS1` `SBAS2` `SBAS4` `SBAS5` `SBAS6` `SBAS7`
+  `SBAS9` `SBAS10` `SBAS12` `SBAS24`（13 个页名全部接受、全部不出）；
+- 配置了才有内容：`PPPDATUMINFO` `REFSTATION` `MARK4POS` `HEADINGSATS` `HEADINGEXT2`
+  `ALIGNDOP` `ALIGNBSLNXYZ` `ALIGNBSLNENU` `GENERATEALIGNCORRECTIONS` `USERI2CRESPONSE`；
+- 口上没有流量：`PASSCOM1` `PASSCOM2` `PASSCOM4` `PASSCOM5` `PASSCOM6` `PASSCOM7` `PASSCOM8`
+  `PASSCOM9` `PASSCOM10` `PASSUSB1` `PASSUSB2` `PASSUSB3` `PASSICOM1` `PASSICOM2` `PASSICOM3`
+  `PASSICOM4` `PASSICOM5` `PASSICOM6` `PASSICOM7` `PASSNCOM1` `PASSNCOM2` `PASSNCOM3` `PASSAUX`；
+- 固件不解这些信号：`NAVICRAWSUBFRAME` `NAVICIONO` `QZSSRAWCNAVMESSAGE`。
+
+### 顺手补的三个样本缺口：一个补上了、两个是「这台机器没有」
+
+这三个是 §9.x.14 末尾挂着的 `pack(...)` 数组 stride 判据，本批用同一个 session 一起试了。
+
+| 缺口 | 结果 | 依据 |
+|---|---|---|
+| `ETHSTATUS` count ≥ 2 | **拿不到**，但拿到了一条新证据 | 15 条记录全是 `count = 1`、payload 全是 32 B，且 15 条**逐字节相同**：`01 00 00 00` + `02 00 00 00` + MAC 串 20 B + `01 00 00 00`。也就是说**块长实测 28**（4 计数 + 28 块 = 32），而字典写的是 26——§9.x.14 里「`ETHSTATUS`(26→28)」这个猜测现在有了正面证据。但**stride 仍然证不了**：这台机器只有 `ETHA` 一块网口（枚举值 2、状态 `NOTCONNECT`），一块的时候「块长 28」和「块长 26 + 尾部 2 B」在字节上无法区分。 |
+| `SAVEDSURVEYPOSITIONS` | **拿不到**：这台机器上没存过点 | `LOG SAVEDSURVEYPOSITIONSB ONCE` 与 `ONTIME 1` 25 s 都回 `<OK`、一条不出。**不是「该机型不出」**，是这个日志的内容就是「已保存的测点」，而接收机里一个都没有（`SURVEYPOSITION` 是写命令，我没有动它——那会改接收机的 NVM）。 |
+| `SBAS17` / `SBAS18` | **没有 SBAS 星** | 两个名字都 `<OK`、都不出；顺手把 `SBAS0/1/2/4/5/6/7/9/10/12/24` 与 `SBASALMANAC` 一起试了，**13 个页名全部接受、全部不出**。所以不是某个 PRN 的问题，是没有 SBAS 信号可解。 |
+
+顺带排除了一条猜想：想读回「SBAS 到底启用没有」「有几块网口」，于是发了裸的
+`SBASCONTROL` 和 `ETHCONFIG`——两者都回 **`<ERROR:Message missing field`**。
+在这版固件上它们是**只写**命令，读不回来（`b6-readback.ps1` 保留了这个实测）。
+
+### 结果：786 / 786，46 354 / 46 354，零改动
+
+```
+b6-20261101.sbf              2 001 033 B   786 条二进制记录 + 57 条文本帧
+                                            （29 条 `[USB2]` 端口标记 + 25 条 `<OK`
+                                             + 3 条 `<ERROR:Trigger ONTIME not valid for this log`）
+golden-b6-20261101.ASCII     3 599 999 B   786 行      逐字节相同（cmp-lines：0 / 0）
+golden-b6-20261101.ABBREV_ASCII  4 179 807 B  46 354 行  逐字节相同（0 / 0）
+```
+
+**一行代码都没改。** 9 个新布局没有引出任何新规则，原因也直白：这一批撞到的三种形状
+（计数 + 定长块数组、带引号的自由文本、`%P` 转义）在前五批里各自都已经被钉过，
+`LBANDTRACKSTAT` 的「1 个计数 + 5 个 16 字段块」正是 `GEODETICDATUMS`（b5）那条路径的复写。
+反过来说，这一批的意义不在「又修了什么」，而在**它证明了前五批那几条是规则**：
+换 9 个从未见过的布局、零改动，一次对上。
+
+### 套件 summary 的 `UNKNOWN` 行（b5 就有，本批才量出来）
+
+套件的 `Summary_b6.txt` 有 17 行，我们只有 16 行，差的是这一行：
+
+```
+       0 | UNKNOWN                       |     230 |       0 |
+```
+
+b5 的 summary 里同样有一行，值是 **350**。而 b6 的输入文件里**一共只有 786 条二进制记录**
+（`AA 44 12` 出现 786 次、长度字节全是 28）加 25 个 `<OK` 回显，字节数分毫不差——**这个 230
+不可能是一条记录数**。所以它要么是套件自己的「未归类字节/未归类事件」计数器，要么是它把
+`sbf` 里的文本记录也按某种口径折算了一遍。我们**不实现**它（`summary.ts` 不在本轮范围内，
+而且照抄一个说不出含义的计数器没有意义），但把它记在这里，免得下次有人把它当成新的差异。
+
+### 回归（全部真跑，2026-11-01）
+
+`node --test --test-force-exit "packages/*/test/*.test.ts"` → **853 / 853 全绿**（17:52 的读数）。
+本路 `packages/protocol` 单独跑是 **265 / 265 全绿**（17:55），这是本批改动所在的那一层。
+
+本批的贡献是 **10 条 `live-b6.test.ts` + `convert-pipeline.test.ts` 的 b6 两行**。基线 777；
+从 777 到 853 多出来的 66 项是**同一棵树上另一路并行工作**（`packages/app` 的配置页从 14 个加
+到 18 个、`summary.ts` 开始实现上一节那个 `UNKNOWN` 行）在本轮期间落地的，不是本批的用例。
+三分钟后整仓又变成 866 / 864（那一路新加的 `packages/app/test/graph-tabs.test.ts` 与
+「Ports: the rate column…」两条红着）——**这就是取数的前提：整仓数字每几分钟就变一次。**
+
+跑这串命令的过程中看到过两次噪声，都不在本批范围内，记下来免得下次误判：
+
+- `packages/protocol/test/summary-counts.test.ts` 的「the only table row we still lack is the
+  suite's UNKNOWN row」红过三分钟——那一路把代码改成会打印 `UNKNOWN` 行，而用例里的断言还写着
+  「我们不打印」。他们改完即绿。
+- `packages/session/test/session.test.ts` 的「heartbeat counts misses…」在整仓负载下偶尔
+  `6 !== 2`（计时用例），单独跑 11/11、整仓重跑也绿。**不是回归。**
+
+结论：这个仓库现在**不是单写者**，整仓读数要在两路都停下时取；本批的判据以
+`packages/protocol/test/live-b6.test.ts` 与 `convert-pipeline.test.ts` 的 b6 两行为准。
+
+`逆向/tools/golden-check.ts`：**14 份全部 `OK`**
+
+| golden | 字节 | sha256 前 16 位 |
+|---|---|---|
+| broad-clean.ASCII | 5 567 000 | `c1196c58cf9f633c` |
+| clean-9600.ASCII | 489 205 | `9794cf614d3f9572` |
+| golden-live-nav.ASCII | 2 798 307 | `ebbaa745e04839c9` |
+| golden-live-nav2.ASCII | 2 657 890 | `1f0526440567fa93` |
+| golden-remote-23types.ASCII | 3 845 232 | `893d135e3e548f92` |
+| golden-b1-20261101.ASCII | 5 088 882 | `2d6f529f8829ed18` |
+| golden-b2-20261101.ASCII | 4 931 973 | `11a27b7a98bc20b2` |
+| golden-b3-20261101.ASCII | 6 137 463 | `c6a678cdf8da5631` |
+| golden-b4-20261101.ASCII | 7 646 463 | 由 `convert-pipeline.test.ts` 覆盖 |
+| golden-b5-20261101.ASCII | 6 354 933 | 同上 |
+| golden-b1/b2/b3/b4/b5.ABBREV_ASCII | 5 738 549 / 5 723 813 / 7 116 268 / 8 725 124 / 7 372 489 | `652d04cd…` / `adeb4417…` / `49c9c10b…` / `3d0d2314…` / `f0ae21ff…` |
+| clean-9600.ABBREV_ASCII | 567 576 | `c59fbfae34cb4232` |
+
+（`golden-check.ts` 的表里没有 b4 / b5 的 ASCII 两行，它们的字节数与逐字节比对由
+`convert-pipeline.test.ts` 的表负责，本批新加的 b6 两行同理。）
+
+### 剩余（为什么这批停在 9 类，没有凑到 10）
+
+任务书写的是「本批再推 10–20 类」。本批只拿到 **9 类**，原因是可核的，不是没找：
+
+- **字典里的 LOG 名已经被探尽了。** 323 个 LOG 名 = 108 个已有 golden + 83 个 b4/b5 已探 +
+  6 个 b5 已用别的方式覆盖（`RANGECMP` / `2` / `3` / `4` 解压成 `RANGE`，`RAWIMUX` /
+  `SYNCRELINSPVA` 属已判死的 SPAN 族）+ **本批 126 个**。没有第 127 个名字可探。
+- **没拿到的名字归成 8 类硬件/授权缺口**：SPAN（无 IMU）、RTK（无授权）、双天线（无第二副）、
+  Wi-Fi AP、LUA、SBAS（无星）、NavIC/CNAV（固件不解）、存储/文件系统（`FILE*` / `LUAFILE*`
+  在 b5 已整族被拒）。这些换机器或换固件才有，不是再加一个探测窗口的问题。
+- **三条 stride 判据里两条这条路走不通**：`ETHSTATUS` 需要一个有两块网口的接收机，
+  `SAVEDSURVEYPOSITIONS` 需要先在接收机上存点（那是改 NVM，本轮没做）。第三条 `SBAS17`
+  要等天上有一颗 SBAS 星。
+- **不建议为了凑数去做的两件事**：① 给接收机加 `SBASCONTROL ENABLE` 或存一个测点，
+  只为让两条日志出数据——这会改用户机器的配置；② 用合成帧造 `count ≥ 2` 的
+  `ETHSTATUS` / `SAVEDSURVEYPOSITIONS`——套件对这种帧的输出我们已经知道（§9.x.14），
+  但那就不是真机样本了，而本节所有的数字都要求真机。
+

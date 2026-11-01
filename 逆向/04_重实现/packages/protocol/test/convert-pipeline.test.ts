@@ -13,8 +13,9 @@
  *   broad-clean        5 567 000   clean-9600      489 205   live-nav   2 798 307
  *   live-nav2          2 657 890   remote-23types  3 845 232
  *   b1                 5 088 882   b2              4 931 973   b3         6 137 463
- *   b4                 7 646 463
+ *   b4                 7 646 463   b5              6 354 933   b6         3 599 999
  *   b1/b2/b3/b4 abbreviated 5 738 549 / 5 723 813 / 7 116 268 / 8 725 124
+ *   b5/b6 abbreviated 7 372 489 / 4 179 807
  *
  * The two abbreviated goldens that are not in the tree (`live-nav`, `live-nav2`, 3 248 102 and
  * 3 084 110 bytes) were produced by the same suite run and are compared by the CLI test's numbers.
@@ -68,6 +69,7 @@ const ASCII: Case[] = [
   { format: 'ASCII', capture: join(live, 'b3-20261101.sbf'), golden: join(live, 'golden-b3-20261101.ASCII'), bytes: 6_137_463 },
   { format: 'ASCII', capture: join(live, 'b4-20261101.sbf'), golden: join(live, 'golden-b4-20261101.ASCII'), bytes: 7_646_463 },
   { format: 'ASCII', capture: join(live, 'b5-20261101.sbf'), golden: join(live, 'golden-b5-20261101.ASCII'), bytes: 6_354_933 },
+  { format: 'ASCII', capture: join(live, 'b6-20261101.sbf'), golden: join(live, 'golden-b6-20261101.ASCII'), bytes: 3_599_999 },
 ];
 
 const ABBREV: Case[] = [
@@ -76,6 +78,7 @@ const ABBREV: Case[] = [
   { format: 'ABBREV_ASCII', capture: join(live, 'b3-20261101.sbf'), golden: join(live, 'golden-b3-20261101.ABBREV_ASCII'), bytes: 7_116_268 },
   { format: 'ABBREV_ASCII', capture: join(live, 'b4-20261101.sbf'), golden: join(live, 'golden-b4-20261101.ABBREV_ASCII'), bytes: 8_725_124 },
   { format: 'ABBREV_ASCII', capture: join(live, 'b5-20261101.sbf'), golden: join(live, 'golden-b5-20261101.ABBREV_ASCII'), bytes: 7_372_489 },
+  { format: 'ABBREV_ASCII', capture: join(live, 'b6-20261101.sbf'), golden: join(live, 'golden-b6-20261101.ABBREV_ASCII'), bytes: 4_179_807 },
 ];
 
 const AT = new Date('2026-11-01T00:00:00');
