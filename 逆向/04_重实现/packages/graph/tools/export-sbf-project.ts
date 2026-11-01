@@ -95,7 +95,7 @@ export function plotSummaryOf(capture: Capture): PlotSummary {
 /**
  * Window of the capture in Graph's ms scale, half-open at the end so every record is exported.
  *
- * Only the messages the 12 CSV charts actually plot (`CSV_CHARTS`) define the window. Taking every
+ * Only the messages the 13 CSV charts actually plot (`CSV_CHARTS`) define the window. Taking every
  * decoded frame instead is wrong on a real capture: `b1-20261101.sbf` carries `RXCONFIG` /
  * `SERIALCONFIG` frames with week `0`, and a few ephemeris frames stamped weeks 2235/2399/2402, which
  * stretch the window to 7100 days (the first run produced exactly that).

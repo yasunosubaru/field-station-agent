@@ -76,7 +76,8 @@ export const DEFAULT_TABLE_ROWS = 20;
 const SECTIONS: { name: string; titles: string[] }[] = [
   {
     name: 'PVT',
-    titles: ['2D Trajectory', 'Height', 'Position SD', 'Position Status', 'Position Type', 'Solution Statistics'],
+    titles: ['2D Trajectory', 'Height', 'Position SD', 'Position Status', 'Position Type', 'Solution Statistics',
+      'Velocity'],
   },
   { name: 'Tracking & Measurements', titles: ['Tracking Time', 'GNSS Signal Strength', 'Satellites and Signals'] },
   { name: 'Receiver Status', titles: ['CPU Usage', 'HW Monitor Status', 'Receiver Status'] },

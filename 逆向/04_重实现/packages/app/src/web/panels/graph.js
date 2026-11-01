@@ -25,8 +25,9 @@
  *             multiplier), the Export menu (CSV · HTML · KML · PDF — see `exportAs()`)
  *   real      the four tabs under Overview — PVT / Tracking & Measurements / Receiver Status /
  *             Project Information. Every tile is one plot of `06_Graph应用-附录/C_图表目录.json`
- *             whose CSV this project actually exported (12 of the catalog's 16), and every series
- *             is one column of one CSV read through `/api/graph/data?file=&column=`. Titles, plot
+ *             — 13 of the catalog's 16 get a tile; the three Heading & Attitude plots have no tab
+ *             — and every series is one column of that plot's CSV read through
+ *             `/api/graph/data?file=&column=`. Titles, plot
  *             kinds and y-axis units are the catalog's, verbatim; `chartSvgFor()` draws the same
  *             axes/grid/typography as the Overview chart, only repeated per tile.
  *   real      the Overview map, in **two renderers**. The default is the original engine —
@@ -40,8 +41,10 @@
  *   honest    a tile whose CSV is missing, whose column cannot be read, or whose rows
  *             `/api/graph/data` truncates prints `--` plus the reason instead of a curve;
  *             `Project Information` shows no message counts because `DataSummary.json` is not behind
- *             `/api/graph/*`, and the catalog's Heading & Attitude / Velocity plots have no tab or
- *             tile because this project (`clean`) exported no INS data
+ *             `/api/graph/*`; the catalog's Heading & Attitude plots have no tab at all (this build
+ *             has no INS pane), and `Velocity` is a real tile that only draws for a project whose
+ *             export contains `Velocity.csv` — `clean` carries no BESTVEL, so there it says so
+ *             instead of inventing a curve
  *
  * Contract with the shell (`src/web/index.html`): `mount(root, ctx)` / `unmount(root)`,
  * `ctx = { api: { get, post }, capture, onCaptureChange }`.
@@ -407,10 +410,11 @@ export function constellationOf(name) {
 /* ---------------- chart catalog (附录 C) ---------------- */
 
 /**
- * One entry per tab, holding the plots of `C_图表目录.json` that this project exported a CSV for.
- * `catalog` is the tab's **full** catalog list — the plots with no CSV are named in the tab footer
- * instead of being drawn as empty tiles, which is what the original does (`PlotSummary` decides
- * whether a `ChartControls` exists at all).
+ * One entry per tab: every plot of `C_图表目录.json` that has a tab in this build.
+ * `catalog` is the tab's **full** catalog list, so the footer can name a plot that has no tile at
+ * all (Heading & Attitude) separately from a tile whose CSV this project did not export
+ * (`Velocity` on a project without BESTVEL) — the original's `PlotSummary` decides whether a
+ * `ChartControls` exists, but a missing CSV must not silently delete the tile.
  *
  *   kind  line      numeric series, one polyline per column
  *         bar       numeric series drawn as bars, y axis hidden (`show: chartType !== "bar"`)
@@ -433,6 +437,7 @@ export const CHART_GROUPS = [
       { id: 'trajectory', title: '2D Trajectory', file: '2D Trajectory.csv', kind: 'geomap',
         xColumn: 'Longitude', yColumn: 'Latitude' },
       { id: 'height', title: 'Height', file: 'Height.csv', kind: 'line', units: '(m)' },
+      { id: 'velocity', title: 'Velocity', file: 'Velocity.csv', kind: 'line', units: '(m/s)' },
     ],
   },
   {
@@ -2735,13 +2740,20 @@ export function mount(root, ctx) {
       foot.textContent = '没有读到 /api/graph/files，无法确认哪些 CSV 存在。';
       return;
     }
-    const drawn = new Set(group.charts.map((chart) => chart.title));
-    const missing = group.catalog.filter((title) => !drawn.has(title));
-    foot.textContent = missing.length
-      ? `附录 C 的图表目录里 ${group.label} 有 ${group.catalog.length} 张图，`
-        + `${state.directory || '导出目录'} 里只有 ${group.charts.length} 张的 CSV；`
-        + `${missing.join(' / ')} 没有对应文件，所以这里不画（也不拿别的列顶替）。`
-      : `附录 C 的图表目录里 ${group.label} 的 ${group.catalog.length} 张图都有 CSV，全部画出来了。`;
+    // Two different gaps, and the footer must not confuse them: a catalogue plot with no tile at
+    // all (Heading & Attitude), and a tile whose CSV this project did not export (`Velocity` for a
+    // project without BESTVEL). Both are named; neither is filled with another column.
+    const tileless = group.catalog.filter((title) => !group.charts.some((chart) => chart.title === title));
+    const fileless = group.charts.filter((chart) => !state.files.some((file) => file.name === chart.file));
+    const parts = [
+      fileless.length
+        ? `${state.directory || '导出目录'} 里只有 ${group.charts.length - fileless.length} 张的 CSV；`
+          + `${fileless.map((chart) => chart.file).join(' / ')} 没有对应文件，`
+          + `${fileless.length === 1 ? '那一个图块' : '那几个图块'}留空（也不拿别的列顶替）。`
+        : `${group.charts.length} 张图的 CSV 都在，全部画出来了。`,
+    ];
+    if (tileless.length) parts.push(`目录里的 ${tileless.join(' / ')} 没有页签。`);
+    foot.textContent = `附录 C 的图表目录里 ${group.label} 有 ${group.catalog.length} 张图；${parts.join('')}`;
   }
 
   function paintTab(tabId) {

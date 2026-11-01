@@ -42,6 +42,7 @@
   "chartTitles": [
     "2D Trajectory",
     "Height",
+    "Velocity",
     "Position Status",
     "Position Type",
     "Position SD",
@@ -56,6 +57,7 @@
   "csv": [
     "2D Trajectory.csv",
     "Height.csv",
+    "Velocity.csv",
     "Position Status.csv",
     "Position Type.csv",
     "Position SD.csv",

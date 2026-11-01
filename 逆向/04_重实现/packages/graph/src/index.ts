@@ -4,7 +4,8 @@
  * Scope today (see `03_分析/06_Graph应用.md §11`):
  *  - `loadProject`   `.gpf` + `DataSummary.json` → `PlotSummary` (which charts exist)
  *  - `loadCapture`   SBF/ASCII capture → per-message records (reuses `packages/protocol`)
- *  - `exportCsv`     all 12 charts of the sample project, byte-identical to the shipped golden
+ *  - `exportCsv`     the 13 implemented charts, byte-identical to the shipped goldens where one exists
+ *                    (`clean`: 12 of them; `broad`: `Velocity.csv` too)
  *  - `exportKml`     `clean.kml`, byte-identical
  *  - `buildHtmlReport`  self-contained `<project>.html` (inline CSS + SVG + first rows of each CSV)
  *  - `buildPdfReport`   hand-written PDF 1.4, one page per chart (no library, no embedded fonts)

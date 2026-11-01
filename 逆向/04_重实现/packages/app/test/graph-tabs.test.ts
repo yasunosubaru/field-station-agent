@@ -15,7 +15,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +36,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = resolve(here, '..', 'src', 'server.ts');
 const repoRoot = resolve(here, '..', '..', '..', '..', '..');
 const graphCsvDir = join(repoRoot, '逆向', '00_来源', 'samples', 'graph', 'export', 'csv');
+/** Graph 2.11.0 对 `broad` 工程的真实导出（13 份，含 `Velocity.csv`；clean 没有 BESTVEL）。 */
+const broadCsvDir = join(repoRoot, '逆向', '00_来源', 'samples', 'graph', 'export-broad', 'csv');
 
 /* ---------------- the real server ---------------- */
 
@@ -113,11 +115,12 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
   assert.equal(CHART_GROUPS[1].label, 'Tracking & Measurements');
   assert.equal(CHART_GROUPS[2].label, 'Receiver Status');
 
-  // 附录 C：PVT 7 张、Tracking 3 张、Receiver Status 3 张。本工程导出 12 份 CSV，Velocity 缺。
+  // 附录 C：PVT 7 张、Tracking 3 张、Receiver Status 3 张。每一张都有一块图块 —— 工程没导出
+  // `Velocity.csv` 时那块图块留空（脚注写明），而不是把图块删掉。
   assert.equal(CHART_GROUPS[0].catalog.length, 7);
   assert.equal(CHART_GROUPS[1].catalog.length, 3);
   assert.equal(CHART_GROUPS[2].catalog.length, 3);
-  assert.equal(CHART_GROUPS[0].charts.length, 6);
+  assert.equal(CHART_GROUPS[0].charts.length, 7);
   assert.equal(CHART_GROUPS[1].charts.length, 3);
   assert.equal(CHART_GROUPS[2].charts.length, 3);
 
@@ -129,9 +132,11 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
   }
   assert.deepEqual(titles.slice(0, 3), ['Position Type', 'Position Status', 'Position SD']);
 
-  // 每块图盯住一份真实存在的 CSV
+  // 每块图盯住一份真实存在的 CSV。`Velocity.csv` 只在 broad 导出里（clean / b1 没有 BESTVEL），
+  // 所以两个目录都看。
   for (const chart of CHART_GROUPS.flatMap((group) => group.charts)) {
-    const header = readFileSync(join(graphCsvDir, chart.file), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
+    const dir = existsSync(join(graphCsvDir, chart.file)) ? graphCsvDir : broadCsvDir;
+    const header = readFileSync(join(dir, chart.file), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
     const columns = (header.find((line) => line.trim() && !line.startsWith('#')) ?? '').split(',');
     assert.ok(columns.length > 1, `${chart.file} 读得出表头`);
   }
@@ -143,6 +148,10 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
   assert.equal(byTitle.get('Position Type')!.kind, 'category');
   assert.equal(byTitle.get('Position Status')!.kind, 'category');
   assert.equal(byTitle.get('2D Trajectory')!.kind, 'geomap');
+  assert.equal(byTitle.get('Velocity')!.kind, 'line');
+  assert.equal(byTitle.get('Velocity')!.units, '(m/s)');
+  assert.equal(byTitle.get('Velocity')!.file, 'Velocity.csv');
+  assert.equal(byTitle.get('Velocity')!.minYZero, undefined, '目录里 Velocity 没有 minYZero');
   assert.equal(byTitle.get('GNSS Signal Strength')!.units, 'C/No (dB-Hz)');
   assert.equal(byTitle.get('Tracking Time')!.units, '(s)');
   assert.equal(byTitle.get('Tracking Time')!.minYZero, true);
@@ -154,7 +163,7 @@ test('每个页签的图块与附录 C 的目录一致，且都有 CSV', () => {
 });
 
 test('页签标记：三页各一块图块，Project Information 是信息卡，没有占位文案', () => {
-  assert.equal(chartsOf('pvt').length, 6);
+  assert.equal(chartsOf('pvt').length, 7);
   assert.equal(chartsOf('tracking').length, 3);
   assert.equal(chartsOf('receiver').length, 3);
   assert.deepEqual(chartsOf('project'), []);

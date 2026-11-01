@@ -172,6 +172,53 @@ const bestposHeight: CsvColumn = {
   value: (record) => field(record, 'orthometric_height'),
 };
 
+/**
+ * `Velocity.csv` — one **BESTVEL** record → five derived columns.
+ *
+ * Ground truth: `00_来源/samples/graph/export-broad/csv/Velocity.csv` (project `broad`, 60 rows,
+ * 2442 467950.000 – 2442 468009.000). Graph does not plot BESTVEL's fields directly: it turns
+ * `horizontal_speed` + `ground_track` into a north/east pair. `ground_track` is the SBF field in
+ * **degrees** (`0…360`, clockwise from north), so the components are
+ *
+ * ```
+ * North      = horizontal_speed · cos(ground_track°)
+ * East       = horizontal_speed · sin(ground_track°)
+ * Up         = z                     (BESTVEL's own vertical speed, m/s)
+ * Horizontal = hypot(North, East)    (recomputed; equals horizontal_speed)
+ * 3D         = hypot(Horizontal, Up)
+ * ```
+ *
+ * These five agree with the golden cell for cell (all 300 numeric cells), and every cell is
+ * printed `%.6f` with its zeros kept — no column here is trailing-zero trimmed.
+ */
+function velocityComponents(record: CaptureRecord): { north: number; east: number; up: number } {
+  const speed = field(record, 'horizontal_speed');
+  const track = (field(record, 'ground_track') * Math.PI) / 180;
+  return { north: speed * Math.cos(track), east: speed * Math.sin(track), up: field(record, 'z') };
+}
+
+const VELOCITY_COLUMNS: CsvColumn[] = [
+  { header: 'North Vel', format: 'fixed6', value: (record) => velocityComponents(record).north },
+  { header: 'East Vel', format: 'fixed6', value: (record) => velocityComponents(record).east },
+  { header: 'Up Vel', format: 'fixed6', value: (record) => field(record, 'z') },
+  {
+    header: 'Horizontal Speed',
+    format: 'fixed6',
+    value: (record) => {
+      const { north, east } = velocityComponents(record);
+      return Math.hypot(north, east);
+    },
+  },
+  {
+    header: '3D Speed',
+    format: 'fixed6',
+    value: (record) => {
+      const { north, east, up } = velocityComponents(record);
+      return Math.hypot(Math.hypot(north, east), up);
+    },
+  },
+];
+
 /** `Position SD.csv` — three SD columns, six decimals **trimmed** (golden `1.19761`). */
 const POSITION_SD_COLUMNS: CsvColumn[] = [
   { header: 'Latitude SD', format: 'trim6', value: (record) => field(record, 'latitude_std_dev') },
@@ -253,6 +300,7 @@ function hwMonitorColumns(_project: GraphProject, capture: Capture): CsvColumn[]
 export const CSV_CHARTS: ChartCsvSpec[] = [
   { title: '2D Trajectory', message: 'BESTPOS', columns: [bestposLatitude, bestposLongitude] },
   { title: 'Height', message: 'BESTPOS', columns: [bestposHeight] },
+  { title: 'Velocity', message: 'BESTVEL', columns: VELOCITY_COLUMNS },
   { title: 'Position Status', message: 'BESTPOS', columns: [bestposSolutionType] },
   { title: 'Position Type', message: 'BESTPOS', columns: [bestposPositionType] },
   { title: 'Position SD', message: 'BESTPOS', columns: POSITION_SD_COLUMNS },

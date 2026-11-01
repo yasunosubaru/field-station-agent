@@ -70,7 +70,8 @@ test('listExportProjects finds every export directory, not a hardcoded name', ()
 
   const b1 = projects.find((project) => project.key === 'b1')!;
   assert.equal(b1.name, 'b1');
-  assert.equal(b1.csvCount, 12);
+  // b1 的采集里有 25 条 BESTVEL，所以重导之后是 13 份（多一份 Velocity.csv）；clean 没有 BESTVEL。
+  assert.equal(b1.csvCount, 13);
   assert.equal(b1.dataFileName, 'b1-20261101.sbf', '第二个工程是从 b1 的 SBF 转出来的');
   assert.equal(b1.startTime, '2442,570227.100');
   assert.equal(b1.duration, '00:00:28');
@@ -101,11 +102,20 @@ test('resolveExportProject accepts the directory key and the project name, and r
   }
 });
 
-test('the two projects export the same twelve chart names, with different data', () => {
+test('the two projects export the same chart names — plus Velocity, which only b1 has data for', () => {
   const projects = listExportProjects(EXPORT_DIR);
   const clean = projects.find((project) => project.key === 'csv')!;
   const b1 = projects.find((project) => project.key === 'b1')!;
-  assert.deepEqual(listProjectCsv(b1).map((file) => file.name), listProjectCsv(clean).map((file) => file.name));
+  const cleanNames = listProjectCsv(clean).map((file) => file.name);
+  const b1Names = listProjectCsv(b1).map((file) => file.name);
+  assert.deepEqual(b1Names.filter((name) => name !== 'Velocity.csv'), cleanNames, '12 份共有');
+  assert.deepEqual(b1Names.filter((name) => !cleanNames.includes(name)), ['Velocity.csv'],
+    'b1 多一份 Velocity：它的采集里有 25 条 BESTVEL，clean 一条也没有');
+
+  const b1Velocity = projectGraphData(b1, 'Velocity.csv');
+  assert.equal(b1Velocity.rows, 25);
+  assert.deepEqual(b1Velocity.numericColumns.map((column) => column.name),
+    ['North Vel', 'East Vel', 'Up Vel', 'Horizontal Speed', '3D Speed']);
 
   const cleanHeight = projectGraphData(clean, 'Height.csv');
   const b1Height = projectGraphData(b1, 'Height.csv');
@@ -188,7 +198,7 @@ test('GET /api/graph/projects lists both projects with name, CSV count, time ran
     'endTime', 'key', 'modified', 'name', 'startTime',
   ]);
   assert.equal(b1.name, 'b1');
-  assert.equal(b1.csvCount, 12);
+  assert.equal(b1.csvCount, 13);
   assert.equal(b1.startTime, '2442,570227.100');
   assert.equal(b1.endTime, '2442,570255.151');
   assert.equal(b1.duration, '00:00:28');
@@ -206,7 +216,7 @@ test('GET /api/graph/files|data take ?project= and stay 400/404 on bad input', a
   const b1Files = await getJson('/api/graph/files?project=b1');
   assert.equal(b1Files.status, 200);
   assert.equal(b1Files.body.project.key, 'b1');
-  assert.equal(b1Files.body.count, 12);
+  assert.equal(b1Files.body.count, 13);
   assert.equal(b1Files.body.directory, '逆向/00_来源/samples/graph/export/b1/csv');
   assert.equal(b1Files.body.files[0].rows, 51);
 
@@ -286,7 +296,7 @@ test('re-running the exporter reproduces samples/graph/export/b1 byte for byte',
 
     const committed = readdirSync(join(B1_DIR, 'csv')).filter((name) => name.endsWith('.csv')).sort();
     const rendered = readdirSync(join(out, 'csv')).filter((name) => name.endsWith('.csv')).sort();
-    assert.deepEqual(rendered, committed, '同样的 12 份 CSV');
+    assert.deepEqual(rendered, committed, '同样的 13 份 CSV（含 Velocity）');
 
     // `#Project Directory:` embeds the output directory, so it is the one line that may differ.
     const normalise = (text: string) => text.replace(/^#Project Directory:.*$/m, '#Project Directory: <out>');
@@ -332,8 +342,8 @@ test('GET /api/graph/pdf?project=b1 exports that project, not clean', async () =
   assert.equal(b1.status, 200);
   assert.equal(b1.headers.get('x-pdf-project'), 'b1');
   assert.equal(b1.headers.get('content-disposition'), 'attachment; filename="b1.pdf"');
-  assert.equal(b1.headers.get('x-pdf-charts'), '12');
-  assert.equal(b1.headers.get('x-pdf-pages'), '13');
+  assert.equal(b1.headers.get('x-pdf-charts'), '13');
+  assert.equal(b1.headers.get('x-pdf-pages'), '14');
   await b1.arrayBuffer();
 
   const unknown = await fetch(base + '/api/graph/pdf?project=Nope', { headers: { connection: 'close' } });
