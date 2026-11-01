@@ -172,7 +172,7 @@ function main(): void {
       inputDirectory: dirname(inputPath),
       outputDirectory: join(outputRoot, base),
       formatName: formatDirectory(format),
-      frames: outcome.accepted,
+      frames: outcome.summaryFrames,
       completedAt: at,
       unknownBytes: outcome.unknownCount,
       unConvertedBytes: outcome.unConvertedBytes,

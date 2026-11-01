@@ -185,6 +185,13 @@ export interface ConvertOutcome {
   converted: SbfFrame[];
   /** `converted` with a matching CRC — the records that are actually written. */
   accepted: SbfFrame[];
+  /**
+   * The records the Summary's time range is measured over: the input **after the Time Interval but
+   * before `--decimate`**. The suite reports `2442, 570227.071 → 570255.15` for b1 both with and
+   * without `--decimate=5`, while the written stream starts at 570230; a window, on the other hand,
+   * does narrow it (b1 `570250 → 570255`). Passing `accepted` here would report the decimated span.
+   */
+  summaryFrames: SbfFrame[];
   /** Source/output per log id, for the summary table (`summary.ts#buildSummary`). */
   counts: Map<number, { name: string; source: number; output: number }>;
   /**
@@ -1159,6 +1166,8 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   // rule, so the window is applied here rather than in the CLI.
   const inputFrames = applyTimeWindow(captureFrames, options.startTime, options.finishTime, options.limitDuration);
   const windowed = inputFrames !== captureFrames;
+  /* The Summary's time range follows this stream (post-window, pre-decimation), not `accepted`. */
+  const summaryFrames = inputFrames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
 
   // `--decimate` filters the record stream itself, so the summary's Source # column follows it:
   // the suite's b1 run at `--decimate=5` lists `BESTPOS 17 → 17` where the full capture has 32.
@@ -1349,6 +1358,17 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     }
   }
 
+  /**
+   * `N bytes could not be converted.` on the ASCII family is the **unknown bytes the run kept**,
+   * and the suite prints it only when they are preserved (`--unknown-bytes=file` or `interleave`);
+   * with `ignore` / no flag the sentence is absent (measured on b1: 5 386 with `file`, 5 386 with
+   * `interleave`, no sentence with `ignore`). The number follows decimation and the Time Interval
+   * through `unknownBytes` (b1: 4 014 with `--decimate=5`, 3 770 with the window).
+   */
+  if (textFamily && (mode === 'file' || mode === 'interleave')) {
+    unConvertedBytes = unknownBytes.length;
+  }
+
   return {
     format,
     formatDirectory: formatDirectory(format),
@@ -1359,6 +1379,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     passthrough,
     converted,
     accepted,
+    summaryFrames: summaryFrames.length > 0 ? summaryFrames : accepted,
     counts,
     unknownCount,
     unknown: unknownBytes,

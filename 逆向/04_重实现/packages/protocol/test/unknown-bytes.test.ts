@@ -104,12 +104,22 @@ for (const capture of CAPTURES) {
   });
 }
 
-test('b2: file and ignore agree on the summary; only the sidecar differs', () => {
+test('b2: file adds only the unconverted-byte sentence; the converted stream is identical', () => {
   const withFile = convert('b2-20261101', ['--unknown-bytes=file']);
   const withIgnore = convert('b2-20261101', ['--unknown-bytes=ignore']);
   try {
-    const strip = (text: string) => text.split('\n').filter((_line, index) => index !== 1 && index !== 4 && index !== 7).join('\n');
+    // The suite prints `7056 bytes could not be converted.` only for `file`/`interleave`; everything
+    // else in the Summary is the same (path/timestamp lines excluded by content, not by index).
+    const strip = (text: string) => text.split('\n')
+      .filter((line) => !line.includes('bytes could not be converted.'))
+      .filter((line) => !line.includes('The following conversion was completed at'))
+      .filter((line) => !line.startsWith('Input File was '))
+      .filter((line) => !line.startsWith('Converted files were output to '))
+      .join('\n')
+      .replace(/\n+$/, '');
     assert.equal(strip(withFile.summary), strip(withIgnore.summary));
+    assert.match(withFile.summary, /^7056 bytes could not be converted\.$/m);
+    assert.doesNotMatch(withIgnore.summary, /bytes could not be converted/);
     // The converted file itself is the same too: the unknown bytes only go to the sidecar.
     assert.equal(withFile.converted.length, withIgnore.converted.length);
     assert.ok(withFile.converted.every((byte, index) => byte === withIgnore.converted[index]));
@@ -278,5 +288,42 @@ test('b1: a Time Interval takes the records it leaves out of .UNKNOWN as well', 
   });
   withRun('b2-20261101', ['--start-time=2442,577760', '--finish-time=2442,577770', '--unknown-bytes=file'], (run) => {
     assert.equal(readFileSync(join(run.formatDir, 'b2-20261101.UNKNOWN')).length, 7056);
+  });
+});
+
+test('Summary: the unconverted-byte sentence is the kept .UNKNOWN size, and only with file/interleave', () => {
+  // b1 --decimate=5: the suite writes `4014 bytes could not be converted.` above the table.
+  withRun('b1-20261101', ['--decimate=5', '--unknown-bytes=file'], (run) => {
+    assert.match(run.summary, /^4014 bytes could not be converted\.$/m);
+  });
+  // The Text Interval narrows both the file and the sentence (3 770), and the range is the window.
+  withRun(
+    'b1-20261101',
+    ['--start-time=2442,570250', '--finish-time=2442,570255', '--unknown-bytes=file'],
+    (run) => {
+      assert.match(run.summary, /^3770 bytes could not be converted\.$/m);
+      assert.match(run.summary, /Start time : 2442, 570250\n/);
+      assert.match(run.summary, /Finish time: 2442, 570255\n/);
+    },
+  );
+  // No flag (and `ignore`) keeps the sentence out, exactly like the suite.
+  withRun('b1-20261101', [], (run) => {
+    assert.doesNotMatch(run.summary, /bytes could not be converted/);
+  });
+  withRun('b1-20261101', ['--unknown-bytes=ignore'], (run) => {
+    assert.doesNotMatch(run.summary, /bytes could not be converted/);
+  });
+});
+
+test('Summary: the time range follows the window, not --decimate', () => {
+  // The suite reports the input's own span even when decimation drops the earliest 3 seconds.
+  withRun('b1-20261101', ['--decimate=5'], (run) => {
+    assert.match(run.summary, /Start time : 2442, 570227\.071\n/);
+    assert.match(run.summary, /Finish time: 2442, 570255\.15\n/);
+  });
+  // b2 starts at 577758.950 (the first non-SATTIME record), not at its ALMANAC 577140.
+  withRun('b2-20261101', ['--decimate=5'], (run) => {
+    assert.match(run.summary, /Start time : 2442, 577758\.95\n/);
+    assert.match(run.summary, /Finish time: 2442, 577792\.05\n/);
   });
 });
