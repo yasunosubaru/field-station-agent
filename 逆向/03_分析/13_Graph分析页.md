@@ -230,3 +230,122 @@ Graph 并不直接画 `BESTVEL` 的字段，而是把 `horizontal_speed` + `grou
 `pvt-seven-tiles.png`（b1 的 PVT 七块，含 `Velocity(m/s)` 五条曲线）、`velocity-tile.png`（该图块）、
 `pvt-clean-velocity-empty.png`（clean 的 PVT：7 块，Velocity 留空并说明原因）、`pvt-full.png`
 （整页）。控制台 **0 error / 0 pageerror**，1 条 warning 来自 Luciad/WebGPU 纹理（原有）。
+
+## 9 PDF 报告里的中文：按需嵌入 SimHei（B 类第 9 项）
+
+**问题**：`packages/graph/src/pdf.ts` 是手写 PDF 1.4，字体只按名字引用 base-14 `Helvetica`
+（`/Encoding /WinAnsiEncoding`），`text()` 只接受可打印 ASCII，超出的一律写成 `?`。
+`#Project Directory:` 是本机路径（`H:\Archive\文件夹 老版\…`），于是 b1 的 PDF 里整条路径变成
+`H:\Archive\??? ??\personal content\????\…`（改动前实测）。
+
+| 项 | 状态 |
+|---|---|
+| 非 ASCII 文本 | **正常显示**：按需嵌入系统 `simhei.ttf`，`pdftotext` 能原样取回中文 |
+| 纯 ASCII 文档 | **逐字节不变**：clean 报告 330 802 B，SHA-256 `ad491e922ed1ccdc4ae4aedf2ad251f7fc11f331be489b8589f8780cdb0fa886`，与改动前完全相同 |
+| 粗体 | SimHei 只有一个字重，粗体 run 回退到同一字体（**不做**合成粗体） |
+| 降级 | 字体缺失 / 解析失败 / `.ttc` → 旧行为（ASCII + `?`），信息页脚注与 `pdfCjkFontStatus()` 都说明原因 |
+| 测试 | 新增 `packages/graph/test/pdf-unicode.test.ts` 7 项；全量 **1023/1023** |
+
+### 9.1 TTF 解析（`pdf.ts` 内，无依赖）
+
+只读 PDF 字体字典与排版必须一致的那几张表，**不做 subset**、不碰 `glyf`/`loca`：
+
+| 表 | 取什么 | 用途 |
+|---|---|---|
+| `head` | `unitsPerEm`、`xMin/yMin/xMax/yMax` | `/FontBBox`、所有 1/1000 em 换算的分母 |
+| `hhea` | `ascender`、`descender`、`numberOfHMetrics` | `/Ascent`、`/Descent`；`hmtx` 的条目数 |
+| `maxp` | `numGlyphs` | `advances` 数组长度 |
+| `hmtx` | 每个 gid 的 advance（末项重复到 `numGlyphs`） | `/W` 与排版宽度 |
+| `cmap` | format 12（优先，出 BMP）→ format 4 | Unicode → gid |
+| `OS/2` | `fsType`、`sTypoAscender/Descender`、`sCapHeight` | 度量优先于 `hhea`；`fsType=8` 记下但不强校验 |
+| `name` | id 6（Windows/Unicode 优先） | `/BaseFont /SimHei` |
+
+拒绝的输入各有明确理由，不靠猜：`ttcf`（`.ttc` 集合，需走集合头）、`OTTO`（CFF 轮廓，得用 `/FontFile3`）、
+缺表、`unitsPerEm=0`、`numberOfHMetrics` 越界。
+
+### 9.2 PDF 字体对象（整份嵌入，5 个对象）
+
+对象编号接在页面之后（**纯 ASCII 文档不会走到这里，因此对象号与字节都不变**）：
+
+```
+34 0 obj  << /Length 4983830 /Length1 9745792 /Filter /FlateDecode >>   FontFile2（整份 TTF）
+35 0 obj  /Type /FontDescriptor /FontName /SimHei /Flags 4
+          /FontBBox [-12 -156 996 859] /ItalicAngle 0 /Ascent 859 /Descent -141 /CapHeight 688
+          /StemV 80 /FontFile2 34 0 R
+36 0 obj  /Type /Font /Subtype /CIDFontType2 /BaseFont /SimHei
+          /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >>
+          /FontDescriptor 35 0 R /DW 1000 /W [3 [500] 29 [500] 38 [500] 82 [500 500] … 2598 [1000] …]
+          /CIDToGIDMap /Identity
+37 0 obj  /Type /Font /Subtype /Type0 /BaseFont /SimHei /Encoding /Identity-H
+          /DescendantFonts [36 0 R] /ToUnicode 38 0 R
+38 0 obj  /Length 577   ToUnicode CMap（只列本篇用到的 gid，不铺 2 万条）
+```
+
+- 文本写成 UTF-16BE **glyph id** 的十六进制串：`BT /F3 9.5 Tf … Tm <91CE5B166D4B8BD5> Tj ET`；
+- `ToUnicode` 逐 gid 反查（`<0A26> <53F0>`），`pdftotext -enc UTF-8` 因此还原中文而不是画符；
+- `/W` 按 gid 连续段合并（`82 [500 500]`），宽度与排版同源，右对齐的表格列不错位；
+- `DW 1000` 兜底，`CIDToGIDMap /Identity` 让 CID 就是 gid；
+- `Flags 4`（Symbolic）：编码是我们自己的 `Identity-H`，不是某个 Latin 编码。
+
+### 9.3 混排与「只有需要时才切换」
+
+`text()` 逐字符串选字体：**纯 ASCII → 原来的 `F1`/`F2`，含非 ASCII → `F3`**。宽度也逐字符串选
+（ASCII 走 Helvetica AFM，其余走 TTF advance），所以
+`H:\Archive\` 与 `文件夹 老版` 在同一条路径里各用各的字号宽度，右对齐仍对得上。
+粗体请求（`F2`）遇到中文仍落到同一 `F3`——SimHei 没有第二个字重，宁可少一层强调也不伪造。
+
+信息页脚注会随状态改写（这也是 ASCII 文档唯一会变的地方——而它对 ASCII 文档不变）：
+`base-14 Helvetica, no embedded fonts` → `Helvetica for ASCII, embedded SimHei TrueType for non-ASCII text`；
+降级时 → `… no usable CJK TrueType face found: non-ASCII text is drawn as ?`。
+`/Title` 等文档信息用 UTF-16BE + `FEFF` BOM，`pdfinfo` 也显示中文标题。
+
+字体来源：`options.cjkFontPath` → `GRAPH_PDF_CJK_FONT`（`off` 关闭）→ `%WINDIR%\Fonts\simhei.ttf`
+→ `Deng.ttf` → 若干 Linux 单体 CJK TTF。**不往仓库拷字体**，运行时读系统文件；读不到就降级。
+
+### 9.4 纯 ASCII 回归：逐字节相同
+
+| 文档 | 改动前 | 改动后 |
+|---|---|---|
+| clean（12 图，全 ASCII 元数据） | 330 802 B | **330 802 B，SHA-256 相同**（`ad491e922ed1ccdc4ae4aedf2ad251f7fc11f331be489b8589f8780cdb0fa886`） |
+| b1（13 图，中文路径） | 1 682 344 B，路径是 `???` | **6 668 948 B**，路径正确 |
+
+`buildPdfReport` 只在「有字符串真的走了嵌入字体」时才追加那 5 个对象；字体本身可用与否不影响
+ASCII 文档（测试里同一份输入分别带字体/强制 `cjkFontPath: null` 生成，字节相同）。
+`packages/graph/test/pdf.test.ts` 9 项全过，`pdf-unicode.test.ts` 另把 clean 的 SHA-256 钉死。
+
+### 9.5 中文实测（真导出，不是手写 CSV）
+
+```powershell
+node packages/graph/tools/export-sbf-project.ts `
+  --capture "../00_来源/samples/live-20261031/b1-20261101.sbf" `
+  --out "C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfcjk\proj\b1" --name b1
+# 再把 13 份 CSV 的 #Project Name: / #Project Directory: 改成「野外台站」/「C:\测试\项目」
+```
+
+- `pdfinfo`：`Pages: 14`（1 页信息 + 13 页图），`Title: 野外台站 Report`，
+  `Producer: … embedded SimHei for non-ASCII text`，无 xref 警告；
+- `pdftotext -enc UTF-8 -f 1 -l 1`：`野外台站 Report` / `野外台站` / `C:\测试\项目` 全部逐字还原，
+  页面里没有一个残留的 `?`；
+- `pdftoppm -r 110 -png` 第一页目视：标题、Project Name、Project Directory 都是正常汉字，
+  不是方块也不是问号 —— `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfcjk\render-01.png`；
+- 同一份 b1（仓库里的样本 CSV，路径本身就是中文）改前/改后 `pdftotext` 全文比对：
+  **2024 行里只有 2 行不同**——那条路径，和脚注那句说明，其余 2022 行一字不差。
+
+### 9.6 体积
+
+`simhei.ttf` 9 745 792 B；`deflate level 9` 后 4 983 830 B（0.511），PDF 净增约 **4.98 MB**
+（不做子集）。任务书给的预算是 +9.7 MB，压缩后约为一半；`pyftsubset` 子集能到几十 KB，本轮没做。
+
+### 9.7 没做到的
+
+1. **不做子集**：整份 SimHei 进文件，所以每份含中文的报告都是 ~6.7 MB。子集要改 `glyf`/`loca`/
+   `cmap` 并与 `/W`、`ToUnicode` 同步，风险与收益不划算（这些 PDF 是给人看的报告，不是分发件）。
+2. **只认单体 `.ttf`**：`.ttc`（`Deng.ttc`、`msyh.ttc`）与 CFF 轮廓（`OTTO`）都不解析，直接降级并在
+   信息页说明；Windows 上默认的 `simhei.ttf` 是单体，够用。
+3. **非 BMP 字符**看字体覆盖：`ToUnicode` 支持代理对，但 SimHei 里没有 emoji，这类字符落成
+   `.notdef`（`ToUnicode` 里记作 `<0000> <FFFD>`），不会变成错字。
+4. **首次构建多 ~15 ms**（读 9.7 MB + 解析 cmap，之后按路径缓存）；纯 ASCII 文档也付这一笔，
+   因为它无法预知后面有没有中文。
+5. **混排 run 整体用 SimHei**：`C:\测试\项目` 这条字符串里的 ASCII 也是 SimHei 的字形
+   （SimHei 的拉丁是 500/1000 em 等宽），不是 Helvetica——这是「按字符串选字体」的直接结果，
+   宽度与渲染一致，只是字形风格略有差别。
