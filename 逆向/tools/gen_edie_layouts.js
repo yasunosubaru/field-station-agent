@@ -13,6 +13,14 @@
 //   VARIABLE_LENGTH_ARRAY -> `arrayLengthFieldSize` count prefix (absent for RXCONFIG/RXCONFIGUSER,
 //                         whose whole payload is the data), then N scalars of `dataType.length` bytes
 //
+// Two extra keys tell a reader what the offsets cannot:
+//   `arrayKind`      which of the three array forms this is. The ABBREV writer needs it: only a
+//                    FIELD_ARRAY breaks into one line per element (a VARIABLE_LENGTH_ARRAY's 1024
+//                    samples and a FIXED_LENGTH_ARRAY's values stay on the data line).
+//   `dynamicOffset`  the offset is a guess, because an array in front of it carries its length on
+//                    the wire. The reader continues at the end of the bytes actually consumed
+//                    (IPSTATUS' `dns_server` follows an array of variable-length strings).
+//
 // The last rule was missing until 2026-11-01 and cost 149 log lines: ITPSDFINAL/ITPSDDETECT carry
 // their 1024 power samples as a VARIABLE_LENGTH_ARRAY, and without it the field was emitted as one
 // `%hu` scalar, so the ASCII writer printed `...,97656.250,1024` where the suite prints 1024 samples
@@ -53,10 +61,30 @@ function scalarWidth(field) {
   return Number(field.dataType?.length ?? 0);
 }
 
+/** True when a built element list cannot be measured from the dictionary alone. */
+function hasVariableWidth(segments) {
+  return segments.some((segment) => {
+    if (segment.kind === 'string') return segment.variable === true;
+    if (segment.kind === 'array') return segment.fixedCount === undefined || hasVariableWidth(segment.elements);
+    return false;
+  });
+}
+
 function buildFields(fields) {
   const segments = [];
   let offset = 0;
+  // Set once a segment's real width stops being derivable from the dictionary. Everything behind
+  // it is placed by the reader at the end of the bytes actually consumed, so its `offset` here is
+  // only the running guess and `dynamicOffset` says "do not trust this number".
+  //
+  // The case that forced this: IPSTATUS' `dns_server` follows an `ip_status` FIELD_ARRAY whose
+  // elements hold three `variable` STRINGs, so the array is 48 bytes on the wire for the b2 record
+  // while the sum of declared widths says 212. The old table put `dns_server` at 4 (the count
+  // prefix alone) and `#IPSTATUSA` came out with the wrong count and the wrong addresses
+  // (`golden-b2-20261101.ASCII` vs our line).
+  let dynamic = false;
   for (const field of fields ?? []) {
+    const placement = dynamic ? { offset, dynamicOffset: true } : { offset };
     if ((field.type === 'FIXED_LENGTH_ARRAY' || field.type === 'STRING') && !field.fields) {
       // CHAR/UCHAR arrays are printed as one quoted string (`base_id` → `""`), not as N numbers.
       // `STRING` is the same thing with a different type name: `arrayLength` bytes of CHAR
@@ -78,7 +106,7 @@ function buildFields(fields) {
         segments.push({
           name: field.name,
           kind: 'string',
-          offset,
+          ...placement,
           size,
           format: field.conversionString ?? null,
           ...(fixed ? {} : { variable: true }),
@@ -92,18 +120,22 @@ function buildFields(fields) {
       const elements = buildFields(elementFields);
       const stride = elements.reduce((n, el) => Math.max(n, el.offset + (el.size ?? 0)), 0);
       const countPrefix = field.type === 'FIELD_ARRAY' ? Number(field.dataType?.length ?? 4) : 0;
+      const fixedCount = field.type === 'FIXED_LENGTH_ARRAY' ? Number(field.arrayLength ?? 0) : undefined;
       const segment = {
         name: field.name,
         kind: 'array',
-        offset,
+        ...placement,
         countSize: countPrefix,
-        fixedCount: field.type === 'FIXED_LENGTH_ARRAY' ? Number(field.arrayLength ?? 0) : undefined,
+        fixedCount,
+        arrayKind: field.type === 'FIXED_LENGTH_ARRAY' ? 'fixed' : 'field',
         stride,
         elements,
       };
       segments.push(segment);
-      // A fixed array's element count comes from the definition, so the payload cannot grow.
-      offset += countPrefix + (segment.fixedCount ?? 0) * stride;
+      // A fixed array's element count comes from the definition, so the payload cannot grow; a
+      // FIELD_ARRAY carries its count on the wire, so nothing behind it can be placed here.
+      offset += countPrefix + (fixedCount ?? 0) * stride;
+      if (fixedCount === undefined || hasVariableWidth(elements)) dynamic = true;
     } else if (field.type === 'VARIABLE_LENGTH_ARRAY') {
       // Repeated scalar: the count prefix width comes from `arrayLengthFieldSize` (4 everywhere it
       // exists), and a missing one means "the rest of the payload" — RXCONFIG's payload is a whole
@@ -121,8 +153,9 @@ function buildFields(fields) {
       segments.push({
         name: field.name,
         kind: 'array',
-        offset,
+        ...placement,
         countSize: countPrefix,
+        arrayKind: 'variable',
         stride: width,
         // The conversion string belongs to the field, so it goes on the array too: `%R` is one
         // whole embedded message, not one per byte (see `ascii-log.ts`'s `%R` branch).
@@ -130,12 +163,13 @@ function buildFields(fields) {
         elements: [element],
       });
       offset += countPrefix;
+      dynamic = true;
     } else {
       const width = scalarWidth(field);
       const segment = {
         name: field.name,
         kind: 'scalar',
-        offset,
+        ...placement,
         size: width,
         type: TYPE[field.dataType?.name] ?? String(field.dataType?.name ?? 'u8').toLowerCase(),
         format: field.conversionString ?? null,

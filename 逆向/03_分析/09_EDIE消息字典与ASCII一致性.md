@@ -598,3 +598,81 @@ b2             DIFFERENT 4 931 973 → 4 931 990（仍只有 IPSTATUSA 那 1 行
   `%lld` 只在 INSPVACMP（SPAN，无 IMU）里。宽度表已按声明实现，但没有真机数据背书。
 - ⚠️ `%P`（29 条 PASS*）依旧无样本：需要外部串口往接收机灌数据；本轮 `%Z` + 数组的组合只能靠
   RAWGPSSUBFRAME / GLORAWEPHEM 覆盖。
+
+## 9.x.10 ABBREV 渲染重写 + IPSTATUSA 动态偏移（2026-11-01）
+
+上一节留下的两条"只能报不能改"都做完了：ABBREV 的 23 万行偏差，与 b2 最后那 1 行。
+
+### ① `framing.ts`：没有终止符的 `$` 不许吃掉后面的帧
+
+先用套件自己的 CLI 做了 12 个合成抓包（`--abbrev` 与 `--format ASCII` 各跑一遍）定位规则：
+
+| 合成抓包 | 套件输出 |
+|---|---|
+| `$GGA*47` 无 CRLF + 2 个 BESTPOS + CRLF | 两条 BESTPOS **都在**，句子本身无输出 |
+| `$GGA*47` + `#BESTPOSA,…*crc\r\n` | `#` 记录出来，句子没有 |
+| `$GGA*47` + `$GGA*47\r\n` | 打印一行**合并**的 NMEA（`$` 不是边界） |
+| `$GGA*47` + `<BESTPOS …\r\n` | 两边都没有输出（`<` 也不是边界） |
+| 只有 CR 没有 LF | 丢弃 |
+
+结论：文本记录的跨度只在遇到**二进制同步（`0xAA ?? 0x12/0x13`）**或 `#` 时截断，别的都不截。
+实现 `textBoundary()`：在 `[i+1, 行尾)` 里找边界，找到就丢掉这段（`onDrop('record-start-inside-text')`）
+并从边界继续扫；没找到才按原来的"等 LF / 缓冲"。m5 少的那条 BESTPOS 由此补回。
+
+### ② `abbrev-log.ts`：按实测重写二进制帧的 ABBREV 渲染
+
+七条规则，每条都有套件对照：
+
+1. 缩进与空行：数据行 `<` + 4 空格 + **有值才加分隔空格**（空行是 `<    `）；元素行 `<` + 9 空格
+   （空行 `<         `，b1 里 SATVIS2 0 颗星就是这一行）。
+2. 0 元素 `FIELD_ARRAY` 仍留一行空元素行（`max(1,count)`，与 `text-log.ts` 同源）。
+3. `VARIABLE_LENGTH_ARRAY` **不换行**：ITPSDFINAL/ITPSDDETECT 的 1024 个采样挤在一条数据行上
+   —— 这是 23 万行偏差的主因（原来一条一个元素）。
+4. `FIXED_LENGTH_ARRAY` **不打计数也不换行**：CLOCKMODEL 的 `par`/`data` 留在数据行。
+5. `%R`（RXCONFIG 嵌入记录）渲染成内嵌记录的 ABBREV：header 作为数据行上的值，body 行跟在后面；
+   嵌入消息字典里没有的整条丢弃（b1 的 278 条 RXCONFIG 丢 22 条）。
+6. **第二个计数数组另起一条数据行**（IPSTATUS：`<     1 ` / `<          ETHA …` / `<     1 ` / `<          "192.168.5.1"`）。
+7. `%P`：计数 + 一个转义 token（合成 PASSCOM1 实测 `<     8 a,b*\\\x0d\x0a\x9c`）。
+
+为此布局表加了 `arrayKind`（`field`/`fixed`/`variable`）——原来 JSON 分不出 `FIELD_ARRAY` 与
+`VARIABLE_LENGTH_ARRAY`（两者都只是 `countSize:4`）。
+
+### ③ D1：变长数组之后的段按实际消耗续排
+
+`gen_edie_layouts.js` 新增 `dynamicOffset`：紧跟"长度要上线路才知道"的数组之后的段
+（74 个 `FIELD_ARRAY`、57 个 `VARIABLE_LENGTH_ARRAY`、元素里带变长字符串的定长数组）打标，
+`offset` 只保留旧的猜测值。实际打标 15 个段：`IPSTATUS.dns_server`、`INSCONFIG.ins_rotations`、
+`SBAS17/26/27`、`USERI2C*` / `USERCAN*`。
+
+`edie.ts` 抽出共享的"线路几何"：`stringWireSize`（变长字符串 = 文本 + NUL 补齐 4 字节，最少 4）、
+`walkArray`（读计数、按**实际消耗**排下一个元素）、`segmentsWireSize` / `segmentWireSize`、
+`denseSegmentSize`。`ascii-log.ts` 与 `abbrev-log.ts` 都用 `shift`（存储偏移漂移）+ `cursor`
+（上一段真实结束处）两套指针，`dynamicOffset` 的段从 `cursor` 起排。
+
+`IPSTATUSA` 因此读在 52 而不是 4。**已一致的三条没动**：ICOMCONFIG / SETNAV / DNSCONFIG 的变长
+字符串都在顶层，仍走"存储偏移 + shift"，并加了测试断言这三张表 `dynamicOffset` 计数为 0。
+
+### 复验（全部真跑，2026-11-01）
+
+```
+b2  ASCII         0 / 0 差异（905 行，4 931 973 B）
+b2  ABBREV_ASCII  IDENTICAL 5 723 813 B   （修前 62 930 行 golden vs 57 623 行 ours）
+b1  ABBREV_ASCII  IDENTICAL 5 738 549 B   （oracle 53 417 行；修前 229 605 行不同）
+remote-23types ABBREV  IDENTICAL 4 357 514 B（42 106 行；用本机套件 --abbrev 现生成的 oracle 比对）
+七份老 golden ASCII 全部 IDENTICAL：broad-clean 5 567 000 / clean-9600 489 205 /
+  live-nav 2 798 307 / live-nav2 2 657 890 / remote-23types 3 845 232 / b1 5 088 882 / b3 6 137 463
+测试 623 / 624（唯一失败是 graph-map.test.ts 期望的"本构建不是 Luciad"这句，属第 13 条正在改的
+  并行工作，与本节协议改动无关）
+```
+
+### 剩余（都无样本，不做硬凑）
+
+- **4 字节对齐没建模**：合成 `USERI2CREAD` 实测套件把 u32 计数放在 off=4、数组后的
+  `request_length` 放到 12；我们的 dense 偏移 + `cursor` 会给 1 / 11。没有任何抓包含
+  `USERI2C*` / `USERCAN*`，不影响任何 golden。
+- **`%Z` 的变长数组**：`USERI2CREAD.slave_register_address` 套件打成一个 hex token
+  （`deadbe`），我们现在一个元素一个十进制数。同样无抓包覆盖。
+- **`#` 文本记录**：套件是"解析后按转换串重打"，我们是"CRC 校验后原样拷贝"；接收机自己写的
+  记录两者相同（六份 golden 已证），只有人工构造的非规范格式才会分叉。
+- **`$` + `$` 无 CRLF**：套件打印合并行（校验和对**第一个** `*` 算），我们到最后一个 `*`。
+- **`<` 只有 header 没有 body** 时套件不输出，我们会打印一条空 body 记录。

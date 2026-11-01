@@ -1,0 +1,55 @@
+
+The following conversion was completed at 2026-11-01T09:29:52.814Z
+
+
+Input File was b2.sbf, 2581390 bytes from C:\Users\niwawa\AppData\Local\Temp
+
+
+Converted files were output to C:\Users\niwawa\AppData\Local\Temp\abb2\b2
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2442, 577758.95
+      Finish time: 2442, 577792.05
+
+    UTC Time:
+      Start time : 2026-10-31T16:29:18.950Z
+      Finish time: 2026-10-31T16:29:52.050Z
+
+    Total Duration: 00:00:34
+      
+
+The following 23 log(s) were converted successfully to ABBREV_ASCII 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+      73 | ALMANAC                       |       1 |       1 |
+    1429 | BESTGNSSPOS                   |       1 |       1 |
+    1430 | BESTGNSSVEL                   |      30 |      30 |
+      42 | BESTPOS                       |      32 |      32 |
+     726 | BESTUTM                       |       1 |       1 |
+      16 | CLOCKMODEL                    |       1 |       1 |
+    1288 | ETHSTATUS                     |       1 |       1 |
+     720 | GLORAWALM                     |       1 |       1 |
+     963 | HWMONITOR                     |       4 |       4 |
+    1289 | IPSTATUS                      |       1 |       1 |
+     181 | MARKPOS                       |      31 |      31 |
+      72 | PORTSTATS                     |       4 |       4 |
+    1543 | PPPXYZ                        |      15 |      15 |
+      47 | PSRPOS                        |      30 |      30 |
+     243 | PSRXYZ                        |      30 |      30 |
+    1286 | RAIMSTATUS                    |       6 |       6 |
+      43 | RANGE                         |     638 |     699 |
+    1273 | RANGECMP2                     |      31 |       0 |
+    2050 | RANGECMP4                     |      30 |       0 |
+      74 | RAWALM                        |       1 |       1 |
+      41 | RAWEPHEM                      |      13 |      13 |
+      93 | RXSTATUS                      |       3 |       3 |
+       0 | UNKNOWN                       |    6875 |       0 |
+
+
+
+
+

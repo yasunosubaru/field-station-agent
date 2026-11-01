@@ -126,6 +126,47 @@ test('an unterminated ASCII line is buffered until the newline arrives', () => {
   assert.equal(frames[0].text, '#BESTPOSA,COM1,0\r\n');
 });
 
+test('an unterminated NMEA sentence does not swallow the frames behind it', () => {
+  // Measured with the suite's own Convert on this exact shape: `$GPGGA,…*47` with no CRLF, two
+  // BESTPOS frames, then the CRLF. The suite prints both BESTPOS records and no sentence, so a text
+  // record ends where the next binary sync begins, not at the far-away terminator. Before this rule
+  // the `$` claimed every byte up to the CRLF — both frames included — and `m5` lost a BESTPOS.
+  const sentence = latin1('$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47');
+  const reasons: string[] = [];
+  const deframer = new SbfDeframer({ crcMode: 'validate', onDrop: (_n, r) => reasons.push(r) });
+  const frames = deframer.push(
+    concat(concat(longFrame(42, [1]), sentence), concat(concat(longFrame(42, [2]), longFrame(42, [3])), latin1('\r\n'))),
+  );
+  assert.deepEqual(
+    frames.map((f) => (f.kind === 'sbf' ? f.header.messageId : f.prefix)),
+    [42, 42, 42],
+  );
+  // The trailing CRLF the sentence never claimed is plain garbage after the last frame.
+  assert.deepEqual(reasons, ['record-start-inside-text', 'no-record-start']);
+});
+
+test('a `#` record behind an unterminated sentence is kept as well', () => {
+  // Same probe: `$GPGGA,…*47` with no CRLF directly in front of a `#BESTPOSA,…*crc` line. The suite
+  // prints the `#` record (its CRC is checked and good) and never the sentence.
+  const sentence = latin1('$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47');
+  const record = latin1('#BESTPOSA,USB,9,75.0,FINESTEERING,2402,91818.000,03801800,cdba,18278;SOL_COMPUTED\r\n');
+  const frames = new SbfDeframer().push(concat(concat(longFrame(42, [1]), sentence), concat(record, longFrame(42, [2]))));
+  assert.deepEqual(
+    frames.map((f) => (f.kind === 'sbf' ? `bin${f.header.messageId}` : `text${f.prefix}`)),
+    ['bin42', 'text#', 'bin42'],
+  );
+});
+
+test('a `$` behind an unterminated `$` is not a boundary: they merge into one line', () => {
+  // Measured the same way: the suite prints `$GPGGA,…*47$GPGGA,…*47` as one (checksum-passing) line,
+  // so only a binary sync or a `#` may end a text record early.
+  const sentence = latin1('$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47');
+  const frames = new SbfDeframer().push(concat(concat(sentence, sentence), latin1('\r\n')));
+  assert.equal(frames.length, 1);
+  if (frames[0].kind !== 'text') throw new Error('expected text');
+  assert.equal(frames[0].text, `${'$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47'}${'$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47'}\r\n`);
+});
+
 test('a zero CRC field is dropped in mirror mode but accepted in ignore mode', () => {
   const frame = longFrame(42, [1, 2, 3, 4]);
   frame.fill(0, frame.length - 4);

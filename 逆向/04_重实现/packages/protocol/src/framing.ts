@@ -138,6 +138,21 @@ export class SbfDeframer {
         const isPort = buf[i] === 0x5b;
         const terminator = isPort ? 0x5d : 0x0a;
         const end = buf.indexOf(terminator, i);
+        // A text record may not swallow a record that starts inside it. Measured on synthetic
+        // captures through the suite's own Convert: a `$GPGGA,…*47` with no CRLF directly in front
+        // of a binary frame loses the sentence and keeps the frame, and a `#BESTPOSA,…*crc` behind
+        // it is kept too; the reverse (text terminated by LF before the frame) is the normal case.
+        // The suite therefore begins a new record at the first **binary sync** or `#` inside the
+        // span — and at nothing else: `$…$…\r\n` is printed as one (merged) NMEA line, and a `<`
+        // inside an unterminated `$` is not recovered either.
+        const boundary = textBoundary(buf, i, end < 0 ? buf.length : end);
+        if (boundary >= 0) {
+          // Unterminated as far as the record is concerned: drop the bytes it had claimed. The
+          // suite prints nothing for them (measured), so this is a drop, not a frame.
+          this.drop(boundary - i, 'record-start-inside-text');
+          i = boundary;
+          continue;
+        }
         if (end < 0) {
           this.pending = buf.slice(i);
           return frames;
@@ -215,8 +230,28 @@ export class SbfDeframer {
   }
 }
 
-function earliestCandidate(buf: Uint8Array, from: number): number {
-  let best = -1;
+/**
+ * First position in `[from + 1, limit)` where a record the suite keeps can start inside a text
+ * record: a binary sync (`AA 44 12` / `AA 03 13`) or a `#` record.
+ *
+ * Measured with synthetic captures through the suite's Convert (see the call site):
+ *  - `$GPGGA,…*47` with no CRLF, followed by two BESTPOS frames → both frames come out;
+ *  - the same with a `#BESTPOSA,…*crc` behind it → that record comes out, the sentence does not;
+ *  - `$GPGGA,…*47` + `$GPGGA,…*47\r\n` → one merged NMEA line (a `$` is not a boundary);
+ *  - `$GPGGA,…*47` + `<BESTPOS …\r\n` → nothing for either (a `<` is not a boundary either).
+ */
+function textBoundary(buf: Uint8Array, from: number, limit: number): number {
+  for (let j = from + 1; j < limit; j++) {
+    if (buf[j] === 0x23 /* # */) return j;
+    if (buf[j] === SYNC_1 && j + 2 < buf.length) {
+      const kind = buf[j + 2];
+      if (kind === SYNC_BINARY_FULL || kind === SYNC_BINARY_SHORT) return j;
+    }
+  }
+  return -1;
+}
+
+function earliestCandidate(buf: Uint8Array, from: number): number {  let best = -1;
   for (const byte of CANDIDATES) {
     const at = buf.indexOf(byte, from);
     if (at >= 0 && (best < 0 || at < best)) best = at;

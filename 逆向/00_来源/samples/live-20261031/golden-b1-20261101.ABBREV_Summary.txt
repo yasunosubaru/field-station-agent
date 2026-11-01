@@ -1,0 +1,59 @@
+
+The following conversion was completed at 2026-11-01T09:14:07.019Z
+
+
+Input File was b1.sbf, 2758111 bytes from C:\Users\niwawa\AppData\Local\Temp
+
+
+Converted files were output to C:\Users\niwawa\AppData\Local\Temp\abb1\b1
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2442, 570227.071
+      Finish time: 2442, 570255.15
+
+    UTC Time:
+      Start time : 2026-10-31T14:23:47.071Z
+      Finish time: 2026-10-31T14:24:15.150Z
+
+    Total Duration: 00:00:28
+      
+
+The following 27 log(s) were converted successfully to ABBREV_ASCII 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+    1696 | BDSEPHEMERIS                  |      39 |      39 |
+      42 | BESTPOS                       |      90 |      90 |
+    1194 | BESTSATS                      |       5 |       5 |
+      99 | BESTVEL                       |      25 |      25 |
+     241 | BESTXYZ                       |      25 |      25 |
+    1122 | GALEPHEMERIS                  |      27 |      27 |
+     723 | GLOEPHEMERIS                  |      12 |      12 |
+       7 | GPSEPHEM                      |      32 |      32 |
+     963 | HWMONITOR                     |       9 |       9 |
+       8 | IONUTC                        |       1 |       1 |
+    2065 | ITDETECTSTATUS                |       6 |       6 |
+    2063 | ITPSDDETECT                   |      50 |      50 |
+    1968 | ITPSDFINAL                    |     127 |     127 |
+    1329 | MODELFEATURES                 |       1 |       1 |
+      72 | PORTSTATS                     |       7 |       7 |
+     174 | PSRDOP                        |      13 |      13 |
+      43 | RANGE                         |     556 |     556 |
+      41 | RAWEPHEM                      |      38 |      38 |
+     128 | RXCONFIG                      |     278 |     256 |
+      93 | RXSTATUS                      |      11 |      11 |
+    1043 | SATVIS2                       |      48 |      48 |
+    1246 | SERIALCONFIG                  |       3 |       3 |
+     101 | TIME                          |       6 |       6 |
+     492 | TIMESYNC                      |       2 |       2 |
+      83 | TRACKSTAT                     |      12 |      12 |
+      37 | VERSION                       |       1 |       1 |
+       0 | UNKNOWN                       |    3695 |       0 |
+
+
+
+
+

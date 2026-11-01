@@ -8,22 +8,58 @@
  *   <     60 
  *   <          7 0 24393197.164 0.078 -128187146.798946 0.019 2910.335 43.3 1739.905 18109c04 
  *
- * Rules measured against `golden-abbrev/clean-9600` (6294 lines, 6 log types):
+ * Line shape, measured against `golden-abbrev/clean-9600` (6294 lines, 6 log types) and against the
+ * suite's own output for `b1` / `remote-23types` / `live-nav2` (`--abbrev` on the same captures):
+ *
  *  - header line: `<NAME port seq idle timeStatus week ms rxStatus msgDefCrc swVersion`, no version
  *    letter after the name (unlike `#RANGEA` in full ASCII) and no trailing space;
- *  - first data line: `<` + five spaces, then every scalar field before the array plus the array
- *    element count (`RXSTATUS` → `00000000 5`);
- *  - one line per array element: `<` + ten spaces, then the element's fields;
- *  - every line ends with a space **except the last line of the record**.
+ *  - first data line: `<` + **four** spaces, then one space **only when a value follows**, so a line
+ *    with no values at all is `<    `;
+ *  - one element line per array element of a `FIELD_ARRAY`: `<` + **nine** spaces, the separator
+ *    space, the values — an element line with no values is `<         ` (nine spaces), which is what
+ *    a zero-element array leaves behind (`SATVIS2 … SBAS TRUE FALSE 0` in `b1`);
+ *  - a `FIXED_LENGTH_ARRAY` prints no count and no line break (`CLOCKMODEL`'s `par`/`data` stay on
+ *    the data line), and so does a `VARIABLE_LENGTH_ARRAY` **with** its count in front
+ *    (`ITPSDFINAL`'s 1024 samples are one very long data line, not 1024 lines);
+ *  - every body line ends with a space **except the last line of the record**; the header line never
+ *    carries one.
+ *
+ * `%R` is not a value at all: an embedded binary record (`RXCONFIG`) is printed as its own
+ * abbreviated record whose **header becomes a value on the data line** and whose body lines follow:
+ *
+ *   <RXCONFIG SPECIAL 283 68.5 SATTIME 0 0.000 03801800 f702 18278
+ *   <     ELEVATIONCUTOFF SPECIAL 283 68.5 SATTIME 0 0.000 03801800 50e0 18278 
+ *   <     GLONASS 5.0 0
+ *
+ * (and an embedded record with an array keeps its element lines: `<     SETTIMESOURCE …` then
+ * `<     3 ` then `<          GPS `, measured on `b1`). A record whose embedded message the
+ * dictionary cannot resolve is dropped whole, exactly as in ASCII output — both captures keep 256 of
+ * their RXCONFIG records and both outputs agree on which 256.
  *
  * Binary output is not a re-encoding: Convert copies the records it accepts and drops the rest, so
  * `clean-9600.gps` → `clean-9600.BINARY` is byte-identical (270 864 B in, 270 864 B out).
  */
 
 import { novatelCrc32 } from './crc.ts';
-import { formatField, portName } from './ascii-log.ts';
-import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
-import type { SbfFrame } from './framing.ts';
+import { escapePassThrough, formatField, portName } from './ascii-log.ts';
+import {
+  denseSegmentSize,
+  readCountAt,
+  segmentWireSize,
+  walkArray,
+  type EdieArray,
+  type EdieLayout,
+  type EdieScalar,
+  type EdieSegment,
+  type EdieString,
+  type EdieTables,
+} from './edie.ts';
+import { SbfDeframer, type SbfFrame } from './framing.ts';
+
+/** Indent of the record's first data line. */
+const DATA_INDENT = 4;
+/** Indent of one array-element line. */
+const ELEMENT_INDENT = 9;
 
 function readScalar(bytes: Uint8Array, type: string, at: number): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -63,44 +99,57 @@ function readStringValue(bytes: Uint8Array, segment: EdieString, at: number): st
   return out;
 }
 
-function renderSegments(
-  bytes: Uint8Array,
-  segments: EdieSegment[],
-  base: number,
-  tables: EdieTables,
-  out: string[],
-): EdieArray | undefined {
-  let array: EdieArray | undefined;
-  for (const segment of segments) {
-    const at = base + segment.offset;
-    if (segment.kind === 'string') {
-      const text = readStringValue(bytes, segment, at);
-      out.push(String(segment.format ?? '').endsWith('Z') ? text : `"${text}"`);
-      continue;
-    }
-    if (segment.kind === 'scalar') {
-      out.push(formatField(segment as EdieScalar, readScalar(bytes, segment.type, at), tables));
-      continue;
-    }
-    array = segment;
-    break;
-  }
-  return array;
+/** One printed line, before the indents and the trailing-space rule are applied. */
+export interface AbbrevLine {
+  /** Spaces after the `<`: four for the data line, nine for an array-element line. */
+  indent: number;
+  values: string[];
 }
 
 export interface AbbrevRecord {
+  /** Header text without the leading `<`. */
   header: string;
-  /** Scalars before the array, plus the element count when there is an array. */
-  first: string[];
-  blocks: string[][];
+  /** At least the data line; array-element lines and embedded records follow in print order. */
+  lines: AbbrevLine[];
 }
 
-/** Render one frame as the abbreviated-ASCII record (header + data lines, no line endings). */
-export function encodeAbbrevRecord(frame: SbfFrame, layout: EdieLayout, tables: EdieTables): AbbrevRecord | undefined {
-  if (frame.kind !== 'sbf' || !frame.crcOk) return undefined;
+/** The record being built: one data line, then whatever the fields push behind it. */
+class Body {
+  readonly lines: AbbrevLine[] = [{ indent: DATA_INDENT, values: [] }];
+
+  get current(): AbbrevLine {
+    return this.lines[this.lines.length - 1] as AbbrevLine;
+  }
+
+  /** Number of printed values, used to tell whether an embedded record resolved. */
+  get size(): number {
+    return this.lines.reduce((total, line) => total + line.values.length, 0);
+  }
+
+  value(text: string): void {
+    this.current.values.push(text);
+  }
+
+  newLine(indent: number = ELEMENT_INDENT): void {
+    this.lines.push({ indent, values: [] });
+  }
+}
+
+/** Render one frame as the abbreviated-ASCII record (header + body lines, no line endings). */
+export function encodeAbbrevRecord(
+  frame: SbfFrame,
+  layout: EdieLayout,
+  tables: EdieTables,
+  depth = 0,
+): AbbrevRecord | undefined {
+  // An embedded `%R` record keeps the CRC field its sender wrote, which does not have to match (all
+  // four RXCONFIG frames of `remote-23types` fail the check and the suite still prints them), so the
+  // check only applies to the record the caller handed us.
+  if (frame.kind !== 'sbf') return undefined;
+  if (depth === 0 && !frame.crcOk) return undefined;
   const { header, payload } = frame;
   const head = [
-    `<${layout.name}`,
+    layout.name,
     portName(header.portAddress),
     String(header.sequence),
     (header.idleTimeRaw / 2).toFixed(1),
@@ -112,40 +161,138 @@ export function encodeAbbrevRecord(frame: SbfFrame, layout: EdieLayout, tables: 
     String(header.softwareVersion),
   ].join(' ');
 
-  const first: string[] = [];
-  const array = renderSegments(payload, layout.fields, 0, tables, first);
-  const blocks: string[][] = [];
-  if (array) {
-    const stride = array.stride || 1;
-    const declared = array.fixedCount !== undefined ? array.fixedCount : readScalar(payload, 'u32', array.offset);
-    first.push(String(declared));
-    const start = array.offset + array.countSize;
-    const capacity = Math.floor(Math.max(0, payload.byteLength - start) / stride);
-    const count = Math.max(0, Math.min(declared, capacity));
-    for (let i = 0; i < count; i++) {
-      const fields: string[] = [];
-      renderSegments(payload, array.elements, start + i * stride, tables, fields);
-      blocks.push(fields);
-    }
-  }
-  return { header: head, first, blocks };
+  const body = new Body();
+  const state: RenderState = { unresolvedEmbedded: false };
+  renderSegments(payload, layout.fields, 0, tables, body, depth, state);
+  if (state.unresolvedEmbedded) return undefined;
+  return { header: head, lines: body.lines };
 }
 
-/** The record as the suite writes it: `<` + indents + space-separated values, one trailing space per line but the last. */
+/**
+ * The record as the suite writes it: `<` + indents + space-separated values, one trailing space per
+ * body line but the last.
+ */
 export function formatAbbrevRecord(record: AbbrevRecord): string[] {
-  const lines: string[] = [];
-  const data: string[] = [];
-  data.push(`<     ${record.first.join(' ')}`);
-  for (const block of record.blocks) data.push(`<          ${block.join(' ')}`);
-  // The header line never carries a trailing space; the data lines do, except the record's last one.
-  lines.push(record.header);
-  data.forEach((line, index) => lines.push(index === data.length - 1 ? line : `${line} `));
+  const lines = [`<${record.header}`];
+  record.lines.forEach((line, index) => {
+    const text = `<${' '.repeat(line.indent)}${line.values.length ? ` ${line.values.join(' ')}` : ''}`;
+    lines.push(index === record.lines.length - 1 ? text : `${text} `);
+  });
   return lines;
 }
 
 export function encodeAbbrevLines(frame: SbfFrame, layout: EdieLayout, tables: EdieTables): string[] {
   const record = encodeAbbrevRecord(frame, layout, tables);
   return record ? formatAbbrevRecord(record) : [];
+}
+
+/** Per-record bookkeeping: an `%R` message the dictionary does not have drops the record. */
+interface RenderState {
+  unresolvedEmbedded: boolean;
+}
+
+function renderSegments(
+  bytes: Uint8Array,
+  segments: EdieSegment[],
+  base: number,
+  tables: EdieTables,
+  body: Body,
+  depth: number,
+  state: RenderState,
+): void {
+  // Same placement rule as the ASCII writer: a segment the table cannot place (`dynamicOffset`,
+  // i.e. anything behind a counted array) starts where the previous one ended; the rest start at
+  // their stored offset plus the drift a variable-width segment introduced.
+  let shift = 0;
+  let cursor = 0;
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index] as EdieSegment;
+    const at = base + (segment.dynamicOffset ? cursor : segment.offset + shift);
+    if (segment.kind === 'string') {
+      const text = readStringValue(bytes, segment, at);
+      body.value(String(segment.format ?? '').endsWith('Z') ? text : `"${text}"`);
+      const size = segmentWireSize(bytes, segment, at);
+      cursor = at + size - base;
+      if (segment.variable) shift += size - segment.size;
+      continue;
+    }
+    if (segment.kind === 'scalar') {
+      body.value(formatField(segment as EdieScalar, readScalar(bytes, segment.type, at), tables));
+      cursor = at + segment.size - base;
+      continue;
+    }
+
+    const array = segment as EdieArray;
+    const format = String(array.format ?? '');
+
+    // `%R` — one embedded SBF record, printed as its own abbreviated record: its header becomes a
+    // value on this line and its body lines are appended behind it (see the file comment).
+    if (format === '%R') {
+      const before = body.size;
+      if (depth < 4) {
+        for (const inner of new SbfDeframer({ crcMode: 'mirror' }).push(bytes.subarray(at + array.countSize))) {
+          if (inner.kind !== 'sbf') continue;
+          const layout = tables.messages[String(inner.header.messageId)];
+          if (!layout) continue;
+          const nested = encodeAbbrevRecord(inner, layout, tables, depth + 1);
+          if (!nested) continue;
+          body.value(nested.header);
+          for (const line of nested.lines) body.lines.push(line);
+        }
+      }
+      // Like ASCII, an embedded record we cannot resolve drops the whole record (the suite prints
+      // nothing at all for it, not a record with an empty body).
+      if (body.size === before) state.unresolvedEmbedded = true;
+      cursor = bytes.byteLength - base;
+      continue;
+    }
+
+    // `%P` — a pass-through payload, one escaped token behind its element count, exactly as in
+    // ASCII. Not measured for ABBREV (no PASS* log reaches any of the captures we have); kept on
+    // one line so it at least cannot break the record's shape.
+    if (format === '%P') {
+      if (at + array.countSize <= bytes.byteLength) {
+        const count = array.countSize ? readCountAt(bytes, at, array.countSize) : 0;
+        body.value(String(count));
+        const start = at + array.countSize;
+        const available = Math.max(0, bytes.byteLength - start);
+        body.value(escapePassThrough(bytes, start, Math.min(Math.max(0, count), available)));
+      }
+      cursor = bytes.byteLength - base;
+      continue;
+    }
+
+    const walk = walkArray(bytes, array, at);
+    if (array.countSize) {
+      // A count prefix outside the payload prints nothing at all (see `ascii-log.ts`).
+      if (!walk.inPayload) {
+        cursor = at + walk.size - base;
+        shift += walk.size - denseSegmentSize(segment);
+        continue;
+      }
+      body.value(String(walk.declared));
+    }
+    // `FIELD_ARRAY` breaks after its count, one line per element, and a zero-element array still
+    // leaves one (empty) line behind. `FIXED_LENGTH_ARRAY` and `VARIABLE_LENGTH_ARRAY` keep every
+    // element on the line they started on.
+    const kind = array.arrayKind ?? (array.countSize ? 'field' : 'fixed');
+    if (kind === 'field') {
+      for (let i = 0; i < Math.max(1, walk.count); i++) {
+        body.newLine(ELEMENT_INDENT);
+        if (i < walk.count) renderSegments(bytes, array.elements, walk.starts[i] as number, tables, body, depth, state);
+      }
+      // What follows the elements starts a **new data line**, not the last element's line:
+      // `IPSTATUS` prints `<     1 ` (its `ip_status` count), one element line, then `<     1 `
+      // for `dns_server` and its element (measured on the b2 frame through the suite).
+      if (index < segments.length - 1) body.newLine(DATA_INDENT);
+    } else {
+      for (let i = 0; i < walk.count; i++) {
+        renderSegments(bytes, array.elements, walk.starts[i] as number, tables, body, depth, state);
+      }
+    }
+    cursor = at + walk.size - base;
+    shift += walk.size - denseSegmentSize(segment);
+  }
 }
 
 function hexWord(value: number, width: number): string {

@@ -15,7 +15,17 @@
  */
 
 import { novatelCrc32 } from './crc.ts';
-import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
+import {
+  denseSegmentSize,
+  segmentWireSize,
+  walkArray,
+  type EdieArray,
+  type EdieLayout,
+  type EdieScalar,
+  type EdieSegment,
+  type EdieString,
+  type EdieTables,
+} from './edie.ts';
 import { SbfDeframer, type SbfFrame } from './framing.ts';
 
 /** `20`→`UNKNOWN`, `180`→`FINESTEERING` — `01_解包/app/model/bestpos.js` (`timeStatusJSON`). */
@@ -403,7 +413,7 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
  * the element count in front of it is what delimits the field — but a CR/LF is (`ab\r\ncd` →
  * `ab\x0d\x0acd`), which is why a payload can never break the line.
  */
-function escapePassThrough(bytes: Uint8Array, at: number, length: number): string {
+export function escapePassThrough(bytes: Uint8Array, at: number, length: number): string {
   let out = '';
   for (let i = 0; i < length; i++) {
     const byte = bytes[at + i] ?? 0;
@@ -567,10 +577,14 @@ function renderSegments(
   options: AsciiLogOptions,
   state: RenderState,
 ): void {
-  // A variable-length string moves everything after it; the layout's offsets are the fixed ones.
+  // A segment the table cannot place (`dynamicOffset`) starts where the previous one ended; every
+  // other one starts at its stored offset plus the drift the variable-width segments introduced.
+  // `shift` reproduces the offsets exactly for the layouts the goldens already agree on
+  // (`SETNAV`, `ICOMCONFIG`, `DNSCONFIG`), `cursor` is what IPSTATUS' `dns_server` needs.
   let shift = 0;
+  let cursor = 0;
   for (const segment of segments) {
-    const at = base + segment.offset + shift;
+    const at = base + (segment.dynamicOffset ? cursor : segment.offset + shift);
     // `%R` — an embedded binary message, printed as its own finished ASCII line (`RXCONFIGA` wraps
     // `#LOGA,…*<embedded crc>` and the outer CRC follows after it). Measured on
     // `golden-remote-23types.ASCII`: the RXCONFIG payload is a complete SBF frame whose payload is
@@ -588,9 +602,11 @@ function renderSegments(
         const layout = tables.messages[String(inner.header.messageId)];
         if (layout) out.push(render(inner, layout, tables, { ...options, requireValidCrc: false, invertCrc: true }, depth + 1));
       }
-      // An `%R` we cannot resolve drops the **whole record**: 42 of the 278 RXCONFIG frames in
-      // `b1-20261101.sbf` embed a message the dictionary does not have (ids 229, 1464, 1471, 1799,
-      // 2036, 2636), and the suite writes no line for them at all — not a line with an empty body.
+      // An `%R` we cannot resolve drops the **whole record**: 22 of the 278 RXCONFIG frames in
+      // `b1-20261101.sbf` embed a message the dictionary does not have (ids 229, 817, 1436, 1464,
+      // 1471, 1524, 1525, 1552, 1555, 1606, 1790, 1799, 1856, 1857, 1860, 1870, 1871, 2036, 2636),
+      // and the suite writes no line for them at all — not a line with an empty body. The same rule
+      // gives 256 RXCONFIG records in both ASCII and ABBREV output.
       if (out.length === before) state.unresolvedEmbedded = true;
       continue;
     }
@@ -599,21 +615,21 @@ function renderSegments(
       if (String(raw.format ?? '').endsWith('Z')) {
         // `%Z`: raw bytes as lowercase hex, never quoted (RAWEPHEM subframes).
         out.push(Array.from({ length: raw.size }, (_, i) => (bytes[at + i] ?? 0).toString(16).padStart(2, '0')).join(''));
-      } else {
-        out.push(`"${decodeString(bytes, at, raw.size)}"`);
-        // A `STRING` field runs to a NUL and is zero-padded to a 4-byte boundary; `arrayLength` is
-        // only a maximum, and the padding wins even when it exceeds it: SETNAV declares
-        // `from_point` as 6 bytes but the wire spends 8 on `"FROM"`, so `to_point` starts at 48.
-        if (raw.variable) {
-          let length = 0;
-          while (length < raw.size && (bytes[at + length] ?? 0) !== 0) length += 1;
-          shift += Math.max(4, Math.ceil((length + 1) / 4) * 4) - raw.size;
-        }
+        cursor = at + raw.size - base;
+        continue;
       }
+      out.push(`"${decodeString(bytes, at, raw.size)}"`);
+      // A `STRING` field runs to a NUL and is zero-padded to a 4-byte boundary; `arrayLength` is
+      // only a maximum, and the padding wins even when it exceeds it: SETNAV declares
+      // `from_point` as 6 bytes but the wire spends 8 on `"FROM"`, so `to_point` starts at 48.
+      const size = segmentWireSize(bytes, segment, at);
+      cursor = at + size - base;
+      if (raw.variable) shift += size - raw.size;
       continue;
     }
     if (segment.kind === 'scalar') {
       out.push(formatField(segment, readScalar(bytes, segment.type, at, segment.size), tables));
+      cursor = at + segment.size - base;
       continue;
     }
     const array = segment as EdieArray;
@@ -634,33 +650,23 @@ function renderSegments(
       out.push(escapePassThrough(bytes, start, Math.min(Math.max(0, count), available)));
       continue;
     }
-    const stride = array.stride || 1;
-    const first = at + array.countSize;
-    // An element that carries a variable-length string does not occupy `stride` bytes on the wire,
-    // so its capacity cannot be derived from the stride (DNSCONFIG's one address is 12 bytes, not
-    // the declared 16); trust the count the record carries instead.
-    const variableElements = array.elements.some((el) => el.kind === 'string' && (el as EdieString).variable === true);
-    const capacity = variableElements
-      ? Number.POSITIVE_INFINITY
-      : Math.floor(Math.max(0, bytes.byteLength - first) / stride);
-    // Three shapes: a fixed array prints no count; a counted array (`FIELD_ARRAY`, and
-    // `VARIABLE_LENGTH_ARRAY` with an `arrayLengthFieldSize`) prints its count first; a
-    // prefix-less variable array (RXCONFIG's `%R`, handled above) runs to the end of the payload.
-    const declared = array.fixedCount !== undefined
-      ? array.fixedCount
-      : array.countSize
-        ? readCount(bytes, at, array.countSize)
-        : capacity;
     // A count field that is not inside the payload prints nothing at all — GLORAWEPHEM synthesised
     // without its `glo_raw_ephem` array (payload ending right after `milliseconds`) comes out as
     // `…,2402,91818.000*…`, while a count that is present but zero (RAWALM with no pages) prints
     // `…,91818.000,0`. Measured with the suite's Convert on both shapes.
+    const walk = walkArray(bytes, array, at);
     if (array.countSize) {
-      if (at + array.countSize > bytes.byteLength) continue;
-      out.push(String(declared));
+      if (!walk.inPayload) continue;
+      out.push(String(walk.declared));
     }
-    const count = Math.max(0, Math.min(declared, capacity));
-    for (let i = 0; i < count; i++) renderSegments(bytes, array.elements, first + i * stride, tables, out, depth, options, state);
+    // Element positions come from `walkArray`: for a plain array that is `first + i * stride`, and
+    // for one whose elements carry a variable string it is where the previous element really
+    // ended (DNSCONFIG's one address is 12 bytes, not the declared 16).
+    for (let i = 0; i < walk.count; i++) renderSegments(bytes, array.elements, walk.starts[i], tables, out, depth, options, state);
+    // Everything behind a counted array moves by as much as the array differs from what the stored
+    // offsets assumed; that is how `IPSTATUS`' `dns_server` lands on 52 instead of 4.
+    cursor = at + walk.size - base;
+    shift += walk.size - denseSegmentSize(segment);
   }
 }
 
