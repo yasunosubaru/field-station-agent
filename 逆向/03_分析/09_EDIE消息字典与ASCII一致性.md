@@ -712,3 +712,142 @@ oracle 654 B  ours 654 B  两侧 SHA-256 相同
 仍有的同类问题：`packages/app/src/convert.ts`（GUI 的 Convert 预览）还按 UTF-8 写字符串、
 不过滤 PASSTHROUGH(1342)，且不接文本记录与 RANGECMP 展开——它与 CLI 已经漂移，
 是一条独立待办。
+
+## 9.x.12 B1 第四批（b4）：31 类 / 4100 行逐字节一致，**首次零改动**（2026-11-01）
+
+前三批每批都要在 `ascii-log.ts` / `edie.ts` 里再修一条规则；这一批一行代码都没改，
+31 个新类型的 ASCII 与 ABBREV 都一次对上。所以这节记的是**覆盖面**与**接收机实测**，
+不是又一次修缺陷。
+
+### 怎么抓的
+
+`tools/remote/b4-probe.ps1`（探测）→ `tools/remote/b4-capture.ps1`（抓包）。探测共 97 个类型名，
+一条 `LOG <名> ONCE`、单独一个 1.5 s 回复窗口，先分类再决定抓谁。
+
+三条实测的运维事实，`b3-capture.ps1` 的注释里没有：
+
+- **这个口的 20 Hz RANGE 流是永久的，`UNLOGALL` 清不掉。**
+  `UNLOGALL`、`UNLOGALL USB2`、`UNLOG RANGEB` 之后各测 8 s，仍是 67.4 / 63.0 / 62.6 kB/s；
+  2 s 窗口里稳定 41 条 RANGE、2 条 BESTPOS、1 条 RAWEPHEM，另外每 1.5 s 窗口各有 1 条
+  RXSTATUS / PORTSTATS / HWMONITOR。
+  之前记成"UNLOGALL 后还有 500 KB 积压"——其实不是积压，是每秒约 70 kB 的活流。
+  后果有两条：探测时**不能**用"窗口里有没有字节"判断有没有数据（必须按报文 id 认，
+  且要排除 41/42/43/93/72/963 这六个常在类型）；一个口 32 条 LOG 的预算也被它占掉几格，
+  所以每次仍只挂 ≤10 条、每段前裸 `UNLOGALL`。第一版探测只排除了 41/42/43，
+  于是 13 个"只有 93/72/963"的类型被误标成有数据，是逐条回看才纠正的。
+- **PowerShell 里逐字节拼字符串会把探测拖死。** 第一版用 `$text += [char]$b` 做可打印化，
+  170 KB 花了 17 s（O(n²)），69 条命令跑过 10 min 还没完，SSH 断了、远程进程还占着 COM10。
+  现在先用 `[Text.Encoding]::GetEncoding(28591).GetString()` 一次性转成 1 字节 1 字符的串查
+  `<OK` / `<ERROR`，再按字节扫长头。
+- **`LOG` 名写错和"这款不支持"是两种错误**，接收机自己分得很清楚：
+  `<ERROR:Invalid Message. Field = 2` = 名字根本不存在；`<ERROR:Message is invalid for this model`
+  = 名字对、这台机器的固件选项没开。前一批把两者混在一起记，这批分开。
+
+### 三类清单（97 个名字）
+
+**收下并抓到（31 类，全部进 golden）**
+
+| 类 | id | 条数 | | 类 | id | 条数 |
+|---|---|---|---|---|---|---|
+| LOGLIST | 5 | 1 | | SATVIS | 48 | 1 |
+| DATUM | 160 | 1 | | AVEPOS | 172 | 1 |
+| MAGVAR | 180 | 1 | | UNDULATION | 214 | 1 |
+| MARKTIME | 231 | 1 | | GLOALMANAC | 718 | 1 |
+| GALINAVRAWALMANAC | 1125 | 936 | | MARK1TIME | 1130 | 1 |
+| TRACKSV | 1326 | 2 | | QZSSRAWSUBFRAME | 1330 | 36 |
+| QZSSRAWEPHEM | 1331 | 180 | | QZSSEPHEMERIS | 1336 | 175 |
+| QZSSRAWALMANAC | 1345 | 37 | | QZSSALMANAC | 1346 | 1 |
+| QZSSIONUTC | 1347 | 1 | | AUTHCODES | 1348 | 1 |
+| PPPPOS | 1538 | 1 | | PPPSATS | 1541 | 1 |
+| PPPDOP2 | 1546 | 1 | | TERRASTARINFO | 1719 | 1 |
+| VERIPOSINFO | 1728 | 1 | | RADARSTATUS | 1877 | 1 |
+| PPPDOP | 1997 | 1 | | OCEANIXINFO | 2159 | 1 |
+| BDSBCNAV2RAWMESSAGE | 2374 | 36 | | BDSBCNAV3RAWMESSAGE | 2411 | 35 |
+| BDSBCNAV3EPHEMERIS | 2412 | 1050 | | PTPDELTATIME | 2465 | 1 |
+| RXCONFIGUSER | 2474 | 244 | | | | |
+
+另外 9 个名字是**已有类型**，只是用来复核探测链路（BESTXYZ / TRACKSTAT / IONUTC / GLOEPHEMERIS /
+PSRPOS / PSRXYZ / TIME / CLOCKMODEL / ALMANAC），全部照常回数据。
+
+**被拒（16 个，一个字节都没进 golden）**
+
+- `<ERROR:Message is invalid for this model`（9 个，固件选项没开）：
+  `RTKPOSB` `RTKVELB` `MATCHEDPOSB` `RTKXYZB` `RTKDOPB` `RTKSATSB` `RTKASSISTSTATUSB`
+  `TILTSTATUSB` `MARK1PVAB`。RTK 系与 SPAN 系均属此列——这台 OEM729 没有对应授权。
+- `<ERROR:Invalid Message. Field = 2`（7 个，名字不存在）：`GPSEPHEMERISB`（字典里的名字是
+  `GPSEPHEMB`，b1 已有）、`SBASRAWB`、`NAVSSATBITSB`、`ABSSATEPHEMERISB`、`SBAS45B`、
+  `LBANDINFOB`、`RAWLBANDFRAMEB`。**本批建议清单里的 GPSEPHEMERISB / SBASRAWB /
+  NAVSSATBITSB / ABSSATEPHEMERISB 四个名字在这台接收机与字典里都不存在**，`SBASRAW` 对应的是
+  `RAWSBASFRAME`，`ABSSATEPHEMERIS` / `NAVSSATBITS` 连字典都没有——不是没抓到，是没有这个日志。
+
+**不出（41 个：`<OK` 收下，30 s 一条不来）**
+
+- 缺输入条件：`MATCHEDXYZB` `MASTERPOSB` `ROVERPOSB` `HEADINGB` `HEADING2B` `HEADINGEXTB`
+  `HEADINGRATEB` `MARK2TIMEB` `MARK3TIMEB` `MARK4TIMEB` `MARK2POSB` `MARK3POSB`
+  `USERDATUMB` `THISANTENNATYPEB` `BASEANTENNATYPEB` `ANTENNATYPEB` `SAVEDSURVEYPOSITIONSB`
+  `SURVEYPOSITIONB` `PROFILEB` `PROFILEINFOB` `NAVICALMANACB` `NAVICSYSCLOCKB` `NAVICEPHEMERISB`；
+- 这台机器的固件不解这些信号：`GALFNAVEPHEMERISB` `BDSBCNAV1EPHEMERISB` `BDSBCNAV1RAWMESSAGEB`
+  `GALINAVRAWWORDB` `GALFNAVRAWPAGEB` `GALFNAVRAWEPHEMERISB` `GALFNAVRAWALMANACB`
+  `GALCNAVRAWPAGEB` `RAWCNAVFRAMEB` `GPSCNAVRAWMESSAGEB` `QZSSCNAVRAWMESSAGEB`；
+- 没有 SBAS 星：`RAWSBASFRAMEB` `RAWSBASFRAME2B` `SBAS17B` `SBAS3B` `SBAS25B` `SBAS26B` `SBAS27B`。
+
+其中 `GALFNAVEPHEMERISB` / `BDSBCNAV1EPHEMERISB` 仍挂在周期组里（一条 LOG 而已），
+哪天真出数据就直接进 golden；测试里有一条断言"这两个 id 至今不在抓包里"。
+
+### 结果：4100 / 4100，ABBREV 92397 / 92397，零改动
+
+```
+b4-20261101.sbf              4 140 243 B   4 210 条记录（4 119 二进制 + 91 条文本 / <OK 回显）
+golden-b4-20261101.ASCII     7 646 463 B   4 100 行   SHA-256 DF40712F208FBA4B…D16DABCEB
+  ours                       7 646 463 B   4 100 行   逐字节相同（cmp-lines：0 / 0）
+golden-b4-20261101.ABBREV_ASCII  8 725 124 B  92 397 行  逐字节相同（0 / 0）
+4119 - 19（RXCONFIGUSER 里裹二进制记录的那 19 条）= 4100
+```
+
+回归（`convert.ts --to ASCII` 后比 SHA-256）：六份老 golden 全部 IDENTICAL——
+b1 5 088 882 / b2 4 931 973 / b3 6 137 463 / remote-23types 3 845 232 / live-nav 2 798 307 /
+live-nav2 2 657 890。`node --test --test-force-exit "packages/*/test/*.test.ts"`：**704 / 704 全绿**
+（本批新增 `live-b4.test.ts` 6 条 + `convert-pipeline.test.ts` 表里 b4 两行）。
+
+### 这批新覆盖到的三个形状
+
+1. **`%R`（嵌入记录）** —— `RXCONFIGUSER`（2474）的 payload 是一个 `VARIABLE_LENGTH_ARRAY`，
+   里面裹一整套 `#...*crc` 命令记录。244 条里 **225 条**展开成一行
+   `#RXCONFIGUSERA,…,18278;#LOGA,…,18278;USB1,RXSTATUSEVENTA,ONNEW,0.000000,0.000000,HOLD*27f1eda4*f5d880fe`
+   —— **外层 CRC 覆盖展开后的内层记录**（`*f5d880fe` 不是内层的 `*27f1eda4`）。
+   另外 **19 条** payload 开头是长头 `AA 44 12 1C`，里面**正好裹一条完整的二进制记录**
+   （长度 `28 + payloadLen + 4` 全等），id 依次是 817 / 1436 / 1464 / 1524 / 1525 / 1552 /
+   1555 / 1606 / 1790 / 1799 / 1856 / 1857 / 1860 / 1870 / 1871 / 229（4 条）——**这 19 个 id
+   没有一个是 608 条消息字典里的**，它们是接收机的配置类报文，套件的字典不渲染，
+   `%R` 打不出来就**整条丢弃**。套件自己的 Summary 写着 `RXCONFIGUSER 244 in / 225 out`，
+   我们丢的正好是同 19 条——这一条是"丢对了才算一致"的样本。
+2. **顶层 `VARIABLE_LENGTH_ARRAY` 长串** —— `LOGLIST`（5）一行 **3 174 字符 / 367 个逗号段**，
+   把当时所有端口的 LOG 列表整个打出来；`GALINAVRAWALMANAC`（1125）一次 `ONCE` 回 26 条
+   （每星一条），`BDSBCNAV3EPHEMERIS`（2412）1 Hz 时每秒 30 条。
+3. **带引号 STRING 里的逗号** —— `AUTHCODES`（1348）第 4 个字段是
+   `"R35JCN,BTG98D,R4DD6P,5PCR7N,9WPP25,PFNLYNTBN"`，按逗号切是 10 段而字段只有 4 个；
+   `PTPDELTATIME`（2465）18 个字段混排 INT / ULONG / SHORT / DOUBLE / ENUM；
+   `QZSSRAWSUBFRAME`（1330）的 30 字节 `%Z` 打 60 个十六进制字符。
+   另有一处巧合可以当前后一致的探针：本包里 `MARKTIME`(231) 与 `MARK1TIME`(1130) 的 payload
+   完全相同，两个布局若有一个偏移错了，值就会分叉。
+
+### 为什么这批不需要改代码
+
+上一批修的三条都是"总规则"，不是逐类型补丁：`pack(4)` 对齐（在 payload 长度证明时才启用）、
+八种整数拼写（`SHORT`/`USHORT`/`INT`/`UINT`/`ULONG`/`ULONG64`/`LONGLONG`/`UCHAR`）、
+三种数组形态（`FIELD_ARRAY` / `FIXED_LENGTH_ARRAY` / `VARIABLE_LENGTH_ARRAY`，含元素内变长字符串的
+实际消耗续排）。这一批 31 个布局正好把这三条各踩了一遍（PTPDELTATIME 的混排宽度、
+LOGLIST 的顶层变长数组、RXCONFIGUSER 的 `%R`），一条也没破——说明那三条是规则而非巧合。
+
+### 剩余（无样本，不做硬凑）
+
+- **41 个 `<OK` 但不出数据的类型**：RTK / SPAN / 双天线需要固件授权（被拒的那 9 个同理），
+  GAL F/NAV、BDS B1C/B2a、NavIC、SBAS 页面这台机器不解码或不收星。要覆盖只能换机器或换固件。
+- **`%R` 的多记录 payload**：本包的 244 条都是一条记录裹一条命令；如果哪天 payload 里裹多条
+  （`#…` 之间用 `;` 连成一串也算一条），`renderSegments` 的 `%R` 分支还没被测到。
+- **`USERDATUM` / `*ANTENNATYPE` / `SURVEYPOSITION`** 类"配置了才有内容"的日志，接收机是默认
+  配置，永远回空——布局有、样本永远不会有。
+- **USB2 那条 20 Hz RANGE 流为什么 `UNLOGALL` 清不掉，仍然不明**：不是本轮代码问题，
+  但下次抓包前要么先接受它（像这次一样按 id 排除），要么先查接收机的 `LOGLIST` 输出确认
+  这 41 条 RANGE 到底挂在哪个端口的日志表上（`LOGLIST` 本包已抓到，可离线看）。
+
