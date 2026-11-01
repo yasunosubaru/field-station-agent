@@ -29,9 +29,10 @@
  * UTF-8, which would widen 0xC8 to `C3 88`. BINARY is the verbatim accepted records, in order.
  */
 
+import { appendCrcLe } from './crc.ts';
 import { decodeEdie, type EdieTables } from './edie.ts';
 import type { Frame, SbfFrame } from './framing.ts';
-import { encodeAbbrevLines, encodeBinaryCapture } from './abbrev-log.ts';
+import { encodeAbbrevLines } from './abbrev-log.ts';
 import { encodeAsciiLog, latin1Bytes } from './ascii-log.ts';
 import { buildKml, type KmlPoint } from './kml.ts';
 import { buildRangePayload, decodeRangeCmp1, decodeRangeCmp2, decodeRangeCmp4, decodeRangeCmp5, lockTimeCarry } from './rangecmp.ts';
@@ -41,7 +42,6 @@ import { buildRinex3Obs, type Rinex3Version } from './rinex3.ts';
 import { RINEX3_NAV_EXTENSIONS, buildRinex3EmptyNav, buildRinex3Nav, rinex3NavSystems } from './rinex3-nav.ts';
 import { formatDirectory } from './summary.ts';
 import { abbrevTextLogLines, collectTextLogs, textLogLines } from './text-log.ts';
-
 export const CONVERT_FORMATS = [
   'ASCII',
   'ABBREV_ASCII',
@@ -92,12 +92,32 @@ export interface ConvertOptions {
    */
   split?: boolean;
   /**
+   * `--limit-output-size` / `--limit-output-duration` / `--split` / `--daily-utc`, the suite's
+   * `splitBy` (`01_解包/app/view/convert/cli.js`: `SIZE` > `TIME` > `LOGS` > `DAILY`). Every mode
+   * writes `<base>_Part<N>.<ext>` except `'logs'`, which is the per-log writer above.
+   */
+  splitMode?: ConvertSplitMode;
+  /** `--limit-output-size=<MB>`: one **mebibyte** (1 048 576 B), measured on b2 — see `partition`. */
+  splitSizeMb?: number;
+  /** `--limit-output-duration=<SECONDS>`. */
+  splitSeconds?: number;
+  /**
    * `--unknown-bytes` (`cli.js:161-164`): what to do with the bytes Convert cannot attribute to a
    * log. `'file'` writes them next to the output as `<base>.UNKNOWN`, `'interleave'` splices them
    * into the converted file at the position they came from, `'ignore'` (the default, the suite's
    * `SKIP`) drops them — the summary still counts them either way.
    */
   unknownBytes?: UnknownBytesMode;
+  /**
+   * `--decimate=<SECONDS>`: keep only the records whose own GPS time is a whole multiple of the
+   * interval. Measured on the suite — see `decimateFrames`.
+   */
+  decimate?: number;
+  /**
+   * `--expand-cmp` / `--no-expand-cmp`: unpack `RANGECMP*` into `RANGE` (the suite's default) or
+   * copy the compressed record through, in whichever format this run writes.
+   */
+  expandCmp?: boolean;
   /**
    * The raw capture. Only needed for the unknown-byte accounting: those bytes are, by definition,
    * in no frame, so they cannot be recovered from the frame list.
@@ -106,6 +126,8 @@ export interface ConvertOptions {
 }
 
 export type UnknownBytesMode = 'file' | 'interleave' | 'ignore';
+
+export type ConvertSplitMode = 'logs' | 'size' | 'time' | 'daily';
 
 /** One output file. `text` is null for BINARY; `bytes` is always what goes on disk. */
 export interface ConvertFile {
@@ -159,9 +181,157 @@ function textFile(name: string, text: string): ConvertFile {
   return { name, text, bytes: latin1Bytes(text) };
 }
 
-/** One `\r\n`-terminated document from a list of lines (`ASCII`, `ABBREV_ASCII`). */
-function lineFile(name: string, lines: readonly string[]): ConvertFile {
-  return textFile(name, `${lines.join('\r\n')}\r\n`);
+/**
+ * One record's contribution to the output: the lines an ASCII-family writer prints, or the bytes a
+ * `BINARY` writer copies, together with the two things the split modes need — the log's name
+ * (`--split`) and the record's own GPS stamp (`--limit-output-duration`, `--daily-utc`).
+ *
+ * Everything below builds an output file by concatenating blocks, so a part written by one of the
+ * splitting modes is a byte prefix of the unsplit file: the suite never cuts a record in half
+ * (measured: `--limit-output-size=1` on b2, and every `ABBREV_ASCII` part starts on a `<NAME` line).
+ */
+interface ConvertBlock {
+  /** `ASCII` / `ABBREV_ASCII`: the printed lines, `\r\n`-terminated in `bytes`. */
+  lines: readonly string[];
+  /** Exactly what this record adds to the output file. */
+  bytes: Uint8Array;
+  /** The dictionary name of the log (`RANGE`, `BESTPOS`, …), for `--split`'s file names. */
+  name: string;
+  /** The record's own GPS stamp — the *week* is kept as well: `--daily-utc` counts whole days. */
+  stamp?: RecordStamp;
+  /**
+   * The record's time status. `--daily-utc` only moves its day clock on an *observation* time:
+   * `FINE`…`FINESTEERING`, not `COARSESTEERING`/`APPROXIMATE`/`UNKNOWN`/`SATTIME` — see
+   * `partitionBlocks`.
+   */
+  timeStatus?: number;
+  /** Capture offset of the record, for `--unknown-bytes=interleave`. */
+  offset?: number;
+}
+
+/** A record's GPS time as the header carries it: week plus milliseconds **into that week**. */
+interface RecordStamp {
+  week: number;
+  milliseconds: number;
+}
+
+/**
+ * The stamp a binary record carries, in milliseconds **of its GPS week**.
+ *
+ * Decimation is measured to use this field directly (`--decimate=13` keeps b2's `577759`, `577772`,
+ * `577785` — multiples of 13 *within the week*; the absolute GPS second of those three is not).
+ */
+function stampOf(frame: SbfFrame): RecordStamp {
+  return { week: frame.header.week, milliseconds: frame.header.milliseconds };
+}
+
+/** The same instant as one comparable number, for the splits that measure elapsed time. */
+function absoluteMilliseconds(stamp: RecordStamp): number {
+  return stamp.week * 604_800_000 + stamp.milliseconds;
+}
+
+/** Whole GPS days since the GPS epoch — `--daily-utc`'s unit (no leap-second correction, measured). */
+function gpsDay(stamp: RecordStamp): number {
+  return Math.floor(absoluteMilliseconds(stamp) / 86_400_000);
+}
+
+/**
+ * The stamp a **text** record carries.
+ *
+ * A text record prints its own header, and the suite decimates and splits it by that header, not by
+ * its neighbours: in b1 the 99 text records survive `--decimate=5` exactly when their own
+ * `week, ms` is a whole multiple of 5 s (46 of 99, and every one of the 46 carries `570230`,
+ * `570235`, … while every dropped one carries `570231`, `570232`, …). In live-nav the eleven
+ * complete `#BESTPOSA` records — the ones `textLogLines` echoes rather than re-renders — follow the
+ * same rule, so the stamp is read back from the line the writer emits:
+ *
+ *   `#NAMEA,port,seq,idle,timeStatus,week,ms,…`     → fields 5 and 6
+ *   `<NAME port seq idle timeStatus week ms …`       → the same fields after the name
+ *
+ * `$GPGGA,…` carries a UTC time of day, not GPS week/seconds, so it has no stamp: it is never
+ * decimated away and never forces a time split.
+ */
+function textRecordStamps(textAt: Map<number, string | string[]>): Map<number, RecordStamp> {
+  const stamps = new Map<number, RecordStamp>();
+  for (const [index, value] of textAt) {
+    const line = Array.isArray(value) ? (value[0] ?? '') : value;
+    const stamp = stampOfTextLine(line);
+    if (stamp) stamps.set(index, stamp);
+  }
+  return stamps;
+}
+
+function stampOfTextLine(line: string): RecordStamp | undefined {
+  if (!line.startsWith('#') && !line.startsWith('<')) return undefined;
+  // `#` separates with commas (the trailing `;…*crc` is the body); `<` with spaces. Both start with
+  // the log name, so the week and the milliseconds are fields 5 and 6 either way.
+  const fields = line.slice(1).split(line.startsWith('#') ? /[,;]/ : /\s+/);
+  const week = Number(fields[5]);
+  const seconds = Number(fields[6]);
+  if (!Number.isFinite(week) || !Number.isFinite(seconds) || fields[5] === undefined) return undefined;
+  return { week, milliseconds: Math.round(seconds * 1000) };
+}
+
+/** The ASCII names a text record prints for the SBF time status, back to the numeric code. */
+function textTimeStatus(line: string): number | undefined {
+  if (!line.startsWith('#') && !line.startsWith('<')) return undefined;
+  const fields = line.slice(1).split(line.startsWith('#') ? /[,;]/ : /\s+/);
+  const name = (fields[4] ?? '').toUpperCase();
+  const code = TEXT_TIME_STATUS[name];
+  return code;
+}
+
+/** The ASCII names a text header prints for the SBF time status (`03_分析/09_…` §时间状态). */
+const TEXT_TIME_STATUS: Record<string, number> = {
+  UNKNOWN: 0,
+  APPROXIMATE: 20,
+  COARSESTEERING: 60,
+  FINESTEERING: 180,
+  FINE: 80,
+  FINEADJUSTING: 100,
+  DEGRADED: 120,
+  ALIGNING: 160,
+  SATTIME: 200,
+};
+
+/** Every record's stamp, text records included; `undefined` for a record that carries no time. */
+function stampsFor(frames: readonly Frame[], textAt: Map<number, RecordStamp>): Array<RecordStamp | undefined> {
+  return frames.map((frame, index) => {
+    if (frame.kind === 'text') return textAt.get(index);
+    return stampOf(frame);
+  });
+}
+
+/**
+ * `--decimate=<SECONDS>` (manual 4.5.3): keep only the records whose own time is a whole multiple
+ * of the interval, i.e. `millisecondsOfWeek % (interval * 1000) === 0`.
+ *
+ * This is **epoch alignment, not "every Nth record"**: b2 at `--decimate=5` keeps exactly the
+ * records stamped `577760`, `577765`, `577770`, … , so a log logged at 20 Hz collapses to its
+ * once-a-second instance while a log logged at 1 Hz survives unchanged. Measured on b2:
+ *
+ * ```
+ * BESTPOS 32 → 7   BESTGNSSVEL 30 → 6   MARKPOS 30 → 6   PSRPOS 30 → 6   PPPDOP 30 → 3
+ * RANGE  638 → 7 (plus the 12 expanded compressed blocks that land on an aligned epoch)
+ * ```
+ *
+ * The alignment is relative to the **start of the GPS week**, not to the file: `--decimate=13`
+ * keeps `577759`, `577772`, `577785` in b2 (multiples of 13 s-of-week), and a record at
+ * `570228.000` keeps its own stamp even when its predecessor is `570229.85` (b1's text records).
+ * A record that has no time at all (an NMEA sentence, `<<OK`) is not decimated away: it has no
+ * epoch to align to, so it stays.
+ */
+function decimateFrames(
+  frames: readonly Frame[],
+  stamps: ReadonlyArray<RecordStamp | undefined>,
+  interval: number,
+): Frame[] {
+  const step = interval * 1000;
+  return frames.filter((frame, index) => {
+    const stamp = stamps[index];
+    if (!stamp) return true;
+    return stamp.milliseconds % step === 0;
+  });
 }
 
 function isPassthrough(frame: SbfFrame): boolean {
@@ -194,57 +364,57 @@ function unpackRangeCmp(frame: SbfFrame, carries: RangeCarries) {
 /**
  * ASCII and abbreviated ASCII walk the **frame list**, not `accepted`: a text record sits at its own
  * index and is printed there, and a `RANGECMP2/4` record prints as the `RANGE` rows it unpacks to.
+ *
+ * `expand` is `--expand-cmp` (the suite's default): with it off the compressed record prints as
+ * itself, through its own dictionary layout, and the summary counts it 1:1 (`--no-expand-cmp` on
+ * b2 writes 638 `RANGE` + 31 `RANGECMP2` + 30 `RANGECMP4` lines, 4 667 920 B).
  */
-function textLinesFor(
+function renderBlocks(
   frames: readonly Frame[],
   tables: EdieTables,
   textAt: Map<number, string | string[]>,
   render: (frame: SbfFrame, layout: EdieTables['messages'][string]) => readonly string[],
+  stamps: ReadonlyArray<RecordStamp | undefined>,
+  expand: boolean,
   /** Per log id, how many output rows it produced (`summary.ts` reports the output, not the input). */
   rendered: Map<number, number> = new Map(),
-  /** `--split`: the same lines, bucketed by log name so each one can go to its own file. */
-  perLog?: Map<string, string[]>,
-  /** Per yielded output line: its record's capture offset, for `--unknown-bytes=interleave`. */
-  placed?: Array<{ offset: number; lines: readonly string[] }>,
-): string[] {
+): ConvertBlock[] {
   const rangeLayout = tables.messages['43'];
   const carries: RangeCarries = new Map();
-  const lines: string[] = [];
+  const blocks: ConvertBlock[] = [];
   const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
-  const place = (index: number, produced: readonly string[]) => {
-    if (!placed) return;
-    const offset = frames[index].offset;
-    if (offset !== undefined) placed.push({ offset, lines: produced });
-  };
-  const bucket = (name: string, produced: readonly string[]) => {
-    if (!perLog || produced.length === 0) return;
-    const list = perLog.get(name) ?? [];
-    list.push(...produced);
-    perLog.set(name, list);
+  const push = (index: number, name: string, lines: readonly string[]) => {
+    if (lines.length === 0) return;
+    const timeStatus = frames[index].kind === 'sbf'
+      ? (frames[index] as SbfFrame).header.timeStatus
+      : textTimeStatus(lines[0] ?? '');
+    blocks.push({
+      lines,
+      bytes: latin1Bytes(`${lines.join('\r\n')}\r\n`),
+      name,
+      ...(stamps[index] ? { stamp: stamps[index] } : {}),
+      ...(timeStatus !== undefined ? { timeStatus } : {}),
+      ...(frames[index].offset !== undefined ? { offset: frames[index].offset } : {}),
+    });
   };
   frames.forEach((frame, index) => {
     const text = textAt.get(index);
     if (text !== undefined) {
       // ASCII prints one line per text record; abbreviated ASCII one whole block per record.
       const produced = Array.isArray(text) ? text : [text];
-      lines.push(...produced);
-      place(index, produced);
       // `--split` names the file after the log the record carries (`#BESTPOSA…` → `BESTPOS`).
       const name = /^[<#]\s*([A-Za-z][A-Za-z0-9_]*)/.exec(produced[0] ?? '')?.[1]?.toUpperCase() ?? '';
-      if (name) bucket(name.replace(/[AB]$/, ''), produced);
+      push(index, name.replace(/[AB]$/, ''), produced);
       return;
     }
     if (frame.kind !== 'sbf' || !frame.crcOk) return;
-    if (isRangeCmp(frame)) {
+    if (expand && isRangeCmp(frame)) {
       if (!rangeLayout) return;
       // `Convert` unpacks the compressed block into ordinary RANGE rows and lets the normal writer
       // print them: b2's 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 become 699 RANGE lines.
       const observations = unpackRangeCmp(frame, carries);
       const unpacked = { ...frame, payload: buildRangePayload(observations) };
-      const produced = render(unpacked, rangeLayout);
-      lines.push(...produced);
-      place(index, produced);
-      bucket(rangeLayout.name, produced);
+      push(index, rangeLayout.name, render(unpacked, rangeLayout));
       // One `RANGE` record per compressed record — its observations are that record's array, not
       // separate rows (b2: 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 → 699 RANGE).
       bump(RANGE_ID, 1);
@@ -253,14 +423,12 @@ function textLinesFor(
     const layout = tables.messages[String(frame.header.messageId)];
     if (!layout) return;
     const produced = render(frame, layout);
-    lines.push(...produced);
-    place(index, produced);
+    push(index, layout.name, produced);
     // A record that prints nothing (`RXCONFIG` with an embedded message the dictionary lacks) is
     // input but not output — that is why b1's summary reads `RXCONFIG 278 → 256`.
     if (produced.length) bump(frame.header.messageId, 1);
-    bucket(layout.name, produced);
   });
-  return lines;
+  return blocks;
 }
 
 /** `Summary_<name>.txt`'s table. Text records are added by `countTextRecords`; `PASSTHROUGH` counts like any other log. */
@@ -517,6 +685,306 @@ function latin1(bytes: Uint8Array): string {
 }
 
 /**
+ * `--limit-output-size=<MB>`: the suite's "MB" is a **mebibyte**, and the check runs **after** a
+ * record is added — "close the part once it has reached the limit", not "stop before it".
+ *
+ * Measured on b2 with `--limit-output-size=1`: five parts of 1 051 261 / 1 055 491 / 1 051 236 /
+ * 1 054 714 / 719 271 B. They are exactly the prefixes a 1 048 576 B post-add test produces; a
+ * 1 000 000 B threshold gives five different cuts (1 002 402 / 1 006 602 / …), and a 1 MiB
+ * pre-add test gives four parts. The last part is short because the capture ends.
+ */
+const MEBIBYTE = 1_048_576;
+
+/**
+ * The time statuses that carry an **observation** time as far as `--daily-utc` is concerned:
+ * `FINE` (80), `FINEADJUSTING` (100), `DEGRADED` (120), `ALIGNING` (160) and `FINESTEERING` (180).
+ *
+ * Measured with one synthetic record per status, `[2442:577759:180, 0:2.176:<status>, 2442:577760:180]`:
+ * statuses 0, 20, 60 and 200 leave the capture at one part, 80/100/120/160/180 split it — i.e.
+ * `COARSESTEERING` (60) does **not** move the day clock, and `SATTIME` (200) is out as well.
+ */
+const DAILY_CLOCK_TIME_STATUS = new Set([80, 100, 120, 160, 180]);
+
+/**
+ * Split `blocks` into the parts one of the three file-splitting modes writes.
+ *
+ * `'size'` — see `MEBIBYTE` above.
+ *
+ * `'time'` — `--limit-output-duration=<SECONDS>`: a part runs from the time of **its own first
+ * record** for that many seconds, both ends inclusive, and the record that *reaches* the window's
+ * end is still written to the part (it is what marks the part as full). The next part begins at the
+ * first record whose time is **past** the window; records that arrive after the part filled up but
+ * are not past the window — a late burst, or the almanac's own reference epoch — stay in it.
+ *
+ * That is why b2 at `--limit-output-duration=5` splits into
+ * `577759.0…577764.0`, `577764.05…577769.05`, … (each part exactly 5.0 s wide, ending on a record
+ * that is 5.0 s after its first) and why Part0 holds just two lines: the `ALMANAC` at `577140.000`
+ * (the file's first record, so it anchors Part0) and `577758.95`, the first record after it. It is
+ * also why `577789.25` closes Part6 while the two late `RAWEPHEM`s stamped `577770` still land in
+ * it: their time is behind the window, not past it. Verified on synthetic captures as well: with
+ * records at `577760.00` and `577765.00` and nothing between, both stay in Part0.
+ *
+ * `'daily'` — `--daily-utc`: a new part whenever a record's GPS day (whole days since the GPS
+ * epoch, **no leap-second correction** — the boundary is seconds-of-week ≡ 0 mod 86400, measured
+ * either side of 518400 and 604800) is *later* than the previous record's day. Late records never
+ * move back, and a jump inside one day never splits. b2 spans one UTC day, hence one part of the
+ * whole file (905 lines / 4 931 973 B, named `b2-20261101_Part0.ASCII`).
+ */
+function partitionBlocks(
+  blocks: readonly ConvertBlock[],
+  splitMode: ConvertSplitMode | undefined,
+  options: ConvertOptions,
+): ConvertBlock[][] {
+  if (splitMode === undefined || splitMode === 'logs') return [blocks.slice()];
+  const parts: ConvertBlock[][] = [];
+  let current: ConvertBlock[] = [];
+  const close = () => { parts.push(current); current = []; };
+  if (splitMode === 'size') {
+    const limit = (options.splitSizeMb ?? 0) * MEBIBYTE;
+    let bytes = 0;
+    for (const block of blocks) {
+      current.push(block);
+      bytes += block.bytes.length;
+      if (limit > 0 && bytes >= limit) { close(); bytes = 0; }
+    }
+  } else if (splitMode === 'time') {
+    const duration = (options.splitSeconds ?? 0) * 1000;
+    let start: number | undefined;
+    let expired = false;
+    for (const block of blocks) {
+      const stamp = block.stamp ? absoluteMilliseconds(block.stamp) : undefined;
+      if (stamp !== undefined && duration > 0) {
+        if (start === undefined) start = stamp;
+        else if (expired && stamp > start + duration) { close(); start = stamp; expired = false; }
+      }
+      current.push(block);
+      if (stamp !== undefined && start !== undefined && !expired && duration > 0 && stamp - start >= duration) {
+        expired = true;
+      }
+    }
+  } else {
+    let clockDay: number | undefined;
+    for (const block of blocks) {
+      const day = block.stamp ? gpsDay(block.stamp) : undefined;
+      // The clock starts at the first record that carries a stamp at all, whatever its status, and
+      // from then on only records whose status means "this is an observation time" can move it.
+      // b2's `ALMANAC` (200) and `GLORAWALM` (200, week 2402 of a 2026-11 capture) leave it at one
+      // part; b1's 24 `RXCONFIG` records stamped 0 with status 200 and its `id 1246` frames with
+      // status 20 and week 0 leave it at one part too — while a status-180 record stamped 0 does
+      // start the clock at day 0 and splits the capture at the first real record.
+      if (day !== undefined) {
+        if (clockDay === undefined) clockDay = day;
+        else if (DAILY_CLOCK_TIME_STATUS.has(block.timeStatus ?? -1)) {
+          if (day > clockDay) close();
+          clockDay = day;
+        }
+      }
+      current.push(block);
+    }
+  }
+  if (current.length) parts.push(current);
+  return parts.length ? parts : [[]];
+}
+
+function concatBlocks(blocks: readonly ConvertBlock[]): Uint8Array {
+  const out = new Uint8Array(blocks.reduce((sum, block) => sum + block.bytes.length, 0));
+  let at = 0;
+  for (const block of blocks) { out.set(block.bytes, at); at += block.bytes.length; }
+  return out;
+}
+
+/**
+ * Turn one format's blocks into the files the suite writes: `<base>.<ext>` when nothing splits,
+ * `<base>_<LOGNAME>.<ext>` for `--split` (which only the ASCII family honours — the suite writes
+ * per-log files for it and single files for BINARY/RINEX/KML), and `<base>_Part<N>.<ext>` for the
+ * three other modes.
+ */
+function assembleFiles(
+  base: string,
+  extension: string,
+  text: boolean,
+  blocks: readonly ConvertBlock[],
+  splitMode: ConvertSplitMode | undefined,
+  options: ConvertOptions,
+): ConvertFile[] {
+  if (splitMode === 'logs') {
+    const perLog = new Map<string, ConvertBlock[]>();
+    for (const block of blocks) {
+      if (!block.name) continue;
+      const list = perLog.get(block.name) ?? [];
+      list.push(block);
+      perLog.set(block.name, list);
+    }
+    // `--split`: one file per log type, no combined file (`b2_BESTPOS.ASCII`, `b2_RANGE.ASCII`, …).
+    return [...perLog].sort((a, b) => a[0].localeCompare(b[0])).map(([logName, list]) => {
+      const bytes = concatBlocks(list);
+      return { name: `${base}_${logName}.${extension}`, text: text ? latin1(bytes) : null, bytes };
+    });
+  }
+  const parts = partitionBlocks(blocks, splitMode, options);
+  return parts.map((part, index) => {
+    const bytes = concatBlocks(part);
+    const fileName = splitMode === undefined ? `${base}.${extension}` : `${base}_Part${index}.${extension}`;
+    return { name: fileName, text: text ? latin1(bytes) : null, bytes };
+  });
+}
+
+/**
+ * The native's RANGECMP5 `sd_adr` table, 32 entries, **measured** rather than derived.
+ *
+ * Our decoder computes the manual's formula, `(1/256)·exp(x/(3.65·√3))`; that agrees with the
+ * native to three decimals — which is why every ASCII golden is exact — but the *stored float32*
+ * differs in the fifth digit for all 32 indices (`0.00390625` vs `0.00391`, `0.016219` vs
+ * `0.01621`). The values below were read out of the suite itself: one synthetic RANGECMP5 record
+ * per index (a single GPS satellite on one signal, `adrStd = x`), converted with `-b`, and the
+ * `sd_adr` field of the expanded RANGE frame decoded. Index 30 and 31 both store 0.4494 — the
+ * manual's open-ended "`> 0.44940`" bound, so the table saturates exactly where the documentation
+ * says it does.
+ */
+const ADR_STD_CMP5_STORED = [
+  0.00391, 0.00458, 0.00536, 0.00628, 0.00735, 0.00861, 0.01001, 0.01182, 0.01385, 0.01621,
+  0.019, 0.02223, 0.02607, 0.03054, 0.03577, 0.0419, 0.04908, 0.05749, 0.06734, 0.07889,
+  0.0924, 0.10824, 0.12679, 0.14851, 0.17396, 0.20378, 0.2387, 0.27961, 0.32753, 0.38366,
+  0.4494, 0.4494,
+];
+
+/** The stored table entry closest to the decoded value — the index is monotonic and distinct. */
+function storedCmp5AdrStd(value: number): number {
+  let best = ADR_STD_CMP5_STORED[0];
+  let distance = Infinity;
+  for (const candidate of ADR_STD_CMP5_STORED) {
+    const delta = Math.abs(candidate - value);
+    if (delta < distance) { distance = delta; best = candidate; }
+  }
+  return best;
+}
+
+/**
+ * The `RANGE` payload the suite writes into a **binary** file when it unpacks a compressed block.
+ *
+ * The ASCII writer reproduces the *printed* digits (`rangecmp.ts#buildRangePayload`); a binary file
+ * carries the stored FLOAT32 values, and three of them are not simply `Math.fround` of the decoded
+ * number. Measured by diffing the suite's own `-b` output for b2 and b5, field by field, over every
+ * observation of all five compression versions (2 697 CMP2 + 2 610 CMP4 in b2, 897 CMP1 + 897 CMP2
+ * + 828 CMP3 + 828 CMP4 + 828 CMP5 in b5):
+ *
+ *  - `sd_psr` (CMP5) and `sd_adr` (CMP3/CMP4) are stored as the **3-decimal** value the native's
+ *    table holds (`0.09906… → 0.099`, `0.02208… → 0.022`), while CMP1/CMP2 keep theirs;
+ *  - `sd_adr` in CMP5 is the native's own table — see `ADR_STD_CMP5_STORED`;
+ *  - `C_No` in CMP3/CMP4/CMP5 is `raw * 0.05f` — the multiply by the *float32* `0.05` moves the
+ *    result one float32 step up for 553 of b2's 2 610 CMP4 observations (`46.1 → 46.100002…`),
+ *    which `fround(raw / 20)` does not reproduce;
+ *  - `dop`, `lock_time`, `sd_psr` (CMP1–CMP4) and `C_No` (CMP1/CMP2) are plain `Math.fround`.
+ *
+ * With those rules b5's 3 478 252-byte `-b` file is byte-identical; before the CMP5 table it differed
+ * in the `sd_adr` bytes of all 828 observations.
+ */
+function buildRangeBinaryPayload(
+  observations: ReturnType<typeof decodeRangeCmp2>,
+  version: number,
+): Uint8Array {
+  const round3 = (value: number) => Math.round(value * 1000) / 1000;
+  const float32Fifth = Math.fround(0.05);
+  const cmp4 = version === 1734 || version === 2050;
+  const cmp5 = version === 2537;
+  const out = new Uint8Array(4 + observations.length * 44);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, observations.length, true);
+  observations.forEach((obs, index) => {
+    const at = 4 + index * 44;
+    view.setUint16(at, obs.sv_prn & 0xffff, true);
+    view.setUint16(at + 2, obs.sv_freq & 0xffff, true);
+    view.setFloat64(at + 4, obs.psr, true);
+    view.setFloat32(at + 12, Math.fround(cmp5 ? round3(obs.sd_psr) : obs.sd_psr), true);
+    view.setFloat64(at + 16, obs.adr, true);
+    view.setFloat32(
+      at + 24,
+      cmp5
+        ? Math.fround(obs.sd_adr === 0 ? 0 : storedCmp5AdrStd(obs.sd_adr))
+        : Math.fround(cmp4 ? round3(obs.sd_adr) : obs.sd_adr),
+      true,
+    );
+    view.setFloat32(at + 28, Math.fround(obs.dop), true);
+    view.setFloat32(
+      at + 32,
+      cmp4 || cmp5 ? Math.fround(Math.round(obs.C_No * 20) * float32Fifth) : Math.fround(obs.C_No),
+      true,
+    );
+    view.setFloat32(at + 36, Math.fround(obs.lock_time), true);
+    view.setUint32(at + 40, obs.c_status >>> 0, true);
+  });
+  return out;
+}
+
+/**
+ * The frame the suite writes for a compressed record in `BINARY`: the same header (port, sequence,
+ * idle time, time status, week, milliseconds, receiver status, software version) with the message
+ * id and payload length replaced, the unpacked `RANGE` payload, and a fresh CRC. Verified frame by
+ * frame against `-b` on b2 and b5 — 699 `RANGE` records out of 638 + 31 + 30, and the header bytes
+ * differ only in id and length.
+ */
+function expandedRangeFrame(frame: SbfFrame, observations: ReturnType<typeof decodeRangeCmp2>): Uint8Array {
+  const payload = buildRangeBinaryPayload(observations, frame.header.messageId);
+  const head = frame.bytes.slice(0, frame.header.headerLength);
+  const view = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  view.setUint16(4, RANGE_ID, true);
+  if (frame.header.kind === 'long') view.setUint16(8, payload.length, true);
+  else view.setUint8(3, payload.length);
+  const body = new Uint8Array(head.length + payload.length);
+  body.set(head, 0);
+  body.set(payload, head.length);
+  return appendCrcLe(body);
+}
+
+/**
+ * `BINARY`'s blocks: one accepted record's bytes each, or the unpacked `RANGE` frame that replaces a
+ * `RANGECMP*` record under the suite's default `--expand-cmp`. `--no-expand-cmp` copies the
+ * compressed record verbatim: b2 writes 2 574 334 B (the capture minus its 7 056 unknown bytes,
+ * the same bytes the ASCII family calls `RANGECMP2`/`RANGECMP4` lines) instead of 2 733 338 B.
+ *
+ * A record that **renders nothing** is not written at all: the suite's binary output follows the
+ * same rule as its text output, so b1 writes 256 of its 278 `RXCONFIG` records (22 carry an embedded
+ * message the dictionary lacks) and b4 writes 225 of its 244 `RXCONFIGUSER` ones — measured by
+ * counting the ids in the suite's own `-b` files.
+ *
+ * Not reproduced: a **text** record in a `BINARY` conversion. The suite encodes it back into a
+ * binary frame (b1's `-b` file holds 39 more `BESTPOS` and 26 more `RANGE` frames than it has SBF
+ * records — exactly its 99 rendered text records), and rebuilding that payload needs a full
+ * field-serialiser, which this package does not have. See `03_Convert简介.md`.
+ */
+function binaryBlocks(
+  frames: readonly Frame[],
+  tables: EdieTables,
+  stamps: ReadonlyArray<RecordStamp | undefined>,
+  expand: boolean,
+): ConvertBlock[] {
+  const carries: RangeCarries = new Map();
+  const blocks: ConvertBlock[] = [];
+  frames.forEach((frame, index) => {
+    if (frame.kind !== 'sbf' || !frame.crcOk) return;
+    const layout = tables.messages[String(frame.header.messageId)];
+    const stamp = stamps[index];
+    const common = {
+      name: layout?.name ?? '',
+      ...(stamp ? { stamp } : {}),
+      timeStatus: frame.header.timeStatus,
+      ...(frame.offset !== undefined ? { offset: frame.offset } : {}),
+    };
+    if (!expand || !isRangeCmp(frame)) {
+      if (!layout) return;
+      if (!encodeAsciiLog(frame, layout, tables)) return;
+    }
+    if (expand && isRangeCmp(frame)) {
+      const observations = unpackRangeCmp(frame, carries);
+      blocks.push({ lines: [], bytes: expandedRangeFrame(frame, observations), ...common, name: 'RANGE' });
+      return;
+    }
+    blocks.push({ lines: [], bytes: frame.bytes, ...common });
+  });
+  return blocks;
+}
+
+/**
  * Build every file Convert writes for one capture.
  *
  * `frames` must be the frames **Convert** sees: `SbfDeframer({crcMode: 'validate'})`, text records
@@ -524,9 +992,30 @@ function latin1(bytes: Uint8Array): string {
  * CRC and therefore splits a damaged capture differently (b1: 1322 binary frames there, 1325 here),
  * so it passes a separate frame list — see `app/src/capture.ts#CaptureData.allFrames`.
  */
-export function convertFrames(frames: readonly Frame[], options: ConvertOptions): ConvertOutcome {
+export function convertFrames(inputFrames: readonly Frame[], options: ConvertOptions): ConvertOutcome {
   const { format, at, tables, name } = options;
   const base = captureBase(name);
+  const expand = options.expandCmp !== false;
+  const splitMode: ConvertSplitMode | undefined = options.splitMode ?? (options.split ? 'logs' : undefined);
+
+  // `--decimate` filters the record stream itself, so the summary's Source # column follows it:
+  // the suite's b1 run at `--decimate=5` lists `BESTPOS 17 → 17` where the full capture has 32.
+  const writesText = format === 'ASCII' || format === 'ABBREV_ASCII';
+  const textLinesOf = (list: readonly Frame[]) =>
+    format === 'ABBREV_ASCII' ? abbrevTextLogLines(list, tables) : textLogLines(list, tables);
+  const inputText = writesText ? textLinesOf(inputFrames) : undefined;
+  const inputStamps: Array<RecordStamp | undefined> = stampsFor(
+    inputFrames,
+    inputText ? textRecordStamps(inputText) : new Map<number, RecordStamp>(),
+  );
+  const interval = Number.isFinite(options.decimate) && (options.decimate as number) > 0
+    ? (options.decimate as number)
+    : undefined;
+  const frames = interval ? decimateFrames(inputFrames, inputStamps, interval) : inputFrames;
+  const textMap = frames === inputFrames ? inputText : (writesText ? textLinesOf(frames) : undefined);
+  const stamps = frames === inputFrames
+    ? inputStamps
+    : stampsFor(frames, textMap ? textRecordStamps(textMap) : new Map<number, RecordStamp>());
 
   const all = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
   // `PASSTHROUGH` is converted like every other log — b5's summary lists `1342 … 1 in / 1 out`.
@@ -540,55 +1029,47 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
   let countsRendered: Map<number, number> | undefined;
   let countsText: Map<number, string | string[]> | undefined;
 
-  // Unknown bytes, when the caller handed us the capture itself (they are in no frame).
+  // Unknown bytes, when the caller handed us the capture itself (they are in no frame). Measured
+  // over the **whole** capture, before `--decimate` drops anything: the suite's b1 run at
+  // `--decimate=5` still reports the full 3 695 in the summary's UNKNOWN row.
   const mode: UnknownBytesMode = options.unknownBytes ?? 'ignore';
   const source = options.source;
-  const spans = source && source.length > 0 && frames.every((frame) => frame.offset !== undefined)
-    ? unknownSpans(frames, tables, source.length)
+  const spans = source && source.length > 0 && inputFrames.every((frame) => frame.offset !== undefined)
+    ? unknownSpans(inputFrames, tables, source.length)
     : undefined;
   const textFamily = format === 'ASCII' || format === 'ABBREV_ASCII' || format === 'BINARY';
   // The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`).
-  const interleaving = mode === 'interleave' && textFamily && !options.split && spans !== undefined && source !== undefined;
+  const interleaving = mode === 'interleave' && textFamily && splitMode === undefined && spans !== undefined && source !== undefined;
 
   if (format === 'ASCII') {
     const rendered = new Map<number, number>();
-    const textMap = textLogLines(frames, tables);
-    const perLog = options.split ? new Map<string, string[]>() : undefined;
-    const placed: Array<{ offset: number; lines: readonly string[] }> = [];
-    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => {
+    const textAt = textMap ?? new Map<number, string | string[]>();
+    const blocks = renderBlocks(frames, tables, textAt, (frame, layout) => {
       const line = encodeAsciiLog(frame, layout, tables);
       return line ? [line] : [];
-    }, rendered, perLog, placed);
-    if (perLog) {
-      // `--split`: the suite writes one file per log type and no combined file
-      // (`b2_ALMANAC.ASCII`, `b2_BESTPOS.ASCII`, `b2_RANGE.ASCII`, …).
-      for (const [name, list] of [...perLog].sort((a, b) => a[0].localeCompare(b[0]))) {
-        files.push(lineFile(`${base}_${name}.ASCII`, list));
-      }
-    } else if (interleaving) {
-      files.push(interleave(`${base}.ASCII`, blockPieces(placed), spans!.fileRuns, source!));
+    }, stamps, expand, rendered);
+    if (interleaving) {
+      files.push(interleave(`${base}.ASCII`, blocks, spans!.fileRuns, source!));
     } else {
-      files.push(lineFile(`${base}.ASCII`, lines));
+      files.push(...assembleFiles(base, 'ASCII', true, blocks, splitMode, options));
     }
     countsRendered = rendered;
-    countsText = textMap;
+    countsText = textAt;
   } else if (format === 'ABBREV_ASCII') {
     const rendered = new Map<number, number>();
-    const textMap = abbrevTextLogLines(frames, tables);
-    const perLog = options.split ? new Map<string, string[]>() : undefined;
-    const placed: Array<{ offset: number; lines: readonly string[] }> = [];
-    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => encodeAbbrevLines(frame, layout, tables), rendered, perLog, placed);
-    if (perLog) {
-      for (const [name, list] of [...perLog].sort((a, b) => a[0].localeCompare(b[0]))) {
-        files.push(lineFile(`${base}_${name}.ABBREV_ASCII`, list));
-      }
-    } else if (interleaving) {
-      files.push(interleave(`${base}.ABBREV_ASCII`, blockPieces(placed), spans!.fileRuns, source!));
+    const textAt = textMap ?? new Map<number, string | string[]>();
+    const blocks = renderBlocks(
+      frames, tables, textAt,
+      (frame, layout) => encodeAbbrevLines(frame, layout, tables),
+      stamps, expand, rendered,
+    );
+    if (interleaving) {
+      files.push(interleave(`${base}.ABBREV_ASCII`, blocks, spans!.fileRuns, source!));
     } else {
-      files.push(lineFile(`${base}.ABBREV_ASCII`, lines));
+      files.push(...assembleFiles(base, 'ABBREV_ASCII', true, blocks, splitMode, options));
     }
     countsRendered = rendered;
-    countsText = textMap;
+    countsText = textAt;
   } else if (format === 'KML') {
     const points: KmlPoint[] = [];
     for (const frame of accepted) {
@@ -629,16 +1110,20 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
       ));
     }
   } else {
-    const binary = encodeBinaryCapture(accepted).bytes;
+    const blocks = binaryBlocks(frames, tables, stamps, expand);
     if (interleaving) {
-      files.push(interleave(`${base}.BINARY`, accepted.map((frame) => ({ offset: frame.offset ?? 0, bytes: frame.bytes })), spans!.fileRuns, source!));
+      files.push(interleave(`${base}.BINARY`, blocks, spans!.fileRuns, source!));
     } else {
-      files.push({ name: `${base}.BINARY`, text: null, bytes: binary });
+      files.push(...assembleFiles(base, 'BINARY', false, blocks, splitMode, options));
     }
   }
 
   const counts = countLogs(converted, tables, {
     rendered: countsRendered,
+    // A `BINARY` file is the only other place a `RANGECMP*` becomes a `RANGE` record: with the
+    // suite's default expansion the summary reads `RANGE 638 → 699`, `RANGECMP2 31 → 0`; under
+    // `--no-expand-cmp` it keeps 1:1 (measured on b2 both ways).
+    ...(countsRendered === undefined && expand ? { expandRanges: true } : {}),
     ...(countsText ? { frames, textAt: countsText } : {}),
   });
 
@@ -705,13 +1190,6 @@ function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** One record's rendered lines as the byte block the suite writes, `\r\n`-terminated. */
-function blockPieces(placed: ReadonlyArray<{ offset: number; lines: readonly string[] }>): Array<{ offset: number; bytes: Uint8Array }> {
-  return placed
-    .filter((piece) => piece.lines.length > 0)
-    .map((piece) => ({ offset: piece.offset, bytes: latin1Bytes(`${piece.lines.join('\r\n')}\r\n`) }));
-}
-
 /**
  * `--unknown-bytes=interleave`: put the unknown bytes back where the capture had them, ordered by
  * capture offset. Measured on a synthetic capture through `-a` / `--abbrev` / `-b`: the bytes are
@@ -719,12 +1197,13 @@ function blockPieces(placed: ReadonlyArray<{ offset: number; lines: readonly str
  */
 function interleave(
   name: string,
-  placed: ReadonlyArray<{ offset: number; bytes: Uint8Array }>,
+  blocks: readonly ConvertBlock[],
   runs: readonly Span[],
   source: Uint8Array,
 ): ConvertFile {
   const pieces = [
-    ...placed.filter((piece) => piece.bytes.length > 0),
+    ...blocks.filter((block) => block.bytes.length > 0)
+      .map((block) => ({ offset: block.offset ?? 0, bytes: block.bytes })),
     ...runs.map((run) => ({ offset: run.start, bytes: source.subarray(run.start, run.end) })),
   ].sort((a, b) => a.offset - b.offset);
   const bytes = concatBytes(pieces.map((piece) => piece.bytes));

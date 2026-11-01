@@ -18,7 +18,13 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SbfDeframer, type Frame } from '../../protocol/src/framing.ts';
-import { convertFrames, isConvertFormat, type ConvertFormat, type UnknownBytesMode } from '../../protocol/src/convert-pipeline.ts';
+import {
+  convertFrames,
+  isConvertFormat,
+  type ConvertFormat,
+  type ConvertSplitMode,
+  type UnknownBytesMode,
+} from '../../protocol/src/convert-pipeline.ts';
 import { buildSummary, formatDirectory } from '../../protocol/src/summary.ts';
 import type { EdieTables } from '../../protocol/src/edie.ts';
 
@@ -90,6 +96,14 @@ function main(): void {
   let startTime: { week: number; seconds: number } | undefined;
   let finishTime: { week: number; seconds: number } | undefined;
   let limitDuration: number | undefined;
+  /** `--limit-output-size=<MB>` / `--limit-output-duration=<SECONDS>` / `--daily-utc`. */
+  let limitOutputSize: number | undefined;
+  let limitOutputDuration: number | undefined;
+  let dailyUtc = false;
+  /** `--decimate=<SECONDS>`. */
+  let decimate: number | undefined;
+  /** `--expand-cmp` / `--no-expand-cmp`: the suite's default is to unpack `RANGECMP*` into `RANGE`. */
+  let expandCmp = true;
   /** `--unknown-bytes=[file|interleave|ignore]`; anything else is the suite's `SKIP`. */
   let unknownBytes: UnknownBytesMode = 'ignore';
   const unknownMode = (value: string | undefined): UnknownBytesMode => {
@@ -119,16 +133,39 @@ function main(): void {
     else if (token === '--finish-time') finishTime = weekSeconds(argv[++i]);
     else if (token.startsWith('--limit-duration=')) limitDuration = Number(token.slice('--limit-duration='.length));
     else if (token === '--limit-duration') limitDuration = Number(argv[++i]);
+    else if (token.startsWith('--limit-output-size=')) limitOutputSize = Number(token.slice('--limit-output-size='.length));
+    else if (token.startsWith('-l=')) limitOutputSize = Number(token.slice(3));
+    else if (token === '--limit-output-size' || token === '-l') limitOutputSize = Number(argv[++i]);
+    else if (token.startsWith('--limit-output-duration=')) limitOutputDuration = Number(token.slice('--limit-output-duration='.length));
+    else if (token === '--limit-output-duration') limitOutputDuration = Number(argv[++i]);
+    else if (token === '--daily-utc') dailyUtc = true;
+    else if (token.startsWith('--decimate=')) decimate = Number(token.slice('--decimate='.length));
+    else if (token === '--decimate') decimate = Number(argv[++i]);
+    else if (token === '--expand-cmp') expandCmp = true;
+    else if (token === '--no-expand-cmp') expandCmp = false;
     else if (token.startsWith('--unknown-bytes=')) unknownBytes = unknownMode(token.slice('--unknown-bytes='.length));
     else if (token === '--unknown-bytes') unknownBytes = unknownMode(argv[++i]);
     else if (!token.startsWith('-')) input = token;
   }
   if (!input || !isConvertFormat(format)) {
     console.error('usage: convert.ts <input> --to ASCII|ABBREV_ASCII|BINARY [--out <dir>] [--at ISO] [--split]'
-      + ' [--unknown-bytes=file|interleave|ignore]'
+      + ' [--limit-output-size=<MB>] [--limit-output-duration=<SECONDS>] [--daily-utc] [--decimate=<SECONDS>]'
+      + ' [--expand-cmp|--no-expand-cmp] [--unknown-bytes=file|interleave|ignore]'
       + ' [--start-time=<WEEK>,<SECONDS>] [--finish-time=<WEEK>,<SECONDS>] [--limit-duration=<SECONDS>]');
     process.exit(2);
   }
+
+  // The suite picks one splitting mode, and its precedence is fixed (`cli.js`: `splitOption`):
+  // `--limit-output-size` > `--limit-output-duration` > `--split` > `--daily-utc`.
+  const splitMode: ConvertSplitMode | undefined = Number.isFinite(limitOutputSize)
+    ? 'size'
+    : Number.isFinite(limitOutputDuration)
+      ? 'time'
+      : split
+        ? 'logs'
+        : dailyUtc
+          ? 'daily'
+          : undefined;
 
   const inputPath = resolve(input);
   const inputBytes = readFileSync(inputPath);
@@ -154,6 +191,11 @@ function main(): void {
     tables,
     name: basename(inputPath),
     split,
+    ...(splitMode ? { splitMode } : {}),
+    ...(Number.isFinite(limitOutputSize) ? { splitSizeMb: limitOutputSize } : {}),
+    ...(Number.isFinite(limitOutputDuration) ? { splitSeconds: limitOutputDuration } : {}),
+    ...(Number.isFinite(decimate) ? { decimate } : {}),
+    expandCmp,
     unknownBytes,
     ...(source ? { source } : {}),
   });
