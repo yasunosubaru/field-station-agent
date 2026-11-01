@@ -544,6 +544,23 @@ body[data-page="graph"] #panel-graph {
   inset: 0;
 }
 
+/* The LuciadRIA stage: a same-origin iframe because the engine needs wasm, which the shell's CSP
+ * forbids in this document. It covers exactly the same box the SVG basemap used, so the HUD chips
+ * (readout, cursor, hover) stay in the same coordinate space. */
+.gp-map-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #eef1ea;
+}
+
+.gp-map-frame[hidden] {
+  display: none;
+}
+
 .gp-map-svg svg {
   display: block;
   width: 100%;
@@ -901,6 +918,30 @@ body[data-page="graph"] #panel-graph {
   line-height: 17px;
   color: var(--gp-ink-60);
   word-break: break-word;
+}
+
+/* 图例 → Original colours: a checkbox, not a button — the state is the box. */
+.gp-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--gp-ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gp-check input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--gp-teal);
+  cursor: pointer;
+}
+
+.gp-check span {
+  line-height: 16px;
 }
 
 .gp-legend-table {

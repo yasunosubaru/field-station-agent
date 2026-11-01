@@ -17,6 +17,7 @@ import { CONVERT_FORMATS, convertCapture, FORMAT_LABELS, FORMAT_NOTES, isConvert
 import { loadCapture, tables } from './capture.ts';
 import {
   applyConfigEvent,
+  configLogRequests,
   configPageDocument,
   configPageList,
   configStylesheet,
@@ -25,10 +26,12 @@ import {
   deviceImportPreview,
   deviceStatus,
   eventsSummary,
+  feedConfigFromEntries,
   feedEventsFromEntries,
   isConfigPage,
   primeEventsPage,
   readConfigAsset,
+  refreshConfigPage,
 } from './config-http.ts';
 import { LiveLink, type LiveTarget } from './live.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
@@ -149,6 +152,35 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
     throw new HttpError(400, '请求体必须是 JSON 对象');
   }
   return parsed as Record<string, unknown>;
+}
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Ask a configuration page's receiver for the logs it needs, feed the answers into the page, and
+ * rebuild it — then the caller serialises a document that already holds the real values.
+ *
+ * The requests are spaced out: the receiver's command buffer drops lines that arrive back-to-back
+ * while a log stream is running (measured on the desk OEM729, 2026-11-01 — ten `LOG … ONCE` in one
+ * burst lost INTERFACEMODE/LOGLIST/SERIALCONFIG, the same lines 150 ms apart were all answered).
+ * The loop ends early once nothing new arrives for ~1.5 s, so an offline receiver costs nothing.
+ */
+async function primeConfigurationPage(name: string): Promise<void> {
+  const lines = configLogRequests(name);
+  if (!lines.length) return;
+  const link = liveLink();
+  if (!link.status().connected) return;
+  for (const line of lines) {
+    link.send(line);
+    await delay(150);
+  }
+  let quiet = 0;
+  for (let round = 0; round < 24 && quiet < 6; round++) {
+    await delay(250);
+    const fed = feedConfigFromEntries(link.logs(0).entries);
+    quiet = fed > 0 ? 0 : quiet + 1;
+  }
+  refreshConfigPage(name);
 }
 
 function integer(value: string | null, fallback: number, min: number, max: number, label: string): number {
@@ -467,6 +499,57 @@ function handleGraphPdf(url: URL, res: ServerResponse, method: string): void {
   }, method);
 }
 
+/* ---------------- Luciad 引擎模块（唯一的动态静态资源） ---------------------
+ *
+ * `GET /geo/luciad-engine.js` → 原版 Graph 渲染包 `逆向/01_解包/Graph/out/renderer/assets/
+ * index-B86bHcCD.js`，砍掉最后那句 `ReactDOM.createRoot(...)`（那就是原版 Graph 的 React 应用
+ * 挂载），再接上仓库里的 `web/geo/luciad-exports.js`。产物是一个**只暴露 LuciadRIA 类**的 ESM
+ * 模块：类名在打包时保留了（`RIAMap` / `FeatureLayer` / `createPolyline` …），所以不需要跑原版
+ * 应用也能拿到引擎。Luciad 本体不进仓库，始终从 01_解包 现读；读不到就 404，面板据此退回自绘地图。
+ *
+ * 只此一条动态路由；`/geo/*` 其余文件（stage 的 html/js）走下面已有的静态分支。
+ */
+
+const GRAPH_BUNDLE = resolve(
+  REPO_DIR, '逆向', '01_解包', 'Graph', 'out', 'renderer', 'assets', 'index-B86bHcCD.js',
+);
+const GRAPH_BUNDLE_TAIL = 'ReactDOM.createRoot(';
+
+let luciadEngine: { text: string; source: 'unpacked' | 'raw' } | null = null;
+
+function buildLuciadEngine(): { text: string; source: 'unpacked' | 'raw' } | null {
+  if (luciadEngine) return luciadEngine;
+  let bundle: string;
+  try {
+    bundle = readFileSync(GRAPH_BUNDLE, 'utf8');
+  } catch {
+    return null;
+  }
+  const exportsTail = readFileSync(join(WEB_DIR, 'geo', 'luciad-exports.js'), 'utf8');
+  const cut = bundle.lastIndexOf(GRAPH_BUNDLE_TAIL);
+  // Without the mount call the bundle would boot the Graph app inside our iframe; with the marker
+  // missing we serve it whole and say so, so the stage can fail loudly instead of half-working.
+  const head = cut > 0 ? bundle.slice(0, cut) : bundle;
+  luciadEngine = { text: `${head}\n${exportsTail}`, source: cut > 0 ? 'unpacked' : 'raw' };
+  return luciadEngine;
+}
+
+function handleLuciadEngine(res: ServerResponse, method: string): void {
+  const engine = buildLuciadEngine();
+  if (!engine) throw new HttpError(404, `读不到原版 Graph 引擎包：${GRAPH_BUNDLE}`);
+  const body = Buffer.from(engine.text, 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'text/javascript; charset=utf-8',
+    'Content-Length': body.byteLength,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Luciad-Source': engine.source,
+    'X-Luciad-Bytes': String(body.byteLength),
+  });
+  if (method === 'HEAD') res.end();
+  else res.end(body);
+}
+
 /* ---------------- 原版外观资源（只读） --------------------------------
  *
  * 外壳要的图标、渐变条与字体都留在解包出来的原版前端里，不复制进仓库：
@@ -633,8 +716,13 @@ const server = createServer((req, res) => {
         handleAsset(path.slice('/assets/'.length), res, method);
         return;
       }
+      if (path === '/geo/luciad-engine.js') {
+        handleLuciadEngine(res, method);
+        return;
+      }
       if (path === '/shell.css' || path === '/icons.css' || path === '/theme.css' || path === '/theme.js'
-        || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')) {
+        || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')
+        || path.startsWith('/geo/')) {
         handleWebFile(path.slice(1), res, method);
         return;
       }
@@ -687,6 +775,9 @@ const server = createServer((req, res) => {
         // RXSTATUSEVENT (#94) is a text event; the Events page is fed the same records the
         // Terminal sees, so the two can never disagree about what the receiver said.
         feedEventsFromEntries(page.entries);
+        // The configuration pages read the receiver's own configuration logs (INTERFACEMODE,
+        // LOGLIST, SERIALCONFIG, …); they are fed from the same entry stream.
+        feedConfigFromEntries(page.entries);
         sendJson(res, 200, { ok: true, ...page }, method);
         return;
       }
@@ -759,6 +850,11 @@ const server = createServer((req, res) => {
         // Events replays whatever RXSTATUSEVENT records the link still holds before serialising,
         // so the page shows the session's real events rather than only the ones arriving next.
         if (name === 'events') primeEventsPage(liveLink().logs(0).entries);
+        // A configuration page can only show what the receiver told it. Ask for that page's own log
+        // set (`LOG <NAME>B ONCE`, the shipped request table), feed the answers, re-render, then
+        // serialise: the headless host has no polling timer, so the data has to be in before the
+        // document is built. Offline the lines are simply not sent and the page says so.
+        await primeConfigurationPage(name);
         sendText(res, 200, configPageDocument(name), 'text/html; charset=utf-8');
         return;
       }

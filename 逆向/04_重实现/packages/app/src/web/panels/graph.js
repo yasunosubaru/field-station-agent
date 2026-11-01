@@ -27,12 +27,14 @@
  *             is one column of one CSV read through `/api/graph/data?file=&column=`. Titles, plot
  *             kinds and y-axis units are the catalog's, verbatim; `chartSvgFor()` draws the same
  *             axes/grid/typography as the Overview chart, only repeated per tile.
- *   real      the Overview map: `2D Trajectory.csv` fixes drawn on a **graticule basemap generated in
- *             this file** (degree grid + metric scale bar + north arrow + the `Position SD.csv` 1σ
- *             circle), with wheel/drag zoom and pan, fit / zoom buttons, a hover coordinate readout
- *             and a cursor bound to the timeline. The original is LuciadRIA (commercial, WebGPU) and
- *             is not in this repo, so `mapSvg()` draws no imagery and no invented geography — the
- *             stage carries the line `本构建不是 Luciad 地图` in plain sight, not in a tooltip
+ *   real      the Overview map, in **two renderers**. The default is the original engine —
+ *             LuciadRIA 2026.0 taken out of the shipped Graph bundle (`/geo/luciad-engine.js`) and
+ *             run in a same-origin iframe (`web/geo/luciad-stage.html`, because the shell's CSP
+ *             forbids wasm) — drawing `2D Trajectory.csv`, the `Position SD.csv` 1σ ring, a
+ *             graticule and the timeline cursor as Luciad features. When the engine cannot start
+ *             (no `/geo` route, no WebGPU, 16 MB module blocked) or `?map=canvas` asks for it,
+ *             `mapSvg()` draws the same picture as SVG. The stage never claims to be Luciad unless
+ *             the stage itself reported `ready`; the failure path prints the reason on the stage.
  *   honest    a tile whose CSV is missing, whose column cannot be read, or whose rows
  *             `/api/graph/data` truncates prints `--` plus the reason instead of a curve;
  *             `Project Information` shows no message counts because `DataSummary.json` is not behind
@@ -48,6 +50,41 @@ const CSS_ID = 'nas-panel-graph-css';
 
 /** The CSV the old in-shell page opened first, kept so the panel still lands on a useful series. */
 const PREFERRED_CSV = 'GNSS Signal Strength.csv';
+
+/* ---------------- map engine ---------------- */
+
+/**
+ * Which renderer draws the Overview map.
+ *
+ *   luciad  the **original engine** — LuciadRIA 2026.0 out of the shipped Graph bundle, in an iframe
+ *           (`web/geo/luciad-stage.html`) because the shell's CSP forbids wasm. This is the default.
+ *   canvas  this file's own SVG graticule (`mapSvg()`), used when the engine cannot start and when
+ *           `?map=canvas` asks for it.
+ *
+ * `luciad` is only ever "ready" after the stage has answered `postMessage` — until then, and forever
+ * after a failure, the stage says so on screen and the SVG map stays up. Nothing claims to be Luciad
+ * unless Luciad is what painted the pixels.
+ */
+export const MAP_ENGINES = ['luciad', 'canvas'];
+
+/** `?map=canvas` → the self-drawn basemap; anything else (including nothing) → Luciad. */
+export function mapEngineFromSearch(search) {
+  const raw = String(search == null ? '' : search);
+  const query = raw.startsWith('?') ? raw.slice(1) : raw;
+  let value = '';
+  try {
+    value = (new URLSearchParams(query).get('map') || '').trim().toLowerCase();
+  } catch {
+    value = '';
+  }
+  return value === 'canvas' || value === 'svg' ? 'canvas' : 'luciad';
+}
+
+/** The stage document, resolved next to this panel (`/panels/graph.js` → `/geo/luciad-stage.html`). */
+export const LUCIAD_STAGE_URL = new URL('../geo/luciad-stage.html', import.meta.url).href;
+
+/** A 16 MB module plus a wasm boot on a cold cache; past this the panel stops waiting and says so. */
+export const LUCIAD_READY_TIMEOUT_MS = 30_000;
 
 /** `Speed` dropdown choices — the original ships 1× / 2× / 5× / 10×. */
 const SPEEDS = [1, 2, 5, 10];
@@ -189,10 +226,8 @@ function projectNameOf(data, directory) {
 /**
  * Ten colours, cycled by column index. The first two are the Overview chart's own stroke and marker
  * (`#00516F` / `#00ABC8`), `#D0021B` is the suite's flag / playhead red, the rest are the muted hues
- * Convert and Playback already use. Deliberately **not** the original `stringToColor`: that hash is
- * recoverable from `index-B86bHcCD.js @567200` (and was ported here first), but spreading the 74
- * `C/No` series of one CSV over fluorescent greens and purples makes neighbours indistinguishable at
- * 2 px and puts colours on screen that appear nowhere else in the suite.
+ * Convert and Playback already use. This is the **default** palette; the original's own
+ * `stringToColor` is one checkbox away (`originalSeriesColor`, below).
  */
 const SERIES_COLOURS = [
   '#00516f', '#00abc8', '#d0021b', '#e09b00', '#2e8b57',
@@ -206,6 +241,157 @@ const CONSTELLATIONS = ['GPS', 'GLONASS', 'GALILEO', 'BEIDOU', 'QZSS', 'LBAND', 
 export function seriesColor(index) {
   const at = Math.abs(Math.trunc(Number(index) || 0)) % SERIES_COLOURS.length;
   return SERIES_COLOURS[at];
+}
+
+/* ---- the original's own palette (`stringToColor`) ---- */
+
+/**
+ * `MSL_HEIGHT_COLOUR` (`index-B86bHcCD.js @556224`): the original pins a column literally named
+ * `height` to red instead of hashing it — `computeDefaultColour` @568822.
+ */
+export const MSL_HEIGHT_COLOUR = '#FF0000';
+
+/** 11 hue anchors `getBaseHue` cycles through, verbatim from the bundle. */
+export const ORIGINAL_BASE_HUES = [0, 140, 240, 30, 270, 160, 310, 15, 210, 200, 285];
+
+/** The decorative run `augmentString` splices into the middle of a column name. */
+export const ORIGINAL_AUGMENT = '§Ω∆Φ☀★☾✦¿¡¶†αβγδ';
+
+/**
+ * `hash$3` @556396: FNV-1a with a splitmix-style avalanche every fourth code unit, then a final
+ * mix. `Math.imul` keeps every step in 32-bit; the `>>> 0` at the end makes it unsigned.
+ */
+export function mixHash(input, seed = 0) {
+  const text = String(input == null ? '' : input);
+  let h = (2166136261 ^ (Number(seed) || 0)) >>> 0;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+    if (i % 4 === 3) {
+      h ^= h >>> 13;
+      h = Math.imul(h, 2246822507);
+      h ^= h >>> 16;
+    }
+  }
+  h ^= h >>> 16;
+  h = Math.imul(h, 2246822507);
+  h ^= h >>> 13;
+  h = Math.imul(h, 3266489909);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+/** `augmentString` @556300 — the name is split in half and the glyph run dropped in the middle. */
+export function augmentString(text) {
+  const value = String(text == null ? '' : text);
+  const midpoint = Math.floor(value.length / 2);
+  return value.slice(0, midpoint) + ORIGINAL_AUGMENT + value.slice(midpoint);
+}
+
+/** `createInputString` @556405 — `augmented_<index>_<index*7919>_<length*6577>`. */
+export function originalInputString(name, index) {
+  const text = String(name == null ? '' : name);
+  const at = Math.trunc(Number(index) || 0);
+  return `${augmentString(text)}_${at}_${at * 7919}_${text.length * 6577}`;
+}
+
+/** `calculatePositionWeight` @556525 — every code unit weighted by its 1-based position. */
+export function positionWeight(text) {
+  const value = String(text == null ? '' : text);
+  let weight = 0;
+  for (let i = 0; i < value.length; i += 1) weight += value.charCodeAt(i) * (i + 1);
+  return weight;
+}
+
+/** `combineHashes` @556868 — four seeded hashes plus the index and length offsets. */
+export function combineHashes(hashes, weight, index, length) {
+  const [h1, h2, h3, h4] = hashes;
+  const at = Math.trunc(Number(index) || 0);
+  const indexOffset = (at * 97 + at * at * 13) >>> 0;
+  const lengthOffset = ((length * length * 41 + length * 53) >>> 0);
+  const indexWeight = Number.isFinite(index) ? 50 : 1;
+  return (h1 * 11 + h2 * 7 + h3 * 5 + h4 * 3 + weight + indexOffset * indexWeight + lengthOffset) >>> 0;
+}
+
+/** `hslToHex` @568066 — same HSL→RGB conversion the CSS spec documents. */
+export function hslToHex(hue, saturation, lightness) {
+  const s = Number(saturation) / 100;
+  const l = Number(lightness) / 100;
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n) => {
+    const k = (n + Number(hue) / 30) % 12;
+    const colour = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * colour).toString(16).padStart(2, '0');
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
+}
+
+/**
+ * `stringToColor(str, index, theme)` @568030, reconstructed from the shipped bundle:
+ *
+ *   input   `augmentString(name) + "_" + index + "_" + index*7919 + "_" + len*6577`
+ *   hashes  mixHash(input, 0) · mixHash(reversed, 1) · mixHash(upper, 2) · mixHash(input+len, 3)
+ *   hue     baseHue[index % 11] + (combined >>> 20) % 17 − 8
+ *   s/l     light: 75 + (combined >>> 16) % 15 / 45 + (combined >>> 8) % 10
+ *           dark:  55 + (combined >>> 16) % 15 / 65 + (combined >>> 8) % 10
+ *
+ * `theme` is the bundle's `Theme` enum value (`'light'` / `'dark'`), and anything that is not
+ * `'light'` takes the dark branch — which is what the original's `theme2 === Theme.Light` test does.
+ */
+export function originalSeriesColor(name, index, theme = 'light') {
+  const text = String(name == null ? '' : name);
+  const at = Math.trunc(Number(index) || 0);
+  const input = originalInputString(text, at);
+  const hashes = [
+    mixHash(input, 0),
+    mixHash(input.split('').reverse().join(''), 1),
+    mixHash(input.toUpperCase(), 2),
+    mixHash(input + String(input.length), 3),
+  ];
+  const weight = positionWeight(input);
+  const combined = combineHashes(hashes, weight, at, text.length);
+  const baseHue = ORIGINAL_BASE_HUES[((at % ORIGINAL_BASE_HUES.length) + ORIGINAL_BASE_HUES.length)
+    % ORIGINAL_BASE_HUES.length];
+  const hue = (baseHue + ((combined >>> 20) % 17 - 8) + 360) % 360;
+  const saturation = (theme === 'light' ? 75 : 55) + ((combined >>> 16) % 15);
+  const lightness = (theme === 'light' ? 45 : 65) + ((combined >>> 8) % 10);
+  return hslToHex(hue, saturation, lightness);
+}
+
+/**
+ * `computeDefaultColour(name, index, theme)` @568822: the original's actual entry point — a column
+ * literally named `Height` is pinned to `MSL_HEIGHT_COLOUR`, everything else goes through the hash
+ * on its **lowercased** name.
+ */
+export function originalDefaultColour(name, index, theme = 'light') {
+  const text = String(name == null ? '' : name);
+  return text.toLowerCase() === 'height'
+    ? MSL_HEIGHT_COLOUR
+    : originalSeriesColor(text.toLowerCase(), index, theme);
+}
+
+/** The two palettes the 图例 switch picks between. */
+export const COLOUR_MODES = ['readable', 'original'];
+
+/**
+ * `?colors=original` (or `readable`, or nothing) → the palette the panel opens with. Anything else
+ * falls back to the readable default rather than guessing.
+ */
+export function colourModeFromSearch(search) {
+  const raw = String(search == null ? '' : search);
+  const query = raw.startsWith('?') ? raw.slice(1) : raw;
+  let value = '';
+  try {
+    value = (new URLSearchParams(query).get('colors') || '').trim().toLowerCase();
+  } catch {
+    value = '';
+  }
+  return value === 'original' ? 'original' : 'readable';
+}
+
+/** Palette entry for `(name, index)` under one of `COLOUR_MODES`. */
+export function seriesColour(mode, name, index, theme = 'light') {
+  return mode === 'original' ? originalDefaultColour(name, index, theme) : seriesColor(index);
 }
 
 /** `BEIDOU_B1I_D2_1` → `BEIDOU`, `Signals_GPS_L2_PY` → `GPS`, `Height` → ``. */
@@ -578,14 +764,13 @@ export function chartSvgFor(model, width, height) {
 /* ---------------- map: a self-drawn offline basemap + the exported track ---------------- */
 
 /**
- * The original Overview map is **LuciadRIA 2026.0.07** (WebGPU + wasm, commercial licence) and is
- * not in this repo — `03_分析/06_Graph应用.md` §6.7 lists the layers it draws (track coloured by
- * position type, event icons, flags, hover marker, time marker). Rebuilding Luciad is out of scope
- * and fetching Google/OSM tiles is not allowed (the whole suite has to run offline), so what the
- * stage gets is a **graticule basemap drawn in this file**: a degree grid labelled on both edges, a
- * metric scale bar, a north arrow, the horizontal 1σ circle from `Position SD.csv`, and the track
- * from `2D Trajectory.csv` — the same five fixes `clean.kml` carries. Nothing is invented: no
- * coastline, no roads, no imagery. One visible line says so (`.gp-map-note`), not a tooltip.
+ * The **fallback** basemap: a graticule drawn here, for when the original engine cannot start or
+ * `?map=canvas` asks for it. The real thing is `web/geo/luciad-stage.js`, which runs LuciadRIA out of
+ * the shipped Graph bundle; both draw the same five facts — the track, the 1σ ring, a graticule, a
+ * scale bar and a north arrow — so switching engines does not change what the picture means.
+ *
+ * This one draws no imagery and no invented geography: no coastline, no roads, no tiles. One visible
+ * line says which engine is on screen (`.gp-map-note`), not a tooltip.
  *
  * Projection: equirectangular about the view's centre latitude — x ∝ (lon − lon₀)·cos φ,
  * y ∝ −(lat − lat₀) — with **one metre scale for both axes**, so the scale bar and the 1σ circle are
@@ -1123,11 +1308,13 @@ export function paneBody(tabId) {
   if (tabId === 'overview') {
     return '<div class="gp-map" data-ref="map">'
       + '<div class="gp-map-svg" data-ref="mapSvg"></div>'
+      + '<iframe class="gp-map-frame" data-ref="mapFrame" title="LuciadRIA 地图（原版 Graph 引擎）"'
+      + ' src="about:blank" hidden></iframe>'
       + '<span class="gp-map-marker" data-ref="mapMarker" hidden></span>'
       + '<span class="gp-map-marker-label" data-ref="mapMarkerLabel" hidden></span>'
       + '<span class="gp-map-hover" data-ref="mapHover" hidden></span>'
       + '<p class="gp-map-readout" data-ref="mapReadout" hidden></p>'
-      + '<p class="gp-map-note">本构建不是 Luciad 地图 · 底图是自绘经纬网（离线，无商业瓦片）</p>'
+      + '<p class="gp-map-note" data-ref="mapNote">正在启动 LuciadRIA 引擎（原版 Graph 包，WebGPU）…</p>'
       + '</div>'
       + '<div class="gp-dock" data-ref="dock">'
       + '<div class="gp-dock-head">'
@@ -1222,6 +1409,11 @@ function template() {
           <div class="gp-legend-section">
             <h4>图例</h4>
             <p class="gp-legend-series" data-ref="legendSeries"></p>
+            <label class="gp-check">
+              <input type="checkbox" data-ref="colourOriginal" data-act="colours">
+              <span>Original colours</span>
+            </label>
+            <p class="gp-legend-meta" data-ref="colourNote">默认：10 色轮换，相邻列一定不同色。</p>
           </div>
           <div class="gp-legend-section">
             <h4>数据源</h4>
@@ -1235,7 +1427,7 @@ function template() {
           <div class="gp-legend-section">
             <h4>地图</h4>
             <p class="gp-legend-meta" data-ref="mapLegend">正在读取 2D Trajectory.csv…</p>
-            <p class="gp-legend-meta">自绘经纬网底图，不联网拉瓦片；本构建不是 Luciad。</p>
+            <p class="gp-legend-meta" data-ref="mapEngine">引擎：正在启动 LuciadRIA…</p>
           </div>
           <div class="gp-legend-section">
             <h4>前 20 行</h4>
@@ -1332,6 +1524,8 @@ export function mount(root, ctx) {
     legend: $('legend'),
     legendBody: $('legendBody'),
     legendSeries: $('legendSeries'),
+    colourOriginal: $('colourOriginal'),
+    colourNote: $('colourNote'),
     fileSelect: $('fileSelect'),
     columnSelect: $('columnSelect'),
     meta: $('meta'),
@@ -1345,6 +1539,9 @@ export function mount(root, ctx) {
     dockTitle: $('dockTitle'),
     map: $('map'),
     mapSvg: $('mapSvg'),
+    mapFrame: $('mapFrame'),
+    mapNote: $('mapNote'),
+    mapEngine: $('mapEngine'),
     mapMarker: $('mapMarker'),
     mapMarkerLabel: $('mapMarkerLabel'),
     mapHover: $('mapHover'),
@@ -1380,8 +1577,18 @@ export function mount(root, ctx) {
     geometry: null,
     legendOpen: false,
     showEvents: false,
+    /* 图例 → Original colours: the readable 10-colour wheel, or the original's `stringToColor` */
+    colourMode: typeof window === 'undefined'
+      ? 'readable'
+      : colourModeFromSearch(window.location.search),
     /* overview: the map + the docked chart */
     dock: 'open',
+    /* overview map renderer: 'luciad' until the stage says otherwise */
+    mapEngine: typeof window === 'undefined'
+      ? 'luciad'
+      : mapEngineFromSearch(window.location.search),
+    luciad: 'idle', // idle | booting | ready | failed
+    luciadError: '',
     /* chart tabs */
     payloads: new Map(),
     models: new Map(),
@@ -1392,6 +1599,49 @@ export function mount(root, ctx) {
   };
 
   /* ---- small UI helpers ---- */
+
+  /** Palette entry under the current 图例 switch (`readable` by default, `original` on demand). */
+  function colourFor(name, index) {
+    return seriesColour(state.colourMode, name, index, 'light');
+  }
+
+  /**
+   * Re-colour every already-built tile from the cached models and repaint — no re-fetch, because a
+   * colour is a property of `(name, index)` and both are already on the series. `columnIndex` keeps
+   * the original's `index` meaning (the CSV column number) even when a column failed to load and the
+   * array position shifted.
+   */
+  function recolourModels() {
+    for (const entry of state.models.values()) {
+      if (!entry || !entry.model || !Array.isArray(entry.model.series)) continue;
+      entry.model = {
+        ...entry.model,
+        series: entry.model.series.map((item, position) => ({
+          ...item,
+          color: colourFor(item.name, Number.isInteger(item.columnIndex) ? item.columnIndex : position),
+        })),
+      };
+    }
+  }
+
+  /** 图例 checkbox / `?colors=` → repaint with the other palette. */
+  function applyColourMode(mode) {
+    state.colourMode = mode === 'original' ? 'original' : 'readable';
+    if (el.colourOriginal) el.colourOriginal.checked = state.colourMode === 'original';
+    if (el.colourNote) {
+      el.colourNote.textContent = state.colourMode === 'original'
+        ? '原版算法：stringToColor（FNV-1a → HSL，hue = [0,140,240,…][i%11] ± 8）。'
+          + '与 Graph 导出图逐列同色，代价是相邻列容易撞色。'
+        : '默认：10 色轮换，相邻列一定不同色。勾选 Original colours 换成原版 stringToColor。';
+    }
+    recolourModels();
+    if (state.view !== 'work') return;
+    if (state.tab === 'overview') {
+      drawChart();
+      return;
+    }
+    paintTab(state.tab);
+  }
 
   function showNotice(text) {
     if (!el.notice) return;
@@ -1499,6 +1749,13 @@ export function mount(root, ctx) {
 
     state.geometry = { pad, plotW, plotH, xMin, xMax, width, height };
 
+    /* One series, so colour carries no information: the default is the measured pair from the
+     * reference screenshot, `Original colours` swaps in the column's hashed hue instead. */
+    const stroke = state.colourMode === 'original'
+      ? colourFor((state.data && state.data.column) || '', 0)
+      : '#00516F';
+    const dot = state.colourMode === 'original' ? stroke : '#00ABC8';
+
     const parts = [
       `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(series.label || '折线图')}">`,
     ];
@@ -1527,14 +1784,14 @@ export function mount(root, ctx) {
     parts.push(
       `<line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
       `<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#9B9B9B"/>`,
-      `<polyline fill="none" stroke="#00516F" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="${points
+      `<polyline fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="${points
         .map((p) => `${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`)
         .join(' ')}"/>`,
     );
     if (points.length <= 120) {
       parts.push(
         points
-          .map((p) => `<circle cx="${px(p[0]).toFixed(1)}" cy="${py(p[1]).toFixed(1)}" r="2.2" fill="#00ABC8"/>`)
+          .map((p) => `<circle cx="${px(p[0]).toFixed(1)}" cy="${py(p[1]).toFixed(1)}" r="2.2" fill="${dot}"/>`)
           .join(''),
       );
     }
@@ -1616,6 +1873,155 @@ export function mount(root, ctx) {
 
   let mapDrag = null;
 
+  /* ---- the LuciadRIA stage (原版引擎，跑在同源 iframe 里) ---- */
+
+  /**
+   * The stage is a separate document, so everything here is `postMessage`. It is only started once
+   * the trajectory is loaded, and the panel only claims Luciad once the stage has answered `ready`;
+   * `failLuciad()` drops back to `mapSvg()` and prints the reason in the note and in the legend.
+   */
+  const luciad = {
+    frame: el.mapFrame,
+    status: 'idle', // idle | booting | ready | failed
+    error: '',
+    timer: 0,
+    cursorIndex: -1,
+    view: null,
+  };
+
+  function postToStage(message) {
+    const frame = luciad.frame;
+    if (!frame || !frame.contentWindow) return;
+    if (luciad.status !== 'ready') return;
+    frame.contentWindow.postMessage(message, new URL(LUCIAD_STAGE_URL).origin);
+  }
+
+  function engineNote() {
+    if (luciad.status === 'ready') {
+      return 'LuciadRIA 2026.0 渲染中 · 原版 Graph 引擎包 · 底图是自绘经纬网（离线，无商业瓦片）';
+    }
+    if (luciad.status === 'failed') {
+      return `Luciad 不可用（${luciad.error}）· 已退回自绘经纬网，数据相同`;
+    }
+    if (state.mapEngine === 'canvas') {
+      return '自绘经纬网（?map=canvas）· 离线，无商业瓦片';
+    }
+    return '正在启动 LuciadRIA 引擎（原版 Graph 包，WebGPU）…';
+  }
+
+  function updateMapEngineUi() {
+    if (el.mapNote) el.mapNote.textContent = engineNote();
+    if (!el.mapEngine) return;
+    if (luciad.status === 'ready') {
+      el.mapEngine.textContent = `引擎：LuciadRIA 2026.0（原版 Graph 包）· 参考系 `
+        + `${luciad.view && luciad.view.reference ? luciad.view.reference : 'EPSG:32662'} · WebGPU`
+        + ' · 轨迹来自 2D Trajectory.csv';
+      return;
+    }
+    if (luciad.status === 'failed') {
+      el.mapEngine.textContent = `引擎：自绘 SVG（Luciad 不可用：${luciad.error}）`;
+      return;
+    }
+    if (state.mapEngine === 'canvas') {
+      el.mapEngine.textContent = '引擎：自绘 SVG（?map=canvas）· LuciadRIA 未启用';
+      return;
+    }
+    el.mapEngine.textContent = '引擎：正在启动 LuciadRIA（/geo/luciad-engine.js）…';
+  }
+
+  function failLuciad(reason) {
+    if (luciad.status === 'failed') return;
+    luciad.status = 'failed';
+    luciad.error = String(reason || '未知原因').slice(0, 200);
+    if (luciad.timer) window.clearTimeout(luciad.timer);
+    luciad.timer = 0;
+    if (luciad.frame) luciad.frame.hidden = true;
+    updateMapEngineUi();
+    renderMap();
+  }
+
+  function onLuciadMessage(event) {
+    const frame = luciad.frame;
+    if (!frame || !frame.contentWindow || event.source !== frame.contentWindow) return;
+    const data = event.data || {};
+    if (data.type === 'ready') {
+      if (luciad.timer) window.clearTimeout(luciad.timer);
+      luciad.timer = 0;
+      luciad.status = 'ready';
+      luciad.view = { reference: data.reference, webgpu: data.webgpu };
+      updateMapEngineUi();
+      sendTrackToStage();
+      renderMap();
+      return;
+    }
+    if (data.type === 'error') {
+      failLuciad(data.message || '引擎启动失败');
+      return;
+    }
+    if (data.type === 'view') {
+      luciad.view = { ...luciad.view, ...data };
+      updateMapHud();
+      return;
+    }
+    if (data.type === 'hover') {
+      mapState.hover = Number.isFinite(data.lon) && Number.isFinite(data.lat)
+        ? { lon: data.lon, lat: data.lat }
+        : null;
+      if (el.mapHover) {
+        el.mapHover.hidden = !mapState.hover;
+        if (mapState.hover && Number.isFinite(data.x) && Number.isFinite(data.y)) {
+          el.mapHover.style.left = `${Number(data.x).toFixed(1)}px`;
+          el.mapHover.style.top = `${Number(data.y).toFixed(1)}px`;
+        }
+      }
+      updateMapHud();
+      return;
+    }
+    if (data.type === 'cursor') {
+      luciad.cursorPoint = { x: Number(data.x) || 0, y: Number(data.y) || 0 };
+      const point = mapState.points[luciad.cursorIndex];
+      const visible = Boolean(data.visible) && luciad.cursorIndex >= 0 && Boolean(point);
+      if (el.mapMarker) {
+        el.mapMarker.hidden = !visible;
+        if (visible) {
+          el.mapMarker.style.left = `${luciad.cursorPoint.x.toFixed(1)}px`;
+          el.mapMarker.style.top = `${luciad.cursorPoint.y.toFixed(1)}px`;
+        }
+      }
+      if (el.mapMarkerLabel) {
+        el.mapMarkerLabel.hidden = !visible;
+        if (visible) {
+          el.mapMarkerLabel.style.left = `${luciad.cursorPoint.x.toFixed(1)}px`;
+          el.mapMarkerLabel.style.top = `${luciad.cursorPoint.y.toFixed(1)}px`;
+          el.mapMarkerLabel.textContent = mapCursorLabel(luciad.cursorIndex, point);
+        }
+      }
+    }
+  }
+
+  function sendTrackToStage() {
+    if (luciad.status !== 'ready' || mapState.status !== 'ready') return;
+    postToStage({
+      type: 'track',
+      points: mapState.points.map((point) => [point.lon, point.lat]),
+      sigmaM: mapState.sigmaM,
+      trackColor: MAP_TRACK_COLOR,
+      fit: true,
+    });
+  }
+
+  function startLuciad() {
+    if (luciad.status !== 'idle' || state.mapEngine !== 'luciad' || !luciad.frame) return;
+    luciad.status = 'booting';
+    updateMapEngineUi();
+    /* A cold 16 MB module plus a wasm boot; past this the panel stops waiting and says so on the
+     * stage instead of leaving "正在启动…" on screen forever. */
+    luciad.timer = window.setTimeout(() => {
+      failLuciad(`引擎 ${Math.round(LUCIAD_READY_TIMEOUT_MS / 1000)} 秒内没有就绪`);
+    }, LUCIAD_READY_TIMEOUT_MS);
+    luciad.frame.src = LUCIAD_STAGE_URL;
+  }
+
   function mapBox() {
     const node = el.map;
     if (!node) return null;
@@ -1635,13 +2041,24 @@ export function mount(root, ctx) {
       return;
     }
     const extent = trackExtent(mapState.points);
-    el.mapLegend.textContent = `自绘经纬网（离线） · 轨迹 ${mapState.points.length} 点`
+    el.mapLegend.textContent = `轨迹 ${mapState.points.length} 点`
       + ` · 长度 ${formatDistance(trackLength(mapState.points))}`
-      + (extent ? ` · 跨度 ${formatDistance(Math.max(extent.eastM, extent.northM))}` : '');
+      + (extent ? ` · 跨度 ${formatDistance(Math.max(extent.eastM, extent.northM))}` : '')
+      + ' · 数据源 2D Trajectory.csv / Position SD.csv';
   }
 
   function renderMap() {
     if (!el.mapSvg || !state.alive) return;
+    if (luciad.status === 'ready') {
+      /* Luciad owns the stage: hide the SVG, show the frame. The engine keeps its own view, so a
+       * re-render here must not touch its camera — only the HUD is ours. */
+      el.mapSvg.style.display = 'none';
+      if (luciad.frame) luciad.frame.hidden = false;
+      updateMapHud();
+      return;
+    }
+    el.mapSvg.style.display = '';
+    if (luciad.frame) luciad.frame.hidden = true;
     if (mapState.status === 'idle' || mapState.status === 'loading') {
       el.mapSvg.innerHTML = `<p class="gp-map-empty">正在读取 ${esc(MAP_FILE)}…</p>`;
       if (el.mapReadout) el.mapReadout.hidden = true;
@@ -1666,18 +2083,33 @@ export function mount(root, ctx) {
 
   function updateMapHud() {
     if (!el.mapReadout) return;
-    if (mapState.status !== 'ready' || !mapState.view) {
+    if (mapState.status !== 'ready') {
       el.mapReadout.hidden = true;
       return;
     }
-    el.mapReadout.hidden = false;
     if (mapState.hover) {
+      el.mapReadout.hidden = false;
       const origin = mapState.points[0];
       const distance = origin ? pointDistance(origin, mapState.hover) : 0;
       el.mapReadout.textContent = `${latLabel(mapState.hover.lat)}  ${lonLabel(mapState.hover.lon)}`
         + ` · 距首点 ${formatDistance(distance)}`;
       return;
     }
+    if (luciad.status === 'ready') {
+      // The engine reports its own view; print that instead of a view the panel no longer owns.
+      if (luciad.view && luciad.view.label) {
+        el.mapReadout.hidden = false;
+        el.mapReadout.textContent = luciad.view.label;
+      } else {
+        el.mapReadout.hidden = true;
+      }
+      return;
+    }
+    if (!mapState.view) {
+      el.mapReadout.hidden = true;
+      return;
+    }
+    el.mapReadout.hidden = false;
     const extent = trackExtent(mapState.points);
     const degenerate = extent ? Math.max(extent.eastM, extent.northM) < 1e-6 : false;
     el.mapReadout.textContent = `${latLabel(mapState.view.centerLat)}  ${lonLabel(mapState.view.centerLon)}`
@@ -1703,7 +2135,23 @@ export function mount(root, ctx) {
       if (marker) marker.hidden = true;
       if (label) label.hidden = true;
     };
-    if (!marker || !label || mapState.status !== 'ready' || !mapState.view || !mapState.points.length) {
+    if (!marker || !label || mapState.status !== 'ready' || !mapState.points.length) {
+      hide();
+      return;
+    }
+    const ratio = state.span > 0 ? Math.min(1, Math.max(0, state.current / state.span)) : 0;
+    const index = indexForRatio(mapState.points, ratio);
+
+    if (luciad.status === 'ready') {
+      /* The stage owns the projection: ask it to move its own feature, then place the chip from the
+       * pixel it reports back. Only the index is sent — the chip's text stays in this file. */
+      if (index !== luciad.cursorIndex) {
+        luciad.cursorIndex = index;
+        postToStage({ type: 'cursor', index });
+      }
+      return;
+    }
+    if (!mapState.view) {
       hide();
       return;
     }
@@ -1712,8 +2160,6 @@ export function mount(root, ctx) {
       hide();
       return;
     }
-    const ratio = state.span > 0 ? Math.min(1, Math.max(0, state.current / state.span)) : 0;
-    const index = indexForRatio(mapState.points, ratio);
     if (index < 0) {
       hide();
       return;
@@ -1744,6 +2190,11 @@ export function mount(root, ctx) {
 
   /** Zoom by `factor` while keeping the geography under `(anchorX, anchorY)` pinned there. */
   function zoomMap(factor, anchorX, anchorY) {
+    if (luciad.status === 'ready') {
+      // `factor` > 1 widens the view; Luciad's `zoom({factor})` > 1 narrows it — invert.
+      postToStage({ type: 'zoom', factor: 1 / (Number(factor) || 1) });
+      return;
+    }
     const box = mapBox();
     if (!box || !mapState.view) return;
     const ax = Number.isFinite(anchorX) ? anchorX : box.width / 2;
@@ -1761,6 +2212,7 @@ export function mount(root, ctx) {
   }
 
   function panMap(dxPx, dyPx) {
+    if (luciad.status === 'ready') return; // the engine's own controller pans
     const box = mapBox();
     if (!box || !mapState.view) return;
     const projection = mapProjection(mapState.view, box.width, box.height);
@@ -1772,6 +2224,10 @@ export function mount(root, ctx) {
   }
 
   function fitMap() {
+    if (luciad.status === 'ready') {
+      postToStage({ type: 'fit' });
+      return;
+    }
     const box = mapBox();
     if (!box || !mapState.points.length) return;
     mapState.view = mapFit(mapState.points, box.width, box.height);
@@ -1780,6 +2236,7 @@ export function mount(root, ctx) {
 
   function updateMapHover(px, py) {
     if (!el.map || el.map.hidden) return;
+    if (luciad.status === 'ready') return; // the stage reports hover coordinates itself
     const box = mapBox();
     if (!box || !mapState.view || mapState.status !== 'ready') {
       mapState.hover = null;
@@ -1836,6 +2293,8 @@ export function mount(root, ctx) {
       mapState.status = 'ready';
       updateMapLegend();
       renderMap();
+      if (state.mapEngine === 'luciad') startLuciad();
+      sendTrackToStage();
     } catch (error) {
       mapState.status = 'error';
       mapState.error = error.message;
@@ -1987,7 +2446,8 @@ export function mount(root, ctx) {
     for (const sample of samples) if (!names.includes(sample.label)) names.push(sample.label);
     const series = names.map((name, index) => ({
       name,
-      color: seriesColor(index),
+      color: colourFor(name, index),
+      columnIndex: index,
       points: samples.filter((sample) => sample.label === name).map((sample) => [sample.x, 1]),
     }));
     const lastAbsolute = timeIndex >= 0 ? parseGpsCell(rows[rows.length - 1][timeIndex]) : null;
@@ -2078,7 +2538,12 @@ export function mount(root, ctx) {
       rows.forEach((row, index) => {
         const value = Number(row[row.length - 1]);
         if (!Number.isFinite(value)) return;
-        series.push({ name: row[0], color: seriesColor(index), points: [[index, value]] });
+        series.push({
+          name: row[0],
+          color: colourFor(row[0], index),
+          columnIndex: index,
+          points: [[index, value]],
+        });
       });
       if (!series.length) return { status: 'empty', reason: `${probe.name} 的 value 列读不出数字` };
       return {
@@ -2114,7 +2579,12 @@ export function mount(root, ctx) {
     for (let index = 0; index < names.length; index += 1) {
       const payload = payloads[index];
       if (!payload || !payload.series || !payload.series.points.length) continue;
-      series.push({ name: names[index], color: seriesColor(index), points: payload.series.points });
+      series.push({
+        name: names[index],
+        color: colourFor(names[index], index),
+        columnIndex: index,
+        points: payload.series.points,
+      });
     }
     if (!series.length) return { status: 'empty', reason: `${spec.file} 的数值列都读不到` };
     const first = payloads.find((payload) => payload && payload.series);
@@ -2495,7 +2965,8 @@ export function mount(root, ctx) {
 
     if (el.legendSeries) {
       el.legendSeries.innerHTML = data.series.points.length
-        ? `<span class="gp-swatch"></span><span class="gp-series-name">${esc(data.column)}</span>`
+        ? `<span class="gp-swatch" style="background:${esc(colourFor(data.column, 0))}"></span>`
+          + `<span class="gp-series-name">${esc(data.column)}</span>`
           + `<span class="gp-series-count">${data.series.points.length} 点</span>`
         : '<span class="gp-series-name">（无数值列）</span>';
     }
@@ -2790,6 +3261,10 @@ ${svgMarkup}
     state.speed = Number(el.speed.value) || 1;
   }
 
+  function onColourToggle() {
+    applyColourMode(el.colourOriginal && el.colourOriginal.checked ? 'original' : 'readable');
+  }
+
   function onDocumentClick(event) {
     if (el.exportMenu.hidden) return;
     if (!(event.target instanceof Element)) return;
@@ -2811,9 +3286,14 @@ ${svgMarkup}
   root.addEventListener('click', onRootClick);
   document.addEventListener('click', onDocumentClick);
   document.addEventListener('keydown', onKeydown);
+  window.addEventListener('message', onLuciadMessage);
+  updateMapEngineUi();
   if (el.fileSelect) el.fileSelect.addEventListener('change', onFileChange);
   if (el.columnSelect) el.columnSelect.addEventListener('change', onColumnChange);
   if (el.speed) el.speed.addEventListener('change', onSpeedChange);
+  if (el.colourOriginal) el.colourOriginal.addEventListener('change', onColourToggle);
+  if (el.colourOriginal) el.colourOriginal.checked = state.colourMode === 'original';
+  applyColourMode(state.colourMode);
   if (el.map) {
     el.map.addEventListener('pointerdown', onMapPointerDown);
     el.map.addEventListener('pointermove', onMapPointerMove);
@@ -2838,11 +3318,23 @@ ${svgMarkup}
     root.removeEventListener('click', onRootClick);
     document.removeEventListener('click', onDocumentClick);
     document.removeEventListener('keydown', onKeydown);
+    window.removeEventListener('message', onLuciadMessage);
+    if (luciad.timer) window.clearTimeout(luciad.timer);
+    luciad.timer = 0;
+    luciad.status = 'idle';
+    if (luciad.frame) {
+      try {
+        luciad.frame.src = 'about:blank';
+      } catch {
+        /* the frame is already gone */
+      }
+    }
     window.removeEventListener('resize', onResize);
     if (observer) observer.disconnect();
     if (el.fileSelect) el.fileSelect.removeEventListener('change', onFileChange);
     if (el.columnSelect) el.columnSelect.removeEventListener('change', onColumnChange);
     if (el.speed) el.speed.removeEventListener('change', onSpeedChange);
+    if (el.colourOriginal) el.colourOriginal.removeEventListener('change', onColourToggle);
     if (el.map) {
       el.map.removeEventListener('pointerdown', onMapPointerDown);
       el.map.removeEventListener('pointermove', onMapPointerMove);

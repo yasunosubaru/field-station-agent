@@ -1,13 +1,18 @@
 /**
- * Graph · Overview map. The original map is LuciadRIA (commercial, not in this repo), so the stage
- * draws its own basemap; that makes three things easy to get silently wrong, and all three are
- * pinned here:
+ * Graph · Overview map. Two renderers live behind one stage:
+ *
+ *   luciad  the original engine (`web/geo/luciad-stage.html` + `/geo/luciad-engine.js`), which the
+ *           browser check drives; nothing here can boot it, so these tests pin the *contract* —
+ *           the stage's markup, the `?map=canvas` escape hatch and the port it resolves to.
+ *   canvas  this file's own SVG basemap (`mapSvg()`), where three things are easy to get silently
+ *           wrong and all three are pinned:
  *
  *   1. the projection — one metre is the same number of pixels on both axes, otherwise the scale bar
  *      and the 1σ circle lie even though the picture looks fine,
  *   2. the data — the vertices must be the fixes of `2D Trajectory.csv` and the same coordinates
  *      `clean.kml` carries, not something rounded or invented,
- *   3. the honesty line — `本构建不是 Luciad 地图` has to be in the pane markup, not in a tooltip.
+ *   3. the honesty line — the stage must not say "Luciad" unless Luciad painted it; the markup says
+ *      "正在启动 LuciadRIA" and only the stage's own `ready` message can turn that into a claim.
  *
  *   node --test --test-force-exit "packages/app/test/*.test.ts"
  */
@@ -21,6 +26,9 @@ import { fileURLToPath } from 'node:url';
 import { graphData } from '../src/graphcsv.ts';
 
 import {
+  LUCIAD_READY_TIMEOUT_MS,
+  LUCIAD_STAGE_URL,
+  MAP_ENGINES,
   MAP_FILE,
   MAP_LAT_COLUMN,
   MAP_LON_COLUMN,
@@ -35,6 +43,7 @@ import {
   indexForRatio,
   latLabel,
   lonLabel,
+  mapEngineFromSearch,
   mapFit,
   mapProjection,
   mapSvg,
@@ -337,26 +346,45 @@ test('没有点、只有 1 个点、或不是静止轨迹时都不崩', () => {
 
 /* ---------------- 4. markup ---------------- */
 
-test('Overview 面板：地图 + 停靠折线图 + 明写不是 Luciad', () => {
+test('Overview 面板：地图舞台 + Luciad 引擎位 + 停靠折线图', () => {
   const overview = paneBody('overview');
   for (const fragment of [
     'class="gp-map"',
     'data-ref="mapSvg"',
+    'data-ref="mapFrame"',
+    'data-ref="mapNote"',
     'data-ref="mapReadout"',
     'data-ref="mapMarker"',
     'class="gp-dock"',
     'data-act="dock"',
     'class="gp-chart"',
     'gp-playhead',
-    '本构建不是 Luciad 地图',
+    '正在启动 LuciadRIA',
   ]) {
     assert.ok(overview.includes(fragment), `Overview 缺少 ${fragment}`);
   }
   assert.ok(!overview.includes('gp-chart-card'));
-  // 免责声明是可见文本，不是 title / aria-label
-  assert.ok(!/title="[^"]*Luciad/.test(overview));
+  // 舞台的状态行是可见文本（`data-ref="mapNote"`），不是 tooltip；iframe 的 title 只是文档名
+  assert.ok(overview.includes('data-ref="mapNote"'));
+  assert.ok(!/gp-map-note[^>]*title=/.test(overview));
+  // 「不是 Luciad」这句已经不需要了：现在这块舞台确实是 Luciad 画的（或在失败时如实说明）
+  assert.ok(!overview.includes('本构建不是 Luciad'));
 
   // 其它页签不受影响
   assert.ok(paneBody('project').includes('data-chart="project/info"'));
   assert.ok(!paneBody('pvt').includes('gp-map'));
+});
+
+test('?map=canvas 退回自绘；默认走 LuciadRIA（原版引擎包）', () => {
+  assert.equal(mapEngineFromSearch(''), 'luciad');
+  assert.equal(mapEngineFromSearch('?map=luciad'), 'luciad');
+  assert.equal(mapEngineFromSearch('?map=canvas'), 'canvas');
+  assert.equal(mapEngineFromSearch('?map=svg'), 'canvas');
+  assert.equal(mapEngineFromSearch('?map=CANVAS'), 'canvas');
+  assert.equal(mapEngineFromSearch('?map=paper'), 'luciad', '认不出的值不猜，走原版引擎');
+  assert.deepEqual(MAP_ENGINES, ['luciad', 'canvas']);
+
+  // stage 文档就在 /geo/ 下（面板文件在 /panels/，所以是 ../geo/）
+  assert.match(LUCIAD_STAGE_URL, /\/geo\/luciad-stage\.html$/);
+  assert.ok(LUCIAD_READY_TIMEOUT_MS >= 10_000, '16 MB 模块 + wasm 冷启动，别给太短');
 });

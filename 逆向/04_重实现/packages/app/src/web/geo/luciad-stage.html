@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; base-uri 'none'">
+<title>LuciadRIA stage</title>
+<style>
+  :root {
+    --paper: #eef1ea;
+    --ink: rgba(0, 0, 0, 0.65);
+    --mono: 'Consolas', 'Courier New', monospace;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--paper); }
+  #stage { position: absolute; inset: 0; background: var(--paper); }
+  #stage canvas { outline: none; }
+
+  /* HUD: same two instruments the self-drawn basemap carries, in the same places. */
+  .hud { position: absolute; pointer-events: none; font-family: var(--mono); }
+  .scale { left: 16px; bottom: 10px; font-size: 10px; color: var(--ink); }
+  .scale-bar { display: block; height: 6px; margin-bottom: 2px; position: relative; }
+  .scale-bar i { position: absolute; top: 0; height: 6px; display: block; }
+  .scale-bar i.dark { background: rgba(0, 0, 0, 0.78); }
+  .scale-bar i.light { background: #fff; border: 1px solid rgba(0, 0, 0, 0.78); border-left: 0; box-sizing: border-box; }
+  .scale-text { display: flex; justify-content: space-between; }
+  .north { right: 16px; bottom: 10px; width: 30px; text-align: center; color: rgba(0, 0, 0, 0.7); }
+  .north svg { display: block; }
+  .north span { font-size: 10px; font-weight: 700; }
+
+  /* Engine state, bottom-left of the HUD; hidden once the map is live. */
+  .status { left: 16px; top: 14px; font-family: system-ui, sans-serif; font-size: 12px; color: var(--ink); }
+  .status[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="hud status" id="status">正在启动 LuciadRIA…</div>
+  <div class="hud scale" id="scale" hidden>
+    <span class="scale-bar" id="scaleBar"><i class="dark"></i><i class="light"></i></span>
+    <span class="scale-text"><span>0</span><span id="scaleText">0 m</span></span>
+  </div>
+  <div class="hud north" data-north="up">
+    <svg viewBox="0 0 30 46" aria-hidden="true">
+      <path fill-rule="evenodd" clip-rule="evenodd" fill="#ffffff"
+            d="M15 34.667L20 22.4737L19.5267 22.0003L15 24.0003L10.4733 22.0003L10 22.4737L15 34.667Z"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" fill="#D0021B"
+            d="M15 9.33301L10 21.5263L10.4733 21.9997L15 19.9997L19.5267 21.9997L20 21.5263L15 9.33301Z"/>
+    </svg>
+    <span>N</span>
+  </div>
+</div>
+<script type="module" src="./luciad-stage.js"></script>
+</body>
+</html>

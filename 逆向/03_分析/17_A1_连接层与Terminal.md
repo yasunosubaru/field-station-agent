@@ -112,3 +112,47 @@ $ curl -X POST /api/live/connect -d '{"kind":"serial","path":"COM9"}'
 spoofing）+ 3 个 Settings 页（networking / general / language）+ 2 个 Longhorn 页 + SPAN 安装页。
 控制器逻辑不用重写，缺的是这一层适配和每页的 HTML 往返，以及 `.cfg` / Terminal / Events 的入口。
 
+
+## 17.6 配置页吃到真机的配置日志（2026-11-01 实测）
+
+§17.5 第 3 步（"回放：LiveLink 按序把记录喂给 updateFromLog"）此前**从未实现**：
+`packages/app/src/config-host.ts` 只有 `feedAscii`（Events），配置页拿不到任何记录，所以即使连着
+真机也永远显示 "No receiver configuration yet"。这一节记的是补齐后的实测。
+
+### 真机到底答什么（com10 = 接收机 USB2，OEM729）
+
+| 命令 | 结果 |
+|---|---|
+| `LOG INTERFACEMODEB ONCE` | **27 条**，端口 `COM1-3`、`CCOM1-6`、`ICOM1-7`、`NCOM1-3`、`USB1-3`、`WCOM1`、`UNKNOWN` |
+| `LOG LOGLISTB ONCE` | 1 条 / **60 个条目** |
+| `LOG SERIALCONFIGB ONCE` | 3 条（COM1 9600、COM2 38400、COM3 38400） |
+| `LOG ICOMCONFIGB ONCE` | 7 条（ICOM1 TCP ":2000" …） |
+| `LOG NTRIPCONFIGB ONCE` | 3 条（NCOM1-3, DISABLED） |
+| `LOG SOURCETABLEB ONCE` | 1 条，空表（没配 NTRIP 挂载点） |
+
+`CCOM1-6` 不是"多打了个 C"：这台型号真的报这些端口（`CCOM1/2` = `NOVATELMINBINARY`，
+`CCOM3-6` = `AUTO`/`NOVATEL`）。`isPortConfigDataAvailable` 要的 `LOGLIST/INTERFACEMODE/
+SERIALCONFIG` 与 `SOURCETABLE` 都齐了，页面才肯渲染。
+
+### 两个必须踩过才知道的坑
+
+1. **命令不能连发**。10 条 `LOG … ONCE` 一次性写进去，只有 2 条回 `<OK`，
+   INTERFACEMODE/LOGLIST/SERIALCONFIG 全部无声（接收机命令缓冲在日志流占满时丢行）。
+   间隔 150 ms 重发同一批，27/1/3/7/3/1 条全部回来。现在 `server.ts` 里 150 ms 一条。
+2. **headless 宿主没有轮询定时器**。数据在页面序列化之后才到，页面不会自己重画
+   （`checkAndUpdatePortConfigDefaultData` 的 `setTimeout` 被宿主关掉了）。所以 `GET /config/:page`
+   改成：先按该页的 `requiredLogs` 发查询 → 在服务端把回答喂进 `updateFromLog` →
+   `refreshPage()`（= `dh_createDefaultData` + `v_loadDefaultData`）→ 再序列化。
+
+### 实测结果（Playwright 读序列化文档）
+
+```
+lis = 24（CCOM1-6 / COM1-3 / ICOM1-7 / NCOM1-3 / UNKNOWN / USB1-3 / WCOM1）
+data-portconfig-note = null（诚实空态消失）
+CCOM1  NOVATELMINBINARY / NOVATELMINBINARY
+COM1   NOVATEL / NOVATEL      NCOM1  RTCMV3 / NONE
+截图  real-ports.png（右侧抽屉 24 行真端口；左侧 Status 同时显示 Single / 30.5399684° /
+      114.3528115° / 64.87 m / 18 used of 25 tracked）
+```
+
+`UNKNOWN` 那一行是接收机自己报的端口名，原样显示；不猜、不改写。

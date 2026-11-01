@@ -363,6 +363,32 @@ export class ConfigHost {
     return this.manage.configs.events.getSMeventsCount(this.tab as never);
   }
 
+  /**
+   * The `LOG …` requests this page needs the receiver to answer before it can show real values.
+   * The list is the shipped one (`view/src/config/index.ts#requiredLogs`), not a guess: the same
+   * table the desktop controller uses when a configuration pill is opened.
+   */
+  requiredLogs(name?: string): Array<{ name: string; spec: string }> {
+    return this.manage.configs.requiredLogs(this.features, name);
+  }
+
+  /**
+   * Feed one configuration record the link decoded (`<INTERFACEMODE …`, `<LOGLIST …`, …) to the
+   * pages that read its message id. `tab` is this host's own tab, exactly like `feedAscii`.
+   */
+  feedLog(messageId: number, data: Record<string, unknown>): string[] {
+    return this.manage.configs.updateFromLog(messageId, { ...data, tab: this.tab });
+  }
+
+  /**
+   * Re-render the page from the state the receiver's records just produced (`dh_createDefaultData`
+   * + `v_loadDefaultData`). The headless host patches out the pages' own polling timer, so a page
+   * that received its data *after* it was serialised would otherwise keep its "no data" note.
+   */
+  refreshPage(): void {
+    this.manage.configs.reset(this.tab as never, this.features);
+  }
+
   /** Raw ASCII from the link (Terminal, `.cfg` capture, load-config responses). */
   feedText(text: string): void {
     this.manage.handleSessionText(this.tab as never, text);

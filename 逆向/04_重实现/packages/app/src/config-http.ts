@@ -29,6 +29,12 @@ import {
 } from './config-host.ts';
 import type { ConfigOperationsHost } from '../../view/src/config/index.ts';
 import {
+  CONFIG_MESSAGE_IDS,
+  configSliceOf,
+  createAccumulator,
+  type ConfigAccumulator,
+} from './config-feed.ts';
+import {
   filterLoadCommands,
   formatConfigurationFileName,
   chooseIOPortDetails,
@@ -308,9 +314,7 @@ export function feedEventsAscii(ascii: string): string[] {
 }
 
 /** Highest live-link cursor already offered to the Events page (so a replay never doubles). */
-let lastEventSeq = 0;
-
-/**
+let lastEventSeq = 0;/**
  * Push records the live link already decoded (its `ascii` line is what the event carries).
  * Entries are consumed by their `seq`, so the panel's poll loop and the page's own replay can both
  * call this without creating the same event twice.
@@ -347,6 +351,70 @@ export function primeEventsPage(
 export function eventsSummary(): { ok: true; count: number } {
   const instance = hosts.get('events');
   return { ok: true, count: instance ? instance.eventCount() : 0 };
+}
+
+/* ---------------------------------------------------- configuration pages: receiver logs */
+/**
+ * Feed the configuration records (INTERFACEMODE, LOGLIST, SERIALCONFIG, ICOMCONFIG, NTRIPCONFIG,
+ * SOURCETABLE) that the live link decoded into every open configuration page.
+ *
+ * The pages read a per-port dictionary, so the two tables that arrive one port per record
+ * (`SERIALCONFIG`, `LOGLIST`) are accumulated per page and handed over whole each time. Entries are
+ * consumed by `seq`, so a Terminal backfill and this poll cannot feed the same record twice.
+ */
+const configAccumulators = new Map<string, ConfigAccumulator>();
+let lastConfigSeq = 0;
+
+export function feedConfigFromEntries(
+  entries: Array<{ seq?: number; messageId: number; ascii?: string }>,
+): number {
+  if (hosts.size === 0) return 0; // no configuration page is open
+  let fed = 0;
+  let highest = lastConfigSeq;
+  for (const entry of entries) {
+    const seq = Number(entry.seq ?? 0);
+    if (seq > 0 && seq <= lastConfigSeq) continue;
+    if (seq > highest) highest = seq;
+    if (!(CONFIG_MESSAGE_IDS as readonly number[]).includes(entry.messageId)) continue;
+    if (!entry.ascii) continue;
+    for (const [page, instance] of hosts) {
+      const key = `${page}:${entry.messageId}`;
+      let accumulator = configAccumulators.get(key);
+      if (!accumulator) {
+        accumulator = createAccumulator();
+        configAccumulators.set(key, accumulator);
+      }
+      const slice = configSliceOf(entry.messageId, entry.ascii, accumulator);
+      if (!slice) continue;
+      if (instance.feedLog(slice.name, slice.data).length) fed += 1;
+    }
+  }
+  lastConfigSeq = highest;
+  return fed;
+}
+
+/**
+ * The `LOG <NAME>B ONCE` lines a configuration page needs. The names are the shipped controller's
+ * own request table (`requiredLogs`), asked for as **binary** records (`B`) because that is the form
+ * `decodeEdie` reads; `ONCE` keeps a page visit from leaving a stream running on the receiver.
+ */
+export function configLogRequests(page: string): string[] {
+  const instance = hosts.get(page) ?? host(page);
+  const requests = instance.requiredLogs(page);
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const request of requests) {
+    const name = request.name.toUpperCase();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    lines.push(`LOG ${name}B ONCE`);
+  }
+  return lines;
+}
+
+/** Re-render a page from the state its receiver records just produced. */
+export function refreshConfigPage(page: string): void {
+  hosts.get(page)?.refreshPage();
 }
 
 /* ------------------------------------------------------------------- Device ▸ .cfg */

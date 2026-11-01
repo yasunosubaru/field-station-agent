@@ -446,6 +446,51 @@ test('GET /assets/ 在默认路径下能取到原版 style.css 与图标', async
   assert.equal((await fetch(base + '/panels/definitely-not-here.js')).status, 404);
 });
 
+test('GET /geo/ 把原版 Graph 包变成只含 Luciad 的引擎模块', async () => {
+  const bundlePath = join(repoRoot, '逆向', '01_解包', 'Graph', 'out', 'renderer', 'assets', 'index-B86bHcCD.js');
+  assert.ok(existsSync(bundlePath), '原版渲染包应能被找到（引擎从 01_解包 现读，不进仓库）');
+
+  const response = await fetch(base + '/geo/luciad-engine.js');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /text\/javascript/);
+  assert.equal(response.headers.get('x-luciad-source'), 'unpacked', '挂载调用应被切掉（source=unpacked）');
+
+  const text = await response.text();
+  // 1) 原版 React 应用的挂载语句不在里面 —— 那正是「不跑原版 Graph」的定义
+  assert.ok(!text.includes('ReactDOM.createRoot(document.getElementById("root"))'),
+    '引擎模块里不应出现原版应用的挂载语句');
+  // 2) 引擎本体在（Class 名在打包时保留了）
+  assert.ok(text.includes('class RIAMap'), 'RIAMap 应来自原版包本身');
+  assert.ok(text.includes('class FeatureLayer'), 'FeatureLayer 应来自原版包本身');
+  // 3) 我们追加的导出表在末尾，且只导出 Luciad 的东西
+  assert.match(text, /export\s*\{[\s\S]*RIAMap[\s\S]*\};?\s*$/);
+  for (const name of ['RIAMap', 'getReference', 'createPolyline', 'createBounds', 'createTransformation',
+    'FeatureLayer', 'FeaturePainter', 'MemoryStore']) {
+    assert.ok(new RegExp(`export\\s*\\{[\\s\\S]*\\b${name}\\b`).test(text), `应导出 ${name}`);
+  }
+  assert.ok(!/export\s*\{[^}]*\bReact\b/.test(text), '不应把原版应用的 React 一并导出');
+  assert.equal(Number(response.headers.get('x-luciad-bytes')), Buffer.byteLength(text, 'utf8'));
+
+  // 4) stage 文档与脚本也从 /geo/ 出去，并且带自己的 CSP（主页面那条 script-src 不含 wasm）
+  const page = await fetch(base + '/geo/luciad-stage.html');
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type') ?? '', /text\/html/);
+  const html = await page.text();
+  assert.match(html, /wasm-unsafe-eval/, 'stage 必须允许 WebAssembly，否则引擎起不来');
+  assert.match(html, /luciad-stage\.js/);
+
+  const stage = await fetch(base + '/geo/luciad-stage.js');
+  assert.equal(stage.status, 200);
+  assert.match(stage.headers.get('content-type') ?? '', /text\/javascript/);
+  const js = await stage.text();
+  assert.match(js, /import\('\.\/luciad-engine\.js'\)/, 'stage 动态导入 /geo/ 引擎模块（静态 import 一失败就整块不执行）');
+  assert.match(js, /postMessage/, 'stage 只通过 postMessage 与面板说话');
+
+  // 5) /geo/ 没有别的入口
+  assert.equal((await fetch(base + '/geo/nope.js')).status, 404);
+  assert.equal(await rawGet('/geo/../server.ts'), 400);
+});
+
 test('/assets/ 与 /panels/ 的路径穿越一律 400', async () => {
   // 字面的 `..`：Node 的 http 服务器不会替我们规范化 req.url
   assert.equal(await rawGet('/assets/../package.json'), 400);
