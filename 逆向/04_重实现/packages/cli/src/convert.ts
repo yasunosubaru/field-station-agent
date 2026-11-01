@@ -25,6 +25,55 @@ import type { EdieTables } from '../../protocol/src/edie.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA = resolve(here, '..', '..', 'protocol', 'data');
 
+/**
+ * `--start-time` / `--finish-time` / `--limit-duration` (user manual 4.5.4).
+ *
+ * The window is applied to the SBF records by their own GPS stamp. A text record carries no stamp,
+ * so it survives only when its position in the capture sits between the first and the last kept
+ * record — capture order is the only time information it has. WEEK `0` means "the week of the first
+ * log", as the manual says.
+ */
+function applyTimeWindow(
+  frames: Frame[],
+  startTime: { week: number; seconds: number } | undefined,
+  finishTime: { week: number; seconds: number } | undefined,
+  limitDuration: number | undefined,
+): Frame[] {
+  if (!startTime && !finishTime && !Number.isFinite(limitDuration)) return frames;
+  const sbf = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
+  if (!sbf.length) return frames;
+  const firstWeek = sbf[0].header.week;
+  const absolute = (week: number, seconds: number) => week * 604_800_000 + seconds * 1000;
+  // The anchor is the first record that carries an **observation** time: `SATTIME` records hold an
+  // almanac's reference epoch (b2's first record is `ALMANAC 577140.000`, while the file really
+  // starts at 577758.950 — the same rule the suite's own Summary uses).
+  const anchor = sbf.find((frame) => frame.header.timeStatus !== 200) ?? sbf[0];
+  const firstStamp = absolute(anchor.header.week, anchor.header.milliseconds / 1000);
+  const from = startTime
+    ? absolute(startTime.week || firstWeek, startTime.seconds)
+    : Number.isFinite(limitDuration)
+      ? firstStamp
+      : -Infinity;
+  let to = finishTime ? absolute(finishTime.week || firstWeek, finishTime.seconds) : Infinity;
+  if (Number.isFinite(limitDuration)) to = Math.min(to, from + (limitDuration as number) * 1000);
+
+  let firstIndex = -1;
+  let lastIndex = -1;
+  const keep = frames.map((frame, index) => {
+    if (frame.kind !== 'sbf') return false;
+    const stamp = absolute(frame.header.week, frame.header.milliseconds / 1000);
+    const inside = stamp >= from && stamp <= to;
+    if (inside) {
+      if (firstIndex < 0) firstIndex = index;
+      lastIndex = index;
+    }
+    return inside;
+  });
+  if (firstIndex < 0) return [];
+  return frames.filter((frame, index) =>
+    keep[index] || (frame.kind !== 'sbf' && index > firstIndex && index < lastIndex));
+}
+
 function stamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_T${pad(date.getHours())}${pad(date.getMinutes())}`;
@@ -36,15 +85,39 @@ function main(): void {
   let format = 'ASCII';
   let outRoot = '';
   let at = new Date();
+  let split = false;
+  /** `--start-time=<WEEK>,<SECONDS>` / `--finish-time=` / `--limit-duration=<SECONDS>`. */
+  let startTime: { week: number; seconds: number } | undefined;
+  let finishTime: { week: number; seconds: number } | undefined;
+  let limitDuration: number | undefined;
+  const weekSeconds = (value: string | undefined): { week: number; seconds: number } | undefined => {
+    if (!value) return undefined;
+    const [weekText, secondsText] = value.split(',');
+    const week = Number(weekText);
+    const seconds = Number(secondsText);
+    if (!Number.isFinite(week) || !Number.isFinite(seconds)) {
+      console.error(`--start-time/--finish-time expects <WEEK>,<SECONDS>, got "${value}"`);
+      process.exit(2);
+    }
+    return { week, seconds };
+  };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (token === '--to' || token === '-t') format = String(argv[++i]).toUpperCase();
     else if (token === '--out' || token === '-o') outRoot = argv[++i];
     else if (token === '--at') at = new Date(argv[++i]);
+    else if (token === '--split') split = true;
+    else if (token.startsWith('--start-time=')) startTime = weekSeconds(token.slice('--start-time='.length));
+    else if (token === '--start-time') startTime = weekSeconds(argv[++i]);
+    else if (token.startsWith('--finish-time=')) finishTime = weekSeconds(token.slice('--finish-time='.length));
+    else if (token === '--finish-time') finishTime = weekSeconds(argv[++i]);
+    else if (token.startsWith('--limit-duration=')) limitDuration = Number(token.slice('--limit-duration='.length));
+    else if (token === '--limit-duration') limitDuration = Number(argv[++i]);
     else if (!token.startsWith('-')) input = token;
   }
   if (!input || !isConvertFormat(format)) {
-    console.error('usage: convert.ts <input> --to ASCII|ABBREV_ASCII|BINARY [--out <dir>] [--at ISO]');
+    console.error('usage: convert.ts <input> --to ASCII|ABBREV_ASCII|BINARY [--out <dir>] [--at ISO] [--split]'
+      + ' [--start-time=<WEEK>,<SECONDS>] [--finish-time=<WEEK>,<SECONDS>] [--limit-duration=<SECONDS>]');
     process.exit(2);
   }
 
@@ -59,7 +132,8 @@ function main(): void {
   const frames: Frame[] = [
     ...new SbfDeframer({ crcMode: 'validate' }).push(new Uint8Array(inputBytes)),
   ];
-  const outcome = convertFrames(frames, { format: format as ConvertFormat, at, tables, name: basename(inputPath) });
+  const windowed = applyTimeWindow(frames, startTime, finishTime, limitDuration);
+  const outcome = convertFrames(windowed, { format: format as ConvertFormat, at, tables, name: basename(inputPath), split });
 
   const outputRoot = outRoot ? resolve(outRoot) : join(dirname(inputPath), 'converted');
   const convertedDir = join(outputRoot, base, `Converted_On_${stamp(at)}`);

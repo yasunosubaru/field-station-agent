@@ -86,6 +86,11 @@ export interface ConvertOptions {
    * with its last extension removed — exactly as `basename(path, extname(path))` does in the CLI.
    */
   name: string;
+  /**
+   * `--split`: one output file per log type (`<base>_<LOGNAME>.<ext>`), as the suite writes it.
+   * Only the ASCII family has a per-log writer, so every other format ignores it.
+   */
+  split?: boolean;
 }
 
 /** One output file. `text` is null for BINARY; `bytes` is always what goes on disk. */
@@ -171,17 +176,28 @@ function textLinesFor(
   render: (frame: SbfFrame, layout: EdieTables['messages'][string]) => readonly string[],
   /** Per log id, how many output rows it produced (`summary.ts` reports the output, not the input). */
   rendered: Map<number, number> = new Map(),
+  /** `--split`: the same lines, bucketed by log name so each one can go to its own file. */
+  perLog?: Map<string, string[]>,
 ): string[] {
   const rangeLayout = tables.messages['43'];
   const carries: RangeCarries = new Map();
   const lines: string[] = [];
   const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
+  const bucket = (name: string, produced: readonly string[]) => {
+    if (!perLog || produced.length === 0) return;
+    const list = perLog.get(name) ?? [];
+    list.push(...produced);
+    perLog.set(name, list);
+  };
   frames.forEach((frame, index) => {
     const text = textAt.get(index);
     if (text !== undefined) {
       // ASCII prints one line per text record; abbreviated ASCII one whole block per record.
-      if (Array.isArray(text)) lines.push(...text);
-      else lines.push(text);
+      const produced = Array.isArray(text) ? text : [text];
+      lines.push(...produced);
+      // `--split` names the file after the log the record carries (`#BESTPOSA…` → `BESTPOS`).
+      const name = /^[<#]\s*([A-Za-z][A-Za-z0-9_]*)/.exec(produced[0] ?? '')?.[1]?.toUpperCase() ?? '';
+      if (name) bucket(name.replace(/[AB]$/, ''), produced);
       return;
     }
     if (frame.kind !== 'sbf' || !frame.crcOk) return;
@@ -191,7 +207,9 @@ function textLinesFor(
       // print them: b2's 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 become 699 RANGE lines.
       const observations = unpackRangeCmp(frame, carries);
       const unpacked = { ...frame, payload: buildRangePayload(observations) };
-      lines.push(...render(unpacked, rangeLayout));
+      const produced = render(unpacked, rangeLayout);
+      lines.push(...produced);
+      bucket(rangeLayout.name, produced);
       // One `RANGE` record per compressed record — its observations are that record's array, not
       // separate rows (b2: 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 → 699 RANGE).
       bump(RANGE_ID, 1);
@@ -204,6 +222,7 @@ function textLinesFor(
     // A record that prints nothing (`RXCONFIG` with an embedded message the dictionary lacks) is
     // input but not output — that is why b1's summary reads `RXCONFIG 278 → 256`.
     if (produced.length) bump(frame.header.messageId, 1);
+    bucket(layout.name, produced);
   });
   return lines;
 }
@@ -346,18 +365,34 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
   if (format === 'ASCII') {
     const rendered = new Map<number, number>();
     const textMap = textLogLines(frames, tables);
+    const perLog = options.split ? new Map<string, string[]>() : undefined;
     const lines = textLinesFor(frames, tables, textMap, (frame, layout) => {
       const line = encodeAsciiLog(frame, layout, tables);
       return line ? [line] : [];
-    }, rendered);
-    files.push(lineFile(`${base}.ASCII`, lines));
+    }, rendered, perLog);
+    if (perLog) {
+      // `--split`: the suite writes one file per log type and no combined file
+      // (`b2_ALMANAC.ASCII`, `b2_BESTPOS.ASCII`, `b2_RANGE.ASCII`, …).
+      for (const [name, list] of [...perLog].sort((a, b) => a[0].localeCompare(b[0]))) {
+        files.push(lineFile(`${base}_${name}.ASCII`, list));
+      }
+    } else {
+      files.push(lineFile(`${base}.ASCII`, lines));
+    }
     countsRendered = rendered;
     countsText = textMap;
   } else if (format === 'ABBREV_ASCII') {
     const rendered = new Map<number, number>();
     const textMap = abbrevTextLogLines(frames, tables);
-    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => encodeAbbrevLines(frame, layout, tables), rendered);
-    files.push(lineFile(`${base}.ABBREV_ASCII`, lines));
+    const perLog = options.split ? new Map<string, string[]>() : undefined;
+    const lines = textLinesFor(frames, tables, textMap, (frame, layout) => encodeAbbrevLines(frame, layout, tables), rendered, perLog);
+    if (perLog) {
+      for (const [name, list] of [...perLog].sort((a, b) => a[0].localeCompare(b[0]))) {
+        files.push(lineFile(`${base}_${name}.ABBREV_ASCII`, list));
+      }
+    } else {
+      files.push(lineFile(`${base}.ABBREV_ASCII`, lines));
+    }
     countsRendered = rendered;
     countsText = textMap;
   } else if (format === 'KML') {
