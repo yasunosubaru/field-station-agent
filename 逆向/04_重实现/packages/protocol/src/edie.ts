@@ -271,6 +271,51 @@ export function packedSegmentSize(segment: EdieSegment): number | null {
   return (segment.countSize || 0) + segment.fixedCount * inner;
 }
 
+/**
+ * A counted array's elements are a C array of structs: **every element starts one `pack(4)` struct
+ * apart**, and the members inside one element sit at their `pack(4)` offsets.
+ *
+ * The dictionary's element offsets are dense, and for every layout with a `variable` string inside
+ * the element the suite does **not** use a struct layout at all: it re-walks the string's actual
+ * bytes, so the member behind it starts right where the string ended. Both rules were measured
+ * against the suite's Convert on synthetic `count = 2` frames (no receiver sample of these four
+ * exists):
+ *
+ *  - `SBAS17` (no string): `x` is read at 8, not at the dense 6, elements 32 bytes apart (dense 30);
+ *    every injected value came back (`…,1010,1020,1030,1040,…,1090,2010,…,2090,…`).
+ *  - `ETHSTATUS` with a two-character MAC: `interface_config` is read 4 bytes behind the string's
+ *    start, i.e. the element is 12 bytes (4 + 4 + 4) and the next element starts there
+ *    (`…;2,ETHA,"a0",100_FULL,ETHB,"b0",100_HALF*6b5e7bd1`) — no fixed 28-byte stride, no padding.
+ *  - `SAVEDSURVEYPOSITIONS` with a one-character id: `latitude` at +4, `longitude` at +12,
+ *    `height` at +20 — 28 bytes per element, again content first.
+ *  - `WIFINETLIST` with a two-character SSID: `rssi` +4, `channel` +8, `bssid` +12, `security` +20.
+ *
+ * So: a **fixed** element list is rewritten to `pack(4)` offsets and walked with the packed struct
+ * size; a list that holds a `variable` string (or a nested counted array) keeps the dense offsets
+ * plus the drift the strings actually cause, which is what both writers already do.
+ *
+ * The rewrite is in place because the writers reach the members through `array.elements` directly —
+ * and it is a one-time, idempotent statement of the wire layout, not a per-record decision.
+ */
+const WIRED_ELEMENTS = new WeakSet<EdieSegment[]>();
+
+/** Rewrite one element list to `pack(4)` offsets (in place, once) and return it. */
+export function wireElementSegments(segments: EdieSegment[]): EdieSegment[] {
+  if (WIRED_ELEMENTS.has(segments)) return segments;
+  WIRED_ELEMENTS.add(segments);
+  if (segmentsVariable(segments)) return segments;
+  let cursor = 0;
+  for (const segment of segments) {
+    const at = alignUp(cursor, segmentAlignment(segment));
+    segment.offset = at;
+    if (segment.kind === 'array') wireElementSegments(segment.elements);
+    const size = packedSegmentSize(segment);
+    if (size === null) break;
+    cursor = at + size;
+  }
+  return segments;
+}
+
 export interface ArrayWalk {
   /** The count the record carries (fixed arrays: their definition). */
   declared: number;
@@ -287,15 +332,20 @@ export interface ArrayWalk {
 /**
  * Walk one array: read its count, place its elements, and report how many bytes it consumed.
  *
- * A counted array's element count is trusted even past the declared stride when the elements carry
- * a variable string (DNSCONFIG's address is 12 bytes, not the declared 16), because only the
- * content says where the next element starts.
+ * The element geometry follows the rule `wireElementSegments` documents:
+ *
+ *  - a **fixed** element list is walked one `pack(4)` struct apart (`SBAS17`: 32, not the dense 30);
+ *  - a list holding a `variable` string is walked by the bytes the string really takes (`DNSCONFIG`'s
+ *    address is 12 bytes, not the declared 16; `WIFINETLIST`'s short SSID makes the element 24 bytes
+ *    and `rssi` land at +4).
  */
 export function walkArray(bytes: Uint8Array, array: EdieArray, at: number): ArrayWalk {
-  const stride = array.stride || 1;
+  const variable = segmentsVariable(array.elements);
+  const packed = variable ? null : packedStructSize(array.elements);
+  if (!variable) wireElementSegments(array.elements);
+  const stride = packed && packed > 0 ? packed : (array.stride || 1);
   const first = at + array.countSize;
   const available = Math.max(0, bytes.byteLength - first);
-  const variable = segmentsVariable(array.elements);
   const capacity = variable ? Number.POSITIVE_INFINITY : Math.floor(available / stride);
   const declared = array.fixedCount !== undefined
     ? array.fixedCount
@@ -338,7 +388,12 @@ export function segmentsWireSize(bytes: Uint8Array, segments: readonly EdieSegme
     const at = base + (segment.dynamicOffset ? end - base : segment.offset + shift);
     const size = segmentWireSize(bytes, segment, at);
     end = Math.max(end, at + size);
-    shift += at + size - (base + segment.offset + denseSegmentSize(segment));
+    // `shift` is the accumulated drift, and `at` already carries it, so it is *assigned* from the
+    // drift this segment introduced plus the old one — adding it again compounded it once per
+    // member. A `dynamicOffset` segment has no stored offset to measure drift against, so it keeps
+    // the incremental form.
+    const dense = base + segment.offset + denseSegmentSize(segment);
+    shift = segment.dynamicOffset ? shift + at + size - dense : at + size - dense;
   }
   return end - base;
 }
