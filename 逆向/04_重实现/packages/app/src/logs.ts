@@ -3,6 +3,12 @@
  *
  * The statistics come from the same mirror-mode de-framing Convert uses, so the counts a user sees
  * here are the counts Convert will write (CRC-good records) next to how many were dropped.
+ *
+ * One record's projection splits in two, because a 1024-sample spectrum log would otherwise be 1028
+ * flat rows: `fields` keeps the scalar row table (capped at `FIELD_LIMIT`), and a long single-leaf
+ * numeric vector — ITPSDFINAL/ITPSDDETECT `samples[i].samples` is the one the UI reads — travels in
+ * `arrays` as plain numbers. `fieldTotal`/`fieldsTruncated` still describe the whole record, so no
+ * reader can mistake a split table for a short payload.
  */
 
 import { decodeEdie, type EdieTables, type EdieValue } from '../../protocol/src/edie.ts';
@@ -11,7 +17,24 @@ import type { SbfFrame } from '../../protocol/src/framing.ts';
 import { gpsAsUtc, type CaptureData } from './capture.ts';
 
 const SAMPLE_LIMIT = 280;
+/** Rows the field table of one record may carry. Nothing is lost: see `projectFields`. */
 const FIELD_LIMIT = 800;
+/**
+ * A repeated array is lifted out of the field table when it has more elements than this.
+ *
+ * Below the threshold the rows stay inline, because that is what the readers walk:
+ * RANGE's 65 `obs[i].*` entries (7 leaves each) and HWMONITOR's `measurements[i].*` are multi-leaf
+ * and never qualify. A *single-leaf* numeric vector does: `ITPSDFINAL.samples[0..1023].samples`
+ * is 1024 field objects, `{"name":"samples","path":"samples[7].samples","value":22587}` ≈ 55 B
+ * each (56 KB for one record), against 1024 plain numbers ≈ 6 KB. The values are identical; only
+ * the per-element `name`/`path` boilerplate goes away.
+ */
+const ARRAY_INLINE_LIMIT = 16;
+/** Hard cap on the numbers one `arrays` entry may carry (one ITPSD log is 1024; 64K FFT is 65536). */
+const ARRAY_VALUE_LIMIT = 65536;
+
+/** `samples[7].samples` → prefix `samples`, index 7, leaf `samples`. */
+const ELEMENT_PATH = /^(.*)\[(\d+)\]\.([^.[\]]+)$/;
 
 export interface LogGroup {
   id: number;
@@ -128,10 +151,25 @@ export interface RecordHeader {
   crcOk: boolean;
 }
 
+export interface DecodedArray {
+  /** Array prefix as the layout spells it: `samples` covers `samples[0].samples` … `samples[n-1].samples`. */
+  path: string;
+  /** The one leaf field inside each element. */
+  field: string;
+  /** Elements carried in `values`. */
+  count: number;
+  /** Elements the payload declared beyond `ARRAY_VALUE_LIMIT` — 0 for every ITPSD in a capture. */
+  omitted: number;
+  /** Element values in wire order, exactly as decoded (no dBm conversion here). */
+  values: Array<number | string>;
+}
+
 export interface DecodedRecord {
   index: number;
   header: RecordHeader;
   fields: Array<{ name: string; path: string; value: number | string; text?: string; isCount?: boolean }>;
+  /** Repeated arrays lifted out of `fields` (payload order); empty for a scalar-only log. */
+  arrays: DecodedArray[];
   fieldTotal: number;
   fieldsTruncated: boolean;
 }
@@ -157,6 +195,60 @@ function toField(value: EdieValue) {
   };
 }
 
+export interface FieldProjection {
+  fields: ReturnType<typeof toField>[];
+  arrays: DecodedArray[];
+  total: number;
+  truncated: boolean;
+}
+
+/**
+ * Split one record's decoded values into the row table and the long numeric vectors.
+ *
+ * A vector is lifted only when every element of the same prefix carries *one* leaf and every value
+ * is a number — i.e. a plain array of numbers, which is what a spectrum log is. Structures such as
+ * `obs[i].sv_prn/c_status/C_No` (RANGE) or `measurements[i].status/value` (HWMONITOR) have several
+ * leaves per element and stay in `fields`, because their readers address `obs[3].c_status` by path.
+ *
+ * `truncated` is true whenever the table does not hold every decoded value (lifted or clipped by
+ * `FIELD_LIMIT`), so `fieldTotal` vs `fields.length` always explains the difference.
+ */
+export function projectFields(values: EdieValue[]): FieldProjection {
+  const groups = new Map<string, { leaves: Set<string>; numeric: boolean; entries: Array<{ index: number; value: EdieValue }> }>();
+  for (const value of values) {
+    const match = ELEMENT_PATH.exec(value.path);
+    if (!match) continue;
+    const [, prefix, index, leaf] = match;
+    let group = groups.get(prefix);
+    if (!group) {
+      group = { leaves: new Set(), numeric: true, entries: [] };
+      groups.set(prefix, group);
+    }
+    group.leaves.add(leaf);
+    if (typeof value.value !== 'number') group.numeric = false;
+    group.entries.push({ index: Number(index), value });
+  }
+
+  const arrays: DecodedArray[] = [];
+  const lifted = new Set<EdieValue>();
+  for (const [prefix, group] of groups) {
+    if (group.leaves.size !== 1 || !group.numeric || group.entries.length <= ARRAY_INLINE_LIMIT) continue;
+    const ordered = group.entries.slice().sort((a, b) => a.index - b.index);
+    const kept = ordered.slice(0, ARRAY_VALUE_LIMIT);
+    for (const entry of kept) lifted.add(entry.value);
+    arrays.push({
+      path: prefix,
+      field: [...group.leaves][0],
+      count: kept.length,
+      omitted: ordered.length - kept.length,
+      values: kept.map((entry) => entry.value.value),
+    });
+  }
+
+  const fields = values.filter((value) => !lifted.has(value)).slice(0, FIELD_LIMIT).map(toField);
+  return { fields, arrays, total: values.length, truncated: fields.length < values.length };
+}
+
 export function readRecords(
   data: CaptureData,
   tables: EdieTables,
@@ -172,7 +264,7 @@ export function readRecords(
   const records: DecodedRecord[] = window.map((frame, index) => {
     const header = frame.header as SbfFrame['header'] & { sequence?: number; portAddress?: number; receiverStatus?: number; timeStatus?: number };
     const values = layout ? decodeEdie(frame.payload, layout, tables) : [];
-    const fields = values.slice(0, FIELD_LIMIT).map(toField);
+    const projected = projectFields(values);
     return {
       index: start + index,
       header: {
@@ -190,9 +282,10 @@ export function readRecords(
         frameBytes: frame.bytes.byteLength,
         crcOk: frame.crcOk,
       },
-      fields,
-      fieldTotal: values.length,
-      fieldsTruncated: values.length > FIELD_LIMIT,
+      fields: projected.fields,
+      arrays: projected.arrays,
+      fieldTotal: projected.total,
+      fieldsTruncated: projected.truncated,
     };
   });
 

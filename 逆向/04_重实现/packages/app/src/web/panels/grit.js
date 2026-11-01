@@ -35,25 +35,31 @@
  *   Interference / Jamming / Mitigation Assistant → `Not detected` (no ITK in any sample)
  *   Position Overview                              → blank canvas (no basemap renderer here)
  *
- * Spectrum Viewer / Waterfall — the one tile that is **live-only**, and the reason is on screen
- * when it is empty rather than a guess:
+ * Spectrum Viewer / Waterfall — fed by two sources, one store:
  *
- *   - the samples come from `ITPSDFINAL` (#1968) / `ITPSDDETECT` (#2063), which the receiver only
- *     emits while an `ITSPECTRALANALYSIS` sweep is running. `/api/live/logs` carries them in
- *     `entry.data` (see `LiveSpectrum` in `src/live.ts`), so this panel polls
+ *   - **live**: the samples come from `ITPSDFINAL` (#1968) / `ITPSDDETECT` (#2063), which the
+ *     receiver emits while an `ITSPECTRALANALYSIS` sweep is running. `/api/live/logs` carries them
+ *     in `entry.data` (see `LiveSpectrum` in `src/live.ts`), so this panel polls
  *     `/api/live/status` + `/api/live/logs?after=<cursor>` exactly like `panels/manage.js` does;
+ *   - **capture**: the same logs sit inside an SBF recording, and `/api/records` hands the 1024
+ *     samples over in `record.arrays` instead of 1024 field rows (`logs.ts` `projectFields`). One
+ *     page — `limit` 25, the server's cap — holds more than the ten sweeps the waterfall keeps,
+ *     and it is read *after* the band, the matrix and the dock have painted, so opening a capture
+ *     never waits for the spectrum. A 1024-sample record is 7 043 B in that shape (measured on
+ *     `b1-20261101.sbf`, 25 records = 172 395 B) against 50 381 B of field objects for one;
  *   - one sweep can span several logs (max 1024 samples each). They are grouped by the **OEM7
  *     header sequence word** — buffered while `sequence !== 0`, merged when `sequence === 0`, which
  *     is the manual's rule ("grouped together through the sequence number of the log header") and
  *     what `sample-b1` shows: one 1365-sample ITPSDDETECT sweep = sequence 1 (1024) + sequence 0
- *     (341);
+ *     (341). **Both sources go through `ingestSpectrum` / `mergeChunks`**: `captureSpectrumEntry`
+ *     only reshapes an `/api/records` row into the `LiveSpectrum` shape, so the sequence rule
+ *     exists once in this file;
  *   - the curve plots every merged sample in dBm (`raw/256 − 200`); the waterfall rasterises the
  *     ten most recent merged sweeps on a matching frequency grid, with the original's colour map
  *     (−135 dBm purple … −30 dBm red).
  *
- * A capture cannot feed this tile: a 1024-sample frame is 1028 decoded fields and
- * `/api/records` truncates at 800 (`logs.ts` `FIELD_LIMIT`), so the panel says so instead of
- * drawing a spectrum whose tail is missing.
+ * A capture with no ITPSD record (most of them — the receiver only logs a PSD while a sweep runs)
+ * keeps the reference frame and says so in the note; it never draws a made-up curve.
  *
  * Contract: `mount(root, ctx)` / `unmount(root)`, ctx = { api, capture, onCaptureChange }.
  */
@@ -73,6 +79,14 @@ const ITPSD_DETECT = 2063;
 const WATERFALL_FRAMES = 10;
 /** One poll of `/api/live/status` + `/api/live/logs`; `manage.js` uses 900 ms for the same pair. */
 const LIVE_POLL_MS = 900;
+/** `/api/records` caps `limit` at 25 — the most one capture page can ask for. */
+const CAPTURE_SPECTRUM_PAGE = 25;
+/**
+ * `sample = raw / 256 − 200` dBm — the manual's two steps, the same conversion `live.ts`
+ * `LiveSpectrum` applies to the same `uint16` samples (03_分析 §5.2, `logparsers.js:1126-1143`).
+ */
+const SAMPLE_SCALE = 256;
+const SAMPLE_OFFSET = 200;
 
 /** `ITSPECTRALANALYSIS` enums, OEM7 manual — 0..23, the word's bits 0-3 carry this value. */
 const SPECTRUM_FREQUENCIES = [
@@ -629,6 +643,8 @@ async function readStatus(ctx, capture) {
     device: null,
     matrix: null,
     info: null,
+    /** Chunks of each spectrum log in this capture — what sizes the one `/api/records` page. */
+    spectrumTotals: null,
   };
 
   const [info, logs] = await Promise.allSettled([
@@ -724,14 +740,19 @@ async function readStatus(ctx, capture) {
     if (record) out.device = readDevice(record);
   }
 
-  /* Spectrum is **not** read from the capture: it comes from the live ITPSD stream (see the
-     file header) — `readStatus` therefore leaves `out.spectrum` alone. */
+  /* Spectrum is not decoded here: `load()` kicks `requestCaptureSpectrum` off after the first
+     paint, so the band, the matrix and the dock never wait for 1024-sample pages. Only the
+     per-log counts are taken from `/api/logs`, which this page already fetched. */
+  out.spectrumTotals = {
+    final: counts.get(ITPSD_FINAL) ?? 0,
+    detect: counts.get(ITPSD_DETECT) ?? 0,
+  };
   return out;
 }
 
 /* ---------------- spectrum store (live ITPSD) ---------------- */
 
-function emptySpectrumStore() {
+export function emptySpectrumStore() {
   return {
     /** Chunks of a sweep that has not finished yet, per log (`sequence !== 0`). */
     pending: { final: [], detect: [] },
@@ -745,6 +766,10 @@ function emptySpectrumStore() {
     duplicates: 0,
     skipped: 0,
     lastError: '',
+    /** Where the samples came from: a live session or the open capture. */
+    source: 'live',
+    /** Capture the sweeps were read from (empty for a live session). */
+    capture: '',
   };
 }
 
@@ -756,8 +781,11 @@ function emptySpectrumStore() {
  * ("The output logs can be grouped together through the sequence number of the log header",
  * ITPSDFINAL). A chunk already held under the same sequence is dropped, which is what the
  * original's `processITPSDFinalData` does with a repeated `sequenceId`.
+ *
+ * This is the only place the sequence rule exists: the live stream and a capture both arrive here
+ * (`captureSpectrumEntry` reshapes a `/api/records` row into the live entry's shape).
  */
-function ingestSpectrum(store, entry) {
+export function ingestSpectrum(store, entry) {
   const data = entry?.data;
   if (!data || data.kind !== 'itpsd') return false;
   const log = data.log === 'detect' ? 'detect' : 'final';
@@ -810,7 +838,7 @@ function ingestSpectrum(store, entry) {
 }
 
 /** Sort the chunks by frequency and concatenate them when they are contiguous. */
-function mergeChunks(chunks) {
+export function mergeChunks(chunks) {
   const sorted = chunks.slice().sort((a, b) => a.frequencyStart - b.frequencyStart);
   const head = sorted[0];
   if (!head) return null;
@@ -844,7 +872,7 @@ function mergeChunks(chunks) {
 }
 
 /** Sweeps the waterfall can stack: the ones sharing the newest sweep's frequency grid. */
-function waterfallFrames(store) {
+export function waterfallFrames(store) {
   const base = store.latest;
   if (!base) return [];
   return store.frames.filter(
@@ -853,6 +881,87 @@ function waterfallFrames(store) {
       frame.stepSize === base.stepSize &&
       frame.samples.length === base.samples.length,
   );
+}
+
+/* ---------------- capture side: `/api/records` rows → the same store ---------------- */
+
+/**
+ * The `ITPSDFINAL` / `ITPSDDETECT` status word, decoded exactly like `live.ts` `LiveSpectrumStatus`:
+ * bits 0-3 frequency index, 4-7 data source, 8-10 FFT size, 11-15 integration window, 16-19 time
+ * average. It describes the sweep's configuration and carries **no** sequence number — that is the
+ * OEM7 header word at byte 10, which `/api/records` exposes as `header.sequence`.
+ */
+export function spectrumStatus(word) {
+  const value = Number(word) || 0;
+  return {
+    word: value,
+    frequency: value & 0xf,
+    dataSource: (value >>> 4) & 0xf,
+    fftSize: (value >>> 8) & 0x7,
+    integrationWindow: (value >>> 11) & 0x1f,
+    timeAverage: (value >>> 16) & 0xf,
+  };
+}
+
+/** Raw (not ASCII-rendered) value of one field — `status_word`'s `text` is hex, its `value` is the word. */
+function rawField(record, path) {
+  const found = (record?.fields ?? []).find((field) => field?.path === path);
+  return found ? found.value : undefined;
+}
+
+/**
+ * One `/api/records` row → the shape `/api/live/logs` gives a sweep chunk, so `ingestSpectrum`
+ * cannot tell the two apart. `null` when the row is not an ITPSD log or carries no sample array.
+ *
+ * The samples travel in `record.arrays`: `logs.ts` `projectFields` lifts the 1024-element
+ * `samples[i].samples` vector out of the 800-row field table and ships it as plain numbers. They
+ * are still the wire's `uint16`, so the manual's `raw / 256 − 200` dBm conversion happens here —
+ * the same two steps `live.ts` applies to the same bytes.
+ */
+export function captureSpectrumEntry(record) {
+  const messageId = Number(record?.messageId ?? record?.header?.messageId);
+  const log = messageId === ITPSD_FINAL ? 'final' : messageId === ITPSD_DETECT ? 'detect' : '';
+  if (!log) return null;
+
+  const array = (record?.arrays ?? []).find((item) => item?.path === 'samples');
+  if (!array || !Array.isArray(array.values) || !array.values.length) return null;
+
+  const frequencyStart = Number(rawField(record, 'frequency_start_m_hz'));
+  const stepSize = Number(rawField(record, 'step_size_hz'));
+  if (!Number.isFinite(frequencyStart) || !Number.isFinite(stepSize) || stepSize <= 0) return null;
+
+  return {
+    name: record?.header?.name || (log === 'final' ? 'ITPSDFINAL' : 'ITPSDDETECT'),
+    messageId,
+    time: record?.header?.utc ?? '',
+    milliseconds: Number(record?.header?.milliseconds) || 0,
+    data: {
+      kind: 'itpsd',
+      log,
+      sequence: Number(record?.header?.sequence) || 0,
+      status: spectrumStatus(rawField(record, 'status_word')),
+      frequencyStart,
+      stepSize,
+      samples: array.values.map((value) => Number(value) / SAMPLE_SCALE - SAMPLE_OFFSET),
+    },
+  };
+}
+
+/**
+ * Fold a page of `/api/records` rows into the store, in the order the server returned them (index
+ * order — a DETECT sweep's chunks are `sequence 1 → 0`, and `ingestSpectrum` needs them in that
+ * order). Returns how many entries changed the drawing.
+ */
+export function ingestCaptureRecords(store, records, capture = '') {
+  let changed = 0;
+  for (const record of records ?? []) {
+    const entry = captureSpectrumEntry(record);
+    if (!entry) continue;
+    store.source = 'capture';
+    if (capture) store.capture = capture;
+    if (ingestSpectrum(store, entry)) changed += 1;
+  }
+  return changed;
 }
 
 function spectrumRange(frame) {
@@ -1092,6 +1201,7 @@ function readDevice(record) {
  */
 function spectrumReason(state) {
   const live = state.live;
+  const name = state.capture ? baseName(state.capture) : '';
   if (live.connected) {
     return (
       `Connected to ${live.target || 'the receiver'} — no ITPSDFINAL/ITPSDDETECT yet. ` +
@@ -1099,18 +1209,25 @@ function spectrumReason(state) {
       '`ITSPECTRALANALYSIS predecimation gpsl1 1000 1K 10 5` from Manage → Terminal).'
     );
   }
+  if (state.spectrumLoading) {
+    return `Reading ${name || 'the capture'} — the newest ITPSDFINAL/ITPSDDETECT records are being decoded from /api/records.`;
+  }
+  if (live.lastError && !name) return `Live link error: ${live.lastError}`;
+  const totals = state.spectrumTotals;
+  if (name && totals && !totals.final && !totals.detect) {
+    return (
+      `No spectrum data — ${name} carries no ITPSDFINAL #1968 / ITPSDDETECT #2063 record, and no live ` +
+      'session is open. The receiver only logs a PSD while ITSPECTRALANALYSIS runs ' +
+      '(Settings → Spectrum Analysis).'
+    );
+  }
   if (live.everConnected) {
     return `Live session closed${live.disconnectedAt ? ` at ${live.disconnectedAt.replace('T', ' ').replace('Z', '')} UTC` : ''} — no spectrum is drawn from a dead link.`;
   }
-  if (live.lastError) return `Live link error: ${live.lastError}`;
-  const name = state.capture ? baseName(state.capture) : '';
   return (
-    'No spectrum data — this tile reads the receiver’s live ITPSDFINAL/ITPSDDETECT stream ' +
-    '(Manage → Terminal → Connect, then Settings → Spectrum Analysis).' +
-    (name
-      ? ` The capture ${name} is not used here: one of its 1024-sample frames is 1028 decoded fields and ` +
-        '/api/records truncates at 800, so its spectrum could not be drawn whole.'
-      : '')
+    'No spectrum data — open a capture that contains ITPSDFINAL/ITPSDDETECT (for example ' +
+    'live-20261031/b1-20261101.sbf), or connect a receiver and start a sweep: ' +
+    'Settings → Spectrum Analysis.'
   );
 }
 
@@ -1190,9 +1307,14 @@ function renderSpectrum(root, state) {
   const frame = store?.latest ?? null;
 
   if (!frame) {
-    if (!plot.querySelector('.grit-spec-svg')) plot.innerHTML = placeholderSpectrumSvg();
+    /* The reference frame is redrawn whenever anything else is on screen: opening a capture with
+       no ITPSD after one that had a spectrum must not leave the previous curve behind. */
+    if (!plot.querySelector('.grit-spec-empty')) plot.innerHTML = placeholderSpectrumSvg();
     const empty = plot.querySelector('.grit-spec-empty');
-    if (empty) empty.style.display = '';
+    if (empty) {
+      empty.style.display = '';
+      empty.textContent = 'No spectrum data';
+    }
     if (note) {
       note.hidden = false;
       note.textContent = store?.lastError ? `${spectrumReason(state)} (${store.lastError})` : spectrumReason(state);
@@ -1214,12 +1336,13 @@ function renderSpectrum(root, state) {
   if (note) {
     note.hidden = false;
     const base = spectrumCaption(frame);
+    const origin = store.source === 'capture' && store.capture ? ` · capture ${baseName(store.capture)}` : '';
     note.textContent =
       state.view === 'waterfall'
-        ? `${base} · waterfall ${rows.length}/${WATERFALL_FRAMES} sweeps`
+        ? `${base} · waterfall ${rows.length}/${WATERFALL_FRAMES} sweeps${origin}`
         : store.lastError
-          ? `${base} · ${store.lastError}`
-          : base;
+          ? `${base} · ${store.lastError}${origin}`
+          : `${base}${origin}`;
   }
 }
 
@@ -1312,8 +1435,12 @@ export function mount(root, ctx = {}) {
     events: 0,
     /** `spectrum` | `waterfall` — which renderer the tile draws. */
     view: 'spectrum',
-    /** Live ITPSD sweeps, see `ingestSpectrum`. */
+    /** ITPSD sweeps from whichever source owns the tile, see `ingestSpectrum`. */
     spectrum: emptySpectrumStore(),
+    /** ITPSDFINAL / ITPSDDETECT chunk counts of the open capture (`/api/logs`). */
+    spectrumTotals: null,
+    /** True while the capture's spectrum page is in flight — the note says so instead of "none". */
+    spectrumLoading: false,
     live: {
       connected: false,
       everConnected: false,
@@ -1331,6 +1458,8 @@ export function mount(root, ctx = {}) {
 
   let token = 0;
   let disposed = false;
+  /** The capture page already read (`capture|log|offset`), so a re-render never re-fetches it. */
+  let spectrumPage = '';
 
   const load = async () => {
     const mine = ++token;
@@ -1338,19 +1467,72 @@ export function mount(root, ctx = {}) {
     try {
       const next = await readStatus(ctx, capture);
       if (disposed || mine !== token) return;
+      const captureChanged = state.capture !== capture;
       Object.assign(state, next);
+      if (captureChanged) {
+        state.spectrum = emptySpectrumStore();
+        spectrumPage = '';
+      }
       renderBand(root, state);
       renderMatrix(root, state);
       renderSpectrum(root, state);
       renderDock(root, state);
       injectAppBar(root, state);
+      /* Only now that the dashboard has painted: the spectrum is a second, optional read. */
+      void requestCaptureSpectrum();
     } catch (error) {
       if (disposed || mine !== token) return;
       console.error('[grit] 读取抓包失败：', error);
     }
   };
 
-  /* ---------------- live session: the only source of spectrum samples ---------------- */
+  /* ---------------- capture spectrum: one `/api/records` page into the same store ---------------- */
+
+  /**
+   * Read the newest ITPSD page of the open capture, once, after the first paint.
+   *
+   * `limit` is capped at 25 by `/api/records`, and 25 chunks are more than the ten sweeps the
+   * waterfall keeps, so one request covers curve + waterfall. Measured on `b1-20261101.sbf`:
+   * 25 ITPSDFINAL records = 172 395 B (7 043 B each — the 1024 samples as numbers, not as 1024
+   * field rows, which cost 50 381 B per record). Nothing is fetched while a live session owns the
+   * tile, and nothing is fetched twice for the same capture and page.
+   */
+  async function requestCaptureSpectrum() {
+    const capture = state.capture;
+    const totals = state.spectrumTotals;
+    if (disposed || !capture || !totals || state.live.connected) return;
+
+    /* ITPSDFINAL is the processed PSD the original's plot tab is built on; ITPSDDETECT is the
+       detection view of the same sweep. Both decode into one store, one log at a time. */
+    const log = totals.final > 0 ? 'final' : totals.detect > 0 ? 'detect' : '';
+    if (!log) return;
+    const total = log === 'final' ? totals.final : totals.detect;
+    const msgId = log === 'final' ? ITPSD_FINAL : ITPSD_DETECT;
+    /* A DETECT sweep is two chunks (`sequence 1 → 0`), so its page is even: an odd offset would
+       be as likely to split a sweep as not. */
+    const page = log === 'detect' ? CAPTURE_SPECTRUM_PAGE - 1 : CAPTURE_SPECTRUM_PAGE;
+    const offset = Math.max(0, total - page);
+    const key = `${capture}|${log}|${offset}`;
+    if (key === spectrumPage) return;
+
+    spectrumPage = key;
+    state.spectrumLoading = true;
+    renderSpectrum(root, state);
+    try {
+      const data = await api.get('/api/records', { capture, msgId, offset, limit: page });
+      if (disposed) return;
+      state.spectrumLoading = false;
+      ingestCaptureRecords(state.spectrum, data?.records ?? [], capture);
+      renderSpectrum(root, state);
+    } catch (error) {
+      if (disposed) return;
+      state.spectrumLoading = false;
+      state.spectrum.lastError = `capture spectrum: ${error.message}`;
+      renderSpectrum(root, state);
+    }
+  }
+
+  /* ---------------- live session: the other source of spectrum samples ---------------- */
 
   /**
    * One poll for the whole panel: `/api/live/status` decides whether the link is up, then the log
@@ -1405,7 +1587,12 @@ export function mount(root, ctx = {}) {
         for (const entry of page.entries ?? []) {
           state.live.records += 1;
           if (entry.time) state.live.lastRecordAt = entry.time;
-          if (ingestSpectrum(state.spectrum, entry)) changed = true;
+          if (ingestSpectrum(state.spectrum, entry)) {
+            changed = true;
+            /* The live stream owns the tile from now on; a capture page must not blend into it. */
+            state.spectrum.source = 'live';
+            state.spectrum.capture = '';
+          }
         }
         if (changed) renderSpectrum(root, state);
         if (state.live.lastRecordAt) setText(root, 'devTime', hhmmss(state.live.lastRecordAt));
@@ -1420,7 +1607,14 @@ export function mount(root, ctx = {}) {
     if (wasConnected !== connected) {
       /* The band's clock follows the live records while a session is up, and falls back to the
          capture's own last solution when it closes. */
-      if (!connected) renderBand(root, state);
+      if (!connected) {
+        renderBand(root, state);
+        /* The live stream's sweep history went with the session; hand the tile back to the
+           capture. The store is empty again, so the capture page is read once more. */
+        state.spectrum = emptySpectrumStore();
+        spectrumPage = '';
+        void requestCaptureSpectrum();
+      }
       renderSpectrum(root, state);
     }
   }
@@ -1697,7 +1891,10 @@ export function mount(root, ctx = {}) {
     }
     if (act === 'clear') {
       state.spectrum = emptySpectrumStore();
+      /* Let the open capture (or the next live poll) refill the tile. */
+      spectrumPage = '';
       renderSpectrum(root, state);
+      void requestCaptureSpectrum();
       if (note) {
         note.hidden = false;
         note.textContent = 'Cleared the sweeps held in this page (the server’s 400-record ring buffer is untouched).';
@@ -1724,7 +1921,8 @@ export function mount(root, ctx = {}) {
         note.textContent =
           `GRIT Monitor — NovAtel Application Suite reimplementation. ` +
           `Spectrum: ITPSDFINAL #1968 / ITPSDDETECT #2063, sample = raw/256 − 200 dBm, ` +
-          `chunks grouped by the OEM7 header sequence word (0 = last chunk). ` +
+          `chunks grouped by the OEM7 header sequence word (0 = last chunk), read from the live ` +
+          `session or from the open capture's records. ` +
           `Waterfall: newest ${WATERFALL_FRAMES} sweeps, −135 … −30 dBm. ` +
           (health ? `Server ${health.version ?? '--'} on Node ${health.node ?? '--'}.` : 'Server build info unavailable.');
       }

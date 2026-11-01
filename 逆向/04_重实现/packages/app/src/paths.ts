@@ -26,7 +26,12 @@ export const SAMPLES_DIR = resolve(REPO_DIR, '逆向', '00_来源', 'samples');
 export const PROTOCOL_DATA_DIR = resolve(PACKAGES_DIR, 'protocol', 'data');
 export const WEB_DIR = join(here, 'web');
 
-export const CAPTURE_EXTENSIONS = ['.gps', '.bin'] as const;
+/**
+ * Extensions the app will open from `samples/`. All three are the same container — the de-framer
+ * sniffs the stream — but the receiver's own recordings arrive as `.sbf` (`live-20261031/*.sbf`),
+ * and GRIT's spectrum only exists in those, so a `.sbf` must be openable like any other capture.
+ */
+export const CAPTURE_EXTENSIONS = ['.gps', '.bin', '.sbf'] as const;
 const ALLOWED = new Set<string>(CAPTURE_EXTENSIONS);
 
 export interface CaptureEntry {
