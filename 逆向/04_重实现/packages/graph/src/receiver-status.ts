@@ -14,10 +14,18 @@
  *  - `value` is a plain integer `1` — a row exists only while the condition holds, so it is always 1.
  *  - Rows are sorted by `name` (byte order); the golden order is pure alphabetical, not table order
  *    and not first-appearance order.
- *  - A span starts at the first RXSTATUS record where the condition becomes true and ends at the
- *    **last record where it was still true** (not at `DataInfo.EndTime`): every golden span ends at
- *    `1477384700900`, which is the last RXSTATUS in the window. A condition that only appears on the
- *    final record therefore yields a zero-length span (`Antenna 1 Gain Anomaly`).
+ *  - A span starts at the first RXSTATUS record where the condition is true and ends at the **first
+ *    record where it is false** — the record that clears it, not the last one that still had it.
+ *    The `broad` oracle pins this: `Antenna 1 Gain High` starts at `…562896` (word0 bit 14 set) and
+ *    ends at `…564995`, which is the next RXSTATUS, where the bit is clear. Same for the three
+ *    `Jamming Detected` spans that clear mid-capture (`…552895→…556995`, `…575910→…582009`,
+ *    `…583896→…588995`).
+ *  - A condition still true on the last record of the window has no clearing record, so its span
+ *    ends at that **last record's timestamp** (not at `DataInfo.EndTime`). Both oracles pin this:
+ *    every `clean` span ends at `1477384700900` (its last RXSTATUS) and `broad`'s
+ *    `Ethernet Not Connected` / `RF Calibration Data Present` end at `1477389604996`. A condition
+ *    that only appears on the final record therefore still yields a zero-length span
+ *    (`Antenna 1 Gain Anomaly` in `clean`).
  *
  * Every (word, bit) ↔ name pair below was pinned against the golden, which triggers exactly five
  * names; see `03_分析/06_Graph应用.md §11.6`. Word indices are the `status_words[i]` order of the
@@ -117,10 +125,12 @@ export function receiverStatusSpans(project: GraphProject, capture: Capture): Sp
         if (start === null) start = record.gpsMs;
         lastSet = record.gpsMs;
       } else if (start !== null) {
-        spans.push({ name: series.name, start, end: lastSet });
+        // The record that clears the condition closes the span (oracle `broad`).
+        spans.push({ name: series.name, start, end: record.gpsMs });
         start = null;
       }
     }
+    // Still true on the last record of the window: no clearing record exists, so the span ends there.
     if (start !== null) spans.push({ name: series.name, start, end: lastSet });
   }
   // Golden is sorted by name, not by start time or by table order.

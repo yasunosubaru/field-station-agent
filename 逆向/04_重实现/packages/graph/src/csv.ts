@@ -22,9 +22,14 @@
  *    exactly on `EndTime` and is absent from CSV, while the last BESTPOS is 300 ms earlier and
  *    is present).
  *
- * Formatting per column is **not** uniform in the original and is recorded per column here:
- * `Height`, `Latitude`, `Longitude` and the SD columns print six decimals with trailing zeros
- * trimmed (`1.19761`), while e.g. `Solution Statistics` prints `0.000000`. See `format.ts`.
+ * Formatting per column is **not** uniform in the original and is recorded per column here: the SD
+ * columns print six decimals with trailing zeros trimmed (`1.19761`), `Solution Statistics` prints
+ * `0.000000`, and `Height` keeps its trailing zeros too (`65.931110`, oracle `broad`). See
+ * `format.ts`.
+ *
+ * `Latitude` / `Longitude` are printed trimmed (`trim6`) because that is what both oracles were read
+ * with; no cell of either capture happens to end in `0`, so `fixed6` would have produced the same
+ * bytes — the ambiguity is recorded rather than guessed away.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -72,6 +77,23 @@ export interface ChartCsvSpec {
   buildColumns?: (project: GraphProject, capture: Capture) => CsvColumn[];
   /** Charts that are not a timestamp series at all (`Receiver Status`) render themselves. */
   render?: (project: GraphProject, capture: Capture) => Buffer;
+  /**
+   * Keep one row per timestamp, the first record in log order winning.
+   *
+   * Graph writes every chart into its own SQLite table, and the table's primary key is the
+   * timestamp: `graph-node-wrapper.node` carries the literal
+   * `CREATE TABLE IF NOT EXISTS navigation (timestamp INTEGER PRIMARY KEY,…)` together with
+   * `INSERT OR IGNORE INTO "`. A receiver configured to log the same message on two ports therefore
+   * delivers two frames with the same timestamp and the same payload, and the second one is
+   * `OR IGNORE`d — the row count is the number of *timestamps*, not of frames.
+   *
+   * `HWMONITOR` is where the shipped captures prove it: `broad-clean.gps` holds 65 frames but only
+   * 59 timestamps (6 cross-port pairs at the 10 s boundaries) and the oracle
+   * `export-broad/csv/HW Monitor Status.csv` has exactly 59 rows. In that capture no other chart's
+   * message repeats a timestamp, and no oracle demonstrates a collapse for the others, so the flag
+   * is set only here and the rest keep their previous behaviour.
+   */
+  oneRowPerTimestamp?: boolean;
 }
 
 /** The literal comment lines, with the value column exactly where the original puts it. */
@@ -114,12 +136,24 @@ function csvHeader(project: GraphProject): string {
   return lines.join('\r\n') + '\r\n';
 }
 
-/** Records of the chart's message inside the project window, in log order. */
+/**
+ * Records of the chart's message inside the project window, in log order.
+ *
+ * `oneRowPerTimestamp` collapses frames that share a timestamp (see `ChartCsvSpec`); the first
+ * record in log order is the one Graph's `INSERT OR IGNORE` would have kept.
+ */
 export function chartRecords(project: GraphProject, capture: Capture, spec: ChartCsvSpec): CaptureRecord[] {
   const { StartTime, EndTime } = project.dataInfo;
-  return capture
+  const records = capture
     .byName(spec.message)
     .filter((record) => record.gpsMs >= StartTime && record.gpsMs < EndTime);
+  if (!spec.oneRowPerTimestamp) return records;
+  const seen = new Set<number>();
+  return records.filter((record) => {
+    if (seen.has(record.gpsMs)) return false;
+    seen.add(record.gpsMs);
+    return true;
+  });
 }
 
 /** Render one chart to the exact bytes Graph writes. */
@@ -168,7 +202,9 @@ const bestposLongitude: CsvColumn = {
 
 const bestposHeight: CsvColumn = {
   header: 'Height',
-  format: 'trim6',
+  // Six decimals with the zeros **kept**. The `broad` oracle prints `65.931110` / `65.922480`; the
+  // same column used to be trimmed here and lost 12 of its 60 trailing zeros.
+  format: 'fixed6',
   value: (record) => field(record, 'orthometric_height'),
 };
 
@@ -274,9 +310,9 @@ const HWMONITOR_NAMES: Record<number, string> = {
   22: 'Secondary Temperature',
 };
 
-/** Columns of `HW Monitor Status`, built from the first record's measurements (data-dependent). */
-function hwMonitorColumns(_project: GraphProject, capture: Capture): CsvColumn[] {
-  const [record] = capture.byName('HWMONITOR');
+/** Columns of `HW Monitor Status`, built from the first in-window record's measurements (data-dependent). */
+function hwMonitorColumns(project: GraphProject, capture: Capture): CsvColumn[] {
+  const [record] = chartRecords(project, capture, { title: 'HW Monitor Status', message: 'HWMONITOR', columns: [] });
   if (!record) return [];
   const count = field(record, 'measurements.count');
   const columns: CsvColumn[] = [];
@@ -306,7 +342,7 @@ export const CSV_CHARTS: ChartCsvSpec[] = [
   { title: 'Position SD', message: 'BESTPOS', columns: POSITION_SD_COLUMNS },
   { title: 'Solution Statistics', message: 'BESTPOS', columns: SOLUTION_STATISTICS_COLUMNS },
   { title: 'CPU Usage', message: 'BESTPOS', columns: CPU_USAGE_COLUMNS },
-  { title: 'HW Monitor Status', message: 'HWMONITOR', columns: [], buildColumns: hwMonitorColumns },
+  { title: 'HW Monitor Status', message: 'HWMONITOR', columns: [], buildColumns: hwMonitorColumns, oneRowPerTimestamp: true },
   { title: 'Receiver Status', message: 'RXSTATUS', columns: [], render: renderReceiverStatus },
   { title: 'Tracking Time', message: 'RANGE', columns: [], buildColumns: trackingTimeColumns },
   { title: 'GNSS Signal Strength', message: 'RANGE', columns: [], buildColumns: gnssSignalStrengthColumns },
