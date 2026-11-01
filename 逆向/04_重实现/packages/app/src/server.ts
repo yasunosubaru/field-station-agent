@@ -28,6 +28,7 @@ import {
   eventsSummary,
   feedConfigFromEntries,
   feedEventsFromEntries,
+  feedEventsItk,
   isConfigPage,
   primeEventsPage,
   readConfigAsset,
@@ -35,7 +36,7 @@ import {
 } from './config-http.ts';
 import { LiveLink, type LiveTarget } from './live.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
-import { readRecords, summarizeLogs } from './logs.ts';
+import { readRecords, readTextRecords, summarizeLogs } from './logs.ts';
 import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
 import { GRAPH_CSV_DIR, graphData, listGraphCsv, readGraphCsv } from './graphcsv.ts';
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
@@ -390,12 +391,19 @@ function handleLogs(url: URL, res: ServerResponse, method: string): void {
 
 function handleRecords(url: URL, res: ServerResponse, method: string): void {
   const capture = resolveCapture(url.searchParams.get('capture'));
-  const messageId = integer(url.searchParams.get('msgId'), -1, 0, 0xffffffff, 'msgId');
-  if (messageId < 0) throw new HttpError(400, '缺少 msgId');
   const offset = integer(url.searchParams.get('offset'), 0, 0, 10_000_000, 'offset');
   const limit = integer(url.searchParams.get('limit'), 1, 1, 25, 'limit');
-
   const data = loadCapture(capture);
+  // `name=` reads the capture's **text** records (`#ITDETECTSTATUSA` and friends), which have no
+  // message id at all; `msgId=` stays the binary path.
+  const name = url.searchParams.get('name');
+  if (name) {
+    const result = readTextRecords(data, tables(), name, offset, limit);
+    sendJson(res, 200, { ok: true, ...result }, method);
+    return;
+  }
+  const messageId = integer(url.searchParams.get('msgId'), -1, 0, 0xffffffff, 'msgId');
+  if (messageId < 0) throw new HttpError(400, '缺少 msgId 或 name');
   const result = readRecords(data, tables(), messageId, offset, limit);
   sendJson(res, 200, { ok: true, ...result }, method);
 }
@@ -896,6 +904,22 @@ const server = createServer((req, res) => {
         // Events replays whatever RXSTATUSEVENT records the link still holds before serialising,
         // so the page shows the session's real events rather than only the ones arriving next.
         if (name === 'events') primeEventsPage(liveLink().logs(0).entries);
+        // A capture's events can only come from the capture: `ITDETECTSTATUS` arrives as text on this
+        // receiver and the live link never sees it. `Events` is opened with `?capture=…` by the shell.
+        const eventsCapture = url.searchParams.get('capture');
+        if (name === 'events' && eventsCapture) {
+          try {
+            const data = loadCapture(resolveCapture(eventsCapture));
+            const text = readTextRecords(data, tables(), 'ITDETECTSTATUS', 0, 25);
+            for (const record of text.records) {
+              const fields: Record<string, unknown> = {};
+              for (const field of record.fields) fields[field.path] = field.text ?? field.value;
+              feedEventsItk(fields);
+            }
+          } catch {
+            // A capture that is not there just leaves the honest empty page; nothing is invented.
+          }
+        }
         // A configuration page can only show what the receiver told it. Ask for that page's own log
         // set (`LOG <NAME>B ONCE`, the shipped request table), feed the answers, re-render, then
         // serialise: the headless host has no polling timer, so the data has to be in before the

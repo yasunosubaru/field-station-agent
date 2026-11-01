@@ -395,6 +395,52 @@ function rawBodyLayout(layout: EdieLayout | undefined): boolean {
  * For every record a receiver writes the re-render is the input, byte for byte — that is what the
  * goldens show (13 such records in `b1`, 11 in `live-nav`, 10 in `live-nav2`, all `#BESTPOSA`).
  */
+/**
+ * A `#NAME,…;body*crc` record read back into `path → token` (the inverse of `renderBody`).
+ *
+ * The app needs this because some records only ever arrive as **ASCII**: on this receiver
+ * `ITDETECTSTATUS` is configured as `ITDETECTSTATUSA`, so the capture holds 48 text lines and there is
+ * no binary #2065 payload for `/api/records` to decode. Everything else in the app already reads the
+ * dictionary's field vocabulary, so the text form is mapped onto the same paths here.
+ */
+export function textRecordFields(
+  line: string,
+  tables: EdieTables,
+): { name: string; head: string[]; fields: Array<{ path: string; token: string; value: number | string }> } | undefined {
+  const byName = new Map<string, EdieLayout>();
+  for (const layout of Object.values(tables.messages)) byName.set(layout.name, layout);
+  const record = parseHashLine(line.trim(), byName);
+  if (!record || !record.layout) return undefined;
+  const fields: Array<{ path: string; token: string; value: number | string }> = [];
+  let at = 0;
+  const walk = (list: EdieSegment[], prefix: string): void => {
+    for (const segment of list) {
+      if (at >= record.body.length) return;
+      const path = prefix ? `${prefix}.${segment.name}` : segment.name;
+      if (segment.kind === 'array') {
+        const array = segment as EdieArray;
+        let count = array.fixedCount ?? 0;
+        if (array.countSize) count = Number(record.body[at++] ?? '0');
+        const format = String(array.format ?? '');
+        if (format === '%P' || format === '%Z') {
+          at += 1; // one token however many elements it stands for
+          continue;
+        }
+        for (let i = 0; i < count && at < record.body.length; i++) walk(array.elements, `${path}[${i}]`);
+        continue;
+      }
+      const token = record.body[at++] ?? '';
+      if (segment.kind === 'string') {
+        fields.push({ path, token, value: unquote(token) });
+        continue;
+      }
+      fields.push({ path, token, value: parseToken(segment as EdieScalar, token, tables) });
+    }
+  };
+  walk(record.layout.fields, '');
+  return { name: record.name, head: record.head, fields };
+}
+
 export function encodeHashLog(record: HashRecord, tables: EdieTables): string | undefined {
   const body: string[] = [];
   // An embedded ASCII message (`RXCONFIG`'s payload) goes out verbatim, `#` and inner CRC included:

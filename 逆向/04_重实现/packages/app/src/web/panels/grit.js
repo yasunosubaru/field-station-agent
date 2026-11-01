@@ -1284,6 +1284,8 @@ async function readStatus(ctx, capture) {
     spectrumTotals: null,
     /** MARKxPOS rows of this capture — the Triggers tab's only possible event source. */
     eventLogs: [],
+    /** Interference toolkit: `ITDETECTSTATUS` only ever arrives as text on this receiver. */
+    itk: null,
   };
 
   const [info, logs] = await Promise.allSettled([
@@ -1296,6 +1298,48 @@ async function readStatus(ctx, capture) {
   const types = logs.status === 'fulfilled' ? logs.value.groups ?? [] : [];
   const counts = new Map();
   for (const type of types) counts.set(Number(type.id), Number(type.count) || 0);
+
+  /* ---- ITK: `ITDETECTSTATUS` arrives as **text** records on this receiver ---- */
+  const textGroups = logs.status === 'fulfilled' ? logs.value.textGroups ?? [] : [];
+  const itkGroup = textGroups.find((group) => /^ITDETECTSTATUS$/i.test(String(group.name)));
+  if (itkGroup && Number(itkGroup.count) > 0) {
+    try {
+      const data = await ctx.api.get('/api/records', {
+        capture: capture || undefined,
+        name: 'ITDETECTSTATUS',
+        offset: 0,
+        limit: 25,
+      });
+      const rows = (data?.records ?? []).map((record) => fieldMap(record));
+      const bands = new Set();
+      const frequencies = new Set();
+      let spectrum = 0;
+      let statistical = 0;
+      for (const row of rows) {
+        const field = (name) => row[`interference_statuses[0].${name}`];
+        const method = String(field('int_detect_method') ?? '').toUpperCase();
+        const band = String(field('frequency') ?? '');
+        if (band) bands.add(band);
+        if (method === 'SPECTRUMANALYSIS') {
+          spectrum += 1;
+          const centre = Number(field('parameter1'));
+          if (Number.isFinite(centre)) frequencies.add(Math.round(centre));
+        } else if (method === 'STATISTICANALYSIS') {
+          statistical += 1;
+        }
+      }
+      out.itk = {
+        total: Number(itkGroup.count),
+        sampled: rows.length,
+        spectrum,
+        statistical,
+        bands: [...bands],
+        frequencies: [...frequencies].sort((a, b) => a - b),
+      };
+    } catch {
+      out.itk = { total: Number(itkGroup.count), sampled: 0, spectrum: 0, statistical: 0, bands: [], frequencies: [] };
+    }
+  }
 
   const records = async (msgId, offset) => {
     if (!counts.has(msgId)) return null;
@@ -1933,11 +1977,26 @@ function renderBand(root, state) {
       ? hhmmss(state.live.lastRecordAt)
       : state.time ?? '--:--:--',
   );
-  /* No ITK data in these captures — the original prints `Not detected`, never a number.
-     Interference / Jamming / Mitigation Assistant all come from the same (absent) ITK stream. */
-  setText(root, 'devInterference', 'Not detected');
+  /* Interference / Jamming / Mitigation Assistant read the capture's `ITDETECTSTATUS` list when it
+     has one. On this receiver that record only ever arrives as text (`#ITDETECTSTATUSA`), so until
+     2026-11-01 the panels said `Not detected` even with 38 detections in the file. */
+  const itk = state.itk;
+  if (itk && itk.total > 0) {
+    setText(root, 'devInterference', 'Detected');
+    setText(root, 'mitigation', itk.spectrum > 0 ? 'Detected' : 'Not detected');
+    const summary = `${itk.total} ITDETECTSTATUS record${itk.total === 1 ? '' : 's'}`
+      + (itk.bands.length ? ` on ${itk.bands.join('/')}` : '')
+      + ` (spectrum ${itk.spectrum}${itk.spectrum && itk.frequencies.length ? ` @ ${itk.frequencies.join(', ')} MHz` : ''}, statistical ${itk.statistical})`
+      + (itk.sampled < itk.total ? `; ${itk.sampled} decoded` : '');
+    for (const el of ['devInterference', 'mitigation']) {
+      const node = root.querySelector(`[data-el="${el}"]`);
+      if (node) node.setAttribute('title', summary);
+    }
+  } else {
+    setText(root, 'devInterference', 'Not detected');
+    setText(root, 'mitigation', 'Not detected');
+  }
   setText(root, 'devJamming', 'Not detected');
-  setText(root, 'mitigation', 'Not detected');
 
   const posBadge = root.querySelector('[data-el="posBadge"]');
   if (posBadge) {

@@ -1652,7 +1652,12 @@ export function mount(root, ctx = {}) {
     if (!page) return;
     drawer.page = page;
     if (configEls.page) configEls.page.value = page;
-    if (configEls.frame) configEls.frame.src = `/config/${encodeURIComponent(page)}`;
+    if (configEls.frame) {
+      // `Events` reads a capture's interference records server-side (`ITDETECTSTATUS` only ever
+      // arrives as text here), so the shell tells it which capture is open.
+      const suffix = page === 'events' && state.capture ? `?capture=${encodeURIComponent(state.capture)}` : '';
+      configEls.frame.src = `/config/${encodeURIComponent(page)}${suffix}`;
+    }
     const settings = SETTINGS_PAGES.has(page);
     const device = DEVICE_PAGES.has(page);
     if (configEls.title) {

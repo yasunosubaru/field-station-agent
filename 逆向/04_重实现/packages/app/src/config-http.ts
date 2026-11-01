@@ -510,6 +510,20 @@ export function refreshConfigPage(page: string): void {
   hosts.get(page)?.refreshPage();
 }
 
+/**
+ * Feed one `ITDETECTSTATUS` record (a capture's text form) into the Events page.
+ *
+ * The Events page normally listens to the live link; a capture's interference records never reach it,
+ * so opening `Events` with a capture has to prime it here. Field names are the flat
+ * `interference_statuses[i].*` paths the page's `itkDetections()` groups.
+ */
+export function feedEventsItk(fields: Record<string, unknown>): boolean {
+  const instance = hosts.get('events') ?? host('events');
+  const before = instance.eventCount();
+  instance.feedLog(2065, fields);
+  return instance.eventCount() > before;
+}
+
 /* ------------------------------------------------------------------- Device ▸ .cfg */
 
 export interface CfgCapability {

@@ -119,7 +119,10 @@ export function itkDetections(data: Record<string, unknown>): Set<number> {
   for (const row of rows) {
     const method = String(row.int_detect_method ?? row.detectionType ?? '').toUpperCase();
     if (!method || method === 'NONE' || method === 'STATISTICANALYSIS') continue;
-    const frequency = Math.round(Number(row.frequency ?? row.centerFrequency ?? 0));
+    // The centre frequency of a spectrum detection is the record's **`parameter1`**: the field the
+    // layout calls `frequency` is the band enum (`L2`), measured on the b7 lines
+    // `1,L2,SPECTRUMANALYSIS,1270.176,…` (2026-11-01).
+    const frequency = Math.round(Number(row.parameter1 ?? row.frequency ?? 0));
     if (frequency) current.add(frequency);
   }
   return current;
@@ -497,7 +500,11 @@ export class EventsPage extends BaseConfigPage {
     currentList: Element | null,
     historyList: Element | null,
   ): void {
-    const currentCount = currentList?.querySelectorAll('li.eventElement').length ?? 0;
+    const listed = currentList?.querySelectorAll('li.eventElement').length ?? 0;
+    // A page rendered once before its events arrived keeps the empty state visible otherwise: fall
+    // back to whatever `li.eventElement` the document already holds (measured on the b7 capture,
+    // 2026-11-01 — four interference events were in the list while "No events present." still showed).
+    const currentCount = listed || this.context.document.querySelectorAll(`#${tab} li.eventElement`).length;
     const historyCount = historyList?.querySelectorAll('li.eventElement').length ?? 0;
     const count = this.context.document.querySelector(`#${tab} #currentEventsCount`);
     if (count) count.textContent = `(${currentCount >= 100 ? '99+' : currentCount})`;

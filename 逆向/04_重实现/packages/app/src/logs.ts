@@ -13,6 +13,7 @@
 
 import { decodeEdie, type EdieTables, type EdieValue } from '../../protocol/src/edie.ts';
 import { encodeAsciiLog, portName, TIME_STATUS_NAMES } from '../../protocol/src/ascii-log.ts';
+import { textRecordFields } from '../../protocol/src/text-log.ts';
 import type { SbfFrame } from '../../protocol/src/framing.ts';
 import { gpsAsUtc, type CaptureData } from './capture.ts';
 
@@ -63,6 +64,26 @@ export interface LogsSummary {
   types: number;
   span: { week: number; milliseconds: number; utc: string } | null;
   groups: LogGroup[];
+  /**
+   * The capture's **text** records, grouped by dictionary name.
+   *
+   * Some records only ever arrive as ASCII on this receiver — `ITDETECTSTATUS` is configured as
+   * `ITDETECTSTATUSA`, so b7 holds 48 `#ITDETECTSTATUSA` lines and no binary #2065 payload. Without
+   * this list the Signal Matrix and the Events page cannot see the interference data at all.
+   */
+  textGroups: TextGroup[];
+}
+
+export interface TextGroup {
+  name: string;
+  count: number;
+  firstWeek: number;
+  firstMilliseconds: number;
+  firstUtc: string;
+  lastWeek: number;
+  lastMilliseconds: number;
+  lastUtc: string;
+  sample: string;
 }
 
 function clip(text: string, limit: number): string {
@@ -80,6 +101,38 @@ function headerSummary(frame: SbfFrame): string {
     `${(header.milliseconds / 1000).toFixed(3)}`,
   ];
   return parts.join(', ');
+}
+
+/** Every `#NAME,…` record of a capture, decoded back into dictionary field paths. */
+interface TextRecordLine {
+  name: string;
+  line: string;
+  week: number;
+  milliseconds: number;
+  fields: Array<{ path: string; token: string; value: number | string }>;
+}
+
+function textRecordLines(data: CaptureData, tables: EdieTables): TextRecordLine[] {
+  const out: TextRecordLine[] = [];
+  for (const frame of data.allFrames) {
+    if (frame.kind !== 'text') continue;
+    // `TextFrame.text` already starts with the record's prefix character (`#`/`<`/`$`), so
+    // concatenating `prefix` again would make `##RXCONFIGA` — measured on b7.
+    const line = String(frame.text).replace(/[\r\n]+$/, '');
+    if (!line.startsWith('#')) continue;
+    const parsed = textRecordFields(line, tables);
+    if (!parsed) continue;
+    const week = Number(parsed.head[5] ?? 0);
+    const seconds = Number(parsed.head[6] ?? 0);
+    out.push({
+      name: parsed.name,
+      line,
+      week: Number.isFinite(week) ? week : 0,
+      milliseconds: Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0,
+      fields: parsed.fields,
+    });
+  }
+  return out;
 }
 
 export function summarizeLogs(data: CaptureData, tables: EdieTables): LogsSummary {
@@ -117,6 +170,32 @@ export function summarizeLogs(data: CaptureData, tables: EdieTables): LogsSummar
   }
 
   rows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  // Text records by name — the only way a `#ITDETECTSTATUSA`-style record is visible to the app.
+  const textGroups: TextGroup[] = [];
+  const textByName = new Map<string, TextRecordLine[]>();
+  for (const record of textRecordLines(data, tables)) {
+    const list = textByName.get(record.name);
+    if (list) list.push(record);
+    else textByName.set(record.name, [record]);
+  }
+  for (const [name, list] of textByName) {
+    const first = list[0];
+    const last = list[list.length - 1];
+    textGroups.push({
+      name,
+      count: list.length,
+      firstWeek: first.week,
+      firstMilliseconds: first.milliseconds,
+      firstUtc: gpsAsUtc(first.week, first.milliseconds),
+      lastWeek: last.week,
+      lastMilliseconds: last.milliseconds,
+      lastUtc: gpsAsUtc(last.week, last.milliseconds),
+      sample: clip(first.line, SAMPLE_LIMIT),
+    });
+  }
+  textGroups.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  rows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   const all = data.frames;
   const first = all[0];
   const last = all[all.length - 1];
@@ -132,6 +211,7 @@ export function summarizeLogs(data: CaptureData, tables: EdieTables): LogsSummar
       ? { week: first.header.week, milliseconds: first.header.milliseconds, utc: gpsAsUtc(first.header.week, first.header.milliseconds) }
       : null,
     groups: rows,
+    textGroups,
   };
 }
 
@@ -297,6 +377,74 @@ export function readRecords(
     offset: start,
     limit,
     layoutKnown: Boolean(layout),
+    records,
+  };
+}
+
+/**
+ * The capture's **text** records of one name, shaped like `readRecords` so the panels can read
+ * either kind through the same code path.
+ *
+ * `ITDETECTSTATUS` is the reason: on this receiver it is logged as `ITDETECTSTATUSA`, so a capture
+ * has 48 `#ITDETECTSTATUSA` lines and zero binary #2065 payloads. `messageId` is -1 and the header's
+ * message id is 0 — a text record genuinely has neither; the name is the identity.
+ */
+export function readTextRecords(
+  data: CaptureData,
+  tables: EdieTables,
+  name: string,
+  offset: number,
+  limit: number,
+): RecordsResult {
+  const wanted = name.toUpperCase();
+  const lines = textRecordLines(data, tables).filter((record) => record.name.toUpperCase() === wanted);
+  const start = Math.max(0, Math.min(offset, lines.length));
+  const window = lines.slice(start, start + limit);
+  const records: DecodedRecord[] = window.map((record, index) => ({
+    index: start + index,
+    header: {
+      messageId: 0,
+      name: record.name,
+      sequence: 0,
+      portAddress: 0,
+      portName: '',
+      week: record.week,
+      milliseconds: record.milliseconds,
+      utc: gpsAsUtc(record.week, record.milliseconds),
+      timeStatus: '',
+      receiverStatus: '',
+      payloadLength: record.line.length,
+      frameBytes: record.line.length,
+      crcOk: true,
+    },
+    fields: record.fields.map((field) => {
+      // A text record carries the **printed** token, so an enum arrives as its name (`L2`,
+      // `SPECTRUMANALYSIS`) rather than a number. Numeric tokens stay numeric; everything else is
+      // handed over as the token itself, which is what the panels display.
+      const numeric = Number(field.token);
+      const value = field.token !== '' && Number.isFinite(numeric) && /^[-+0-9.]/.test(field.token)
+        ? numeric
+        : field.token;
+      return {
+        name: field.path.split(/[.[\]]/).pop() ?? field.path,
+        path: field.path,
+        value,
+        ...(typeof value === 'string' ? { text: value } : {}),
+      };
+    }),
+    arrays: [],
+    fieldTotal: record.fields.length,
+    fieldsTruncated: false,
+  }));
+
+  return {
+    capture: data.relPath,
+    messageId: -1,
+    name: wanted,
+    total: lines.length,
+    offset: start,
+    limit,
+    layoutKnown: records.length > 0,
     records,
   };
 }
