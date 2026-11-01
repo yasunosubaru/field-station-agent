@@ -1,0 +1,222 @@
+/**
+ * `packages/app/src/pdf.ts` with a non-ASCII project — the embedded-TrueType path of the **Web**
+ * writer, and the promise that nothing else moved.
+ *
+ * The graph package's writer got this first (`packages/graph/test/pdf-unicode.test.ts`); this one
+ * checks the app's own layout (header/footer chrome, chart-summary cover) with the same face from
+ * the same shared module (`packages/graph/src/pdf-font.ts`).
+ *
+ * Two halves, as before:
+ *
+ *  - **A pure-ASCII report must not change by one byte.** `graph-pdf.test.ts` compares two builds of
+ *    the same input, which cannot catch "the writer now embeds a font it does not need". The clean
+ *    report is therefore pinned by the SHA-256 recorded from the writer *before* the CJK work, and
+ *    the same document is rebuilt with embedding forced off to prove the two agree.
+ *  - **A report with Chinese text must carry that text.** `/FontFile2` + `/Identity-H` +
+ *    `/CIDFontType2` + `/ToUnicode` + `/W`, and `pdftotext` must give the characters back.
+ *
+ * A third half is app-only: both header-bound values (`Content-Disposition`'s file name and
+ * `X-PDF-Project`) are built from the project name, and an HTTP header value is ASCII-only — Node
+ * throws `ERR_INVALID_CHAR` otherwise, which used to turn a Chinese project into a 500.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { GRAPH_CSV_DIR } from '../src/graphcsv.ts';
+import { buildGraphPdf, graphPdfFileName, graphPdfReport, type GraphPdfSource } from '../src/pdf.ts';
+import { pdfCjkFontStatus, resetPdfFontCache } from '../../graph/src/pdf-font.ts';
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * SHA-256 of the clean report as the app writer produced it *before* any font embedding existed
+ * (fixed `generatedAt`, CSVs in file-name order). Recorded from the pre-change writer; a change
+ * here means a pure-ASCII document stopped being byte-compatible.
+ */
+const ASCII_SHA256 = 'b19c81b0f69b4744454b068abf35b438dfa1622bbfe1673bda7cdf3ba116983b';
+
+const GENERATED = '2026/10/30 21:00:00';
+
+const SOURCES: GraphPdfSource[] = readdirSync(GRAPH_CSV_DIR)
+  .filter((name) => name.endsWith('.csv'))
+  .sort()
+  .map((name) => ({ name, text: readFileSync(join(GRAPH_CSV_DIR, name), 'utf8') }));
+
+/** The same CSVs with the two project comment fields replaced — nothing on disk is touched. */
+const CJK_SOURCES: GraphPdfSource[] = SOURCES.map((source) => ({
+  name: source.name,
+  text: source.text
+    .replace(/^\uFEFF?#Project Name: .*$/m, '#Project Name:          野外台站')
+    .replace(/^#Project Directory: .*$/m, '#Project Directory:    C:\\测试\\项目'),
+}));
+
+function sha256(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function latin1(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('latin1');
+}
+
+/** Content streams only — the embedded font file is binary and must not be searched as text. */
+function streams(bytes: Uint8Array): string[] {
+  return [...latin1(bytes).matchAll(/stream\n([\s\S]*?)\nendstream/g)]
+    .map((match) => match[1])
+    .filter((stream) => !stream.includes('\u0000'));
+}
+
+test('a pure-ASCII report is byte-for-byte the pre-CJK document', () => {
+  resetPdfFontCache();
+  const bytes = buildGraphPdf(SOURCES, { generatedAt: GENERATED });
+  const text = latin1(bytes);
+
+  assert.ok(!text.includes('/FontFile2'), 'no embedded font file');
+  assert.ok(!text.includes('/Identity-H'), 'no Identity-H encoding');
+  assert.ok(!text.includes('/ToUnicode'), 'no ToUnicode CMap');
+  assert.ok(!text.includes('/F3 '), 'no /F3 resource on any page');
+  assert.ok(text.includes('/Resources << /Font << /F1 4 0 R /F2 5 0 R >> /ProcSet [/PDF /Text] >>'), 'page resources untouched');
+  assert.equal(
+    sha256(bytes),
+    ASCII_SHA256,
+    'the clean report changed bytes — a pure-ASCII document must stay identical to the old writer',
+  );
+});
+
+test('the face being available does not change an ASCII document', () => {
+  resetPdfFontCache();
+  const withFace = buildGraphPdf(SOURCES, { generatedAt: GENERATED });
+  resetPdfFontCache();
+  const withoutFace = buildGraphPdf(SOURCES, { generatedAt: GENERATED, cjkFontPath: null });
+  assert.ok(Buffer.from(withFace).equals(Buffer.from(withoutFace)), 'same bytes');
+});
+
+test('a non-ASCII run embeds one TrueType face: FontFile2, Identity-H, ToUnicode, W', () => {
+  const status = pdfCjkFontStatus();
+  if (!status.loaded) {
+    // Recorded rather than hidden: the assertions below need a real face on this machine.
+    console.log(`跳过字体断言：${status.path || '(none)'} — ${status.error}`);
+    assert.ok(status.error.length > 0, 'a missing face explains itself');
+    return;
+  }
+
+  const bytes = buildGraphPdf(CJK_SOURCES, { generatedAt: GENERATED });
+  const text = latin1(bytes);
+
+  assert.ok(text.includes('/Subtype /Type0'), 'a Type0 composite font');
+  assert.ok(text.includes('/Subtype /CIDFontType2'), 'with a CIDFontType2 descendant');
+  assert.ok(text.includes('/Encoding /Identity-H'), 'Identity-H: the codes are our own glyph ids');
+  assert.ok(text.includes('/CIDToGIDMap /Identity'), 'cid == gid');
+  assert.ok(text.includes('/FontFile2'), 'the face is embedded, not referenced');
+  assert.ok(/\/W \[/.test(text), 'a width array, so right-aligned cells keep their place');
+  assert.equal((text.match(/\/FontFile2/g) ?? []).length, 1, 'exactly one embedded face');
+  assert.ok(/\/F3 \d+ 0 R/.test(text), 'the Type0 font is the /F3 resource');
+
+  // The cover draws glyph ids in a hex string, never `?` placeholders.
+  const cover = streams(bytes)[0];
+  assert.ok(/\/F3 [\d.]+ Tf [^<]*<[0-9A-F]{8,}> Tj/.test(cover), 'the Chinese field is a hex glyph run on F3');
+  assert.ok(!cover.includes('C:\\???\\???'), 'no placeholder text on the cover');
+
+  // `/Title` in the information dictionary goes out as UTF-16BE with a BOM.
+  assert.ok(/\/Title <FEFF[0-9A-F]+>/.test(text), 'the document title is UTF-16BE');
+
+  assert.ok(bytes.length > 1_000_000, `embedded document is ${bytes.length} B (> 1 MB)`);
+  assert.ok(bytes.length < 15_000_000, `embedded document is ${bytes.length} B (< 15 MB)`);
+
+  resetPdfFontCache();
+  const again = buildGraphPdf(CJK_SOURCES, { generatedAt: GENERATED });
+  assert.ok(Buffer.from(again).equals(Buffer.from(bytes)), 'the embedded document is deterministic');
+});
+
+test('pdftotext recovers the Chinese path from the embedded face', (t) => {
+  const status = pdfCjkFontStatus();
+  if (!status.loaded) {
+    t.skip(`no CJK face on this machine: ${status.error}`);
+    return;
+  }
+  if (spawnSync('pdftotext', ['-v'], { encoding: 'utf8' }).error) {
+    t.skip('pdftotext is not installed');
+    return;
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'app-pdf-cjk-'));
+  try {
+    const file = join(dir, 'cjk.pdf');
+    writeFileSync(file, buildGraphPdf(CJK_SOURCES, { generatedAt: GENERATED }));
+
+    const info = spawnSync('pdfinfo', [file], { encoding: 'utf8' });
+    if (!info.error) {
+      assert.equal(info.status, 0, `pdfinfo opens the document: ${info.stderr}`);
+      assert.ok(new RegExp(`^Pages:\\s+${SOURCES.length + 1}$`, 'm').test(info.stdout), 'one cover plus one page per CSV');
+    }
+
+    const result = spawnSync('pdftotext', ['-enc', 'UTF-8', '-f', '1', '-l', '1', file, '-'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, `pdftotext runs: ${result.stderr}`);
+    const page = result.stdout;
+    assert.ok(page.includes('野外台站'), 'the project name comes back');
+    assert.ok(page.includes('C:\\测试\\项目'), 'and the directory');
+    assert.ok(page.includes('Project Directory'), 'the ASCII label is still there');
+    assert.ok(!page.includes('???'), 'nothing was left as `?`');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ASCII runs keep the base-14 faces even when the document embeds a font', () => {
+  if (!pdfCjkFontStatus().loaded) return;
+  const bytes = buildGraphPdf(CJK_SOURCES, { generatedAt: GENERATED });
+  const all = streams(bytes).join('\n');
+  // Chart titles are ASCII, so they stay literal strings on the base-14 faces …
+  assert.ok(all.includes('(Height)') && all.includes('(Position Type)'), 'chart titles are still literals');
+  // … while the project name is a glyph run.
+  assert.ok(/\/F3 [\d.]+ Tf [^<]*<[0-9A-F]+> Tj/.test(all), 'and the Chinese name is a glyph run');
+});
+
+test('no usable face degrades to the old behaviour instead of throwing', () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'app-pdf-fallback-'));
+  try {
+    for (const label of ['missing file', 'TrueType Collection']) {
+      resetPdfFontCache();
+      // A real `.ttc` starts with `ttcf`; parsing stops there, so the rest of the file is irrelevant.
+      const path = label === 'missing file' ? join(scratch, 'definitely-not-a-font-2f5a.ttf') : join(scratch, 'fake.ttc');
+      if (label !== 'missing file') writeFileSync(path, Buffer.from('ttcf00010000', 'latin1'));
+
+      const bytes = buildGraphPdf(CJK_SOURCES, { generatedAt: GENERATED, cjkFontPath: path });
+      const text = latin1(bytes);
+      assert.ok(!text.includes('/FontFile2'), `${label}: nothing embedded`);
+      assert.ok(!text.includes('/Identity-H'), `${label}: no Identity-H`);
+      // The old behaviour: one `?` per non-ASCII character, so the shape of the text is still visible.
+      // Backslashes are escaped inside a PDF literal string, hence the doubled `\\` in the bytes.
+      assert.ok(text.includes('C:\\\\??\\\\??'), `${label}: the path degrades to ? placeholders`);
+      assert.ok(text.includes('no usable CJK TrueType face found'), `${label}: the cover footer says so`);
+
+      const again = buildGraphPdf(CJK_SOURCES, { generatedAt: GENERATED, cjkFontPath: path });
+      assert.ok(Buffer.from(again).equals(Buffer.from(bytes)), `${label}: deterministic`);
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('the download name and X-PDF-Project stay ASCII, so the route cannot 500', () => {
+  // These two go straight into HTTP headers, and Node rejects a non-ASCII header value outright.
+  const report = graphPdfReport(CJK_SOURCES, { generatedAt: GENERATED });
+  assert.match(report.fileName, /^[\x20-\x7e]+$/, `file name is header-safe: ${report.fileName}`);
+  assert.match(report.project, /^[\x20-\x7e]+$/, `project header is header-safe: ${report.project}`);
+  assert.equal(report.fileName, '%E9%87%8E%E5%A4%96%E5%8F%B0%E7%AB%99.pdf', 'UTF-8 escaped, reversible');
+  assert.equal(report.project, '%E9%87%8E%E5%A4%96%E5%8F%B0%E7%AB%99');
+
+  // ASCII names are untouched, and the document itself still names the project.
+  assert.equal(graphPdfFileName('clean'), 'clean.pdf');
+  assert.equal(graphPdfFileName('a/b:c'), 'a_b_c.pdf');
+  assert.ok(latin1(report.bytes).includes('<FEFF'), 'the PDF title keeps the real name, in UTF-16BE');
+
+  // The panel reads `filename="…"`; a header value with a quote in it would break the match.
+  assert.equal(report.fileName.includes('"'), false);
+});

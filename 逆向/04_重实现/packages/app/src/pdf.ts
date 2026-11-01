@@ -30,16 +30,41 @@
  * has nothing to filter. The charts are redrawn from the CSVs — nothing is a screenshot, and no
  * number is made up: a chart whose column cannot be read says so on the page.
  *
- * Everything is ASCII and uncompressed: the object table is written in a fixed order, every string
- * can be found with a plain text search, and the `xref` holds exact byte offsets — the test reads
- * them back and checks that each one really points at its `N 0 obj`. Fonts are the base-14
- * `Helvetica` / `Helvetica-Bold` referenced by name (`/WinAnsiEncoding`), never embedded; a
- * character outside printable ASCII is written as `?` because such a face cannot draw it.
+ * Everything is ASCII by default and uncompressed: the object table is written in a fixed order,
+ * every string can be found with a plain text search, and the `xref` holds exact byte offsets — the
+ * test reads them back and checks that each one really points at its `N 0 obj`. ASCII text uses the
+ * base-14 `Helvetica` / `Helvetica-Bold` referenced by name (`/WinAnsiEncoding`), never embedded.
+ *
+ * A project whose name or `#Project Directory:` is not ASCII (a Windows path with a Chinese folder,
+ * say) would otherwise print nothing but `?`. Such a run is drawn with **one TrueType face embedded
+ * on demand** — the same face, parser and PDF objects as the graph package, from `pdf-font.ts`:
+ * `simhei.ttf` from the system font directory by default, `/FontFile2` + `Type0`/`CIDFontType2`
+ * with `/Identity-H` and a `ToUnicode` CMap, glyph ids measured with the face's own advances so
+ * right-aligned cells still line up. A pure-ASCII document embeds nothing and keeps its exact
+ * bytes; a machine without a usable face degrades to `?` and the footer says so.
  *
  * `packages/graph/src/pdf.ts` is the other writer in this repo and is richer (it also draws every
- * column of a wide table); this one exists so the **app** can serve a download without depending on
- * that package, which is being rewritten in parallel.
+ * column of a wide table); this one exists so the **app** can serve a download with its own layout
+ * (header/footer chrome, one chart per page, the chart summary table on the cover).
  */
+
+import {
+  CJK_FONT_OBJECTS,
+  beginPdfFont,
+  buildCjkFontObjects,
+  cjkTextWidth,
+  cjkUsedDegraded,
+  cjkUsedEmbedded,
+  embeddedFace,
+  encodeCjkText,
+  endPdfFont,
+  hasNonAscii,
+  markCjkDegraded,
+  pdfUnicodeString,
+  type CjkFontObject,
+  type PdfFontOptions,
+  type TrueTypeFace,
+} from '../../graph/src/pdf-font.ts';
 
 /** A4 landscape, in points — the page box the suite's own report was printed at. */
 export const PDF_PAGE = { width: 842, height: 595 } as const;
@@ -61,7 +86,7 @@ export interface GraphPdfSource {
   text: string;
 }
 
-export interface GraphPdfOptions {
+export interface GraphPdfOptions extends PdfFontOptions {
   /**
    * *Generated Date*, spelled the way the CSVs spell theirs (`2026/10/30 21:00:00`). Also the
    * document's `CreationDate`; the only clock in this module, so a fixed value gives fixed bytes.
@@ -69,6 +94,13 @@ export interface GraphPdfOptions {
   generatedAt?: string;
   /** Heading; default `<project> Report`. */
   title?: string;
+  /**
+   * TrueType face used for runs that contain non-ASCII text — see `pdf-font.ts`.
+   *
+   * `undefined` → `GRAPH_PDF_CJK_FONT`, else `%WINDIR%\Fonts\simhei.ttf` and a few fallbacks;
+   * a path → that file only; `null` → never embed (forced old behaviour: non-ASCII becomes `?`).
+   */
+  cjkFontPath?: string | null;
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -107,6 +139,7 @@ export const CHART_SPECS: readonly ChartSpec[] = [
     xColumn: 'Longitude', yColumn: 'Latitude',
   },
   { file: 'Height.csv', title: 'Height', section: PVT, kind: 'line', units: '(m)' },
+{ file: 'Velocity.csv', title: 'Velocity', section: PVT, kind: 'line', units: '(m/s)' },
   {
     file: 'GNSS Signal Strength.csv', title: 'GNSS Signal Strength', section: TRACKING, kind: 'line',
     units: 'C/No (dB-Hz)',
@@ -273,9 +306,13 @@ function round(value: number): string {
 /**
  * Advance width of a string in points. Helvetica's own metrics are a table we do not ship; digits
  * are 0.556 em, capitals ~0.62, lowercase ~0.52 and spaces 0.278, which is close enough to
- * right-align a header and to pack legend chips without overlapping.
+ * right-align a header and to pack legend chips without overlapping. A run that will be drawn with
+ * the embedded face is measured with that face's own advances instead (see `pdf-font.ts`), so the
+ * two metrics never disagree about where a string ends.
  */
 function advance(value: string, size: number): number {
+  const cjk = cjkTextWidth(value, size);
+  if (cjk !== null) return cjk;
   let em = 0;
   for (const char of value) {
     if (char === ' ') em += 0.278;
@@ -289,9 +326,11 @@ function advance(value: string, size: number): number {
 /** Cut a string so it fits `width` points, marking the cut with `...`. */
 function fit(value: string, width: number, size: number): string {
   if (advance(value, size) <= width) return value;
-  let out = value;
-  while (out.length > 1 && advance(`${out}...`, size) > width) out = out.slice(0, -1);
-  return `${out}...`;
+  // By code point: slicing a surrogate pair in half would leave a lone half for the glyph encoder.
+  const points = [...value];
+  let out = points;
+  while (out.length > 1 && advance(`${out.join('')}...`, size) > width) out = out.slice(0, -1);
+  return `${out.join('')}...`;
 }
 
 /** `1 row` / `5 rows`; `series` is its own plural. */
@@ -299,8 +338,27 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/**
+ * The composite face a run has to use, or `null` when it stays on the base-14 faces. A run with no
+ * usable face is marked degraded here, so the cover can say `?` was substituted.
+ */
+function cjkFaceFor(value: string): TrueTypeFace | null {
+  if (!hasNonAscii(value)) return null;
+  const face = embeddedFace();
+  if (!face) markCjkDegraded();
+  return face;
+}
+
+/**
+ * One text run. A run that contains anything outside ASCII is drawn with the embedded `F3` face as
+ * UTF-16BE glyph ids; bold falls back to the same face (SimHei has one weight), and a document with
+ * no usable face keeps the old `?`. Everything ASCII is written exactly as before.
+ */
 function text(x: number, y: number, size: number, bold: boolean, colour: string, value: string): string {
-  return `BT ${colour} rg /${bold ? 'F2' : 'F1'} ${size} Tf ${round(x)} ${round(top(y))} Td ${literal(value)} Tj ET`;
+  const face = cjkFaceFor(value);
+  const resource = face ? 'F3' : bold ? 'F2' : 'F1';
+  const prefix = `${colour} rg /${resource} ${size} Tf ${round(x)} ${round(top(y))} Td`;
+  return `BT ${prefix} ${face ? `<${encodeCjkText(value, face)}>` : literal(value)} Tj ET`;
 }
 
 /** Text whose right edge sits at `right` — headers and page numbers. */
@@ -315,7 +373,9 @@ function textCentred(centre: number, y: number, size: number, bold: boolean, col
 
 /** Text rotated 90° counter-clockwise: the y-axis unit, as the original prints it. */
 function textUp(x: number, y: number, size: number, colour: string, value: string): string {
-  return `BT ${colour} rg /F1 ${size} Tf 0 1 -1 0 ${round(x)} ${round(top(y))} Tm ${literal(value)} Tj ET`;
+  const face = cjkFaceFor(value);
+  const prefix = `${colour} rg /${face ? 'F3' : 'F1'} ${size} Tf 0 1 -1 0 ${round(x)} ${round(top(y))} Tm`;
+  return `BT ${prefix} ${face ? `<${encodeCjkText(value, face)}>` : literal(value)} Tj ET`;
 }
 
 function rule(x1: number, y1: number, x2: number, y2: number, width: number, colour: string): string {
@@ -884,10 +944,23 @@ interface InfoField {
   value: string;
 }
 
+/**
+ * Footer of the cover. Kept verbatim from the ASCII-only writer, so a pure-ASCII document is
+ * byte-for-byte what it always was; the other two sentences appear only when they apply.
+ */
+const FONT_NOTE_ASCII = 'base-14 Helvetica, no embedded fonts';
+
+const FONT_NOTE_DEGRADED =
+  'base-14 Helvetica, no usable CJK TrueType face found: non-ASCII text is drawn as ?';
+
+function embeddedFontNote(face: TrueTypeFace): string {
+  return `base-14 Helvetica for ASCII, embedded ${face.name} TrueType for non-ASCII text`;
+}
+
 /** Page 1: the original's title + Report Information + Project Information + a summary table. */
-function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome): string {
+function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome, fontNote: string = FONT_NOTE_ASCII): string {
   const out: string[] = [];
-  out.push(...chrome(context, 1, `${files.length} charts - hand-written PDF 1.4 - base-14 Helvetica, no embedded fonts`));
+  out.push(...chrome(context, 1, `${files.length} charts - hand-written PDF 1.4 - ${fontNote}`));
 
   out.push(textCentred(WIDTH / 2, 62, 22, true, INK, fit(context.project ? `${context.project} Report` : 'Report', WIDTH - 2 * MARGIN, 22)));
   out.push(rule(MARGIN, 76, WIDTH - MARGIN, 76, 1.2, RULE));
@@ -1042,7 +1115,16 @@ function chartPage(file: CsvFile, spec: ChartSpec, model: ChartModel, context: C
  * Assembly
  * ---------------------------------------------------------------------------------------------- */
 
-function assemble(title: string, generatedAt: string, streams: string[]): Uint8Array {
+/** Map one object from the shared font builder onto this writer's object table. */
+function appendFontObject(objects: Array<string | { dictionary: string; data: Uint8Array }>, object: CjkFontObject): void {
+  if ('data' in object) {
+    objects[object.number] = { dictionary: object.dictionary, data: object.data };
+    return;
+  }
+  objects[object.number] = object.body;
+}
+
+function assemble(title: string, generatedAt: string, streams: string[], face: TrueTypeFace | null): Uint8Array {
   const pages: string[] = [];
   let next = 6; // 1 catalog, 2 page tree, 3 info, 4 F1, 5 F2
   const pageNumber: number[] = [];
@@ -1051,14 +1133,23 @@ function assemble(title: string, generatedAt: string, streams: string[]): Uint8A
     pageNumber.push(next++);
     contentsNumber.push(next++);
   }
+  // The embedded face, if any, is parked after the pages: an ASCII-only document never gets here,
+  // so it keeps its old object numbers — and its old bytes.
+  const fontParts = face ? buildCjkFontObjects(face, next) : null;
+  if (fontParts) next += CJK_FONT_OBJECTS;
+  const fontResources = fontParts
+    ? `/F1 4 0 R /F2 5 0 R /F3 ${fontParts.type0} 0 R`
+    : '/F1 4 0 R /F2 5 0 R';
 
-  const objects: string[] = [];
+  const objects: Array<string | { dictionary: string; data: Uint8Array }> = [];
   objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
   objects[2] = `<< /Type /Pages /Kids [${pageNumber.map((number) => `${number} 0 R`).join(' ')}] /Count ${streams.length} >>`;
   objects[3] = [
-    '<< /Title ' + literal(title),
+    '<< /Title ' + (pdfUnicodeString(title) ?? literal(title)),
     '/Creator (packages/app pdf)',
-    '/Producer (packages/app hand-written PDF 1.4)',
+    // The producer names the embedded face, exactly like the graph writer does.
+    '/Producer ' + (fontParts && face
+      ? `(packages/app hand-written PDF 1.4, embedded ${face.name} for non-ASCII text)` : '(packages/app hand-written PDF 1.4)'),
     `/CreationDate (${pdfDate(generatedAt)})`,
     '>>',
   ].join('\n');
@@ -1067,10 +1158,11 @@ function assemble(title: string, generatedAt: string, streams: string[]): Uint8A
   streams.forEach((stream, index) => {
     objects[pageNumber[index]] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE.width} ${PDF_PAGE.height}] `
-      + '/Resources << /Font << /F1 4 0 R /F2 5 0 R >> /ProcSet [/PDF /Text] >> '
+      + `/Resources << /Font << ${fontResources} >> /ProcSet [/PDF /Text] >> `
       + `/Contents ${contentsNumber[index]} 0 R >>`;
     objects[contentsNumber[index]] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
+  if (fontParts) for (const object of fontParts.objects) appendFontObject(objects, object);
 
   const chunks: Buffer[] = [];
   const offsets: number[] = [];
@@ -1080,11 +1172,23 @@ function assemble(title: string, generatedAt: string, streams: string[]): Uint8A
     chunks.push(chunk);
     length += chunk.length;
   };
+  const pushBytes = (data: Uint8Array) => {
+    const chunk = Buffer.from(data);
+    chunks.push(chunk);
+    length += chunk.length;
+  };
 
   push('%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n');
   for (let number = 1; number < objects.length; number++) {
     offsets[number] = length;
-    push(`${number} 0 obj\n${objects[number]}\nendobj\n`);
+    const entry = objects[number];
+    if (typeof entry === 'string') {
+      push(`${number} 0 obj\n${entry}\nendobj\n`);
+      continue;
+    }
+    push(`${number} 0 obj\n${entry.dictionary}\nstream\n`);
+    pushBytes(entry.data);
+    push('\nendstream\nendobj\n');
   }
 
   const startxref = length;
@@ -1102,9 +1206,13 @@ export interface GraphPdfReport {
   /** 1 information page + one per CSV. */
   pages: number;
   charts: number;
-  /** `<project>.pdf`, the name Graph's own export used (`clean.pdf`). */
+  /** `<project>.pdf`, the name Graph's own export used (`clean.pdf`), ASCII-escaped for the header. */
   fileName: string;
-  /** The project the document names, or `graph` when the CSVs carry no `#Project Name:`. */
+  /**
+   * The project the document names, in its header-safe form (`%E9%87%8E…` when the CSV's
+   * `#Project Name:` is not ASCII) — the route puts it straight into `X-PDF-Project`. The title on
+   * the cover keeps the real spelling.
+   */
   project: string;
 }
 
@@ -1113,37 +1221,51 @@ export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptio
   const generatedAt = options.generatedAt ?? stamp(new Date());
   const files = sources.map(parseCsvSource);
   const pages = 1 + files.length;
+  const face = beginPdfFont(options);
 
-  const first = files[0]?.comments ?? {};
-  const fields: InfoField[] = [
-    { label: 'Project Name', value: first['Project Name'] ?? '--' },
-    { label: 'Project Directory', value: first['Project Directory'] ?? '--' },
-    { label: 'Data File Name', value: first['Data File Name'] ?? '--' },
-    { label: 'Start Time (GPS)', value: first['Start Time(GPS)'] ?? '--' },
-    { label: 'End Time (GPS)', value: first['End Time(GPS)'] ?? '--' },
-    { label: 'Duration', value: first.Duration ?? '--' },
-  ];
-  const project = fields[0].value === '--' ? 'graph' : fields[0].value;
-  const start = fields[3].value === '--' ? '?' : fields[3].value;
-  const end = fields[4].value === '--' ? '?' : fields[4].value;
-  const title = options.title ?? `${project === 'graph' ? 'Graph' : project} Report`;
-  const context: Chrome = { project, generatedAt, range: `${start} .. ${end}`, pages };
+  try {
+    const first = files[0]?.comments ?? {};
+    const fields: InfoField[] = [
+      { label: 'Project Name', value: first['Project Name'] ?? '--' },
+      { label: 'Project Directory', value: first['Project Directory'] ?? '--' },
+      { label: 'Data File Name', value: first['Data File Name'] ?? '--' },
+      { label: 'Start Time (GPS)', value: first['Start Time(GPS)'] ?? '--' },
+      { label: 'End Time (GPS)', value: first['End Time(GPS)'] ?? '--' },
+      { label: 'Duration', value: first.Duration ?? '--' },
+    ];
+    const project = fields[0].value === '--' ? 'graph' : fields[0].value;
+    const start = fields[3].value === '--' ? '?' : fields[3].value;
+    const end = fields[4].value === '--' ? '?' : fields[4].value;
+    const title = options.title ?? `${project === 'graph' ? 'Graph' : project} Report`;
+    const context: Chrome = { project, generatedAt, range: `${start} .. ${end}`, pages };
 
-  const streams = [infoPage(files, fields, context)];
-  let previous = '';
-  files.forEach((file, index) => {
-    const spec = specOf(file.name);
-    streams.push(chartPage(file, spec, modelOf(file, spec), context, previous, index + 2));
-    previous = spec.section;
-  });
+    // The cover can be the only page with non-ASCII text (project name, directory), so it is drawn
+    // once to learn what the footer must say and once with that sentence. The probe only adds
+    // glyphs to the same maps, so the second render is the one that is kept.
+    const streams = [infoPage(files, fields, context, FONT_NOTE_ASCII)];
+    let previous = '';
+    files.forEach((file, index) => {
+      const spec = specOf(file.name);
+      streams.push(chartPage(file, spec, modelOf(file, spec), context, previous, index + 2));
+      previous = spec.section;
+    });
 
-  return {
-    bytes: assemble(title, generatedAt, streams),
-    pages,
-    charts: files.length,
-    fileName: graphPdfFileName(project),
-    project,
-  };
+    const embedded = cjkUsedEmbedded();
+    const fontNote = embedded && face
+      ? embeddedFontNote(face)
+      : cjkUsedDegraded() ? FONT_NOTE_DEGRADED : FONT_NOTE_ASCII;
+    streams[0] = infoPage(files, fields, context, fontNote);
+
+    return {
+      bytes: assemble(title, generatedAt, streams, embedded ? face : null),
+      pages,
+      charts: files.length,
+      fileName: graphPdfFileName(project),
+      project: asciiHeaderValue(project),
+    };
+  } finally {
+    endPdfFont();
+  }
 }
 
 /**
@@ -1154,7 +1276,31 @@ export function buildGraphPdf(sources: GraphPdfSource[], options: GraphPdfOption
   return graphPdfReport(sources, options).bytes;
 }
 
-/** `<project>.pdf`, the name Graph's own export used (`clean.pdf`). */
+/**
+ * Escape a value so it can go into an HTTP header. Node refuses a header value that is not ASCII
+ * (`ERR_INVALID_CHAR`), and both `Content-Disposition` and `X-PDF-Project` are built from the
+ * project name. Non-ASCII characters become their UTF-8 `%XX` form — reversible, deterministic,
+ * and readable as a URL. The PDF's own `/Title` keeps the real name.
+ */
+function asciiHeaderValue(value: string): string {
+  let out = '';
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0x3f;
+    if (code < 0x20 || code > 0x7e) {
+      for (const byte of Buffer.from(char, 'utf8')) out += `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
+    } else {
+      out += char;
+    }
+  }
+  return out;
+}
+
+/**
+ * `<project>.pdf`, the name Graph's own export used (`clean.pdf`).
+ *
+ * The name goes straight into `Content-Disposition: attachment; filename="…"`, so it is escaped
+ * with {@link asciiHeaderValue}; `a/b:c` still becomes `a_b_c.pdf`.
+ */
 export function graphPdfFileName(projectName: string): string {
-  return `${String(projectName || 'graph').replace(/[\\/:*?"<>|]+/g, '_')}.pdf`;
+  return `${asciiHeaderValue(String(projectName || 'graph').replace(/[\\/:*?"<>|]+/g, '_'))}.pdf`;
 }

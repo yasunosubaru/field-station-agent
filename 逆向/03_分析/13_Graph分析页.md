@@ -349,3 +349,81 @@ node packages/graph/tools/export-sbf-project.ts `
 5. **混排 run 整体用 SimHei**：`C:\测试\项目` 这条字符串里的 ASCII 也是 SimHei 的字形
    （SimHei 的拉丁是 500/1000 em 等宽），不是 Helvetica——这是「按字符串选字体」的直接结果，
    宽度与渲染一致，只是字形风格略有差别。
+
+## 10 Web 端 PDF 也有中文了（B 类第 9 项续）
+
+`/api/graph/pdf` 用的是**另一个** writer（`packages/app/src/pdf.ts`，46 KB，版式与 graph 那套
+不同：页眉页脚 chrome、封面 Chart Summary 表、一图一页）。它原来也是 base-14 Helvetica +
+`?`。本轮把字体能力**抽成公共模块**并接到 app 上，graph 的输出一个字节没动。
+
+| 项 | 状态 |
+|---|---|
+| 公共模块 | 新增 `packages/graph/src/pdf-font.ts`（TTF 解析 + PDF 字体对象 + ToUnicode + 宽度 + 降级）；两个 writer 共用 |
+| graph 回归 | `pdf.ts` 只是改为 import 公共模块：clean **330 802 B / SHA 不变**，b1 含中文 **6 668 948 B / SHA 不变** |
+| app ASCII | **逐字节不变**：137 644 B，SHA-256 `b19c81b0f69b4744454b068abf35b438dfa1622bbfe1673bda7cdf3ba116983b`（与 git HEAD 的 writer 相同） |
+| app 中文 | `/FontFile2` + `/Identity-H` + `/ToUnicode` + `/W`，`pdftotext` 取回 `野外台站` / `C:\测试\项目` |
+| Web 实测 | `GET /api/graph/pdf?project=_cjkweb` → **200**，14 页，5 168 121 B，渲染正常 |
+| 测试 | 新增 `packages/app/test/pdf-unicode.test.ts` 7 项；app 包 **313/313**；全量 **1042/1042**（并行任务还在加测试，总数会浮动） |
+
+### 10.1 公共模块怎么切
+
+`pdf-font.ts` 导出：`beginPdfFont/endPdfFont`（一篇文档一份状态）、`embeddedFace()`、
+`hasNonAscii()`、`cjkTextWidth()`（返回 `null` 表示「用调用方自己的 ASCII 度量」）、
+`encodeCjkText()`、`markCjkDegraded()`、`cjkUsedEmbedded()/cjkUsedDegraded()`、
+`pdfUnicodeString()`（信息字典用，ASCII 返回 `null`）、`buildCjkFontObjects(face, first)`（返回
+5 个对象 + Type0 的编号）、`pdfCjkFontStatus()` / `resetPdfFontCache()`。
+
+两个 writer 的接法一致：
+
+- **度量**：`textWidth` / `advance` 第一行先问 `cjkTextWidth`，非 `null` 就用 TTF advance；
+- **选字体**：含非 ASCII 的字符串用 `/F3` + `<hex> Tj`，纯 ASCII 仍走 `F1`/`F2` + `(literal) Tj`；
+- **对象**：字体对象挂在页面之后编号，纯 ASCII 文档根本走不到那个分支，所以对象号与字节都不变；
+- **封面脚注**：`base-14 Helvetica, no embedded fonts` → `… for ASCII, embedded SimHei TrueType
+  for non-ASCII text`；降级时 → `… no usable CJK TrueType face found: non-ASCII text is drawn as ?`。
+  为了知道该说哪句，封面先渲染一遍探测、再按结论渲染一遍（只多算一页字符串，字节可复现）。
+
+### 10.2 顺手修掉的两个 500（app 端发现的既有缺陷）
+
+两个响应头都由 `#Project Name:` 拼出来，而 **HTTP 头值只能是 ASCII**，Node 直接抛
+`ERR_INVALID_CHAR`：
+
+```
+Content-Disposition: attachment; filename="野外台站.pdf"   → 500
+X-PDF-Project: 野外台站                                     → 500
+```
+
+实测（起服务打 `?project=_cjkweb`）：先炸 `Content-Disposition`，修好后接着炸 `X-PDF-Project`。
+修法留在 `packages/app/src/pdf.ts`（本任务允许的文件，没碰 `server.ts`）：`graphPdfFileName()`
+与 `GraphPdfReport.project` 都走 `asciiHeaderValue()`，非 ASCII 按 UTF-8 转 `%XX`
+（`野外台站` → `%E9%87%8E%E5%A4%96%E5%8F%B0%E7%AB%99`，可逆、确定）。PDF 自己的 `/Title`
+仍是 `野外台站 Report`。
+
+> 代价：下载文件名变成 `%E9%87%8E%E5%A4%96%E5%8F%B0%E7%AB%99.pdf`。更体面的做法是响应头写
+> `filename*=UTF-8''…`（RFC 5987），但那要改 `server.ts` 的 header 构造，超出本轮边界，
+> 留作后续。
+
+### 10.3 实测
+
+```powershell
+# 临时工程：把 b1 的 13 份 CSV 拷进 export/_cjkweb/csv 并改两行注释（仓库样本没动，跑完即删）
+node packages/app/src/server.ts --port 7872
+curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
+```
+
+- `HTTP 200`，`Content-Type: application/pdf`，`X-PDF-Pages: 14`（1 封面 + 13 图）；
+- `pdfinfo`：14 页、A4 横向、`Title: 野外台站 Report`、
+  `Producer: packages/app hand-written PDF 1.4, embedded SimHei for non-ASCII text`；
+- `pdftotext -enc UTF-8 -f 1 -l 1`：`野外台站`（页眉与标题）、`C:\测试\项目` 全部逐字还原，
+  页面里没有残留 `?`；
+- `pdftoppm -r 110 -png` 第一页目视正常（页眉、标题、Project Name/Directory、Chart Summary 表
+  都对得上）：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfcjk-web\web-page1-01.png`；
+- 同一份 CSV 用固定时钟本地构建（不经 HTTP）：5 126 085 B / 13 页，
+  `web-render-01.png`；`?project=clean` 的 ASCII 文档仍是 137 552 B（页码/时钟与固定时钟构建不同，
+  逐字节比对用的是 `generatedAt` 固定的那两份）。
+
+### 10.4 没做到的
+
+1. **下载文件名是转义形式**（见 10.2），要变成真中文名需要 RFC 5987 的 `filename*`，得改 server。
+2. 与 graph 一样**不做子集**：含中文的 app 报告 ~5 MB（整份 SimHei，Flate 后 ≈4.98 MB）。
+3. app 的 `advance()` 里 ASCII 仍用经验宽度（0.278/0.64/0.53 em 的估算），只有中文 run 用真实
+   TTF advance；这是原文件的既有取舍，本轮没改。
