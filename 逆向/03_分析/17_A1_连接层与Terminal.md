@@ -208,3 +208,25 @@ RANGE 612 条里没有 GLONASS 的 prn（38..61）
 即这台接收机**没有在跟 GLONASS**，没有 GLO 样本可比 `Missing` 的 37 偏移。要验得换一台有 GLO 的
 接收机，或喂外部 GLO 信号；在那之前不猜、不改 join 规则。`LOG SATVIS2B ONTIME 2` 反而不出记录
 （ONTIME 5 才有），也记在这里。
+
+#### 17.6.1a 复验（第三次，走 D3 之后的命令通道）
+
+D3 把 `<OK`/`<ERR` 接进 `LiveLink` 之后，两条路径现在都能在 `/api/live/status.commands[]` 里读到
+接收机原话，不用再靠串口 dump：
+
+```json
+[
+  { "line": "INTERFACEMODE",            "status": "err", "reply": "<ERROR:Message missing field", "ms": 50 },
+  { "line": "LOG INTERFACEMODEB ONCE",  "status": "ok",  "reply": "<OK",                          "ms": 25 }
+]
+```
+
+`LOG INTERFACEMODEB ONCE` 之后 `/api/live/logs` 里 `messageId=3` 的记录 **27 条**，首条
+`#INTERFACEMODEA,SPECIAL,26,74.0,UNKNOWN,0,2.180,03801800,7a68,18278;COM1,NOVATEL,NOVATEL,ON*73145ed5`。
+配置页（`GET /config/portConfig` 序列化文档）：**24 行**、`data-portconfig-note` 不存在、
+`CCOM1/2 = NOVATELMINBINARY`、`CCOM3-6 = AUTO/NOVATEL`、`COM1-3 = NOVATEL`、`ICOM1-7 = NOVATEL`、
+`NCOM1-3 = RTCMV3/NONE`、`USB1-3 / WCOM1 / UNKNOWN = NOVATEL`；0 console / 0 pageerror。
+截图 `port-verify3/port-rows.png`，证据 `port-verify3/evidence.json`。
+
+同时看到左侧 Status 卡是实时值（`Single / 30.5399761° / 114.3528119° / 65.71 m / 10 used of 26 tracked`），
+说明这一轮是"链路上同时看配置页与状态页"，不是离线回放。
