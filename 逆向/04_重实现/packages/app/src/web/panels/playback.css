@@ -88,14 +88,17 @@
   color: var(--pb-ink-38);
 }
 
-/* ---- app bar file tab (injected into the shell's #tabs-list) -------------- */
+/* ---- Files bar (injected into the shell's #tabs-list) -------------------- */
 
-/* The shell styles every `#tabs-list li` as a 150 px #666 card; the original file tab is plain
- * white text on the app bar with a ✕ at its right, so it is reset here. */
+/* 手册 §3.2.1 / 原版 `jarvisInterface.js:5607 addPlaybackTab()`: 每打开一个抓包，应用栏多一个
+ * `文件名 ✕` 页签；正在看的那一个更亮。外壳把每个 `#tabs-list li` 当成 150 px 的 #666 卡片，
+ * 所以这里整体重置；一个包装 `<li>` 里放 N 个 `.pb-filetab`（原版是 N 个 `<li>`，外观相同，
+ * 卸载时只要摘掉一个节点）。 */
 #tabs-list li.pb-filetabs {
   display: none; /* every page except Playback (overridden by the data-page rule at the bottom) */
   align-items: center;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   width: auto;
   height: 100%;
   margin: 0 0 0 52px;
@@ -108,27 +111,74 @@
   white-space: nowrap;
 }
 
+#tabs-list li.pb-filetabs .pb-filetabs-bar {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* One tab. Inactive = dimmed (the file is loaded but not being viewed), active = full white with
+ * a 2 px underline, the same idiom the shell uses for the current app tab. */
+#tabs-list li.pb-filetabs .pb-filetab {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 320px;
+  padding: 0 4px 0 0;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab + .pb-filetab {
+  margin-left: 22px;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab.is-active {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab:hover {
+  color: #fff;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -2px;
+}
+
 #tabs-list li.pb-filetabs span.pb-filetab-name {
-  color: #ffffff;
+  color: inherit;
   font-family: var(--pb-sans);
   font-size: 16px;
   letter-spacing: 0.3px;
-  max-width: 320px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+#tabs-list li.pb-filetabs .pb-filetab.is-active span.pb-filetab-name {
+  font-family: var(--pb-bold);
+}
+
 #tabs-list li.pb-filetabs .pb-filetab-close {
-  margin-left: 18px;
+  margin-left: 12px;
   padding: 0 4px 3px;
   border: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.72);
   font-family: var(--pb-sans);
   font-size: 19px;
   line-height: 1;
   cursor: pointer;
   border-radius: 2px;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab.is-active .pb-filetab-close {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 #tabs-list li.pb-filetabs .pb-filetab-close:hover {
@@ -138,6 +188,36 @@
 
 #tabs-list li.pb-filetabs .pb-filetab-close:focus-visible {
   outline: 1px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 1px;
+}
+
+/* 「+」——再开一个抓包（原版要回落地页点图标，见 11_UI壳.md §20）。 */
+#tabs-list li.pb-filetabs .pb-filetab-add {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 16px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: var(--pb-sans);
+  font-size: 15px;
+  line-height: 17px;
+  text-align: center;
+  cursor: pointer;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab-add:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+#tabs-list li.pb-filetabs .pb-filetab-add:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.85);
   outline-offset: 1px;
 }
 
@@ -172,12 +252,14 @@
 }
 
 /* Positioning 265…830, Device 858…1308 (measured): the first half is the fixed 567 px up to the
- * liner, the second takes whatever is left so the grid never overflows the band. */
+ * liner, the second takes whatever is left so the grid never overflows the band.
+ * 注意选择器：两半之间还夹着 `.pb-band-split`，所以不能用 `.pb-band-half + .pb-band-half`
+ * （相邻兄弟匹配不上，第二半会退回 `flex: 0 1 auto`，右边留一条空白）。 */
 .pb-band-half:first-child {
   flex: 0 0 567px;
 }
 
-.pb-band-half + .pb-band-half {
+.pb-band-split + .pb-band-half {
   flex: 1 1 0;
   min-width: 0;
   padding-right: 0;
@@ -229,6 +311,7 @@
 .pb-band-r3c1 { grid-area: 3 / 1; }
 .pb-band-r1c2 { grid-area: 1 / 2; }
 .pb-band-r2c2 { grid-area: 2 / 2; }
+.pb-band-r3c2 { grid-area: 3 / 2; }
 
 .pb-band-row {
   display: flex;
@@ -257,9 +340,11 @@
   margin-top: -5px;
 }
 
-/* Device half: labels at 858.67 / 1177.33, values at 976 / 1300, row pitch 27.5 px. */
+/* Device half: labels at 858.67 / 1177.33, values at 976 / 1300, row pitch 27.5 px.
+ * 第二列固定 200 px（不是 1fr）：原版 `Time (UTC)` / `Storage Usage` 这一列实测只有约 130 px，
+ * 但 1fr 在 1043 px 宽的带里给不出 16 px 字号的 `08:38:17`，值会被省略。第一列吃掉剩下的。 */
 .pb-band-fields-device {
-  grid-template-columns: 318.67px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 200px;
   grid-template-rows: repeat(3, 27.5px);
 }
 
@@ -268,8 +353,16 @@
 }
 
 .pb-band-fields-device .pb-band-r1c2 .pb-band-label,
-.pb-band-fields-device .pb-band-r2c2 .pb-band-label {
-  flex: 0 0 122.67px;
+.pb-band-fields-device .pb-band-r2c2 .pb-band-label,
+.pb-band-fields-device .pb-band-r3c2 .pb-band-label {
+  /* 原版这一列是 `col-md-6`（约 122 px）+ `elidedText`：宽度固定、放不下就省略。basis 保持实测
+   * 122.67，允许收缩，`padding-right` 保证省略号与值之间仍有间隔。 */
+  flex: 0 1 122.67px;
+  padding-right: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pb-band-value {
@@ -280,6 +373,20 @@
   font-weight: 600;
   color: var(--pb-ink);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 窄窗（≤1450 px）时把 Device 半边的第一列收窄：`Time (UTC)` / `Storage Usage` 这两行在
+ * 1330 px 以下会被窗口右沿切掉，原版这里是 `elidedText`（会省略），我们也让它省略而不是溢出。 */
+@media (max-width: 1450px) {
+  .pb-band-fields-device {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .pb-band-fields-device .pb-band-label {
+    flex: 0 0 92px;
+  }
 }
 
 /* `Single` is a link in the original status bar. */
@@ -287,6 +394,23 @@
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
+}
+
+/* 手册 §3.2.2：「Position 字段显示接收机上配置的所有定位类型，当前正在用于解算的那一种被框住」。
+ * 配置类型需要配置类报文（SBASCONTROL / INTERFACEMODE / NTRIPCONFIG …），18 份抓包都没有，
+ * 所以这里只把**正在用的那一种**框起来。 */
+.pb-boxed {
+  display: inline-block;
+  padding: 0 8px;
+  border: 1px solid var(--pb-ink);
+  border-radius: 2px;
+  line-height: 20px;
+  align-self: center;
+}
+
+.pb-band-value.pb-boxed {
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 /* ---- badges (S:19754 amber · S:19804 red · S:19868 green) ---------------- */
@@ -344,6 +468,29 @@
   background: transparent;
   border: 1px solid #9b9b9b;
   color: #6d6d6d;
+}
+
+/* S:19868 `.grey-status` — 手册 §3.2.3 的灰 Off：「功能被禁用或尚未配置」 */
+.playback-panel .pb-badge-off {
+  background: #ababab;
+  border: 1px solid #ababab;
+  color: rgba(0, 0, 0, 0.38);
+}
+
+/* The Summary bar's own badge is a button (manual §3.2.2: 「If the receiver has a warning or error,
+ * check the status tiles」 → clicking it jumps to the tile that raised it). */
+.playback-panel button.pb-badge {
+  font-family: var(--pb-semi);
+  cursor: pointer;
+  outline-offset: 2px;
+}
+
+.playback-panel button.pb-badge:hover {
+  filter: brightness(1.12);
+}
+
+.playback-panel button.pb-badge:focus-visible {
+  outline: 2px solid var(--pb-teal-dark);
 }
 
 /* ---- tab strip (§3) ----------------------------------------------------- */
@@ -1023,6 +1170,12 @@
   background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAxNiAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMC42NjY2MjYgMC42NjY1MDRWMTkuMzMzMkwxNS4zMzMzIDkuOTk5ODRMMC42NjY2MjYgMC42NjY1MDRaIiBmaWxsPSJ3aGl0ZSIvPg0KPC9zdmc+DQo=");
 }
 
+/* 手册 §3.2.4：「To replay a log file, click the replay button.」—— 走到文件末尾后同一个按钮变成
+ * 「重放」（环形箭头，原版 `.playControl.replay`），再点一下从 0 重新播放。 */
+.pb-play.is-ended:not(.is-playing) {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCjxwYXRoIGQ9Ik0xMCAyLjVhNy41IDcuNSAwIDEgMCA3LjQzIDYuNSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLW9wYWNpdHk9IjAuODciIHN0cm9rZS13aWR0aD0iMS44IiBmaWxsPSJub25lIi8+DQo8cGF0aCBkPSJNMTAgMi41TDEwIDYuNkwyLjMgNC4xeiIgZmlsbD0id2hpdGUiIGZpbGwtb3BhY2l0eT0iMC44NyIvPg0KPC9zdmc+DQo=");
+}
+
 .pb-play:disabled {
   opacity: 0.35;
   cursor: default;
@@ -1285,6 +1438,131 @@
   color: rgb(0, 81, 111);
 }
 
+/* 手册 §3.1 / 原版 `playback.html` `.playback-device-tiles-view` + `deviceManagement.js:1208-1260`:
+ * 最近打开过的抓包一格一个，图标在右上角（`.recent-pb-img`，24×24，`new_playbackicon.png`），
+ * 底下是文件名 / Start / End / Duration 与 `Last Viewed`。整格可点，点了就装载。 */
+.pb-recent {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.pb-recent[hidden] {
+  display: none !important;
+}
+
+.pb-recent-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 138px;
+  padding: 12px 14px 8px;
+  border: 1px solid #c5c5c5;
+  border-radius: 3px;
+  background: var(--pb-surface, #fcfcfc);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pb-recent-tile:hover {
+  border-color: var(--pb-teal);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.pb-recent-tile:focus-visible {
+  outline: 2px solid var(--pb-teal);
+  outline-offset: 2px;
+}
+
+/* S:12923 `.recent-pb-img` — 24×24, absolute right 11 / top 5, `new_playbackicon.png`. */
+.pb-recent-img {
+  position: absolute;
+  top: 8px;
+  right: 34px;
+  width: 24px;
+  height: 24px;
+  background: transparent url("/assets/images/new_playbackicon.png") center / 24px 24px no-repeat;
+}
+
+.pb-recent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 52px;
+}
+
+.pb-recent-name {
+  margin-bottom: 4px;
+  font-family: var(--pb-bold);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pb-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pb-recent-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.pb-recent-label {
+  flex: 0 0 66px;
+  color: var(--pb-ink-60, rgba(0, 0, 0, 0.6));
+}
+
+.pb-recent-value {
+  font-family: var(--pb-semi);
+  font-weight: 600;
+  color: var(--pb-ink);
+}
+
+.pb-recent-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  color: var(--pb-ink-60, rgba(0, 0, 0, 0.6));
+}
+
+.pb-recent-forget {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 16px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.pb-recent-forget:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--pb-ink);
+}
+
+/* Clicking the Summary bar's amber/red badge pulses the tile that raised it (§3.2.2). */
+@keyframes pb-flash {
+  0% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.85); }
+  100% { box-shadow: 0 0 0 14px rgba(245, 166, 35, 0); }
+}
+
+.playback-panel .pb-card.is-flash {
+  animation: pb-flash 700ms ease-out 2;
+}
+
 .pb-open-dialog {
   position: fixed;
   inset: 0;
@@ -1447,10 +1725,15 @@
 
   .pb-band-half,
   .pb-band-half:first-child,
-  .pb-band-half + .pb-band-half {
+  .pb-band-split + .pb-band-half {
     flex: 0 0 auto;
     width: 100%;
     padding-right: 0;
+  }
+
+  /* 叠起来时两半之间要有一点间隔，否则 "Device" 标题会紧贴 Positioning 的最后一行 */
+  .pb-band-split + .pb-band-half {
+    margin-top: 12px;
   }
 
   .pb-band-fields,

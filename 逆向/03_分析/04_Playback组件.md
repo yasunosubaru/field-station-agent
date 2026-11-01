@@ -866,3 +866,114 @@ messages : 6 distinct
 
 `broad-clean.gps`：1721 帧（丢弃 1 条 CRC 不匹配的首帧 RANGE）、时长 69.000 s、12 种消息；
 因为首帧被丢，起点是随后的 467940.000 而不是 467920.650。
+
+---
+
+## 11.5 手册第 3 章逐条核对（2026-11-01，GUI 侧）
+
+这一节只谈**页面**（`packages/app/src/web/panels/playback.{js,css}`），引擎见 §11.1-11.4。
+手册文本取自 `nova-manual.txt` 第 5436-5640 行（3.1 → 3.2.4），原版 DOM 取自
+`01_解包/app/view/html/playback.html`、`playbackcontrol/playbackcontrol.html`、
+`playbackcontrol/playbackview.js`、`deviceManagement.js:1208-1260`、`statusbar.js:294-338`、
+`positionStatus.js:294-397`、`deviceInfo.js:10-130,376-407`。
+
+### 11.5.1 逐条对照
+
+| 手册条目 | 原版实现（证据） | 本重实现 | 结论 |
+|---|---|---|---|
+| 3.1 有最近文件就显示文件图标，点图标打开 | `playback.html` `#recent-activity` + `.playback-no-activity-section`；`deviceManagement.js:1208-1260` 生成格子（`.recent-pb-img` 24×24 右上角、文件名、Start/End/Duration、`Last Viewed`）；recents 存 `userSettings.json.app.recentActivity.playback`（`userStore.js:27`） | 落地页 `Recent Activity` + `Open Playback File` + 每份文件一格（图标 = 原版 `new_playbackicon.png`、`Start/End` = UTC 时分秒、`Duration` = `0mins 4secs`、`Last Viewed` = `YYYY-MM-DD HH:MM`）；recents 存 `localStorage["nas.playback.recent"]`，同一文件只留一条、新的在前、上限 12；点了就装载 | **一致**（存储位置不同，见 §20 刻意差异 4） |
+| 3.1 没有最近文件时的空态 | `.playback-no-activity-section` + `.no-playback-tiles`（`NO_RECENT_ACTIVITY` = "No recent activity."） | 同样一句居中显示；`✕` 删掉最后一格后回到这句 | 一致 |
+| 3.2 装载后整窗换成查看界面 | 打开文件 = 新 tab，落地页让位 | 落地页与查看界面互斥（`empty` / `loaded` 两个块） | 一致 |
+| 3.2.1 Files bar 显示所有已装载文件 | `#tabs-list` 里一个文件一个 `<li>`（`jarvisInterface.js:5607 addPlaybackTab`） | 应用栏里一个文件一个 `.pb-filetab`，另加尾部 `+`（见刻意差异 3） | 一致（原版实际只留一个，见下条） |
+| 3.2.1 正在看的那个是"黑"的（高亮），点 tab 切换 | jQuery UI `.ui-tabs-active`；`playbackview.js:3-19` "as only 1 playback at a time" | 正在看的那格全白 + 2 px 下划线、其余 62% 白；点一下整块仪表盘重画，**每份文件的播放头/帧表各自保留** | 一致（配色随外壳深青应用栏，刻意差异 5） |
+| 3.2.1 ✕ 关掉该文件 | `updatePlaybackSettings` 关掉旧的 PI 页签再开新的 | ✕ 只关自己；关掉当前页签后由右邻（没有则左邻）接管；关完回落地页 | 一致 |
+| **但**手册允许同时装载多个 | 实现与之矛盾：`communication.js:625-637 updatePlaybackSettings` 先 `.ui-icon-close` 掉上一个 PI 页签，`playbackview.js:12` 直接写 "as only 1 playback at a time" | 按**手册**实现多文件（2 个 tab 实测并存、切换、单独关闭） | **比原版多**，见刻意差异 3 |
+| 3.2.2 状态条三色：Green Good / Amber Warning / Red Error | `.status-bar-traffic` 三个 span 只显示一个（`statusbar.js:335-338`） | 同样的三色徽标（绿 #305703 / 琥珀 #F5A623 / 红 #A00214 + "i" 气泡），Gray `Off` 补上（S:19868 `.grey-status`） | 一致 |
+| 3.2.2 有 amber/red 时"看 status tiles"，tile 上也出现同色条 | `statusbar.js:294-338` 汇总各 tile 的 RAG，tile 自己的 `.statustiles-traffic` 同步 | 状态条徽标与对应卡片徽标用**同一个 tone**；点状态条徽标滚到那张卡片并闪一下（`title` 写明缺哪条报文） | 一致（点击联动为我们补充，刻意差异 6） |
+| 3.2.2 Position：显示配置的所有定位类型，在用的那一种被框住 | `statusbar.js` `#statusBarConfiguredPosition` + `positionStatus.js:362-397 updateRAGIndicator(configured, active)`；配置类型来自 `SBASCONTROL / INTERFACEMODE / GENERATERTK / NTRIPCONFIG / LOGLIST / AVEPOS`（`positionModes.js:42-86`） | 正在用的类型加框（`Single`）；**配置类型未取证**——18 份抓包里没有上述任何一条配置报文，不编 | 部分（见"未取证"） |
+| 3.2.2 Latitude / Longitude / Height | BESTPOS `latitude/longitude/orthometric_height` | 同（7 位小数 / 2 位小数 + m） | 一致 |
+| 3.2.2 SPAN | `INSPVAX` / SPAN 状态报文（§4 菜单） | 字段在位，值 `--`，`title` 说明需要 `INSPVAX (#1465)`；18 份抓包都没有 | 部分（缺数据源） |
+| 3.2.2 Model | `VERSION` 的 `hardware_version`（`statusbar.js:141`） | `versions[0].hardware_version`：`b1-20261101.sbf` → `OEM729-2.03`；`clean-9600.gps` 无 VERSION → `--` | 一致 |
+| 3.2.2 CPU Usage | HWMONITOR `idleTime`（`100 − raw/2`） | 二进制 HWMONITOR 无该字段 → `--` + 说明（§13.2 已有结论，未变） | 部分（缺数据源） |
+| 3.2.2 Logging | LOGSTATUS / LOGLIST(#5) | `--` + 说明；抓包里没有 | 部分（缺数据源） |
+| 3.2.2 Time | TIME(#101) 的 UTC | 播放头所在帧的 UTC（`startUtc + offset`），随拖动/播放走 | 一致（取法不同） |
+| 3.2.2 Storage Usage | FILESYSTEMCAPACITY(#2137) `usedStorage/totalStorage` | `--` + 说明；抓包里没有 | 部分（缺数据源） |
+| 3.2.2 Interference | ITDETECTSTATUS(#2065)：`itkState` = Detected / Not detected / Disabled | `interference_statuses[i].severity1/2` 全 0 → "Not detected"，任一非 0 → "Detected"；`b1` 实测 "Not detected"；无该报文 → `--` | 一致 |
+| 3.2.3 tiles 随播放头变化 | 每个 epoch 由 `parseBinaryLog` 推进 | 拖动/播放都重取当前帧所在 RANGE 纪元，星座计数与 Time 同步 | 一致 |
+| 3.2.3 每块 tile 一条颜色码（绿/琥珀/红/灰 Off） | `.statustiles-traffic` 同三色 + `grey-status` | Positioning / Device / Satellite View 三张卡都有徽标，tone 与状态条同源；`Off` = 该块完全无数据源 | 一致 |
+| 3.2.4 播放按钮开始回放，状态条/tile/进度条/Date-Time 一起动 | `.playControl` + `Timer` | `pb-play` + `requestAnimationFrame`，Δ时间 = Δt × speed；拖动、播放、后退都会刷新整块仪表盘 | 一致 |
+| 3.2.4 Speed 下拉改倍速 | `playbackcontrol.html:79-83` 的 `1x/2x/5x/10x/20x`，`playbackview.js:116` `parseInt` | `1x/2x/5x/10x/20x`（`PLAYBACK_SPEEDS`），`/api/playback/info` 报的 0.5/1/2/4/8 页面**不用** | 一致（引擎档位未动，见刻意差异 7） |
+| 3.2.4 暂停 | 同一个按钮切 `pause` 类 | 同一个按钮切播放/暂停（`is-playing`） | 一致 |
+| 3.2.4 后退 30 秒 | `playbackview.js:435 rewind(30*1000)` | `REWIND_SECONDS = 30`，钳到 0 | 一致 |
+| 3.2.4 重放整个文件 | 到末尾后 `.playControl.replay` | 到末尾后同一按钮变环形箭头、`aria-label="Replay"`，再点从 0 播 | 一致 |
+| 3.2.4 进度条 = 当前点 | `.progress-bar` + `#playbackprogressBlue` | 进度条 + 拖动手柄（鼠标拖、←/→ 0.1 s、Shift 1 s、Home/End、空格） | 一致（键盘步进为我们补充） |
+| 3.2.4 事件点（红/琥珀/白）与 Show Events 开关、点击弹事件详情 | `.playback-events` + `.show-events-toggle` + `#btn-event` 气泡，事件来自 `markEvents()`，即 RXSTATUSEVENTB 一类事件日志 | **未实现**：18 份抓包里一条事件日志都没有，进度条下方那排是我们自己的"报文刻度"（按 message id 上色），不是事件 | 缺（数据源不存在，标未取证） |
+| 3.2.4 Create Snippet / Save Snippet | 琥珀选框 + 拖两端 + `onCreateSnippet/onSaveSnippet` | 进度条上的琥珀区间（由 From/To 秒数驱动）+ `Create Snippet`/`Download SBF` 直接导出 | 部分（交互不同，刻意差异 8） |
+
+### 11.5.2 倍速两列
+
+| 原版（`playbackcontrol.html:79-83`） | 本页（实测 `#pb-speed` 的 option） | `/api/playback/info.speeds`（引擎） |
+|---|---|---|
+| 1x | 1 | 0.5 |
+| 2x | 2 | 1 |
+| 5x | 5 | 2 |
+| 10x | 10 | 4 |
+| 20x | 20 | 8 |
+
+页面只认左、中两列；第三列是 `packages/playback` 的档位（`PLAYBACK_SPEEDS`），本次按边界**没有动**，
+页面也不读它 —— 否则菜单里会出现原版没有的 0.5x/4x/8x。
+
+### 11.5.3 三色判定（照原版代码，不照截图）
+
+```
+Positioning  positionStatus.js:294-397
+  红  solution_status ∈ {INSUFFICIENT_OBS, NO_CONVERGENCE, INVALID_FIX, INTEGRITY_WARNING}
+  琥珀 配了 PSRDIFF 而在用 single / 配了 RTK 而在用 dgnss 且也配了 RTK /
+       最高精度模式（RTK→PPP→PSRDIFF→SBAS）不是当前模式 / 在 RTK 但解是 WIDE_INT·PSRDIFF·NARROW_FLOAT
+  绿  其余
+Device       deviceInfo.js:10-130, 376-407
+  红  任一通道落在 error 边界（HWMONITOR status & 0xff ∈ {2,4}）；CPU/Storage > 90
+  琥珀任一通道落在 warning 边界（∈ {1,3}）；CPU/Storage ∈ (80,90]；**或状态条里还有字段没取到**
+  绿  取到的通道全在允许范围
+  灰 Off  一个读数都没有
+```
+
+"缺字段 → 琥珀"这一条是我们加的判据：手册把琥珀定义为"功能正常但有需要注意的地方"，把
+`--`（这条抓包里没有该报文）涂成绿等于宣布"全部正常"，把绿灯当结论用。`clean-9600.gps`
+因此是 `Device Warning`，`b1-20261101.sbf` 也是 Warning（CPU/Logging/Storage/SPAN 仍缺），
+两者的 `title` 会逐条列出缺哪条报文。
+
+### 11.5.4 实测（2026-11-01，Playwright，1706×1066）
+
+```
+[0] 落地        1 格（clean-9600.gps · Start 08:38:17 · End 08:38:22 · Duration 0mins 4secs · Last Viewed 2026-11-01 09:49）
+[1] 点格子装载  Positioning Good · Device Warning · Position[Single] · SPAN -- · 23 tracked PRNs
+[2] 再开一份    tabs=[clean-9600.gps, b1-20261101.sbf*] · Model OEM729-2.03 · Interference Not detected
+                SATVIS2 (#1043) 在本抓包里（24 条），故提示语不再说"本抓包没有 SATVIS2"
+[3] 切回第一格  tabs=[clean-9600.gps*, b1-20261101.sbf] · Model -- · 纬度回到 30.5399749°
+[4] 关掉当前格  剩 1 个 tab，b1 自动接管（Model OEM729-2.03）
+[5] 倍速/播放   1x 2x 5x 10x 20x；10x 播放 0.9 s → 时钟 +9.0 s；暂停止住；后退 30 s → 0:00.000
+                ←/→ 每次 0.1 s；End → 0:28.079，按钮 aria-label="Replay"
+[6] 状态条联动  点 Device 琥珀条 → Device 卡 is-flash，title 列出 4 个缺失数据源
+[7] 关完回落地  2 格（b1 在前、clean 在后，各带 Last Viewed）
+console / pageerror / 非 2xx：0
+```
+
+截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-playback\`（`00-recent-activity.png`、
+`01-files-bar-summary.png`、`02-open-dialog.png`、`03-two-files.png`、`04-switched-back.png`、
+`05-after-close.png`、`06-dock-open.png`、`07-controls-ended.png`、`08-band-link.png`、
+`09-recent-two-tiles.png`）。
+
+测试：`packages/app/test/playback-parity.test.ts` 26 条（最近文件 / 多文件页签 / 倍速档位 /
+三色判定 / 抓包侧事实）。全量 `packages/*/test/*.test.ts` 见 §12 的说明。
+
+### 11.5.5 未取证 / 缺
+
+| 项 | 为什么 |
+|---|---|
+| Position 里"配置的所有定位类型 + 当前模式加框"的**配置**部分 | 配置类型来自 `SBASCONTROL / INTERFACEMODE / GENERATERTK / NTRIPCONFIG / LOGLIST / AVEPOS`；`samples/` 18 份抓包一条都没有。只把"正在用"的类型加框，不猜 |
+| SPAN 值 | 需要 `INSPVAX (#1465)`，抓包里没有 |
+| Storage Usage | 需要 `FILESYSTEMCAPACITY (#2137)`，抓包里没有 |
+| Logging | 需要 LOGSTATUS / `LOGLIST (#5)`，抓包里没有 |
+| 事件点 / Show Events / 事件气泡 | 事件来自 RXSTATUSEVENTB 一类事件日志，18 份抓包都没有；进度条下那排是报文刻度，已改名说明，不冒充事件 |
+| Missing（卫星） | `b1` 有 SATVIS2（可见卫星的方位/高度），但"应当可见却没跟踪"的判据在手册与原版代码里没有可引用的定义，不做推测 |

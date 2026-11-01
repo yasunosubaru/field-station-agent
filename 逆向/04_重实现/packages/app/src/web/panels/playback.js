@@ -6,16 +6,22 @@
  * fed from a capture instead of a live receiver, with the transport collapsed into a floating
  * `Timeline ▲` bar at the bottom right (`view/playbackcontrol/playbackcontrol.html`).
  *
- * Rebuilt blocks, in the order the original stacks them:
+ * Rebuilt blocks, in the order the original stacks them (manual ch. 3):
  *
- *   1. app bar file tab      `#tabs-list` gains one tab per open capture (`clean-9600.gps ✕`);
- *                            closing it returns to the "Recent Activity" empty state
- *   2. status band           `.status-bar` (#E4E4E4, 112 px): Positioning [Good] | Device [Error]
+ *   0. Recent Playback Activity (§3.1)  empty state = `Recent Activity` + `Open Playback File` +
+ *                            one tile per recently opened capture (`app/view/html/playback.html`
+ *                            `#recent-activity` + `getPlaybackDeviceTilehtml()` in
+ *                            `deviceManagement.js:1208-1260`: name · Start · End · Duration ·
+ *                            `Last Viewed`, icon `.recent-pb-img` top-right, whole tile clickable)
+ *   1. Files bar (§3.2.1)    `#tabs-list` gains one tab per open capture (`clean-9600.gps ✕`);
+ *                            the tab of the capture being viewed is the bright one, clicking a tab
+ *                            switches the dashboard to it, ✕ closes just that file
+ *   2. Summary bar (§3.2.2)  `.status-bar` (#E4E4E4, 112 px): Positioning [Good] | Device [Error]
  *   3. tab strip             the single `Positioning` page tab, 3 px #00516F underline (S:14554)
- *   4. two tiles             Positioning (8 fields) · Device (4 fields, one badge per row)
+ *   4. two tiles (§3.2.3)    Positioning (8 fields) · Device (4 fields, one badge per row)
  *   5. Satellite View tile   legend + 8 constellation rows + polar sky plot
- *   6. Timeline dock         `Timeline ▲`, expands into the transport (scrub, play, speed,
- *                            current record, snippet export) — the old panel's whole body
+ *   6. Playback controls     `Timeline ▲`, expands into the transport (scrub, play/pause/replay,
+ *                            speed, current record, snippet export) — §3.2.4
  *
  * Where the numbers come from (all from the local JSON API, nothing invented):
  *   BESTPOS #42   first record  → Positioning card + left half of the band
@@ -25,10 +31,15 @@
  *                   6/8/15/17/21/23 supply rails · 7 Antenna Voltage · 22 Secondary Temperature)
  *   RANGE #43     `sv_prn` + `c_status >> 16 & 7` → constellation counts (`range-charts.ts`
  *                   uses the same three bits: 0 GPS · 1 GLO · 2 SBAS · 3 GAL · 4 BDS · 5 QZSS · 6 NAVIC)
+ *   VERSION #37   `versions[0].hardware_version` → band `Model` (the original's
+ *                   `#statusBarhardwareVersion = logData.hardwareVersion`, `statusbar.js:141`)
+ *   ITDETECTSTATUS #2065 `interference_statuses[i].severity1/2` → band `Interference`
+ *                   (`statusbar.js:144-173`: any non-zero severity = Detected)
  *
- * Deliberate differences from the original screen are listed in `逆向/03_分析/11_UI壳.md` §13.
+ * Deliberate differences from the original screen are listed in `逆向/03_分析/11_UI壳.md` §20 and
+ * the field-by-field table in `逆向/03_分析/04_Playback组件.md` §11.5.
  *
- * Contract: `mount(root, ctx)` / `unmount(root)`, ctx = { api, capture, onCaptureChange }.
+ * Contract: `mount(root, ctx)` / `unmount(root)`, ctx = { api, capture, onCaptureChange, storage }.
  */
 
 const CSS_URL = new URL('./playback.css', import.meta.url).href;
@@ -38,6 +49,8 @@ const CSS_ID = 'nas-panel-playback-css';
 const BESTPOS = 42;
 const RANGE = 43;
 const HWMONITOR = 963;
+const VERSION = 37;
+const ITDETECTSTATUS = 2065;
 
 /** `system` = `(c_status >> 16) & 7` — same table as `packages/graph/src/range-charts.ts`. */
 const SYSTEM_GPS = 0;
@@ -78,7 +91,42 @@ const HW_TYPES = {
 
 const TICK_COLORS = ['#00abc8', '#27a0bf', '#7fd3e8', '#f5a623', '#d0021b', '#9b9b9b', '#ffffff'];
 
-/* ---------------- helpers ---------------- */
+/* ============================ parity constants ============================ */
+
+/**
+ * Playback multipliers. The original's Speed menu is literally `1x · 2x · 5x · 10x · 20x`
+ * (`view/playbackcontrol/playbackcontrol.html:79-83`) and `playbackview.js:116` hands the label
+ * straight to `playbackControl.setSpeedRatio(parseInt(text))`. `/api/playback/info` still
+ * advertises the engine's own list (`packages/playback/src/playback.ts` `PLAYBACK_SPEEDS =
+ * [0.5, 1, 2, 4, 8]`); this page deliberately does not read it — the transport is driven in the
+ * browser, so the menu has to match the original.
+ */
+export const PLAYBACK_SPEEDS = [1, 2, 5, 10, 20];
+
+/** Recent files kept on the landing screen (the original keeps the whole list; we cap it). */
+export const RECENT_LIMIT = 12;
+
+/** localStorage key for §3.1 (the original keeps recents in `userSettings.json`, `userStore.js:27`). */
+export const RECENT_KEY = 'nas.playback.recent';
+
+/** `playbackview.js:435` — `playbackControl.rewind(30*1000, tab)`. */
+export const REWIND_SECONDS = 30;
+
+/** `NovatelIdConstants.HwMonitorStatusBoundaryLimitStatus` (`NovatelIdConstants.js:429`). */
+export const HW_LIMIT = { acceptable: 0, lowerWarning: 1, lowerError: 2, upperWarning: 3, upperError: 4 };
+
+/** `NovatelIdConstants.CpuStorageUsageBoundaryLimitStatus` (`NovatelIdConstants.js:421`): 80 / 90. */
+export const USAGE_LIMITS = { lower: 80, upper: 90 };
+
+/** `positionStatus.js:297-300` — solution statuses that turn the Positioning bar red. */
+export const BAD_SOLUTIONS = ['INSUFFICIENT_OBS', 'NO_CONVERGENCE', 'INVALID_FIX', 'INTEGRITY_WARNING'];
+
+/** `positionStatus.js:7` — accuracy order the original walks when picking the configured mode. */
+export const CONFIG_MODE_ORDER = ['RTK', 'PPP', 'PSRDIFF', 'SBAS'];
+
+const TONE_RANK = { off: 0, good: 1, warn: 2, bad: 3 };
+
+/* ================================ helpers ================================= */
 
 function ensureCss() {
   if (document.getElementById(CSS_ID)) return;
@@ -124,6 +172,26 @@ function defaultApi() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body ?? {}),
       }),
+  };
+}
+
+/** localStorage behind the panel's own seam, so a private-mode browser cannot break the page. */
+function defaultStorage() {
+  return {
+    get(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        /* quota / private mode: recents are a convenience, losing them is not an error */
+      }
+    },
   };
 }
 
@@ -181,7 +249,226 @@ function collect(root) {
   return map;
 }
 
-/* ---------------- markup ---------------- */
+/* ------------------------- tone (RAG) arithmetic ------------------------- */
+
+/** Boundary limit of a HWMONITOR measurement → the badge its row carries. */
+export function limitTone(limit) {
+  const value = Number(limit);
+  if (!Number.isFinite(value)) return 'off';
+  if (value === HW_LIMIT.acceptable) return 'good';
+  if (value === HW_LIMIT.lowerWarning || value === HW_LIMIT.upperWarning) return 'warn';
+  if (value === HW_LIMIT.lowerError || value === HW_LIMIT.upperError) return 'bad';
+  return 'off';
+}
+
+/** CPU / Storage usage percentage → green ≤ 80, amber ≤ 90, red above (`deviceInfo.js:22-57`). */
+export function usageTone(percent) {
+  const value = Number(percent);
+  if (!Number.isFinite(value)) return 'off';
+  if (value < 0) return 'off';
+  if (value <= USAGE_LIMITS.lower) return 'good';
+  if (value <= USAGE_LIMITS.upper) return 'warn';
+  return 'bad';
+}
+
+/** The most severe of a set of tones; `off` only wins when nothing else is known. */
+export function worstTone(tones) {
+  let worst = 'off';
+  for (const tone of tones) {
+    const key = TONE_RANK[tone] === undefined ? 'off' : tone;
+    if (TONE_RANK[key] > TONE_RANK[worst]) worst = key;
+  }
+  return worst;
+}
+
+/** `RTK ROVER` → `RTK`, `NTRIP CLIENT` → `RTK` (`positionStatus.js:370-376`). */
+export function configuredModeKey(mode) {
+  const text = String(mode ?? '').trim();
+  if (!text) return '';
+  if (text === 'NTRIP CLIENT' || text === 'NTRIP SERVER') return 'RTK';
+  return text.replace(/BASE|ROVER/gi, '').trim();
+}
+
+/**
+ * Positioning status indicator — a transcription of `positionStatus.js:294-397`
+ * (`updateRAGIndicator`): red for the four "no solution" statuses, amber when the highest
+ * configured accuracy mode is not the active one, green otherwise.
+ *
+ * The configured modes of the original come from config logs (`SBASCONTROL`, `INTERFACEMODE`,
+ * `GENERATERTK`, `NTRIPCONFIG`, `LOGLIST`, `AVEPOS` — `positionModes.js:42-86`). None of the 18
+ * captures in `samples/` carries one, so this page always passes `configuredModes: []`; the
+ * function still implements the branches so the rule is testable and a future capture that does
+ * carry the config gets the original colours.
+ */
+export function positionTone({ solutionStatus, positionType, configuredModes = [], activeMode = '' } = {}) {
+  const status = String(solutionStatus ?? '').toUpperCase();
+  const type = String(positionType ?? '').toUpperCase();
+  if (!status && !type) return 'off';
+  if (BAD_SOLUTIONS.includes(status)) return 'bad';
+
+  const configured = (Array.isArray(configuredModes) ? configuredModes : [])
+    .map(configuredModeKey)
+    .filter(Boolean);
+  if (!configured.length) return 'good';
+
+  const active = String(activeMode ?? '').toLowerCase();
+  if (configured.includes('PSRDIFF') && active === 'single') return 'warn';
+  if (configured.includes('PSRDIFF') && active === 'dgnss' && configured.includes('RTK')) return 'warn';
+  if (configured.includes('PSRDIFF')) return 'good';
+
+  for (const mode of CONFIG_MODE_ORDER) {
+    if (!configured.includes(mode)) continue;
+    const activeKey = configuredModeKey(active);
+    if (!activeKey || activeKey.toUpperCase() !== mode) return 'warn';
+    if (mode === 'RTK' && (type === 'WIDE_INT' || type === 'PSRDIFF' || type === 'NARROW_FLOAT')) return 'warn';
+    return 'good';
+  }
+  return 'good';
+}
+
+/**
+ * Device status indicator — `deviceInfo.js:376-407` plus `statusbar.js:281-296`:
+ * red if any channel is over an error limit, amber if any channel is in a warning band,
+ * amber too when part of the Summary bar's device picture is simply not in the capture
+ * (we will not paint a channel we never saw as "Good"), off when nothing at all is known.
+ *
+ * `rows` is a list of `{ limit }` readings (or ready-made tones); `unknown` counts the summary
+ * fields with no value for this file (Model · CPU Usage · Logging · Storage Usage ·
+ * Interference · SPAN).
+ */
+export function deviceTone({ rows = [], unknown = 0 } = {}) {
+  const tones = rows.map((row) => (typeof row === 'string' ? row : limitTone(row && row.limit)));
+  const known = tones.filter((tone) => tone !== 'off');
+  if (!known.length) return 'off';
+  const worst = worstTone(known);
+  if (worst === 'bad' || worst === 'warn') return worst;
+  return unknown > 0 ? 'warn' : 'good';
+}
+
+/* ------------------------------ recent list ------------------------------ */
+
+/** Trim a `/api/playback/info` payload down to what a recent tile shows. */
+export function recentFromInfo(info, viewedAt = Date.now()) {
+  const path = String(info?.capture ?? '');
+  return {
+    path,
+    name: baseName(path),
+    bytes: Number(info?.bytes) || 0,
+    frameCount: Number(info?.frameCount) || 0,
+    durationMs: Number(info?.durationMs) || 0,
+    startUtc: String(info?.startUtc ?? ''),
+    endUtc: String(info?.finishUtc ?? ''),
+    viewedAt: Number(viewedAt) || Date.now(),
+  };
+}
+
+/** Newest first, one entry per file (`validateRecentActivity` in the original drops duplicates). */
+export function pushRecent(list, entry, limit = RECENT_LIMIT) {
+  const previous = Array.isArray(list) ? list : [];
+  if (!entry || !String(entry.path ?? '')) return previous.slice();
+  const rest = previous.filter((item) => item && item.path !== entry.path);
+  const keep = Number.isFinite(Number(limit)) ? Math.max(1, Math.floor(Number(limit))) : RECENT_LIMIT;
+  return [entry, ...rest].slice(0, keep);
+}
+
+export function forgetRecent(list, path) {
+  return (Array.isArray(list) ? list : []).filter((item) => item && item.path !== path);
+}
+
+/** `msToTimeString(ms, true)` (`playback.js:236-251`) — "0mins 4secs", "1hrs 2mins 3secs". */
+export function durationText(ms) {
+  const total = Math.max(0, Math.round(Number(ms) || 0));
+  const seconds = Math.floor(total / 1000) % 60;
+  const minutes = Math.floor(total / 60000) % 60;
+  const hours = Math.floor(total / 3600000);
+  return hours ? `${hours}hrs ${minutes}mins ${seconds}secs` : `${minutes}mins ${seconds}secs`;
+}
+
+/** `Last Viewed 2026-11-01 09:30` — the original prints `getUTCTimeFormat(lastViewedMsec)`. */
+export function viewedText(ms) {
+  const time = Number(ms);
+  if (!Number.isFinite(time) || time <= 0) return '--';
+  return new Date(time).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+/** The original's Speed <select> — `1x · 2x · 5x · 10x · 20x`. */
+export function speedOptionsHtml(selected = PLAYBACK_SPEEDS[0]) {
+  const value = Number(selected);
+  const chosen = PLAYBACK_SPEEDS.includes(value) ? value : PLAYBACK_SPEEDS[0];
+  return PLAYBACK_SPEEDS.map(
+    (speed) => `<option value="${speed}"${speed === chosen ? ' selected' : ''}>${speed}x</option>`,
+  ).join('');
+}
+
+/** The Files bar's markup: one tab per open file, the viewed one bright, then the "+" to open more. */
+export function fileTabsHtml(files, active) {
+  const list = Array.isArray(files) ? files : [];
+  return (
+    '<span class="pb-filetabs-bar" role="tablist" aria-label="Open playback files">' +
+    list
+      .map((file, index) => {
+        const isActive = index === active;
+        return (
+          '<span class="pb-filetab' + (isActive ? ' is-active' : '') + '" role="tab" ' +
+          `aria-selected="${isActive}" data-role="activate-file" data-index="${index}" ` +
+          `tabindex="${isActive ? '0' : '-1'}" title="${esc(file.path)}">` +
+          `<span class="pb-filetab-name">${esc(file.name)}</span>` +
+          `<button type="button" class="pb-filetab-close" data-role="close-file" ` +
+          `data-index="${index}" aria-label="Close ${esc(file.name)}" tabindex="-1">&times;</button>` +
+          '</span>'
+        );
+      })
+      .join('') +
+    /* 原版要回落地页才能再开一个文件（点九宫格里的 Playback）；这里在文件栏尾部放一个「+」，
+     * 否则「多文件并载」只能靠先关掉所有文件。见 11_UI壳.md §20 刻意差异。 */
+    '<button type="button" class="pb-filetab-add" data-el="openMore" tabindex="0" ' +
+    'title="Open Playback File" aria-label="Open Playback File">+</button>' +
+    '</span>'
+  );
+}
+
+/**
+ * Which tab is viewed after `closing` is removed: the neighbour on its right, else the one on its
+ * left (the original's jQuery-UI tabs do the same), `-1` when nothing is left.
+ */
+export function nextActiveAfterClose(count, active, closing) {
+  if (count <= 0) return -1;
+  if (closing !== active) return closing < active ? active - 1 : active;
+  return Math.min(closing, count - 2);
+}
+
+function recentRow(label, value) {
+  return (
+    '<span class="pb-recent-row">' +
+    `<span class="pb-recent-label">${esc(label)}</span>` +
+    `<span class="pb-recent-value">${esc(value)}</span>` +
+    '</span>'
+  );
+}
+
+/** One tile of §3.1 — `deviceManagement.js:1208-1260` markup, one class per part. */
+export function recentTileHtml(entry) {
+  const name = entry && (entry.name || baseName(entry.path));
+  if (!name) return '';
+  return (
+    '<div class="pb-recent-tile" role="button" tabindex="0" data-role="open-recent" ' +
+    `data-path="${esc(entry.path)}" title="${esc(entry.path)}">` +
+    '<span class="pb-recent-img" aria-hidden="true"></span>' +
+    '<span class="pb-recent-body">' +
+    `<span class="pb-recent-name">${esc(name)}</span>` +
+    recentRow('Start', utcClock(entry.startUtc)) +
+    recentRow('End', utcClock(entry.endUtc)) +
+    recentRow('Duration', durationText(entry.durationMs)) +
+    '</span>' +
+    `<span class="pb-recent-foot">Last Viewed ${esc(viewedText(entry.viewedAt))}</span>` +
+    '<button type="button" class="pb-recent-forget" data-role="forget-recent" ' +
+    `data-path="${esc(entry.path)}" aria-label="Remove ${esc(name)} from Recent Activity" ` +
+    'tabindex="-1">&times;</button>' +
+    '</div>'
+  );
+}
+
+/* -------------------------------- markup --------------------------------- */
 
 function kvRow(label, target, className) {
   return (
@@ -202,6 +489,15 @@ function deviceRow(label, valueTarget, badgeTarget) {
   );
 }
 
+function bandRow(label, target, area, title, className) {
+  return (
+    `<div class="pb-band-row ${area}">` +
+    `<span class="pb-band-label">${esc(label)}</span>` +
+    `<span class="pb-band-value ${className || ''}" data-el="${target}"${title ? ` title="${esc(title)}"` : ''}>--</span>` +
+    '</div>'
+  );
+}
+
 function satRow(item) {
   /* The six GNSS glyphs in `sats-sprite.png` already carry their own name under the shape; only
    * LBAND and SBAS are bare icons, so they get a text label (S:29712 `.lband-label`/`.sbas-label`). */
@@ -216,7 +512,7 @@ function satRow(item) {
     `<div class="good-health" data-sat="${item.key}-use" title="In Use — distinct PRNs in the RANGE epoch at the play head">0</div>` +
     `<div class="moderate-health" data-sat="${item.key}-idle" title="Not Used — PRNs this playback has seen but that are not in the current epoch">0</div>` +
     '<div class="outer-div">' +
-    `<div class="bad-health" data-sat="${item.key}-missing" title="Missing — needs SATVIS2 (absent from this capture), so it cannot be computed">0</div>` +
+    `<div class="bad-health" data-sat="${item.key}-missing" title="Missing — needs SATVIS2 (#1043) to say which satellites should be visible">0</div>` +
     '</div>' +
     '</div></div>' +
     '</div>'
@@ -251,12 +547,14 @@ function template(speedOptions) {
   return `
 <div class="notice pb-notice" data-el="error" role="status" hidden></div>
 
+<!-- §3.1 landing: Recent Playback Activity (playback.html .playback-device-tiles-data) -->
 <div class="pb-empty-state" data-el="empty" hidden>
   <div class="pb-empty-head">
     <span class="pb-empty-title">Recent Activity</span>
     <button type="button" class="pb-open-btn" data-el="open">Open Playback File</button>
   </div>
-  <p class="pb-empty-note">No recent activity.</p>
+  <div class="pb-recent" data-el="recent" role="list"></div>
+  <p class="pb-empty-note" data-el="emptyNote">No recent activity.</p>
 </div>
 
 <div class="pb-loaded" data-el="loaded" hidden>
@@ -275,25 +573,15 @@ function template(speedOptions) {
       <div class="pb-band-half">
         <div class="pb-band-head">
           <span class="pb-band-title">Positioning</span>
-          <span class="pb-badge pb-badge-good" data-el="posBadge">Good</span>
+          <button type="button" class="pb-badge pb-badge-good pb-band-link" data-el="posBadge"
+                  title="Jump to the Positioning tile">Good</button>
         </div>
         <div class="pb-band-fields">
-          <div class="pb-band-row pb-band-r1c1">
-            <span class="pb-band-label">Position</span>
-            <span class="pb-band-value pb-underlined" data-el="bandPosition">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r2c1">
-            <span class="pb-band-label">Latitude</span>
-            <span class="pb-band-value" data-el="bandLat">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r3c1">
-            <span class="pb-band-label">Longitude</span>
-            <span class="pb-band-value" data-el="bandLon">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r2c2">
-            <span class="pb-band-label">Height (MSL)</span>
-            <span class="pb-band-value" data-el="bandHeight">--</span>
-          </div>
+          ${bandRow('Position', 'bandPosition', 'pb-band-r1c1', 'Positioning type currently in use (boxed)', 'pb-boxed')}
+          ${bandRow('Latitude', 'bandLat', 'pb-band-r2c1')}
+          ${bandRow('Longitude', 'bandLon', 'pb-band-r3c1')}
+          ${bandRow('Height (MSL)', 'bandHeight', 'pb-band-r2c2')}
+          ${bandRow('SPAN', 'bandSpan', 'pb-band-r3c2', 'SPAN needs INSPVAX (#1465) / INSSPDSTATUS in the capture; none of the shipped captures has one')}
         </div>
       </div>
 
@@ -302,29 +590,16 @@ function template(speedOptions) {
       <div class="pb-band-half">
         <div class="pb-band-head">
           <span class="pb-band-title">Device</span>
-          <span class="pb-badge pb-badge-bad" data-el="devBadge">Error</span>
+          <button type="button" class="pb-badge pb-badge-bad pb-band-link" data-el="devBadge"
+                  title="Jump to the Device tile">Error</button>
         </div>
         <div class="pb-band-fields pb-band-fields-device">
-          <div class="pb-band-row pb-band-r1c1">
-            <span class="pb-band-label">Model</span>
-            <span class="pb-band-value" data-el="devModel">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r2c1">
-            <span class="pb-band-label">CPU Usage</span>
-            <span class="pb-band-value" data-el="devCpu">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r3c1">
-            <span class="pb-band-label">Logging</span>
-            <span class="pb-band-value" data-el="devLogging">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r1c2">
-            <span class="pb-band-label">Time (UTC)</span>
-            <span class="pb-band-value" data-el="devTime">--</span>
-          </div>
-          <div class="pb-band-row pb-band-r2c2">
-            <span class="pb-band-label">Interference</span>
-            <span class="pb-band-value" data-el="devInterference">--</span>
-          </div>
+          ${bandRow('Model', 'devModel', 'pb-band-r1c1', 'Model comes from VERSION (#37) hardware_version')}
+          ${bandRow('CPU Usage', 'devCpu', 'pb-band-r2c1', 'CPU Usage is HWMONITOR idleTime, which the binary HWMONITOR of this build does not carry')}
+          ${bandRow('Logging', 'devLogging', 'pb-band-r3c1', 'Logging needs LOGSTATUS / LOGLIST (#5); absent from every shipped capture')}
+          ${bandRow('Time (UTC)', 'devTime', 'pb-band-r1c2')}
+          ${bandRow('Interference', 'devInterference', 'pb-band-r2c2', 'Interference comes from ITDETECTSTATUS (#2065) severity')}
+          ${bandRow('Storage Usage', 'devStorage', 'pb-band-r3c2', 'Storage Usage needs FILESYSTEMCAPACITY (#2137); absent from every shipped capture')}
         </div>
       </div>
     </div>
@@ -336,7 +611,7 @@ function template(speedOptions) {
     </div>
 
     <div class="pb-cards">
-      <section class="tile pb-card">
+      <section class="tile pb-card" data-tile="positioning">
         <div class="pb-card-head">
           <h2 class="heading">Positioning</h2>
           <span class="pb-badge pb-badge-good" data-el="cardPosBadge">Good</span>
@@ -356,9 +631,10 @@ function template(speedOptions) {
         </div>
       </section>
 
-      <section class="tile pb-card">
+      <section class="tile pb-card" data-tile="device">
         <div class="pb-card-head">
           <h2 class="heading">Device</h2>
+          <span class="pb-badge pb-badge-unknown" data-el="cardDevBadge">--</span>
         </div>
         <div class="pb-kv pb-device-list">
           ${deviceRow('CPU Usage', 'devCpuRow', 'devCpuRowBadge')}
@@ -372,7 +648,7 @@ function template(speedOptions) {
       </section>
     </div>
 
-    <section class="tile pb-card pb-sat" id="SatelliteViewPanel">
+    <section class="tile pb-card pb-sat" id="SatelliteViewPanel" data-tile="satellite">
       <div class="pb-card-head">
         <h2 class="heading">Satellite View</h2>
         <span class="pb-badge pb-badge-unknown" data-el="satBadge">--</span>
@@ -482,10 +758,10 @@ export function mount(root, ctx = {}) {
   ensureCss();
 
   const api = ctx.api && typeof ctx.api.get === 'function' ? ctx.api : defaultApi();
-  const speeds = [0.5, 1, 2, 4, 8];
+  const storage = ctx.storage && typeof ctx.storage.get === 'function' ? ctx.storage : defaultStorage();
 
   root.classList.add('playback-panel');
-  root.innerHTML = template(speeds.map((value) => `<option value="${value}">${value}×</option>`).join(''));
+  root.innerHTML = template(speedOptionsHtml(1));
   const el = collect(root);
 
   /** `gps-use` / `gps-idle` / `gps-missing` → the three count boxes of every constellation row. */
@@ -494,9 +770,10 @@ export function mount(root, ctx = {}) {
     satCount[node.dataset.sat] = node;
   }
 
-  /* The file tab lives in the shell's app bar (index.html #tabs-list). Injecting it from here keeps
-   * the bar exactly as the original has it — "Playback" then the open file — without editing the
-   * shell. It is removed again in the cleanup below, and CSS hides it on every other page. */
+  /* The Files bar lives in the shell's app bar (`index.html #tabs-list`). Injecting it from here
+   * keeps the bar exactly as the original has it — "Playback" then the open files — without
+   * editing the shell. One wrapper `<li>` holds one tab per open capture; it is removed again in
+   * the cleanup below, and CSS hides it on every other page. */
   const appBar = document.getElementById('tabs-list');
   const fileTabs = appBar ? document.createElement('li') : null;
   if (fileTabs) {
@@ -507,36 +784,48 @@ export function mount(root, ctx = {}) {
 
   const state = {
     alive: true,
-    capture: typeof ctx.capture === 'string' ? ctx.capture : '',
     captures: [],
-    open: false,
-
-    info: null,
-    frames: [],
-    duration: 0,
-    time: 0,
-    speed: 1,
+    /** One record per open capture — the Files bar is exactly this list. */
+    files: [],
+    active: -1,
+    recent: [],
+    speed: PLAYBACK_SPEEDS[0],
     playing: false,
     raf: 0,
     last: 0,
-
-    /** frame index → RANGE record ordinal (-1 when that frame is not a RANGE record). */
-    rangeOrdinal: [],
-    /** RANGE ordinal → { counts: Map(system → Set(prn)), utc }. */
-    epochs: new Map(),
-    /** system → Set(prn) seen in every epoch this playback has shown (drives "Not Used"). */
-    seen: new Map(),
-    epochOrdinal: -2,
-    epochPending: false,
-    epochWanted: -2,
-
-    detailIndex: -1,
-    detailPending: false,
-    pendingDetail: null,
-
-    from: 0,
-    to: 0,
+    preferPath: typeof ctx.capture === 'string' ? ctx.capture : '',
   };
+
+  const current = () => (state.active >= 0 ? state.files[state.active] ?? null : null);
+
+  function makeFile(path) {
+    return {
+      path,
+      name: baseName(path),
+      info: null,
+      frames: [],
+      duration: 0,
+      time: 0,
+      from: 0,
+      to: 0,
+      ready: false,
+      /** frame index → RANGE record ordinal (-1 when that frame is not a RANGE record). */
+      rangeOrdinal: [],
+      /** RANGE ordinal → { counts: Map(system → Set(prn)), utc }. */
+      epochs: new Map(),
+      /** system → Set(prn) seen in every epoch this playback has shown (drives "Not Used"). */
+      seen: new Map(),
+      epochOrdinal: -2,
+      epochPending: false,
+      epochWanted: -2,
+      detailIndex: -1,
+      detailPending: false,
+      pendingDetail: null,
+      position: null,
+      device: null,
+      extras: null,
+    };
+  }
 
   function alert(message, kind = 'error') {
     if (!message) {
@@ -550,27 +839,60 @@ export function mount(root, ctx = {}) {
     el.error.textContent = message;
   }
 
-  /* ---- app-bar file tab + empty state ---- */
+  /* ---- Files bar (§3.2.1) + landing (§3.1) ---- */
 
   function renderFileTabs() {
     if (!fileTabs) return;
-    if (!state.open) {
+    if (!state.files.length) {
       fileTabs.innerHTML = '';
       fileTabs.hidden = true;
       return;
     }
     fileTabs.hidden = false;
-    fileTabs.innerHTML =
-      '<span class="pb-filetab-name" title="' + esc(state.capture) + '">' + esc(baseName(state.capture)) + '</span>' +
-      '<button type="button" class="pb-filetab-close" data-role="close-file" ' +
-      'aria-label="Close ' + esc(baseName(state.capture)) + '">&times;</button>';
+    fileTabs.innerHTML = fileTabsHtml(state.files, state.active);
+  }
+
+  function renderRecent() {
+    const tiles = state.recent.map(recentTileHtml).join('');
+    el.recent.innerHTML = tiles;
+    el.recent.hidden = !tiles;
+    el.emptyNote.hidden = Boolean(tiles);
   }
 
   function renderShell() {
-    el.loaded.hidden = !state.open;
-    el.empty.hidden = state.open;
-    el.dock.hidden = !state.open;
+    const file = current();
+    el.loaded.hidden = !file;
+    el.empty.hidden = Boolean(file);
+    el.dock.hidden = !file;
     renderFileTabs();
+    renderRecent();
+  }
+
+  function readRecent() {
+    try {
+      const raw = storage.get(RECENT_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      const files = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.files) ? parsed.files : [];
+      return files.filter((item) => item && typeof item.path === 'string' && item.path);
+    } catch {
+      return [];
+    }
+  }
+
+  function writeRecent(list) {
+    state.recent = Array.isArray(list) ? list : [];
+    try {
+      storage.set(RECENT_KEY, JSON.stringify({ version: 1, files: state.recent }));
+    } catch {
+      /* see defaultStorage() */
+    }
+    renderRecent();
+  }
+
+  function rememberRecent(info) {
+    if (!info || !info.capture) return;
+    writeRecent(pushRecent(state.recent, recentFromInfo(info), RECENT_LIMIT));
   }
 
   /* ---- capture list / open dialog ---- */
@@ -602,7 +924,7 @@ export function mount(root, ctx = {}) {
     el.dialog.hidden = true;
   }
 
-  /** Keeps the shell's capture picker (and every other panel) in step with our file tab. */
+  /** Keeps the shell's capture picker (and every other panel) in step with the active file. */
   function syncShellCapture(path) {
     const select = document.getElementById('capture-select');
     if (!select || select.value === path) return;
@@ -623,6 +945,8 @@ export function mount(root, ctx = {}) {
     const lonDev = Number(get('longitude_std_dev')?.value);
     return {
       mode: shown(get('solution_status')),
+      solutionStatus: String(get('solution_status')?.value ?? ''),
+      positionType: String(get('position_type')?.value ?? ''),
       position: shown(get('position_type')),
       latitude: lat,
       longitude: lon,
@@ -635,26 +959,21 @@ export function mount(root, ctx = {}) {
     };
   }
 
-  function renderPosition() {
-    const p = state.position;
+  function renderPosition(file) {
+    const p = file?.position;
     const band = (node, text) => {
       if (node) node.textContent = text;
     };
     if (!p) {
-      band(el.bandPosition, '--');
-      band(el.bandLat, '--');
-      band(el.bandLon, '--');
-      band(el.bandHeight, '--');
-      band(el.posMode, '--');
-      band(el.posPosition, '--');
-      band(el.posLat, '--');
-      band(el.posLon, '--');
-      band(el.posHeight, '--');
-      band(el.posHeightAcc, '--');
-      band(el.pos2d, '--');
-      band(el.posDatum, '--');
-      setBadge(el.posBadge, 'warn');
-      setBadge(el.cardPosBadge, 'warn');
+      for (const node of [
+        el.bandPosition, el.bandLat, el.bandLon, el.bandHeight, el.bandSpan,
+        el.posMode, el.posPosition, el.posLat, el.posLon, el.posHeight,
+        el.posHeightAcc, el.pos2d, el.posDatum,
+      ]) {
+        band(node, '--');
+      }
+      setBadge(el.posBadge, 'off');
+      setBadge(el.cardPosBadge, 'off');
       return;
     }
     const position = p.position ? titleCase(p.position) : '--';
@@ -676,11 +995,12 @@ export function mount(root, ctx = {}) {
     band(el.pos2d, `${fixed(p.twoSigma, 2)} m`);
     band(el.posDatum, p.datum ?? '--');
 
-    setBadge(el.posBadge, p.solved ? 'good' : 'warn');
-    setBadge(el.cardPosBadge, p.solved ? 'good' : 'warn');
+    const tone = positionTone({ solutionStatus: p.solutionStatus, positionType: p.positionType });
+    setBadge(el.posBadge, tone);
+    setBadge(el.cardPosBadge, tone);
   }
 
-  /* ---- Device (HWMONITOR #963) ---- */
+  /* ---- Device (HWMONITOR #963 · VERSION #37 · ITDETECTSTATUS #2065) ---- */
 
   /**
    * Binary HWMONITOR in this build carries `measurements.count` + `measurements[10]` only
@@ -692,7 +1012,6 @@ export function mount(root, ctx = {}) {
   function readDevice(record) {
     if (!record) return null;
     const values = new Map();
-    const limits = new Map();
     for (const field of record.fields) {
       const match = /^measurements\[(\d+)\]\.(value|status)$/.exec(field.path);
       if (!match) continue;
@@ -719,10 +1038,34 @@ export function mount(root, ctx = {}) {
     };
   }
 
+  /** `VERSION #37` → the receiver's hardware version; `ITDETECTSTATUS #2065` → interference. */
+  function readExtras(version, itDetect) {
+    let model = '';
+    if (version) {
+      const card = version.fields.find((field) => field.path === 'versions[0].hardware_version');
+      const name = version.fields.find((field) => field.path === 'versions[0].model_name');
+      model = shown(card) || shown(name) || '';
+    }
+    let interference = '';
+    let interferenceLevel = null;
+    if (itDetect) {
+      const severities = [];
+      for (const field of itDetect.fields) {
+        const match = /^interference_statuses\[(\d+)\]\.severity(\d)$/.exec(field.path);
+        if (match) severities.push(Number(field.value) || 0);
+      }
+      if (severities.length) {
+        interferenceLevel = Math.max(...severities);
+        interference = interferenceLevel > 0 ? 'Detected' : 'Not detected';
+      }
+    }
+    return { model, interference, interferenceLevel };
+  }
+
   function setBadge(node, tone, text) {
     if (!node) return;
-    const labels = { good: 'Good', warn: 'Warning', bad: 'Error', unknown: '--' };
-    node.className = `pb-badge pb-badge-${tone}`;
+    const labels = { good: 'Good', warn: 'Warning', bad: 'Error', off: 'Off', unknown: '--' };
+    node.className = `pb-badge pb-badge-${tone}${node.classList.contains('pb-band-link') ? ' pb-band-link' : ''}`;
     node.textContent = text ?? labels[tone] ?? '--';
     node.dataset.tone = tone;
   }
@@ -730,16 +1073,16 @@ export function mount(root, ctx = {}) {
   /** Sensor row badge: the receiver's own boundary limit wins when it flagged something. */
   function sensorTone(reading) {
     if (!reading) return 'unknown';
-    const limit = reading.limit;
-    if (limit === 0) return 'good';
-    if (limit === 1 || limit === 3) return 'warn';
-    return 'bad';
+    return limitTone(reading.limit);
   }
 
-  function renderDevice() {
-    const d = state.device;
-    const set = (node, text) => {
-      if (node) node.textContent = text;
+  function renderDevice(file) {
+    const d = file?.device;
+    const extras = file?.extras ?? null;
+    const set = (node, text, title) => {
+      if (!node) return;
+      node.textContent = text;
+      if (title !== undefined) node.title = title;
     };
     const temp = d?.temperature ? `${fixed(d.temperature.value, 2)} °C` : '--';
     const volt = d?.antennaVoltage ? `${fixed(d.antennaVoltage.value, 2)} V` : '--';
@@ -749,36 +1092,68 @@ export function mount(root, ctx = {}) {
     set(el.devTemp, temp);
     set(el.devVoltage, volt);
     set(el.devCurrent, amp);
-    set(el.devCpuRow, cpu);
+    set(el.devCpuRow, cpu, d?.cpuUsage ? undefined : 'HWMONITOR of this build carries no idleTime field');
 
     setBadge(el.devTempBadge, sensorTone(d?.temperature));
     setBadge(el.devVoltageBadge, sensorTone(d?.antennaVoltage));
     setBadge(el.devCurrentBadge, sensorTone(d?.antennaCurrent));
     setBadge(el.devCpuRowBadge, d?.cpuUsage ? sensorTone(d.cpuUsage) : 'unknown');
 
-    // Band right half: only the values the device card already decoded, plus the unknowns.
-    set(el.devModel, '--'); // needs VERSION (#37); not in this capture
-    set(el.devCpu, cpu);
-    set(el.devLogging, '--'); // needs FILESTATUS (#2127) / LOGLIST (#5)
-    set(el.devInterference, '--'); // needs ITDETECTSTATUS (#2065)
+    // Summary bar, right half.
+    set(el.devModel, extras?.model || '--', extras?.model ? undefined : 'Model needs VERSION (#37); this capture has none');
+    set(el.devCpu, cpu, d?.cpuUsage ? undefined : 'CPU Usage is HWMONITOR idleTime — not in the binary HWMONITOR of this build');
+    set(el.devLogging, '--', 'Logging needs LOGSTATUS / LOGLIST (#5); absent from every shipped capture');
+    set(el.devStorage, '--', 'Storage Usage needs FILESYSTEMCAPACITY (#2137); absent from every shipped capture');
+    set(el.devSpan, '--', 'SPAN needs INSPVAX (#1465); absent from every shipped capture');
+    set(
+      el.devInterference,
+      extras?.interference || '--',
+      extras?.interference
+        ? `ITDETECTSTATUS (#2065) · highest severity ${extras.interferenceLevel}`
+        : 'Interference needs ITDETECTSTATUS (#2065); this capture has none',
+    );
 
-    // The original band is red whenever the device picture is incomplete; ours follows the data.
-    const incomplete = !d || !d.cpuUsage || !d.temperature || !d.antennaVoltage || !d.antennaCurrent;
-    setBadge(el.devBadge, incomplete ? 'bad' : 'good');
+    const rows = [d?.temperature, d?.antennaVoltage, d?.antennaCurrent, d?.cpuUsage].filter(Boolean);
+    const unknown = [
+      Boolean(extras?.model),
+      Boolean(d?.cpuUsage),
+      false, // Logging: no capture has it
+      false, // Storage Usage: no capture has it
+      Boolean(extras?.interference),
+      false, // SPAN: no capture has it
+    ].filter((known) => !known).length;
+    const tone = deviceTone({ rows, unknown });
+    setBadge(el.devBadge, tone);
+    setBadge(el.cardDevBadge, tone);
+    el.devBadge.title = deviceReason({ device: d, extras, tone });
+  }
+
+  /** Why the Device bar is amber/red — printed as the badge tooltip, `statusbar.js` dialog text. */
+  function deviceReason({ device, extras, tone }) {
+    const missing = [];
+    if (!extras?.model) missing.push('Model (VERSION #37)');
+    if (!device?.cpuUsage) missing.push('CPU Usage (HWMONITOR idleTime)');
+    missing.push('Logging (LOGSTATUS / LOGLIST #5)');
+    missing.push('Storage Usage (FILESYSTEMCAPACITY #2137)');
+    if (!extras?.interference) missing.push('Interference (ITDETECTSTATUS #2065)');
+    missing.push('SPAN (INSPVAX #1465)');
+    if (tone === 'bad') return 'A device channel is over an error limit — see the Device tile.';
+    if (tone === 'warn') return `Not everything could be checked; not in this capture: ${missing.join(' · ')}`;
+    return 'Every device channel present in this capture is inside its accepted bounds.';
   }
 
   /* ---- Satellite View (RANGE #43) ---- */
 
-  function buildRangeMap() {
-    const map = new Array(state.frames.length).fill(-1);
+  function buildRangeMap(file) {
+    const map = new Array(file.frames.length).fill(-1);
     let ordinal = 0;
-    for (let i = 0; i < state.frames.length; i++) {
-      if (state.frames[i].messageId === RANGE) {
+    for (let i = 0; i < file.frames.length; i++) {
+      if (file.frames[i].messageId === RANGE) {
         map[i] = ordinal;
         ordinal += 1;
       }
     }
-    state.rangeOrdinal = map;
+    file.rangeOrdinal = map;
     return ordinal;
   }
 
@@ -800,12 +1175,12 @@ export function mount(root, ctx = {}) {
     return { counts, utc: record.header?.utc ?? '', observed: obs.size };
   }
 
-  function renderSatellite() {
-    const epoch = state.epochs.get(state.epochOrdinal) ?? null;
+  function renderSatellite(file) {
+    const epoch = file && file.epochOrdinal >= 0 ? file.epochs.get(file.epochOrdinal) ?? null : null;
     let total = 0;
     for (const item of CONSTELLATIONS) {
       const inUse = item.system === null ? 0 : epoch ? (epoch.counts.get(item.system)?.size ?? 0) : 0;
-      const seen = item.system === null ? 0 : (state.seen.get(item.system)?.size ?? 0);
+      const seen = item.system === null || !file ? 0 : (file.seen.get(item.system)?.size ?? 0);
       const notUsed = Math.max(0, seen - inUse);
       total += inUse;
       const useNode = satCount[`${item.key}-use`];
@@ -816,83 +1191,91 @@ export function mount(root, ctx = {}) {
       if (missNode) missNode.textContent = '0';
     }
 
-    if (!state.info) {
-      setBadge(el.satBadge, 'unknown');
-    } else if (epoch) {
-      setBadge(el.satBadge, total > 0 ? 'good' : 'warn');
-    } else {
-      setBadge(el.satBadge, 'warn');
-    }
+    const hasRange = Boolean(file && file.rangeOrdinal.some((ordinal) => ordinal >= 0));
+    if (!file || !file.info) setBadge(el.satBadge, 'off');
+    else if (epoch) setBadge(el.satBadge, total > 0 ? 'good' : 'warn');
+    else setBadge(el.satBadge, hasRange ? 'warn' : 'off');
 
     const when = epoch && epoch.utc ? utcClock(epoch.utc) : '--:--:--';
-    el.satNote.textContent = state.info
+    const satvisCount = fileCount(file, 1043);
+    el.satNote.textContent = file && file.info
       ? `RANGE (#43) epoch ${when} UTC · ${total} tracked PRNs · ` +
         `${epoch ? 'In Use = PRNs in this epoch, Not Used = seen earlier in this capture' : 'no RANGE record yet'}` +
-        ' · Missing needs SATVIS2 (absent in this capture)'
+        (satvisCount > 0
+          ? ` · SATVIS2 (#1043) is in this capture (${satvisCount}) but Missing is still not derived from it`
+          : ' · Missing needs SATVIS2 (absent in this capture)')
       : 'Counting RANGE (#43) observations at the play head.';
   }
 
-  function requestEpoch(ordinal) {
+  /** How many records of a message id the capture holds (`/api/playback/info.messageCounts`). */
+  function fileCount(file, messageId) {
+    const list = file?.info?.messageCounts ?? [];
+    for (const item of list) if (Number(item.id) === messageId) return Number(item.count) || 0;
+    return 0;
+  }
+
+  function requestEpoch(file, ordinal) {
+    if (!file) return;
     if (ordinal < 0) {
-      state.epochOrdinal = -2;
-      renderSatellite();
+      file.epochOrdinal = -2;
+      if (file === current()) renderSatellite(file);
       return;
     }
-    if (state.epochs.has(ordinal)) {
-      state.epochOrdinal = ordinal;
-      renderSatellite();
+    if (file.epochs.has(ordinal)) {
+      file.epochOrdinal = ordinal;
+      if (file === current()) renderSatellite(file);
       return;
     }
-    if (state.epochPending) {
-      state.epochWanted = ordinal;
+    if (file.epochPending) {
+      file.epochWanted = ordinal;
       return;
     }
-    state.epochPending = true;
-    const wanted = state.capture;
+    file.epochPending = true;
+    const wanted = file.path;
     api
-      .get('/api/records', { capture: state.capture, msgId: RANGE, offset: ordinal, limit: 1 })
+      .get('/api/records', { capture: file.path, msgId: RANGE, offset: ordinal, limit: 1 })
       .then((data) => {
-        if (!state.alive || state.capture !== wanted) return;
+        if (!state.alive || file.path !== wanted) return;
         const record = data.records && data.records[0];
         if (record) {
           const parsed = parseEpoch(record);
-          state.epochs.set(ordinal, parsed);
+          file.epochs.set(ordinal, parsed);
           for (const [system, prns] of parsed.counts) {
-            if (!state.seen.has(system)) state.seen.set(system, new Set());
-            for (const prn of prns) state.seen.get(system).add(prn);
+            if (!file.seen.has(system)) file.seen.set(system, new Set());
+            for (const prn of prns) file.seen.get(system).add(prn);
           }
-          while (state.epochs.size > 40) {
-            const oldest = state.epochs.keys().next().value;
+          while (file.epochs.size > 40) {
+            const oldest = file.epochs.keys().next().value;
             if (oldest === undefined) break;
-            state.epochs.delete(oldest);
+            file.epochs.delete(oldest);
           }
         }
-        state.epochOrdinal = ordinal;
-        renderSatellite();
+        file.epochOrdinal = ordinal;
+        if (file === current()) renderSatellite(file);
       })
       .catch(() => {
         /* a missing RANGE record only empties the counters — never worth a banner */
       })
       .finally(() => {
-        state.epochPending = false;
-        const next = state.epochWanted;
-        state.epochWanted = -2;
-        if (state.alive && next >= 0 && next !== ordinal) requestEpoch(next);
+        file.epochPending = false;
+        const next = file.epochWanted;
+        file.epochWanted = -2;
+        if (state.alive && next >= 0 && next !== ordinal) requestEpoch(file, next);
       });
   }
 
-  function syncSatellite() {
-    if (!state.frames.length) return;
-    const index = frameIndexAt(state.time);
-    const ordinal = state.rangeOrdinal[index] ?? -1;
-    if (ordinal === state.epochOrdinal) return;
-    requestEpoch(ordinal);
+  function syncSatellite(file) {
+    if (!file || !file.frames.length) return;
+    const index = frameIndexAt(file, file.time);
+    const ordinal = file.rangeOrdinal[index] ?? -1;
+    if (ordinal === file.epochOrdinal) return;
+    requestEpoch(file, ordinal);
   }
 
-  /* ---- transport ---- */
+  /* ---- transport (§3.2.4) ---- */
 
-  function frameIndexAt(seconds) {
-    const frames = state.frames;
+  function frameIndexAt(file, seconds) {
+    const frames = file?.frames ?? [];
     if (!frames.length) return -1;
     const target = seconds * 1000 + 0.5;
     let low = 0;
@@ -910,17 +1293,25 @@ export function mount(root, ctx = {}) {
     return found;
   }
 
-  function renderTicks() {
-    if (!state.frames.length || !state.duration) {
+  /**
+   * Record ticks under the scrub bar. The original paints *receiver events* here (red = error,
+   * amber = warning, white = status, `playbackcontrol.html` `.playback-events`), which come from
+   * event logs (RXSTATUSEVENTB & co.). No capture in `samples/` carries one, so this strip shows
+   * the records instead — one tick per captured record, coloured by message id. It is not the
+   * event strip and the manual's "Show Events" switch is therefore not implemented; see
+   * `04_Playback组件.md` §11.5.
+   */
+  function renderTicks(file) {
+    if (!file || !file.frames.length || !file.duration) {
       el.ticks.innerHTML = '';
       return;
     }
     const colors = {};
     const parts = [];
-    for (const frame of state.frames) {
+    for (const frame of file.frames) {
       const key = String(frame.messageId);
       if (!colors[key]) colors[key] = TICK_COLORS[Object.keys(colors).length % TICK_COLORS.length];
-      const left = (frame.offsetMs / (state.duration * 1000)) * 100;
+      const left = (frame.offsetMs / (file.duration * 1000)) * 100;
       parts.push(
         `<span class="pb-tick" title="${esc(`${frame.name} #${frame.index + 1} · ${(frame.offsetMs / 1000).toFixed(3)} s`)}" ` +
           `style="left:${left.toFixed(3)}%;background:${colors[key]}"></span>`,
@@ -929,62 +1320,76 @@ export function mount(root, ctx = {}) {
     el.ticks.innerHTML = parts.join('');
   }
 
-  function renderSnippet() {
-    if (!state.open || !state.duration) {
+  function renderSnippet(file) {
+    if (!file || !file.duration) {
       el.snippet.hidden = true;
       return;
     }
-    const from = Math.min(Math.max(state.from, 0), state.duration);
-    const to = Math.min(Math.max(state.to, 0), state.duration);
+    const from = Math.min(Math.max(file.from, 0), file.duration);
+    const to = Math.min(Math.max(file.to, 0), file.duration);
     if (to <= from) {
       el.snippet.hidden = true;
       return;
     }
     el.snippet.hidden = false;
-    el.snippet.style.left = `${((from / state.duration) * 100).toFixed(3)}%`;
-    el.snippet.style.width = `${(((to - from) / state.duration) * 100).toFixed(3)}%`;
+    el.snippet.style.left = `${((from / file.duration) * 100).toFixed(3)}%`;
+    el.snippet.style.width = `${(((to - from) / file.duration) * 100).toFixed(3)}%`;
   }
 
-  function renderClock() {
-    const ratio = state.duration ? state.time / state.duration : 0;
+  function renderClock(file) {
+    const duration = file?.duration ?? 0;
+    const time = file?.time ?? 0;
+    const ratio = duration ? time / duration : 0;
     el.fill.style.width = `${(ratio * 100).toFixed(4)}%`;
-    el.clock.textContent = clockText(state.time);
-    el.duration.textContent = clockText(state.duration);
-    el.bar.setAttribute('aria-valuenow', state.time.toFixed(3));
-    el.bar.setAttribute('aria-valuemax', state.duration.toFixed(3));
-    el.bar.setAttribute('aria-valuetext', `${clockText(state.time)} of ${clockText(state.duration)}`);
+    el.clock.textContent = clockText(time);
+    el.duration.textContent = clockText(duration);
+    el.bar.setAttribute('aria-valuenow', time.toFixed(3));
+    el.bar.setAttribute('aria-valuemax', duration.toFixed(3));
+    el.bar.setAttribute('aria-valuetext', `${clockText(time)} of ${clockText(duration)}`);
   }
 
   /** UTC of the record under the play head, computed from the capture's first UTC + the offset. */
-  function frameUtc() {
-    if (!state.info || !state.info.startUtc) return '--:--:--';
-    const base = Date.parse(state.info.startUtc);
+  function frameUtc(file) {
+    if (!file || !file.info || !file.info.startUtc) return '--:--:--';
+    const base = Date.parse(file.info.startUtc);
     if (Number.isNaN(base)) return '--:--:--';
-    return utcClock(new Date(base + state.time * 1000).toISOString());
+    return utcClock(new Date(base + file.time * 1000).toISOString());
+  }
+
+  function atEnd(file) {
+    return Boolean(file && file.duration > 0 && file.time >= file.duration - 1e-9);
   }
 
   function setPlayButton() {
+    const file = current();
+    const ended = !state.playing && atEnd(file);
     el.play.classList.toggle('is-playing', state.playing);
-    el.play.setAttribute('aria-label', state.playing ? 'Pause' : 'Play');
-    el.play.disabled = !state.open;
+    el.play.classList.toggle('is-ended', ended);
+    el.play.setAttribute('aria-label', state.playing ? 'Pause' : ended ? 'Replay' : 'Play');
+    el.play.disabled = !file;
   }
 
-  function renderRecord() {
-    const index = frameIndexAt(state.time);
+  function renderRecord(file) {
+    if (!file) {
+      el.frameName.textContent = '--';
+      el.frameNote.textContent = '';
+      return;
+    }
+    const index = frameIndexAt(file, file.time);
     if (index < 0) {
       el.frameName.textContent = '--';
       el.frameNote.textContent = '';
       return;
     }
-    const frame = state.frames[index];
-    el.frameName.textContent = `${frame.name} · #${frame.index + 1} / ${state.frames.length}`;
+    const frame = file.frames[index];
+    el.frameName.textContent = `${frame.name} · #${frame.index + 1} / ${file.frames.length}`;
     el.frameNote.textContent = `offset ${clockText(frame.time)} · ${frame.bytes} B record`;
 
-    if (index === state.detailIndex) return;
-    state.detailIndex = index;
+    if (index === file.detailIndex) return;
+    file.detailIndex = index;
     if (!el.frameBody.hidden) {
       el.frameBody.innerHTML = '<p class="pb-empty">Decoding…</p>';
-      fetchFrameDetail(index);
+      fetchFrameDetail(file, index);
     }
   }
 
@@ -1010,41 +1415,43 @@ export function mount(root, ctx = {}) {
       ` · UTC ${esc(data.utc || '--')}${data.layoutKnown ? '' : ' · no EDIE layout'}</p>`;
   }
 
-  function fetchFrameDetail(index) {
-    if (state.detailPending) {
-      state.pendingDetail = index;
+  function fetchFrameDetail(file, index) {
+    if (file.detailPending) {
+      file.pendingDetail = index;
       return;
     }
-    state.detailPending = true;
-    const wanted = state.capture;
+    file.detailPending = true;
+    const wanted = file.path;
     api
-      .get('/api/playback/frame', { capture: state.capture, index })
+      .get('/api/playback/frame', { capture: file.path, index })
       .then((data) => {
-        if (!state.alive || state.capture !== wanted || state.detailIndex !== index) return;
-        renderFrameFields(data);
+        if (!state.alive || file.path !== wanted || file.detailIndex !== index) return;
+        if (file === current()) renderFrameFields(data);
       })
       .catch(() => {
         /* a frame that scrolled out while the request was in flight is not worth a banner */
       })
       .finally(() => {
-        state.detailPending = false;
-        const next = state.pendingDetail;
-        state.pendingDetail = null;
-        if (state.alive && next !== null && next !== index) fetchFrameDetail(next);
+        file.detailPending = false;
+        const next = file.pendingDetail;
+        file.pendingDetail = null;
+        if (state.alive && next !== null && next !== index) fetchFrameDetail(file, next);
       });
   }
 
-  function updateDashboard() {
-    el.devTime.textContent = frameUtc();
-    renderRecord();
-    syncSatellite();
+  function updateDashboard(file) {
+    el.devTime.textContent = frameUtc(file);
+    renderRecord(file);
+    syncSatellite(file);
   }
 
   function setTime(seconds) {
-    if (!state.open) return;
-    state.time = Math.min(Math.max(seconds, 0), state.duration);
-    renderClock();
-    updateDashboard();
+    const file = current();
+    if (!file) return;
+    file.time = Math.min(Math.max(seconds, 0), file.duration);
+    renderClock(file);
+    updateDashboard(file);
+    setPlayButton();
   }
 
   function stop() {
@@ -1057,23 +1464,26 @@ export function mount(root, ctx = {}) {
   }
 
   function tick(now) {
-    if (!state.playing) return;
+    const file = current();
+    if (!state.playing || !file) return;
     if (!state.last) state.last = now;
     let delta = now - state.last;
     state.last = now;
     if (delta > 250) delta = 250; // tab was hidden: never jump the whole capture
-    setTime(state.time + (delta * state.speed) / 1000);
-    if (state.time >= state.duration - 1e-9) {
+    setTime(file.time + (delta * state.speed) / 1000);
+    if (file.time >= file.duration - 1e-9) {
       stop();
-      el.frameNote.textContent = `end of capture · ${clockText(state.duration)}`;
+      setTime(file.duration);
+      el.frameNote.textContent = `end of capture · ${clockText(file.duration)}`;
       return;
     }
     state.raf = requestAnimationFrame(tick);
   }
 
   function play() {
-    if (!state.open || state.playing) return;
-    if (state.time >= state.duration - 1e-9) setTime(0);
+    const file = current();
+    if (!file || state.playing) return;
+    if (atEnd(file)) setTime(0);
     state.playing = true;
     state.last = 0;
     setPlayButton();
@@ -1082,40 +1492,40 @@ export function mount(root, ctx = {}) {
 
   /* ---- snippet / export ---- */
 
-  function exportUrl(from, to) {
-    return withQuery('/api/playback/export', { capture: state.capture, from: from.toFixed(3), to: to.toFixed(3) });
+  function exportUrl(file, from, to) {
+    return withQuery('/api/playback/export', { capture: file.path, from: from.toFixed(3), to: to.toFixed(3) });
   }
 
-  function syncSnippet() {
-    const from = Number(el.from.value);
-    const to = Number(el.to.value);
-    if (!state.open) {
+  function syncSnippet(file) {
+    if (!file) {
       el.download.disabled = true;
       el.snippetBtn.disabled = true;
       el.snippetNote.textContent = 'Load a timeline first.';
       return;
     }
+    const from = Number(el.from.value);
+    const to = Number(el.to.value);
     if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < 0 || from > to) {
       el.download.disabled = true;
       el.snippetBtn.disabled = true;
       el.snippetNote.textContent = 'Invalid range: need 0 ≤ from ≤ to.';
       return;
     }
-    state.from = from;
-    state.to = Math.min(to, state.duration);
-    renderSnippet();
+    file.from = from;
+    file.to = Math.min(to, file.duration);
+    renderSnippet(file);
     el.download.disabled = false;
     el.snippetBtn.disabled = false;
     el.snippetNote.textContent =
-      `[ ${from.toFixed(3)} s , ${state.to.toFixed(3)} s ] of ${clockText(state.duration)}` +
-      ` · ${(((state.to - from) / (state.duration || 1)) * 100).toFixed(1)}% of the capture`;
+      `[ ${from.toFixed(3)} s , ${file.to.toFixed(3)} s ] of ${clockText(file.duration)}` +
+      ` · ${(((file.to - from) / (file.duration || 1)) * 100).toFixed(1)}% of the capture`;
   }
 
-  function download(from, to) {
-    if (!state.open) return;
+  function download(file, from, to) {
+    if (!file) return;
     const anchor = document.createElement('a');
-    anchor.href = exportUrl(from, to);
-    const stem = (state.capture.split('/').pop() || 'capture').replace(/\.[^.]+$/, '');
+    anchor.href = exportUrl(file, from, to);
+    const stem = (file.path.split('/').pop() || 'capture').replace(/\.[^.]+$/, '');
     anchor.download = `${stem}_${from.toFixed(3)}-${to.toFixed(3)}.sbf`;
     anchor.rel = 'noopener';
     document.body.appendChild(anchor);
@@ -1123,119 +1533,142 @@ export function mount(root, ctx = {}) {
     document.body.removeChild(anchor);
   }
 
-  /* ---- load / close ---- */
+  /* ---- open / activate / close ---- */
 
-  async function load(capture) {
-    stop();
-    alert('');
-    state.capture = capture;
-    state.open = true;
-    state.info = null;
-    state.frames = [];
-    state.duration = 0;
-    state.time = 0;
-    state.detailIndex = -1;
-    state.epochs.clear();
-    state.seen.clear();
-    state.epochOrdinal = -2;
-    state.rangeOrdinal = [];
+  /** Repaint every block from one file record — used on load, on tab switch and after a probe. */
+  function applyFile(file) {
+    el.ticks.innerHTML = '';
+    el.snippet.hidden = true;
     el.frameBody.hidden = true;
     el.frameToggle.setAttribute('aria-expanded', 'false');
     el.frameBody.innerHTML = '';
-    el.ticks.innerHTML = '';
-    el.snippet.hidden = true;
+    file.detailIndex = -1;
     renderShell();
-    renderPosition();
-    renderDevice();
-    renderSatellite();
-    closeDialog();
-    syncShellCapture(capture);
+    renderPosition(file);
+    renderDevice(file);
+    renderSatellite(file);
+    renderTicks(file);
+    el.start.textContent = utcClock(file.info?.startUtc);
+    el.end.textContent = utcClock(file.info?.finishUtc);
+    el.from.value = String(file.from ?? 0);
+    el.to.value = file.duration ? file.duration.toFixed(3) : '0';
+    syncSnippet(file);
+    setPlayButton();
+    renderClock(file);
+    updateDashboard(file);
+    syncShellCapture(file.path);
+    if (file.frames.length) syncSatellite(file);
+  }
 
-    try {
-      const [info, frames] = await Promise.all([
-        api.get('/api/playback/info', { capture }),
-        api.post('/api/playback/frames', { capture }),
-      ]);
-      if (!state.alive || !state.open || state.capture !== capture) return;
-      state.info = info;
-      state.frames = frames.frames ?? [];
-      state.duration = (info.durationMs || 0) / 1000;
-      state.time = 0;
-      state.speed = Number(info.speeds?.[1]) || 1;
+  function activate(index) {
+    if (index < 0 || index >= state.files.length) return;
+    const file = state.files[index];
+    if (state.active !== index) {
+      stop();
+      state.active = index;
+    }
+    applyFile(file);
+  }
 
-      const options = (info.speeds ?? speeds).map((value) => `<option value="${value}">${value}×</option>`).join('');
-      el.speed.innerHTML = options;
-      el.speed.value = String(state.speed);
-
-      el.start.textContent = utcClock(info.startUtc);
-      el.end.textContent = utcClock(info.finishUtc);
-      el.from.value = '0';
-      el.to.value = state.duration.toFixed(3);
-
-      buildRangeMap();
-      renderTicks();
-      setPlayButton();
-      renderClock();
-      setTime(0);
-      syncSnippet();
-    } catch (error) {
-      if (!state.alive) return;
-      alert(`Timeline failed: ${error.message}`);
-      renderClock();
-      setPlayButton();
+  async function load(path) {
+    const existing = state.files.findIndex((file) => file.path === path);
+    if (existing >= 0) {
+      activate(existing);
       return;
     }
-
-    // The two tiles fail soft: a capture without BESTPOS / HWMONITOR still shows the dashboard.
+    alert('');
     const probe = async (msgId) => {
       try {
-        const data = await api.get('/api/records', { capture, msgId, offset: 0, limit: 1 });
+        const data = await api.get('/api/records', { capture: path, msgId, offset: 0, limit: 1 });
         return data.records && data.records[0] ? data.records[0] : null;
       } catch {
         return null;
       }
     };
-    const [bestpos, hw] = await Promise.all([probe(BESTPOS), probe(HWMONITOR)]);
-    if (!state.alive || !state.open || state.capture !== capture) return;
-    state.position = readPosition(bestpos);
-    state.device = readDevice(hw);
-    renderPosition();
-    renderDevice();
-    updateDashboard();
+
+    const file = makeFile(path);
+    state.files.push(file);
+    state.active = state.files.length - 1;
+    stop();
+    renderShell();
+    applyFile(file);
+    closeDialog();
+
+    try {
+      const [info, frames] = await Promise.all([
+        api.get('/api/playback/info', { capture: path }),
+        api.post('/api/playback/frames', { capture: path }),
+      ]);
+      if (!state.alive) return;
+      file.info = info;
+      file.frames = frames.frames ?? [];
+      file.duration = (info.durationMs || 0) / 1000;
+      file.time = 0;
+      file.from = 0;
+      file.to = file.duration;
+      buildRangeMap(file);
+      rememberRecent(info);
+
+      // The dashboard fails soft: a capture without BESTPOS / HWMONITOR still shows the bar.
+      const [bestpos, hw, version, itDetect] = await Promise.all([
+        probe(BESTPOS),
+        probe(HWMONITOR),
+        probe(VERSION),
+        probe(ITDETECTSTATUS),
+      ]);
+      if (!state.alive) return;
+      file.position = readPosition(bestpos);
+      file.device = readDevice(hw);
+      file.extras = readExtras(version, itDetect);
+      file.ready = true;
+      if (file === current()) applyFile(file);
+      else renderFileTabs();
+    } catch (error) {
+      if (!state.alive) return;
+      alert(`Timeline failed: ${error.message}`);
+      closeFile(state.files.indexOf(file));
+    }
   }
 
-  function closeFile() {
-    stop();
-    state.open = false;
-    state.capture = '';
-    state.info = null;
-    state.frames = [];
-    state.duration = 0;
-    state.position = null;
-    state.device = null;
-    state.epochs.clear();
-    state.seen.clear();
-    state.epochOrdinal = -2;
-    state.detailIndex = -1;
-    el.frameBody.hidden = true;
-    el.ticks.innerHTML = '';
-    el.snippet.hidden = true;
-    renderShell();
-    alert('');
+  function closeFile(index) {
+    if (index < 0 || index >= state.files.length) return;
+    const wasActive = index === state.active;
+    const nextActive = nextActiveAfterClose(state.files.length, state.active, index);
+    state.files.splice(index, 1);
+    if (!state.files.length) {
+      stop();
+      state.active = -1;
+      el.ticks.innerHTML = '';
+      el.frameBody.hidden = true;
+      el.snippet.hidden = true;
+      alert('');
+      renderShell();
+      return;
+    }
+    if (wasActive) {
+      stop();
+      state.active = nextActive;
+      applyFile(current());
+    } else {
+      state.active = nextActive;
+      renderFileTabs();
+    }
   }
 
   /* ---- pointer + keyboard on the scrub strip ---- */
 
   function seekFromEvent(event) {
+    const file = current();
+    if (!file) return;
     const rect = el.bar.getBoundingClientRect();
     if (!rect.width) return;
     const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
-    setTime(ratio * state.duration);
+    setTime(ratio * file.duration);
   }
 
   let dragging = false;
   const onBarDown = (event) => {
-    if (!state.open) return;
+    if (!current()) return;
     event.preventDefault();
     dragging = true;
     stop();
@@ -1252,20 +1685,23 @@ export function mount(root, ctx = {}) {
     document.removeEventListener('mouseup', onDocUp);
   };
   const onBarKey = (event) => {
-    if (!state.open) return;
+    const file = current();
+    if (!file) return;
     const step = event.shiftKey ? 1 : 0.1;
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      setTime(state.time + step);
+      stop();
+      setTime(file.time + step);
     } else if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setTime(state.time - step);
+      stop();
+      setTime(file.time - step);
     } else if (event.key === 'Home') {
       event.preventDefault();
       setTime(0);
     } else if (event.key === 'End') {
       event.preventDefault();
-      setTime(state.duration);
+      setTime(file.duration);
     } else if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
       if (state.playing) stop();
@@ -1278,34 +1714,43 @@ export function mount(root, ctx = {}) {
     else play();
   };
   const onRewind = () => {
-    if (!state.open) return;
+    const file = current();
+    if (!file) return;
     stop();
-    setTime(state.time - 30);
+    setTime(file.time - REWIND_SECONDS);
   };
   const onSpeed = () => {
-    state.speed = Number(el.speed.value) || 1;
+    const value = Number(el.speed.value);
+    state.speed = PLAYBACK_SPEEDS.includes(value) ? value : PLAYBACK_SPEEDS[0];
     state.last = 0;
   };
-  const onRange = () => syncSnippet();
-  const onDownload = () => download(state.from, state.to);
-  const onSnippet = () => download(state.from, state.to);
+  const onRange = () => syncSnippet(current());
+  const onDownload = () => {
+    const file = current();
+    if (file) download(file, file.from, file.to);
+  };
+  const onSnippet = () => {
+    const file = current();
+    if (file) download(file, file.from, file.to);
+  };
 
   function toggleDock() {
     const open = el.drawer.hidden;
     el.drawer.hidden = !open;
     el.dockToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     el.dock.classList.toggle('is-open', open);
-    if (open && state.open) setTime(state.time);
+    if (open && current()) setTime(current().time);
   }
 
   const onDock = () => toggleDock();
   const onFrameToggle = () => {
+    const file = current();
     const open = el.frameBody.hidden;
     el.frameBody.hidden = !open;
     el.frameToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open && state.open) {
-      state.detailIndex = -1;
-      renderRecord();
+    if (open && file) {
+      file.detailIndex = -1;
+      renderRecord(file);
     }
   };
 
@@ -1322,9 +1767,73 @@ export function mount(root, ctx = {}) {
     if (!item) return;
     load(item.dataset.path);
   };
+
+  /* Files bar: activate / close one tab, or open another file with the trailing "+". */
   const onFileTabClick = (event) => {
-    if (event.target.closest('[data-role="close-file"]')) closeFile();
+    if (event.target.closest('[data-el="openMore"]')) {
+      openDialog();
+      return;
+    }
+    const close = event.target.closest('[data-role="close-file"]');
+    if (close) {
+      event.stopPropagation();
+      closeFile(Number(close.dataset.index));
+      return;
+    }
+    const tab = event.target.closest('[data-role="activate-file"]');
+    if (tab) activate(Number(tab.dataset.index));
   };
+  const onFileTabKey = (event) => {
+    if (event.target.closest('[data-el="openMore"]') && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      openDialog();
+      return;
+    }
+    const tab = event.target.closest('[data-role="activate-file"]');
+    if (!tab) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activate(Number(tab.dataset.index));
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      closeFile(Number(tab.dataset.index));
+    }
+  };
+
+  /* Recent Activity: click a tile to open it, ✕ to forget it. */
+  const onRecentClick = (event) => {
+    const forget = event.target.closest('[data-role="forget-recent"]');
+    if (forget) {
+      event.stopPropagation();
+      writeRecent(forgetRecent(state.recent, forget.dataset.path));
+      return;
+    }
+    const tile = event.target.closest('[data-role="open-recent"]');
+    if (tile) load(tile.dataset.path);
+  };
+  const onRecentKey = (event) => {
+    const tile = event.target.closest('[data-role="open-recent"]');
+    if (!tile) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      load(tile.dataset.path);
+    }
+  };
+
+  /* Summary bar → tile (manual §3.2.2: "check the status tiles … an amber or red bar appears on the
+   * status tile where more information can be found"). Clicking the bar scrolls to that tile and
+   * pulses it. */
+  const onBandBadge = (event) => {
+    const which = event.currentTarget === el.devBadge ? 'device' : 'positioning';
+    const tile = root.querySelector(`[data-tile="${which}"]`);
+    if (!tile) return;
+    tile.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    tile.classList.remove('is-flash');
+    // reflow so the animation restarts on a second click
+    void tile.offsetWidth;
+    tile.classList.add('is-flash');
+  };
+
   const onHelp = (event) => {
     const which = event.currentTarget.dataset.el;
     event.preventDefault();
@@ -1332,18 +1841,25 @@ export function mount(root, ctx = {}) {
       helpPosition:
         'Positioning comes from the first BESTPOS (#42) record of the capture: Position / Latitude / ' +
         'Longitude / Height (MSL) / Datum are its own fields, Height Accuracy is height_std_dev and ' +
-        '2d-SD is sqrt(latitude_std_dev² + longitude_std_dev²).',
+        '2d-SD is sqrt(latitude_std_dev² + longitude_std_dev²). The Position box is the type currently ' +
+        'in use; the configured types the manual lists come from config logs (SBASCONTROL / INTERFACEMODE / ' +
+        'NTRIPCONFIG …), none of which is in these captures. The bar is red for INSUFFICIENT_OBS / ' +
+        'NO_CONVERGENCE / INVALID_FIX / INTEGRITY_WARNING, amber when the highest configured accuracy ' +
+        'mode is not the active one, green otherwise.',
       helpDevice:
         'Device rows come from HWMONITOR (#963) measurements, keyed by (status >> 8) & 0xff: ' +
         '1 Temperature · 2 Antenna Current · 7 Antenna Voltage. Each badge repeats the receiver’s own ' +
-        'boundary limit (status & 0xff). CPU Usage is idleTime (100 − raw/2) in GRIT, and the binary ' +
-        'HWMONITOR of this capture does not carry that field, so it reads --.',
+        'boundary limit (status & 0xff): 1/3 warning, 2/4 error. CPU Usage is idleTime (100 − raw/2) in ' +
+        'GRIT, and the binary HWMONITOR of this capture does not carry that field, so it reads --. ' +
+        'The bar is amber while part of the picture (Model · CPU · Logging · Storage · Interference · SPAN) ' +
+        'is not in the capture, and red as soon as a channel is over an error limit.',
       helpSatellite:
-        'This capture has no SATVIS2 (#1043), so the original screen shows 0 everywhere. We count the ' +
-        'RANGE (#43) observations of the epoch at the play head instead: In Use = distinct sv_prn per ' +
-        'constellation (system = (c_status >> 16) & 7), Not Used = PRNs already seen earlier in the ' +
-        'capture but missing now, Missing stays 0 because only SATVIS2 can say what should be visible. ' +
-        'RANGE has no azimuth/elevation, so the sky plot is an empty grid.',
+        'The original tile counts SATVIS2 (#1043) — the visible-satellite list with azimuth/elevation. ' +
+        'This page counts the RANGE (#43) observations of the epoch at the play head instead: In Use = ' +
+        'distinct sv_prn per constellation (system = (c_status >> 16) & 7), Not Used = PRNs already seen ' +
+        'earlier in the capture but missing now. Missing is left at 0 because deriving it needs a rule for ' +
+        '“should be visible” that SATVIS2 alone does not state. RANGE has no azimuth/elevation, so the sky ' +
+        'plot stays an empty grid even when the capture carries SATVIS2.',
     };
     alert(notes[which] ?? '', 'info');
   };
@@ -1363,16 +1879,24 @@ export function mount(root, ctx = {}) {
   el.dialogClose.addEventListener('click', onDialogClose);
   el.dialog.addEventListener('click', onDialogBackdrop);
   el.openList.addEventListener('click', onDialogClick);
+  el.recent.addEventListener('click', onRecentClick);
+  el.recent.addEventListener('keydown', onRecentKey);
+  el.posBadge.addEventListener('click', onBandBadge);
+  el.devBadge.addEventListener('click', onBandBadge);
   el.helpPosition.addEventListener('click', onHelp);
   el.helpDevice.addEventListener('click', onHelp);
   el.helpSatellite.addEventListener('click', onHelp);
   document.addEventListener('keydown', onDialogKey);
-  if (fileTabs) fileTabs.addEventListener('click', onFileTabClick);
+  if (fileTabs) {
+    fileTabs.addEventListener('click', onFileTabClick);
+    fileTabs.addEventListener('keydown', onFileTabKey);
+  }
 
   let offCapture = null;
   if (typeof ctx.onCaptureChange === 'function') {
     const unsubscribe = ctx.onCaptureChange((name) => {
-      if (!name || name === state.capture) return;
+      if (!name) return;
+      if (state.files.some((file) => file.path === name)) return;
       load(name);
     });
     if (typeof unsubscribe === 'function') offCapture = unsubscribe;
@@ -1397,38 +1921,53 @@ export function mount(root, ctx = {}) {
     el.dialogClose.removeEventListener('click', onDialogClose);
     el.dialog.removeEventListener('click', onDialogBackdrop);
     el.openList.removeEventListener('click', onDialogClick);
+    el.recent.removeEventListener('click', onRecentClick);
+    el.recent.removeEventListener('keydown', onRecentKey);
+    el.posBadge.removeEventListener('click', onBandBadge);
+    el.devBadge.removeEventListener('click', onBandBadge);
     el.helpPosition.removeEventListener('click', onHelp);
     el.helpDevice.removeEventListener('click', onHelp);
     el.helpSatellite.removeEventListener('click', onHelp);
     document.removeEventListener('keydown', onDialogKey);
     if (fileTabs) {
       fileTabs.removeEventListener('click', onFileTabClick);
+      fileTabs.removeEventListener('keydown', onFileTabKey);
       fileTabs.remove();
     }
     if (offCapture) offCapture();
   };
 
+  state.recent = readRecent();
   setPlayButton();
   renderShell();
-  renderPosition();
-  renderDevice();
-  renderSatellite();
+  renderPosition(null);
+  renderDevice(null);
+  renderSatellite(null);
 
-  /* Boot: read the capture list, then open whatever the shell has selected (or the sample). */
+  /* Boot: read the capture list, then either show Recent Activity (§3.1) or open the capture the
+   * shell has selected when there is nothing recent to show. */
   api
     .get('/api/captures')
     .then(async (data) => {
       if (!state.alive) return;
       state.captures = data.captures ?? [];
       fillCaptures();
+      const known = new Set(state.captures.map((item) => item.path));
+      const kept = state.recent.filter((item) => known.has(item.path));
+      if (kept.length !== state.recent.length) writeRecent(kept);
+      else renderRecent();
+
       const preferred =
-        state.captures.find((item) => item.path === state.capture) ||
+        state.captures.find((item) => item.path === state.preferPath) ||
         state.captures.find((item) => item.path === 'convert/clean-9600.gps') ||
         state.captures.find((item) => item.name === 'clean-9600.gps') ||
         state.captures[0];
-      if (preferred) await load(preferred.path);
-      else {
-        state.open = false;
+      if (state.recent.length) {
+        // Landing screen: the manual's §3.1 opening state.
+        renderShell();
+      } else if (preferred) {
+        await load(preferred.path);
+      } else {
         renderShell();
         el.dialogNote.textContent = 'No capture under samples/.';
       }
