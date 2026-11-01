@@ -272,6 +272,11 @@ export class SbfDeframer {
  *  - `$GPGGA,…*47` + `<BESTPOS …\r\n` → nothing for either (a `<` is not a boundary either).
  */
 function textBoundary(buf: Uint8Array, from: number, limit: number): number {
+  // Except when the text *is* a complete record that merely quotes another one: an RXCONFIG dump
+  // arrives as `#RXCONFIGA,<head>;#LOGA,<head>;<body>*<inner crc>*<outer crc>`, and the suite keeps
+  // that whole line (247 of them in `b7-20261101.sbf`, each printed as one `#RXCONFIGA,��` line).
+  // A line whose own CRC checks out cannot be the truncated fragment the rule below is about.
+  if (completeHashLine(buf, from, limit)) return -1;
   for (let j = from + 1; j < limit; j++) {
     if (buf[j] === 0x23 /* # */) return j;
     if (buf[j] === SYNC_1 && j + 2 < buf.length) {
@@ -280,6 +285,29 @@ function textBoundary(buf: Uint8Array, from: number, limit: number): number {
     }
   }
   return -1;
+}
+
+/**
+ * `#NAME,<nine header tokens>;��*<8 hex>` whose CRC is right? `limit` is the line's terminator, so
+ * the check is exactly the gate `passThroughAscii` applies later.
+ */
+function completeHashLine(buf: Uint8Array, from: number, limit: number): boolean {
+  if (buf[from] !== 0x23 /* # */) return false;
+  let end = limit;
+  while (end > from && (buf[end - 1] === 0x0d || buf[end - 1] === 0x0a)) end -= 1;
+  if (end - from < 12 || buf[end - 9] !== 0x2a /* * */) return false;
+  let crc = 0;
+  for (let i = end - 8; i < end; i += 1) {
+    const c = buf[i];
+    const digit =
+      c >= 0x30 && c <= 0x39 ? c - 0x30
+        : c >= 0x61 && c <= 0x66 ? c - 0x57
+          : c >= 0x41 && c <= 0x46 ? c - 0x37
+            : -1;
+    if (digit < 0) return false;
+    crc = crc * 16 + digit;
+  }
+  return novatelCrc32(buf.subarray(from + 1, end - 9)) === crc;
 }
 
 function earliestCandidate(buf: Uint8Array, from: number): number {  let best = -1;

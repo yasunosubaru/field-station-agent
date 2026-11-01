@@ -1314,3 +1314,178 @@ Display 开关与舞台自报逐项对齐（`window.__gritPos.status().chrome` �
   `config-host` / `summary-counts`（"18 !== 15"，配置页数量）—— 这些文件正被别的会话同时改动，
   与本次改的三块无交集；本文件的 14 项与 `grit-position` / `grit-capture-spectrum` 全绿。
 
+---
+
+## 13. 干扰（ITK）与多频实测：2026-11-01 真机 b7 抓包
+
+样本 `00_来源/samples/live-20261031/b7-20261101.sbf`（943 486 B，接收机时间 69 s，
+OEM729-2.03 / `OM7MR1002RN0000`，COM10 = 接收机 **USB2**）。同一份抓包的套件产物三份：
+`golden-b7-20261101.ASCII`（1 100 989 B）、`golden-b7-20261101.ABBREV_ASCII`（1 166 848 B）、
+`golden-b7-20261101.Summary.txt`。脚本在 `逆向/tools/remote/`：`b7-capture.ps1`（抓包）、
+`b7-probe2.ps1`（逐条探针）、`b7-flood.ps1`（端口洪流定位）、`b7-restore.ps1`（还原并读回）。
+回归用例 `packages/protocol/test/live-b7.test.ts`（15 项）。
+
+### 13.1 先要弄清"端口上为什么一直有 65 KB/s 的二进制"
+
+第一次探针时每条命令只回一小段文本、后面跟着约 100 KB 的 `RANGE`（id 43，20 Hz）。查
+`LOGLISTA` 才发现它们不属于我们：
+
+```
+USB2_29,RANGEB,ONTIME,0.050000,HOLD     ← 套件的多端口实例 29
+USB2_29,BESTPOSB,ONTIME,1.000000,HOLD
+USB2_30,ITDETECTSTATUSB,ONTIME,1.000000,HOLD
+```
+
+`UNLOGALL` 只清**本实例**名下的日志，动不了 `USB2_29` / `USB2_30` 这两个所有者。实测（每步 2 s）：
+
+| 命令 | 之后 2 s 收到的字节 |
+|---|---|
+| （不动） | 175 054 |
+| `UNLOGALL` | 143 677 |
+| `UNLOGALL USB2` | 140 561 |
+| `UNLOG USB2 RANGEB` | 143 557（无效：不是所有者）|
+| `UNLOG USB2_29 RANGEB` | **1 797** |
+| `UNLOGALL USB2_29` | **341** |
+| `UNLOGALL USB2_30` | 341 |
+
+结论：**在这台机器上收尾必须是 `UNLOGALL` + `UNLOGALL USB2_29` + `UNLOGALL USB2_30`**，
+只发前两条等于没清（之前几批抓包里夹带的 `RANGE` 洪流就是这么来的）。`b7-capture.ps1` 在开始
+和结束各做一遍。
+
+### 13.2 命令 → 接收机原话 → 产物
+
+裸查询（不带参数）几乎全被拒，`IT*` 命令要带齐参数才执行：
+
+| 发出去 | 接收机回的原话 | 产物 |
+|---|---|---|
+| `ITSPECTRALANALYSIS` | `<ERROR:Message missing field` | — |
+| `ITDETECTCONFIG` | `<ERROR:Message missing field` | — |
+| `ITWARNINGCONFIG` | `<ERROR:Message missing field` | — |
+| `CHANCONFIGLIST` | `<ERROR:Message missing field` | —（它是**日志**，不是命令）|
+| `VERSION` | `<ERROR:Message missing field` | — |
+| `ITFRONTENDMODE` / `ITBANDPASSBANK` / `ITPROGFILTBANK` | `<ERROR:Message is invalid for this model` | — |
+| `SPOOFDETECT` | `<ERROR:Invalid Message ID` | 该机型无此命令 |
+| `LOG ITFILTTABLEB ONCE` | `<ERROR:Message is invalid for this model` | 0 条 |
+| `LOG ITDETECTSTATUSA ONTIME 1` | `<OK` | **47** 条 `#ITDETECTSTATUSA`（38 条带检测）|
+| `LOG ITPSDFINALA ONTIME 1` | `<OK` | **47** 条，1024 点/条 |
+| `LOG ITPSDDETECTA ONTIME 1` | `<OK` | **90** 条（1024 点 ×45、341 点 ×45）|
+| `LOG ITDETECTSTATUSB ONCE` | `<OK` + **ASCII** `#ITDETECTSTATUSA,SPECIAL,…` | 1 条（见 §13.3）|
+| `LOG ITDETECTCONFIGB ONCE` | `<OK` + `#ITDETECTCONFIGA,SPECIAL,…;ALL,0,0,0` | 1 条 |
+| `LOG ITSPECTRALANALYSISB ONCE` | `<OK` + `#ITSPECTRALANALYSISA,SPECIAL,…;PREDECIMATION,GPSL1,200,2K,1,1` | 1 条 |
+| `LOG ITPSDDETECTB ONCE` | `<OK` + 两条 `#ITPSDDETECTA,SPECIAL`（1202.537 MHz / 1024 点，1277.537 MHz / 341 点）| 2 条 |
+| `LOG CHANCONFIGLISTB ONCE` | `<OK` + `#CHANCONFIGLISTA,SPECIAL,…` | 1 条 |
+| `LOG RXCONFIGA ONCE` | `<OK` | 269 条 `#RXCONFIGA`（每行内嵌一条配置记录）|
+| `ITWARNINGCONFIG 1` | `<OK` | 写入生效，随后 `RXCONFIGA` 读回 `;1,0` |
+| `ITDETECTCONFIG ALL` | `<OK` | 生效（该机本来就是 `ALL`，等于没变）|
+| `ITSPECTRALANALYSIS PREDECIMATION GPSL2 1000 1K 1 1` | `<OK` | 生效（抓包末尾，收尾已改回 GPSL1）|
+
+### 13.3 `LOG <名>B` 在这些日志上会回落成 ASCII
+
+`ITDETECTSTATUS` / `ITDETECTCONFIG` / `ITSPECTRALANALYSIS` / `ITPSDDETECT` / `CHANCONFIGLIST`
+在本固件上**没有二进制形态**：请求 `…B` 时接收机回 `<OK`，然后送出的是 `#…A` 文本记录
+（端口列写 `SPECIAL`）。产物文件名仍是 `.sbf`，内容里这几种记录是文本。ASCII 侧因此必须能把
+它们当文本记录解析——`text-log.ts` 已经在做，`b7` 抓包是第一个同时含这五种的真实样本。
+
+### 13.4 ITK 字段与套件逐行比：0 行不同
+
+八类 ITK / 配置记录在 69 s 抓包里的条数，与套件 golden **逐字节相同**
+（`packages/protocol/test/live-b7.test.ts` 第 1 项，`assert.deepEqual` 整行数组）：
+
+| 记录 | 条数 | 说明 |
+|---|---:|---|
+| `#ITDETECTSTATUSA` | 47 | 38 条带检测，全部在 **L2** |
+| `#ITPSDFINALA` | 47 | 1024 点 ×43、512 点 ×4 |
+| `#ITPSDDETECTA` | 90 | 1024 点 ×45、341 点 ×45 |
+| `#ITSPECTRALANALYSISA` | 1 | `PREDECIMATION,GPSL1,200,2K,1,1` |
+| `#ITDETECTCONFIGA` | 1 | `ALL,0,0,0` |
+| `#ITWARNINGCONFIGA` | 1 | `3,0`（抓包时刻的原值）|
+| `#CHANCONFIGLISTA` | 1 | 5 组通道配置，含 `GPSL1L2PL5`、`BEIDOUB1B2B2B`、`LBAND` |
+
+一条**统计法**检测（L2）与一条**频谱法**检测的原样：
+
+```
+#ITDETECTSTATUSA,USB2,0,77.0,COARSESTEERING,2443,35956.000,03808800,7fdb,18278;
+  1,L2,STATISTICANALYSIS,6.826,0.448,1.040,0.333,00000000,00000000,00000004*2e83f762
+#ITDETECTSTATUSA,USB2,0,78.0,COARSESTEERING,2443,35766.000,03809800,7fdb,18278;
+  1,L2,SPECTRUMANALYSIS,1270.176,2.051,-38.877,-95.668,00000400,00000000,00000003*d275363b
+```
+
+字段与手册 `ITDETECTSTATUS` 一致：`numDetected`、频段枚举（`L1/L2/LBAND/L5`）、检测方法枚举
+（`SPECTRUMANALYSIS/STATISTICANALYSIS`）、4 个参数（统计法是相对带宽/门限一类；频谱法是中心频率
+MHz / 带宽 MHz / 峰值 / 噪底 dB）、两个掩码字（`severity1/severity2`）。
+
+**覆盖度限制（如实记）**：本机只报 L2（38/47），L1 一条都没有；方法分布
+`STATISTICANALYSIS` 25 次、`SPECTRUMANALYSIS` 13 次。室内的真实干扰源就在 1270 MHz 附近，
+与 §11 里 GRIT 面板显示 "Interference is being detected at 1270Mhz" 一致。
+
+### 13.5 Signal Matrix 为什么只有 L1：`sv_freq` 不表示频段
+
+47 条 `#RANGEA`、每条 70 个观测（共 3 290 条），`sv_freq` 分布只有两个值：
+
+| `sv_freq` | 观测数 | 是什么 |
+|---|---:|---|
+| 0 | 3 243 | 除 GLONASS / QZSS L1C/B 外的**所有**信号 |
+| 203 | 47 | QZSS **L1C/B 的 PRN**（PRN 196，signal type 24）|
+
+手册（OEM7 Commands and Logs v6A，RANGE 日志字段 4）原文：
+
+> `glofreq` — (GLONASS Frequency + 7) … **For all signals except for GLONASS signals and
+> QZSS L1C/B, this field will be zero.**
+
+也就是说 `sv_freq`（= `glofreq`）**从来就不是"频段号"**。而多频其实是有的：一条 RANGE 里只有
+19 个不同 PRN 却有 70 个观测，同一 PRN 的多个观测靠 `ch_tr_status` 的 **bit 21–25（signal type）**
+区分。实测 GPS PRN 8 的 6 个观测：
+
+```
+系统 GPS  signal  0 = L1C/A   C/No 53.8
+系统 GPS  signal 17 = L2C (M) C/No 51.1
+系统 GPS  signal 14 = L5 (Q)  C/No 52.2
+系统 BDS  signal  0 = B1(I) D1 C/No 52.3
+系统 BDS  signal  9 = B2a (P) C/No 50.6
+系统 BDS  signal 11 = B2b (I) C/No 51.4
+```
+
+另有一条 `系统 Other / signal 19 = L-band / glofreq 0`，即 L 波段通道。
+
+所以"Signal Matrix 只画 L1/B1"**不是缺数据**，而是取错了字段：`packages/app/src/web/panels/grit.js`
+按 `sv_freq` 映射 `FREQ_BAND = {0:'L1',5:'L2',9:'L5',205:'LBAND'}`，这套映射在本固件上永远
+命中 `0 → L1`。要出现 L2/L5 列，需要改成读 `c_status` 的 bit 21–25（signal type），按手册的表
+映射（GPS：0=L1C/A、5=L2P、9=L2P(Y)、14=L5(Q)、16=L1C(P)、17=L2C(M)；BDS：0/1/2=B1/B2/B3(D1)、
+4/5/6=同左(D2)、7=B1C、9=B2a、11=B2b；Other 19=L-band）。**这一改动属于 `packages/view`/`app`，
+不在本轮允许改动的范围**，这里只把证据和映射记下来。
+
+### 13.6 与套件的整文件对比
+
+| 格式 | 套件 | 我们 | 差异 |
+|---|---:|---:|---|
+| ASCII | 609 行 / 1 100 989 B | 631 行 / 1 104 413 B | 除 `#RXCONFIGA` 外**全部逐行相同**；`#RXCONFIGA` 套件 247 条、我们 269 条（226 条逐字节相同）|
+| ABBREV_ASCII | 6 719 行 / 1 166 848 B | 6 780 行 / 1 172 518 B | 同上，差异全在 `#RXCONFIGA` 的嵌入块 |
+
+`#RXCONFIGA` 是 `LOG RXCONFIGA ONCE` 的配置转储：每行内嵌一条完整记录
+（`#RXCONFIGA,<头>;#LOGA,<头>;<正文>*内层CRC*外层CRC`）。两处实测差异：
+
+1. **套件会把内嵌记录按字典重渲染**：`INTERFACEMODE` 的端口名 `LCOM1` 在套件输出里变成
+   `UNKNOWN`（枚举里没有 `LCOM1`），所以那 43 行我们与它不同；另有 22 行套件整行丢弃。
+2. **ABBREV 里内嵌块的内层 CRC**：套件把嵌入报文印成 `<     <名> <9 个头字段>` + 一行正文，
+   正文末尾不带内层 CRC；我们把 `*<内层CRC>` 留在最后一个值后面。
+
+顺带修好的一处（`text-log.ts`）：ABBREV 里**可変长标量数组**（`ITPSDFINAL`/`ITPSDDETECT` 的
+1024 个采样）原来一个采样一行，`b7` 的 ABBREV 因此是 113 478 行 / 2 522 481 B；改完是
+5 973 行 / 1 124 916 B（此时 `#RXCONFIGA` 还没回收）。把 §13.6 的 `#RXCONFIGA` 也补进来之后，
+最终是 6 780 行 / 1 172 518 B，剩下的差异只有上面那两类。14 份既有 golden 仍逐字节相同。
+
+### 13.7 收尾（实测回读）
+
+改过的两处配置全部按 b1 抓包里 `RXCONFIGA` 记下的原值改回，并在同一会话里读回：
+
+```
+ITWARNINGCONFIG 3                                   → <OK
+ITSPECTRALANALYSIS PREDECIMATION GPSL1 200 2K 1 1   → <OK
+#RXCONFIGA,…;#ITWARNINGCONFIGA,…;3,0*…
+#RXCONFIGA,…;#ITSPECTRALANALYSISA,…;PREDECIMATION,GPSL1,200,2K,1,1*…
+```
+
+`ITDETECTCONFIG` 抓包前后都是 `ALL,0,0,0`（没变）。收尾日志
+`UNLOGALL` → `UNLOGALL USB2_29` → `UNLOGALL USB2_30` → `UNLOGALL USB2`，随后
+`port-state.ps1`：`COM8 FREE / COM9 FREE / COM10 FREE`。
+

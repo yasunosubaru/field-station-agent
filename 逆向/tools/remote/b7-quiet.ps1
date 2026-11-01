@@ -1,0 +1,36 @@
+# ASCII only. Clear the residual profile on USB2 and see whether it stays cleared.
+param([string]$Port = 'COM10', [int]$Baud = 115200,
+      [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b7-quiet.bin')
+$ErrorActionPreference = 'Stop'
+$sp = New-Object System.IO.Ports.SerialPort -ArgumentList $Port, $Baud, 'None', 8, 'One'
+$sp.ReadTimeout = 100
+$sp.WriteTimeout = 1000
+$sp.Open()
+Start-Sleep -Milliseconds 300
+$bytes = New-Object System.Collections.Generic.List[byte]
+$chunk = New-Object byte[] 65536
+function Drain-For([int]$milliseconds) {
+  $deadline = (Get-Date).AddMilliseconds($milliseconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $have = $sp.BytesToRead
+      if ($have -gt 0) {
+        $n = $sp.Read($chunk, 0, [Math]::Min($chunk.Length, $have))
+        for ($i = 0; $i -lt $n; $i++) { $bytes.Add($chunk[$i]) }
+      } else { Start-Sleep -Milliseconds 10 }
+    } catch { Start-Sleep -Milliseconds 10 }
+  }
+}
+$sp.Write("UNLOGALL`r`n"); Drain-For 400
+$sp.Write("UNLOGALL USB2_29`r`n"); Drain-For 400
+$sp.Write("UNLOGALL USB2`r`n"); Drain-For 400
+
+$mark = $bytes.Count
+Drain-For 5000
+Write-Output ('after clear, first 5 s: ' + ($bytes.Count - $mark) + ' bytes')
+$mark2 = $bytes.Count
+Drain-For 5000
+Write-Output ('next 5 s: ' + ($bytes.Count - $mark2) + ' bytes')
+
+$sp.Close(); $sp.Dispose()
+[System.IO.File]::WriteAllBytes($Out, $bytes.ToArray())

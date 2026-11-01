@@ -347,6 +347,8 @@ interface HashRecord {
   head: string[];
   /** The body tokens, as the record carried them. */
   body: string[];
+  /** The body exactly as it arrived, between the first `;` and the last `*`. */
+  rawBody: string;
 }
 
 function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecord | undefined {
@@ -364,7 +366,19 @@ function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecor
     layout: byName.get(name),
     head: renderHead(tokens.slice(0, 9)),
     body: line.slice(semicolon + 1, star).split(','),
+    rawBody: line.slice(semicolon + 1, star),
   };
+}
+
+/**
+ * A record whose whole body is one raw blob (`RXCONFIG` / `RXCONFIGUSER`: a single `%R` span). The
+ * suite copies that blob out unchanged �� it is an embedded ASCII message, commas, semicolons and its
+ * own CRC included �� so it is never rendered token by token.
+ */
+function rawBodyLayout(layout: EdieLayout | undefined): boolean {
+  if (!layout || layout.fields.length !== 1) return false;
+  const only = layout.fields[0];
+  return only.kind === 'array' && String(only.format ?? '') === '%R';
 }
 
 /**
@@ -383,7 +397,11 @@ function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecor
  */
 export function encodeHashLog(record: HashRecord, tables: EdieTables): string | undefined {
   const body: string[] = [];
-  if (record.layout && !renderBody(record.layout.fields, record.body, tables, body)) return undefined;
+  // An embedded ASCII message (`RXCONFIG`'s payload) goes out verbatim, `#` and inner CRC included:
+  // the suite's line is `#RXCONFIGA,<head>;#LOGA,<head>;<body>*<inner crc>*<outer crc>`.
+  const raw = rawBodyLayout(record.layout);
+  if (raw) body.push(...record.body);
+  else if (record.layout && !renderBody(record.layout.fields, record.body, tables, body)) return undefined;
   if (!record.layout) body.push(...record.body);
   const sentence = `${record.rawName},${record.head.join(',')};${body.join(',')}`;
   const crc = novatelCrc32(latin1Bytes(sentence)).toString(16).padStart(8, '0');
@@ -441,6 +459,11 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
       const line = passThroughAscii(frame.text, names);
       if (line === undefined) return;
       const record = parseHashLine(line, byName);
+      if (record?.layout && rawBodyLayout(record.layout)) {
+        const block = embeddedAbbrevBlock(record, byName);
+        if (block) lines.set(index, block);
+        return;
+      }
       if (record?.layout) {
         const blocks = abbrevFromTokens(
           { index, name: record.name, tokens: [...record.head, ...record.body] },
@@ -457,6 +480,34 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
       if (line !== undefined) lines.set(index, [line]);
     }
   });
+  return lines;
+}
+
+/**
+ * The ABBREV block for a record whose body is an embedded ASCII message (`RXCONFIG`'s payload).
+ *
+ * Measured on `b7-20261101.sbf` (247 blocks, all identical in shape):
+ *
+ *   `<RXCONFIG USB2 10 76.5 COARSESTEERING 2442 553862.246 03809800 f702 18278`
+ *   `<     LOG USB2 10 76.5 COARSESTEERING 2442 553862.246 03809800 92b2 18278 `
+ *   `<     USB1_30 ITPSDDETECTB ONNEW 0.000000 0.000000 HOLD`
+ *
+ * �� the outer header, then the embedded message's own header as the data line (its version letter
+ * dropped, like every other ABBREV name), then its body values on a line at the same indent.
+ */
+function embeddedAbbrevBlock(record: HashRecord, byName: Map<string, EdieLayout>): string[] | undefined {
+  const payload = record.rawBody.replace(/^#/, '');
+  const semicolon = payload.indexOf(';');
+  if (semicolon < 0) return undefined;
+  const headTokens = payload.slice(0, semicolon).split(',');
+  const rawName = headTokens.shift() ?? '';
+  const base = rawName.slice(0, -1);
+  const innerName = /[A-Z]$/.test(rawName) && byName.has(base) ? base : rawName;
+  const values = payload.slice(semicolon + 1).split(',');
+  const lines = [`<${record.name} ${record.head.join(' ')}`];
+  const data = `<     ${innerName} ${headTokens.join(' ')}`;
+  if (values.length) lines.push(`${data} `, `<     ${values.join(' ')}`);
+  else lines.push(data);
   return lines;
 }
 
@@ -528,6 +579,22 @@ function walkAbbrev(
           const token = tokens[at++] ?? '';
           first.push(format === '%Z' ? token.toLowerCase().slice(0, Math.max(0, count) * 2) : token);
         } else complete = false;
+        continue;
+      }
+      // Only a `FIELD_ARRAY` breaks after its count. A counted array of **scalars** stays on the
+      // data line, exactly like the binary writer's `variable`/`fixed` kinds: measured on
+      // `b7-20261101.sbf`, whose `#ITPSDFINALA` carries 1024 `samples` and whose suite ABBREV block
+      // is one `<ITPSDFINAL ��` line plus one data line holding all 1024 values
+      // (`golden-b7-20261101.ABBREV_ASCII`). One element line per sample would be 1024 lines.
+      const arrayKind = array.arrayKind ?? 'field';
+      if (arrayKind !== 'field') {
+        for (let i = 0; i < count; i++) {
+          if (at >= tokens.length) {
+            complete = false;
+            break;
+          }
+          at = walkElement(array.elements, tokens, at, tables, first);
+        }
         continue;
       }
       // `max(1, count)`: a zero-element array still prints one (empty) element line.

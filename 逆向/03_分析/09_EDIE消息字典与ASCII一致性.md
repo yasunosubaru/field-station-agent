@@ -1556,3 +1556,89 @@ b5 的 summary 里同样有一行，值是 **350**。而 b6 的输入文件里**
   `ETHSTATUS` / `SAVEDSURVEYPOSITIONS`——套件对这种帧的输出我们已经知道（§9.x.14），
   但那就不是真机样本了，而本节所有的数字都要求真机。
 
+
+## 9.x.16 B7：ITK / 事件 / 多频一包（2026-11-01），两处编码规则被真机改掉
+
+样本 `b7-20261101.sbf`（943 486 B，69 s，178 条二进制记录 + 文本帧）。这是第一个**同一份抓包里
+同时出现** `ITDETECTSTATUS`、`ITPSDFINAL`、`ITPSDDETECT`、`ITSPECTRALANALYSIS`、
+`ITDETECTCONFIG`、`ITWARNINGCONFIG`、`CHANCONFIGLIST` 与 `RXCONFIGA` 的真实样本，四条新规则
+都是它逼出来的（任务背景与场外结论见 `05_GRIT-Monitor.md` §13、`01_Manage主界面与视图层.md` §13）。
+
+### ① 五种 ITK 日志的 `…B` 会回落成 ASCII
+
+`LOG ITDETECTSTATUSB ONCE` 回 `<OK`，端口上来的却是 **`#ITDETECTSTATUSA,SPECIAL,…`**——不是
+二进制。同样回落的有 `ITDETECTCONFIGB`、`ITSPECTRALANALYSISB`、`ITPSDDETECTB`、
+`CHANCONFIGLISTB`，全部在 `b7` 里逐条试过：
+
+| 请求 | 回来的记录 | 端口列 |
+|---|---|---|
+| `LOG ITDETECTSTATUSB ONCE` | `#ITDETECTSTATUSA,SPECIAL,0,77.5,…;1,L2,STATISTICANALYSIS,…` | `SPECIAL` |
+| `LOG ITDETECTCONFIGB ONCE` | `#ITDETECTCONFIGA,SPECIAL,…;ALL,0,0,0` | `SPECIAL` |
+| `LOG ITSPECTRALANALYSISB ONCE` | `#ITSPECTRALANALYSISA,SPECIAL,…;PREDECIMATION,GPSL1,200,2K,1,1` | `SPECIAL` |
+| `LOG ITPSDDETECTB ONCE` | 两条 `#ITPSDDETECTA,SPECIAL`（1202.537 MHz、1277.537 MHz）| `SPECIAL` |
+| `LOG CHANCONFIGLISTB ONCE` | `#CHANCONFIGLISTA,SPECIAL,…` | `SPECIAL` |
+| `LOG ITFILTTABLEB ONCE` | `<ERROR:Message is invalid for this model` | — |
+
+所以「`LOG <名>B` 一定出二进制」（§9.x.15 那条教训）要补半句：**这五种日志没有二进制形态，
+`B` 请求回落成文本**。抓包按 `.sbf` 存，里面是文本行，`text-log.ts` 必须认——它认。
+
+### ② 一条完整且 CRC 正确的 `#` 行不能被内层的 `#` 切断
+
+`LOG RXCONFIGA ONCE` 的每一行都是**一条记录里套一条记录**：
+
+```
+#RXCONFIGA,USB2,268,76.5,SATTIME,0,0.000,03808800,f702,18278;
+  #ELEVATIONCUTOFFA,USB2,268,76.5,SATTIME,0,0.000,03808800,50e0,18278;GLONASS,5.0,0
+  *866b1c79 *2a0b9060
+```
+
+`framing.ts` 原来有条实测规则：文本记录不得吞掉里面开始的记录，`textBoundary()` 见到内层 `#`
+就在那里断开。这条对**被截断的残行**是对的（合成帧验过），但对上面这种**自己 CRC 就成立**的完整
+行是错的——套件把它整行收下（`b7` 里 247 条）。修法很小：`textBoundary()` 先用 `completeHashLine()`
+算这条行（到行尾 CR/LF 为止）的 CRC，成立就不切。回归：`live-b7.test.ts` 两条（一条正例
+`…*866b1c79*2a0b9060` 整行保留，一条负例 CRC 全 0 仍在内层 `#` 处切断）。
+
+### ③ ABBREV 里「可変长标量数组」与「字段数组」不是一回事
+
+`ITPSDFINAL` / `ITPSDDETECT` 的 `samples` 是 `VARIABLE_LENGTH_ARRAY`（`countSize 4` +
+**一个标量元素**），套件的 ABBREV 把它**全印在数据行上**：
+
+```
+<ITPSDFINAL USB2 0 77.0 COARSESTEERING 2443 35956.000 03808800 b79a 18278
+<     04020920 1531.299 97656.250 1024 24301 23560 23484 …（1024 个值同一行）
+```
+
+而 `FIELD_ARRAY`（`RANGE` 的观测块、`CHANCONFIGLIST` 的通道组）才是**一个元素一行、缩进 9**。
+`text-log.ts` 的 `walkAbbrev()` 原来对所有 `countSize` 数组都按元素分行，于是 137 条频谱记录
+变成 113 478 行（2 522 481 B）；按 `arrayKind` 分开之后只算这一步是 5 973 行（1 124 916 B）
+——加上 ④ 的 `#RXCONFIGA` 之后是 6 780 行（1 172 518 B）。
+二进制那一路（`abbrev-log.ts`）本来就是这个规则，这次只是把文本那一路对齐。
+
+### ④ `RXCONFIGA` 的内嵌报文：套件会重渲染，我们照抄
+
+`b7` 的 ASCII 差 43 行、ABBREV 差 247 块，全部集中在这 247 条 `RXCONFIGA` 上：
+
+| 现象 | 套件 | 我们 | 原因 |
+|---|---|---|---|
+| 条数 | 247 | 269 | 套件对 22 条**整行丢弃**（下面那条重渲染不成立时它就不打印）|
+| 逐字节相同 | — | 226 | — |
+| `INTERFACEMODE` 的端口名 | `UNKNOWN` | `LCOM1` | 套件把内嵌报文按字典重渲染，`LCOM1` 不在端口枚举里 → `UNKNOWN` |
+| ABBREV 内嵌块末值 | `… HOLD` | `… HOLD*8b4f9350` | 套件重渲染后内层 CRC 不再出现；我们把收到的内层 CRC 留在最后一个值后面 |
+
+三层 CRC 也对不上：内层记录收到的是 `*81750840`，套件打印的是 `*5633f5d1`，既不是原文 CRC
+（`7e8af7bf`）也不是按重渲染正文算的 CRC（`a9cc0a2e`）。**重渲染后再算 CRC 用的是哪一段字节，
+本轮没解出来**，所以这里停在「照抄原文」：226/269 条逐字节相同，剩下的是已知差异，写在
+`05_GRIT-Monitor.md` §13.6，不猜。
+
+### 回归与数字（2026-11-01 19:4x）
+
+```
+b7-20261101.sbf                   943 486 B
+golden-b7-20261101.ASCII        1 100 989 B   609 行   我们 631 行 / 1 104 413 B
+golden-b7-20261101.ABBREV_ASCII 1 166 848 B  6 719 行   我们 6 780 行 / 1 172 518 B
+```
+
+除 `#RXCONFIGA` 那 43 行 / 247 块以外，**全部逐行相同**（`cmp-lines.cjs`：ours 不在 oracle 里的
+行 43 条，全部是 `#RXCONFIGA`）。14 份既有 golden 在改动后仍逐字节相同（`golden-check.ts` 全 `OK`）。
+`packages/protocol/test/live-b7.test.ts` 新增 15 项。
+
