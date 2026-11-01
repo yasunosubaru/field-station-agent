@@ -20,6 +20,38 @@
 
 const CSS_URL = new URL('./convert.css', import.meta.url).href;
 const CSS_ID = 'nas-panel-convert-css';
+const LIVE_CSS_ID = 'nas-panel-convert-live-css';
+
+/**
+ * The shipped stylesheet greys out the blocks whose controls were `disabled` (`.unconverted-bytes-layout`
+ * and `.prefix-suffix-options` carry `opacity: .5`, and the Prefix/Suffix tick uses the *disabled*
+ * glyph, `view/css/style.css` S:22064). They are live here, so the panel lifts exactly those rules —
+ * kept in the panel rather than in `convert.css` so the transcribed stylesheet stays a transcription.
+ * The Prefix/Suffix pair still greys out while the text box is empty, which is what the suite does
+ * (`convert.js:1552-1559`).
+ */
+const LIVE_CSS = `
+.convertLayout .unconverted-bytes-layout { opacity: 1; }
+.convertLayout .prefix-suffix-options { opacity: 1; }
+.convertLayout .prefix-suffix-options.is-disabled { opacity: 0.5; }
+.convertLayout .prefix-suffix-options .radio-input-container.is-selected .checkmark {
+  background-image: url("/assets/images/btn_radio_selected.svg");
+}
+.convertLayout .format-settings-error {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  font-family: var(--cv-sans);
+  line-height: 16px;
+  color: #b00020;
+}
+.convertLayout .destination-folder-path[readonly] { cursor: pointer; }
+.convertLayout .common-sample-freq.error-border {
+  border-bottom-color: #b00020;
+  box-shadow: inset 0 -1px 0 #b00020;
+  outline: none;
+}
+`;
 
 /**
  * The nine ticks of the original Format panel, in its DOM order (row-major, two columns):
@@ -54,6 +86,10 @@ function ensureCss() {
   link.rel = 'stylesheet';
   link.href = CSS_URL;
   document.head.appendChild(link);
+  const live = document.createElement('style');
+  live.id = LIVE_CSS_ID;
+  live.textContent = LIVE_CSS;
+  document.head.appendChild(live);
 }
 
 function esc(value) {
@@ -169,6 +205,83 @@ function collect(root) {
   return map;
 }
 
+/* ---------------- Output Settings → /api/convert ---------------- */
+
+/** The suite's own limits on the Prefix/Suffix box (`convert.html` `maxlength="18"`, `:1862-1873`). */
+const AFFIX_MAX = 18;
+const AFFIX_FORBIDDEN = /[\\/:*?"<>|]/;
+
+/**
+ * The five Output Settings controls, as the body `/api/convert` takes.
+ *
+ * Every rule below is the suite's, read off `01_解包/app/view/convert/convert.js`:
+ *
+ *  - **Sample Rate (Hz)** → `decimationFilter = 1 / rate` **seconds** (`:1922`), which is exactly
+ *    what `--decimate` carries (`cli.js:220`, comment "sample rate in UI"). Empty — or a literal
+ *    `0`, which the suite also treats as "off" (`:1922`) — means no thinning. The suite validates
+ *    with `parseInt` against 0..999.99 (`:1852-1859`), so `0.5` passes its check *and* then divides
+ *    by half; here the bounds are the same and the value is not truncated, and anything that is not
+ *    a number in range is an error rather than a silent 0.
+ *  - **Unknown Data** → `unconvertedBytes` `SEPARATEFILE` / `INTERLEAVE` (`:1547`, `:1923`), the
+ *    native names of `--unknown-bytes=file|interleave` (`cli.js:161-164`).
+ *  - **Destination** → `outputPath` (`:1924-1934`); "Source file folder" sends nothing at all, so the
+ *    files never leave the run's memory and the browser only previews/downloads them.
+ *  - **Prefix/Suffix** → `outputFileName = {valid, name, type}` (`:1937-1941`); the server turns
+ *    `prefix`/`suffix` into the same object. Measured on the native: `abc` + `clean-9600` →
+ *    `abcclean-9600.ASCII`, `SUFFIX` → `clean-9600abc.ASCII`.
+ *  - **Time Interval** → `timeInterval = {startTime, endTime}` (`:1889-1893`), both ends; the page
+ *    sends ISO instants and the server converts them to GPS week/seconds.
+ *
+ * Pure on purpose: `test/convert-gui.test.ts` drives it without a DOM.
+ *
+ * @returns `{ body, error }` — `error` is a sentence the panel shows as-is.
+ */
+export function outputSettings(fields = {}) {
+  const body = {};
+
+  const rateText = String(fields.sampleRate ?? '').trim();
+  if (rateText !== '') {
+    const rate = Number(rateText);
+    if (!Number.isFinite(rate)) return { body: null, error: 'Sample Rate must be a number in Hz.' };
+    if (rate < 0) return { body: null, error: 'Sample Rate cannot be negative.' };
+    if (rate > 999.99) return { body: null, error: 'Sample Rate is at most 999.99 Hz.' };
+    // The suite compares the box with `==` to 0 (`:1922`), so "0" disables thinning like "" does.
+    if (rate !== 0) body.decimate = 1 / rate;
+  }
+
+  body.unknown = fields.unknown === 'INTERLEAVE' ? 'interleave' : 'separate';
+
+  if (fields.destinationMode === 'SELECTED') {
+    const destination = String(fields.destination ?? '').trim();
+    if (!destination) {
+      return { body: null, error: 'Destination: type an absolute folder, or choose “Source file folder”.' };
+    }
+    body.destination = destination;
+  }
+
+  const affix = String(fields.affixName ?? '').trim();
+  if (affix !== '') {
+    if (affix.length > AFFIX_MAX) return { body: null, error: `Prefix/Suffix is at most ${AFFIX_MAX} characters.` };
+    if (AFFIX_FORBIDDEN.test(affix)) {
+      return { body: null, error: 'Prefix/Suffix cannot contain \\ / : * ? " < > |' };
+    }
+    if (fields.affixType === 'SUFFIX') body.suffix = affix;
+    else body.prefix = affix;
+  }
+
+  // Both ends of the Time Interval. The suite only sends the interval when the user edited it
+  // (`isTimeIntervalEdited`, `:1889`), which is exactly "both fields parse".
+  const start = fields.start instanceof Date && !Number.isNaN(fields.start.getTime()) ? fields.start : null;
+  const finish = fields.finish instanceof Date && !Number.isNaN(fields.finish.getTime()) ? fields.finish : null;
+  if (start && finish && finish.getTime() < start.getTime()) {
+    return { body: null, error: 'End time is before the start time.' };
+  }
+  if (start) body.start = start.toISOString();
+  if (finish) body.finish = finish.toISOString();
+
+  return { body, error: null };
+}
+
 /* ---------------- markup ---------------- */
 
 function template() {
@@ -265,58 +378,61 @@ function template() {
               <label class="format-settings-headings" for="cv-sample-rate">Sample Rate</label>
               <div class="common-sample-rate">
                 <input type="text" class="common-sample-freq" id="cv-sample-rate" data-el="sample-rate"
-                  placeholder="Example: 100" disabled>
+                  placeholder="Example: 100" inputmode="decimal" autocomplete="off">
                 <span class="sampleRate-units">(Hz)</span>
               </div>
               <p class="format-settings-help">This will apply a single rate to all output files.</p>
+              <p class="format-settings-error" data-el="rate-error" hidden></p>
             </div>
 
             <div class="unconverted-bytes-layout">
               <label class="format-settings-headings">Unknown Data</label>
-              <div class="format-choice-row customDisableButton">
-                <label class="radio-input-container is-selected">
-                  <input type="radio" name="cv-unknown" value="SEPARATE" checked disabled>
+              <div class="format-choice-row">
+                <label class="radio-input-container is-selected" data-el="unknown-separate">
+                  <input type="radio" name="cv-unknown" value="SEPARATE" checked>
                   <span class="checkmark"></span><label>Separate file</label>
                 </label>
-                <label class="radio-input-container is-disabled">
-                  <input type="radio" name="cv-unknown" value="INTERLEAVE" disabled>
+                <label class="radio-input-container" data-el="unknown-interleave">
+                  <input type="radio" name="cv-unknown" value="INTERLEAVE">
                   <span class="checkmark"></span><label>Interleave</label>
                 </label>
               </div>
-              <p class="format-settings-help">This will separate the unknown bytes into a single
-                separate file for each chosen output format.</p>
+              <p class="format-settings-help" data-el="unknown-help">This will separate the unknown bytes
+                into a single separate file for each chosen output format.</p>
             </div>
 
             <div class="destination-selection-layout">
               <label class="format-settings-headings">Destination</label>
-              <div class="format-choice-row customDisableButton">
-                <label class="radio-input-container is-selected">
-                  <input type="radio" name="cv-dest" value="SOURCE" checked disabled>
+              <div class="format-choice-row">
+                <label class="radio-input-container is-selected" data-el="dest-source">
+                  <input type="radio" name="cv-dest" value="SOURCE" checked>
                   <span class="checkmark"></span><label>Source file folder</label>
                 </label>
-                <label class="radio-input-container is-disabled">
-                  <input type="radio" name="cv-dest" value="SELECTED" disabled>
+                <label class="radio-input-container" data-el="dest-selected">
+                  <input type="radio" name="cv-dest" value="SELECTED">
                   <span class="checkmark"></span><label>Select folder</label>
                 </label>
               </div>
               <input readonly class="destination-folder-path" data-el="destination"
-                value="" spellcheck="false" aria-label="Capture folder">
+                value="" spellcheck="false" aria-label="Output folder">
               <span class="browse-dest-folder" aria-hidden="true"></span>
+              <p class="format-settings-help" data-el="dest-help">Files are written to this folder as
+                &lt;folder&gt;\&lt;capture&gt;\Converted_On_&lt;stamp&gt;\&lt;format&gt;\.</p>
             </div>
 
             <div class="prefix-suffix-layout">
               <label class="format-settings-headings" for="cv-prefix">Prefix/Suffix (Optional)</label>
               <div class="prefix-text-field">
                 <input type="text" class="prefix-suffix-value" id="cv-prefix" data-el="prefix"
-                  placeholder="Example: my-gps" maxlength="18" disabled>
+                  placeholder="Example: my-gps" maxlength="18" autocomplete="off">
               </div>
               <p class="format-settings-help">This will be added to the output file name(s)</p>
-              <div class="prefix-suffix-options customDisableButton">
-                <label class="radio-input-container is-selected">
+              <div class="prefix-suffix-options is-disabled" data-el="affix-options">
+                <label class="radio-input-container is-selected" data-el="affix-prefix">
                   <input type="radio" name="cv-affix" value="PREFIX" checked disabled>
                   <span class="checkmark"></span><label>Prefix</label>
                 </label>
-                <label class="radio-input-container is-disabled">
+                <label class="radio-input-container" data-el="affix-suffix">
                   <input type="radio" name="cv-affix" value="SUFFIX" disabled>
                   <span class="checkmark"></span><label>Suffix</label>
                 </label>
@@ -377,14 +493,26 @@ export function mount(root, ctx = {}) {
     capture: typeof ctx.capture === 'string' ? ctx.capture : '',
     /** repo-relative samples root from `/api/captures` (what the Destination field shows) */
     samples: '',
+    /** the same root as an absolute path, for the Destination field */
+    samplesAbsolute: '',
     groups: [],
     bytes: 0,
     /** name → ticked; every type is ticked when a capture loads (the suite's default). */
     selected: new Set(),
     /** Full span of the capture, so Reset can restore it. */
     span: null,
+    /** The suite only sends the Time Interval once the user has edited it (`isTimeIntervalEdited`). */
+    intervalEdited: false,
     /** id → ticked */
     formats: new Set(),
+    /* ---- Output Settings ---- */
+    /** Unknown Data: 'SEPARATE' (`.UNKNOWN` file) or 'INTERLEAVE' (spliced back in). */
+    unknown: 'SEPARATE',
+    /** Destination: 'SOURCE' keeps the bytes in memory, 'SELECTED' writes to `destPath`. */
+    destMode: 'SOURCE',
+    destPath: '',
+    affixType: 'PREFIX',
+    affixName: '',
     busy: false,
     results: [],
     activeResult: 0,
@@ -436,19 +564,72 @@ export function mount(root, ctx = {}) {
   /* ---- capture header ---- */
 
   /** `逆向\00_来源\samples\convert` — the folder the capture was read from.
-   *  The suite shows an absolute path; this build only knows the repo-relative samples root
-   *  that `/api/captures` reports, so the rows are joined with the platform separator. */
+   *  The suite shows an absolute path; `/api/captures` reports both the repo-relative samples root
+   *  and its absolute path, so the field shows the real folder when the server knows it. */
   function folderText() {
     const capture = String(state.capture || '');
     const cut = Math.max(capture.lastIndexOf('/'), capture.lastIndexOf('\\'));
     const dir = cut >= 0 ? capture.slice(0, cut) : '';
-    return [state.samples, dir].filter(Boolean).join('/').split('/').join('\\');
+    const root = state.samplesAbsolute || state.samples;
+    return [root, dir].filter(Boolean).join('/').split('/').join('\\');
+  }
+
+  /* ---- Output Settings ---- */
+
+  /** Both radio rows are plain `<input type=radio>`; the tick is a CSS class on the label. */
+  function selectRadio(label, on) {
+    label.classList.toggle('is-selected', on);
+    const input = label.querySelector('input');
+    if (input) input.checked = on;
+  }
+
+  function syncUnknown() {
+    const interleave = state.unknown === 'INTERLEAVE';
+    selectRadio(el.unknownSeparate, !interleave);
+    selectRadio(el.unknownInterleave, interleave);
+    // The suite swaps these two notes with the choice (`convert.js:1539-1546`); the interleave text
+    // is the manual's (4.3.2.4).
+    el.unknownHelp.textContent = interleave
+      ? 'Information not recognized as a log is included in the file and labeled UNKNOWN.'
+      : 'This will separate the unknown bytes into a single separate file for each chosen output format.';
+  }
+
+  function syncDestination() {
+    const selected = state.destMode === 'SELECTED';
+    selectRadio(el.destSource, !selected);
+    selectRadio(el.destSelected, selected);
+    el.destination.readOnly = !selected;
+    el.destination.value = selected ? state.destPath : folderText();
+    el.destination.title = el.destination.value;
+    // The suite opens a folder picker here (`convert.js:1580-1599`); a web page has no picker, so
+    // the field itself becomes the input and the note says where the files land.
+    el.destHelp.textContent = selected
+      ? 'Files are written to <folder>\\<capture>\\Converted_On_<stamp>\\<format>\\ (the suite layout).'
+      : 'Files stay in memory: preview and download only. Choose “Select folder” to write them to disk.';
+  }
+
+  function syncAffix() {
+    const empty = String(el.prefix.value ?? '').trim() === '';
+    state.affixName = el.prefix.value;
+    el.affixOptions.classList.toggle('is-disabled', empty);
+    for (const label of [el.affixPrefix, el.affixSuffix]) {
+      const input = label.querySelector('input');
+      if (input) input.disabled = empty;
+    }
+    const suffix = state.affixType === 'SUFFIX';
+    selectRadio(el.affixPrefix, !suffix);
+    selectRadio(el.affixSuffix, suffix);
+  }
+
+  function showRateError(message) {
+    el.rateError.hidden = !message;
+    el.rateError.textContent = message || '';
+    el.sampleRate.classList.toggle('error-border', Boolean(message));
+    el.sampleRate.setAttribute('aria-invalid', message ? 'true' : 'false');
   }
 
   function renderDestination() {
-    const folder = folderText();
-    el.destination.value = folder;
-    el.destination.title = folder;
+    syncDestination();
   }
 
   function renderCapture() {
@@ -552,6 +733,10 @@ export function mount(root, ctx = {}) {
   }
 
   function resetInterval() {
+    // Reset restores the capture's own span and **withdraws** the interval: the suite clears
+    // `isTimeIntervalEdited` here (`convert.js:1261`), and sending the prefilled span would drop the
+    // records before the first observation (b2's leading `ALMANAC`).
+    state.intervalEdited = false;
     if (!state.span) {
       fillRow('start', null);
       fillRow('end', null);
@@ -646,6 +831,23 @@ export function mount(root, ctx = {}) {
         : `all ${result.lineTotal} lines · ${exactBytes(result.bytes)}`;
   }
 
+  /**
+   * Where this run's files are: the folder actually written, or — when Destination is "Source file
+   * folder", which keeps the bytes in memory — the folder the suites's layout *would* use
+   * (`Converted_On_<stamp>/<FORMAT>/`, see `summary.ts`).
+   */
+  function outputFolderText(result) {
+    if (result.directory) return result.directory;
+    const folder = convertedOn(result.at);
+    const dir = result.formatDirectory ?? '';
+    return folder ? `${folder}\\${dir}\\` : `${dir}\\`;
+  }
+
+  function footRow(label, value) {
+    return `<div class="result-foot"><span class="result-foot-label">${esc(label)}</span>` +
+      `<span class="result-foot-value mono">${esc(value)}</span></div>`;
+  }
+
   function renderResults() {
     if (!state.results.length) {
       el.summary.hidden = true;
@@ -654,13 +856,14 @@ export function mount(root, ctx = {}) {
     const rows = state.results
       .map((result, index) => {
         const active = index === state.activeResult;
+        const extra = (result.files?.length ?? 0) > 1 ? ' +' + (result.files.length - 1) : '';
         return (
           `<div class="result-row${active ? ' active' : ''}" data-result="${index}" tabindex="0" ` +
           `role="button" aria-pressed="${active ? 'true' : 'false'}" title="Show the preview of ${esc(
             result.fileName,
           )}">` +
           `<span class="result-format">${esc(result.label ?? result.format)}</span>` +
-          `<span class="result-file mono">${esc(result.fileName)}</span>` +
+          `<span class="result-file mono">${esc(result.fileName)}${esc(extra)}</span>` +
           `<span class="result-size">${exactBytes(result.bytes)} <span class="result-pretty">${esc(
             bytesText(result.bytes),
           )}</span></span>` +
@@ -673,22 +876,31 @@ export function mount(root, ctx = {}) {
         );
       })
       .join('');
-    const dirs = state.results
-      .map((result) => {
-        const folder = convertedOn(result.at);
-        return `${esc(folder ? `${folder}/${result.formatDirectory}/` : result.formatDirectory)}`;
-      })
+
+    const active = state.results[state.activeResult] ?? state.results[0];
+    const folders = state.results.map(outputFolderText);
+    const folderValue = folders.every((folder) => folder === folders[0]) ? folders[0] : folders.join(' · ');
+    const filesValue = (active.files ?? [{ fileName: active.fileName, bytes: active.bytes }])
+      .map((file) => `${file.fileName} (${exactBytes(file.bytes)})`)
       .join(' · ');
+    // `--unknown-bytes=file` / SEPARATE: the count is what the run could not attribute to a log,
+    // and the name is the file it went into.
+    const unknownValue = state.results
+      .filter((result) => Number(result.unknownBytes) > 0)
+      .map((result) => `${Number(result.unknownBytes).toLocaleString('en-US')} B`
+        + (result.unknownFileName ? ` → ${result.unknownFileName}` : ' (not written: Interleave)'))
+      .join(' · ');
+
     el.results.innerHTML =
       `<div class="result-table">${rows}</div>` +
-      `<div class="result-foot"><span class="result-foot-label">Output folder</span>` +
-      `<span class="result-foot-value mono">${dirs}</span></div>`;
+      footRow('Output folder', folderValue) +
+      footRow('Files', filesValue) +
+      (unknownValue ? footRow('Unknown bytes', unknownValue) : '') +
+      (active.directory
+        ? ''
+        : footRow('Saved', 'no — Destination is “Source file folder”; pick “Select folder” to write the files to disk'));
     el.summary.hidden = false;
     renderPreview();
-  }
-
-  function readStampOrNull(which) {
-    return which === 'start' ? startStamp() : endStamp();
   }
 
   async function run() {
@@ -703,14 +915,38 @@ export function mount(root, ctx = {}) {
       return;
     }
 
+    // The five Output Settings, exactly as the suite maps them (see `outputSettings`).
+    const settings = outputSettings({
+      sampleRate: el.sampleRate.value,
+      unknown: state.unknown,
+      destinationMode: state.destMode,
+      destination: el.destination.value,
+      affixType: state.affixType,
+      affixName: el.prefix.value,
+      // Time Interval is optional and, like the suite, only sent once it has been edited
+      // (`isTimeIntervalEdited`, `convert.js:1889`). The prefilled span is the capture's first and
+      // last record rounded **down** to the second, so sending it unedited would clip a last record
+      // that sits between the whole second and the span's end (b2 ends at `577792.050`).
+      start: state.intervalEdited ? startStamp() : null,
+      finish: state.intervalEdited ? endStamp() : null,
+    });
+    if (settings.error) {
+      showRateError(settings.error.startsWith('Sample Rate') ? settings.error : '');
+      alert(settings.error);
+      return;
+    }
+    showRateError('');
+
     state.busy = true;
     el.convert.disabled = true;
     el.convert.classList.add('customDisableButton');
     el.convert.textContent = 'Converting…';
     alert('');
 
-    const at = readStampOrNull('start');
-    const body = { capture: state.capture };
+    // `at` is the conversion timestamp (the `Converted_On_…` folder and the RINEX header date); the
+    // panel has always used the interval's start, which keeps a run reproducible.
+    const at = startStamp();
+    const body = { capture: state.capture, ...settings.body };
     if (at) body.at = at.toISOString();
 
     const done = [];
@@ -744,8 +980,20 @@ export function mount(root, ctx = {}) {
     state.selected = new Set(state.groups.map((group) => group.name));
     state.results = [];
     state.activeResult = 0;
+    // The suite's `resetData` puts every Output Setting back to its default too
+    // (`convert.js:987-994`: sample rate, unknown bytes, destination, prefix/suffix).
+    state.unknown = 'SEPARATE';
+    state.destMode = 'SOURCE';
+    state.destPath = '';
+    state.affixType = 'PREFIX';
+    state.affixName = '';
+    el.sampleRate.value = '';
+    el.prefix.value = '';
+    showRateError('');
     buildMessageList();
     buildFormats();
+    syncUnknown();
+    syncAffix();
     resetInterval();
     el.summary.hidden = true;
     el.preview.innerHTML = '';
@@ -774,6 +1022,7 @@ export function mount(root, ctx = {}) {
 
     if (roots.status === 'fulfilled' && roots.value && typeof roots.value.samples === 'string') {
       state.samples = roots.value.samples;
+      if (typeof roots.value.samplesAbsolute === 'string') state.samplesAbsolute = roots.value.samplesAbsolute;
       renderDestination();
     }
 
@@ -810,6 +1059,7 @@ export function mount(root, ctx = {}) {
         const data = await api.get('/api/captures');
         if (!state.alive) return;
         if (typeof data.samples === 'string') state.samples = data.samples;
+        if (typeof data.samplesAbsolute === 'string') state.samplesAbsolute = data.samplesAbsolute;
         const captures = data.captures ?? [];
         const preferred =
           captures.find((item) => item.path === 'convert/clean-9600.gps') ||
@@ -864,6 +1114,54 @@ export function mount(root, ctx = {}) {
   const onReset = () => resetInterval();
   const onConvert = () => run();
 
+  /** Any edit to the eight fields makes the Time Interval part of the request (suite: `:1250`). */
+  const onIntervalInput = () => {
+    state.intervalEdited = true;
+    renderDuration();
+  };
+
+  /* ---- Output Settings ---- */
+
+  /**
+   * The pills are `<label>`s wrapping a hidden radio, and the visible text is itself a `<label>`
+   * (the shipped markup does the same) — a click there does not reach the outer label's input, so
+   * the choice is read off the click target instead of a `change` event. That is also how the suite
+   * binds it (`$('.destination-selection-layout .list-inline li').on('click')`, `convert.js:1569`).
+   */
+  const onSettingsClick = (event) => {
+    const container = event.target.closest('.radio-input-container');
+    if (!container || !root.contains(container)) return;
+    const input = container.querySelector('input');
+    if (!input || input.disabled) return;
+    if (input.name === 'cv-unknown') {
+      state.unknown = input.value === 'INTERLEAVE' ? 'INTERLEAVE' : 'SEPARATE';
+      syncUnknown();
+    } else if (input.name === 'cv-dest') {
+      state.destMode = input.value === 'SELECTED' ? 'SELECTED' : 'SOURCE';
+      if (state.destMode === 'SELECTED' && !state.destPath) state.destPath = folderText();
+      syncDestination();
+      if (state.destMode === 'SELECTED') el.destination.focus();
+    } else if (input.name === 'cv-affix') {
+      state.affixType = input.value === 'SUFFIX' ? 'SUFFIX' : 'PREFIX';
+      syncAffix();
+    }
+  };
+
+  const onDestinationInput = () => {
+    if (state.destMode !== 'SELECTED') return;
+    state.destPath = el.destination.value;
+  };
+
+  const onAffixName = () => {
+    syncAffix();
+    // A stray rate error must not survive a corrected field.
+    if (!el.rateError.hidden) showRateError('');
+  };
+
+  const onSampleRate = () => {
+    if (!el.rateError.hidden) showRateError('');
+  };
+
   el.msgList.addEventListener('click', onClick);
   el.selectAll.addEventListener('click', toggleAllMessages);
   el.formats.addEventListener('click', onClick);
@@ -874,9 +1172,13 @@ export function mount(root, ctx = {}) {
   el.startover.addEventListener('click', startOver);
   el.results.addEventListener('click', onResultClick);
   el.results.addEventListener('keydown', onResultKey);
+  el.stepFormat.addEventListener('click', onSettingsClick);
+  el.destination.addEventListener('input', onDestinationInput);
+  el.prefix.addEventListener('input', onAffixName);
+  el.sampleRate.addEventListener('input', onSampleRate);
 
   const intervals = [el.startDate, el.startHh, el.startMm, el.startSs, el.endDate, el.endHh, el.endMm, el.endSs];
-  for (const input of intervals) input.addEventListener('input', renderDuration);
+  for (const input of intervals) input.addEventListener('input', onIntervalInput);
 
   let offCapture = null;
   if (typeof ctx.onCaptureChange === 'function') {
@@ -906,12 +1208,18 @@ export function mount(root, ctx = {}) {
     el.startover.removeEventListener('click', startOver);
     el.results.removeEventListener('click', onResultClick);
     el.results.removeEventListener('keydown', onResultKey);
-    for (const input of intervals) input.removeEventListener('input', renderDuration);
+    el.stepFormat.removeEventListener('click', onSettingsClick);
+    el.destination.removeEventListener('input', onDestinationInput);
+    el.prefix.removeEventListener('input', onAffixName);
+    el.sampleRate.removeEventListener('input', onSampleRate);
+    for (const input of intervals) input.removeEventListener('input', onIntervalInput);
     if (offCapture) offCapture();
   };
 
   buildFormats();
   buildMessageList();
+  syncUnknown();
+  syncAffix();
   resetInterval();
   setStep(1);
   boot();

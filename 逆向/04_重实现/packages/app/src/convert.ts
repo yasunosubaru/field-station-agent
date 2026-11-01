@@ -3,9 +3,15 @@
  *
  * The conversion itself — which records are written, `PASSTHROUGH`, the RANGECMP2/4 unpacking, text
  * records, and the latin1 byte encoding — is `protocol/src/convert-pipeline.ts`, the same code
- * `packages/cli/src/convert.ts` writes to disk with. This file only turns one output file into
- * something the browser can preview and download: a label, a content type, a 200-line preview or a
- * hex dump, and the byte count.
+ * `packages/cli/src/convert.ts` writes to disk with. This file only turns the run into something the
+ * browser can preview and download: a label, a content type, a 200-line preview or a hex dump, the
+ * byte count, and the list of files the run produced.
+ *
+ * The five Output Settings controls reach the pipeline through `ConvertSettings`: Sample Rate is the
+ * suite's `decimationFilter` (`1 / Hz` seconds), Unknown Data its `unconvertedBytes` (`--unknown-bytes`),
+ * Time Interval its `timeInterval` (`--start-time`/`--finish-time`), Prefix/Suffix its
+ * `outputFileName` (`affix`). Destination is not a pipeline option — it is where the caller writes the
+ * files, so `server.ts` owns it.
  *
  * Nothing here touches the filesystem; the caller owns the bytes.
  */
@@ -16,6 +22,9 @@ import {
   convertFrames,
   isConvertFormat,
   type ConvertFormat,
+  type ConvertOutputAffix,
+  type ConvertTimePoint,
+  type UnknownBytesMode,
 } from '../../protocol/src/convert-pipeline.ts';
 import type { CaptureData } from './capture.ts';
 
@@ -63,6 +72,42 @@ export interface ConvertArtifact {
   preview: string;
   shownLines: number;
   truncated: boolean;
+  /**
+   * Every file this run produced, in the order the CLI writes them — RINEX writes four or more,
+   * `--unknown-bytes=file` adds `<base>.UNKNOWN`. `fileName`/`bytes` above are the first one.
+   * `data` is what goes on disk; it is not part of the JSON answer.
+   */
+  files: Array<{ fileName: string; bytes: number; data: Buffer }>;
+  /** The input name with its last extension removed (`b2-20261101`). */
+  base: string;
+  /** `<base>.UNKNOWN`'s name and length, when the run wrote one (null otherwise). */
+  unknownFileName: string | null;
+  unknownBytes: number;
+  /** `N bytes could not be converted.` — records of a type this format cannot express. */
+  unConvertedBytes: number;
+  /**
+   * Filled in by whoever wrote the files: `server.ts` sets them when the request carried a
+   * Destination, and leaves them null when the artifact only lives in memory.
+   */
+  directory: string | null;
+  /** Absolute path of `fileName`, when it was written. */
+  path: string | null;
+}
+
+/** The Output Settings that reach the pipeline: Sample Rate, Unknown Data, Prefix/Suffix, interval. */
+export interface ConvertSettings {
+  /** `--decimate=<SECONDS>`: the GUI's Sample Rate is `1 / decimate` (see the panel). */
+  decimate?: number;
+  unknownBytes?: UnknownBytesMode;
+  startTime?: ConvertTimePoint;
+  finishTime?: ConvertTimePoint;
+  limitDuration?: number;
+  affix?: ConvertOutputAffix;
+  /**
+   * The raw capture. Unknown bytes are, by definition, in no frame, so only the caller that holds
+   * the file's bytes can supply them; without it no `.UNKNOWN` is written and the count is 0.
+   */
+  source?: Uint8Array;
 }
 
 const PREVIEW_LINES = 200;
@@ -100,8 +145,24 @@ export function convertCapture(
   tables: EdieTables,
   format: ConvertFormat,
   at: Date,
+  settings: ConvertSettings = {},
 ): ConvertArtifact {
-  const outcome = convertFrames(data.allFrames ?? data.frames, { format, at, tables, name: data.name });
+  const outcome = convertFrames(data.allFrames ?? data.frames, {
+    format,
+    at,
+    tables,
+    name: data.name,
+    // The GUI's Output Settings: Sample Rate (`--decimate`), Unknown Data
+    // (`--unknown-bytes`), Time Interval (`startTime`/`finishTime`), Prefix/Suffix (`affix`).
+    ...(settings.decimate !== undefined ? { decimate: settings.decimate } : {}),
+    ...(settings.unknownBytes ? { unknownBytes: settings.unknownBytes } : {}),
+    ...(settings.startTime ? { startTime: settings.startTime } : {}),
+    ...(settings.finishTime ? { finishTime: settings.finishTime } : {}),
+    ...(settings.affix ? { affix: settings.affix } : {}),
+    ...(settings.limitDuration !== undefined ? { limitDuration: settings.limitDuration } : {}),
+    // Unknown bytes are not in any frame, so they can only be summed from the raw capture.
+    ...(settings.source ? { source: settings.source } : {}),
+  });
   const file = outcome.files[0];
   if (!file) throw new Error(`convert: ${format} produced no file`);
 
@@ -122,6 +183,8 @@ export function convertCapture(
     truncated = lineTotal > PREVIEW_LINES;
   }
 
+  const unknownFile = outcome.files.find((item) => item.name.endsWith('.UNKNOWN'));
+
   return {
     format,
     label: FORMAT_LABELS[format],
@@ -140,5 +203,18 @@ export function convertCapture(
     preview,
     shownLines,
     truncated,
+    files: outcome.files.map((item) => ({
+      fileName: item.name,
+      bytes: item.bytes.byteLength,
+      data: Buffer.from(item.bytes),
+    })),
+    base: outcome.base,
+    unknownFileName: unknownFile ? unknownFile.name : null,
+    // The bytes Convert could not attribute to a log — what `--unknown-bytes=file` dumps, whether
+    // or not this run asked for the file (the summary counts them either way).
+    unknownBytes: outcome.unknown.length,
+    unConvertedBytes: outcome.unConvertedBytes,
+    directory: null,
+    path: null,
   };
 }

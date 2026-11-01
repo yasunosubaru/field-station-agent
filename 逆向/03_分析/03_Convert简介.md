@@ -287,4 +287,103 @@ node 逆向\tools\golden-check.ts                            # 14 份 golden 全
 （另：`packages/app` 与 `packages/view` 里有 4 项配置页用例正被另一条并行任务改动而失败，
 与 Convert 无关。）
 
+---
+
+## Output Settings 接线（2026-11-01，1:1 对标 B 类第 2 项）
+
+界面第二步那 5 组控件原先全是 `disabled`，点 Convert 只发 `{capture, format, at}`。现在它们
+按原版语义接线：页面的 Wire 字段 → `convertFrames` 的 `ConvertOptions`，Destination 由服务端
+真的落盘。**所有数字都是套件 2.11.0 同参数跑同一份 b2 得到的**。
+
+### 1. 五组控件各自的原版语义
+
+| 控件 | 原版字段（`01_解包/app/view/convert/`） | 行号 | 语义 |
+|---|---|---|---|
+| **Sample Rate (Hz)** | `decimationFilter = 1 / sampleRate` | `convert.js:1922` | 单位是**秒**的抽稀周期。`100` Hz → `0.01`；`0.5` Hz → `2` 秒（小数不截断）。`""` 或字面 `0` → 不抽稀。校验在 `:1852-1859`：`parseInt` 后必须 0..999.99——**它先把 `0.5` 截成 `0` 再放行**，所以原版对小数是宽松的（我们按同一区间判，但不截断）。CLI 的 `--decimate` 就是这同一个字段（`cli.js:220`，注释写着 "sample rate in UI"），所以 `--decimate=0.5` ≡ Sample Rate 2 Hz。 |
+| **Unknown Data** | `unconvertedBytes` | `convert.html:340-341`（`type="SEPARATEFILE"` / `"INTERLEAVE"`）、`convert.js:1547`、`:1923` | `SEPARATE` → `--unknown-bytes=file`，`INTERLEAVE` → `--unknown-bytes=interleave`（`cli.js:161-164` 的映射，`SEPARATEFILE`/`INTERLEAVE` 是原生自己的名字）。 |
+| **Destination** | `outputPath`，以及 `destinationType` | `:1924-1934`、`:166`、`:1580-1599` | 「Source file folder」= `path.dirname(输入文件)`；「Select folder」= `selectedDestinationPath`（Electron 的 `remote.dialog.showOpenDialog`）。**目录不存在就 `mkdirp`**（`:1929-1933`）。落盘结构见手册 4.3.2.5：`<目标>/<源文件名>/<时间戳>/<格式>/<文件名>`。 |
+| **Prefix/Suffix** | `outputFileName = {valid, name, type}` | `:1937-1941`、`:1862-1873` | `valid = (name != "")`；`type` 是 `PREFIX`/`SUFFIX`；最多 **18** 字符（`convert.html` 的 `maxlength="18"`），禁 `/ : * ? " < > \| \`。 |
+| **Time Interval** | `timeInterval = {startTime, endTime}`，每项 `{week, msec}` | `:1889-1893`、`:1094-1112`、`:1250`/`:1261` | 两端都进；`msec` **不是毫秒，是周内秒**（`getGPSTimeFromUTC` 里 `parseInt((time%一周)/1000)`）。只有用户编辑过才发（`isTimeIntervalEdited`），Reset 撤回——否则会把整段 span 当成一次显式裁剪。 |
+
+Prefix/Suffix 的**落点**没有 CLI 开关可测（`cli.js:228-232` 恒发 `{valid:true, name:""}`），改用原生
+`Edie/edie-node-wrappers.node` 的 `Convert` 直接量（用套件自带的 `node.exe` v10.19.0，GUI 的
+`fileList_obj` 原样构造）：
+
+| `outputFileName` | 产物 |
+|---|---|
+| `{valid:true, name:"abc", type:"PREFIX"}` | `abcclean-9600.ASCII`（附在**去扩展名的基名**前） |
+| `{valid:true, name:"abc", type:"SUFFIX"}` | `clean-9600abc.ASCII`（在扩展名**前**，不是文件尾） |
+| `{valid:false, name:"abc", type:"PREFIX"}` | `clean-9600.ASCII`（忽略） |
+| PREFIX + `splitBy:"LOGS"`（b2） | `abcb2-20261101_RANGE.ASCII`、…、`abcb2-20261101_UNKNOWN.ASCII`——切分名、`.UNKNOWN` 都带前缀 |
+
+### 2. 与套件同参数实测（b2-20261101.sbf，`-a`）
+
+| 参数 | 套件产物 | 我们 | 结论 |
+|---|---|---|---|
+| `--decimate=0.5`（Sample Rate 2 Hz） | 916 189 B / 327 行 | 916 189 B / 327 行 | 相同 |
+| `--decimate=2.5` | 199 291 B | 199 291 B | 相同 |
+| `decimationFilter=2`（Sample Rate **0.5** Hz，原生直调） | 364 859 B / 171 行 | 364 859 B / 171 行 | 相同 |
+| `--unknown-bytes=file` | 4 931 973 B + `b2-20261101.UNKNOWN` 7 056 B | 同 | `.UNKNOWN` 逐字节相同（既有 golden） |
+| `--start-time=2442,577760 --finish-time=2442,577770` | 1 362 914 B / 262 行 | 1 362 914 B / 262 行 | 相同 |
+| **四项叠加**：`--decimate=2 --unknown-bytes=file --start-time=2442,577760 --finish-time=2442,577770` | 109 239 B（61 行）+ `.UNKNOWN` 7 056 B | GUI 落盘的 `abcb2-20261101.ASCII` 109 239 B、`abcb2-20261101.UNKNOWN` 7 056 B | **两个文件 sha256 都相同**（`8966726D…` / `6765898E…`） |
+
+顺带纠正一条旧口径：**时间窗不缩小未知字节的账**。套件带 `--start-time/--finish-time` 跑
+`--unknown-bytes=file` 时照样写完整的 7 056 B `.UNKNOWN`，Summary 的 UNKNOWN 行照样 6 875；
+以前实现里「窗口一开就不报未知字节」是把未测的组合按保守值处理，现在按实测改成整份捕获口径
+（`unknownSpans` 走**未裁剪**的帧表）。`interleave` + 窗口仍未测，所以这条组合保持关闭。
+
+### 3. GUI 里**没有**的东西（没有加控件）
+
+- **split / limit-output-size / limit-output-duration / daily-utc**：`convert.html` 的第二步页面
+  上确实没有；它们藏在**每个格式右侧齿轮弹出的设置窗**里，那个窗的 DOM 是 `convert.js:400-510`
+  拼出来的模板串，默认值 `ASCII: {fileSplitting:true, splitBy:"LOGS"}`、`ABBREV_ASCII` 同
+  （`:62-79`，`:985` 的 `$.extend(true,{},formatDefaultSettings)`）。本仓库的 Web 版把这个齿轮
+  继续保持装饰（HTTP 层也还没有这些字段），所以 **GUI 不切分、CLI 有 9 个开关**，这次没有加控件。
+- **"Open output folder"**：原版是 Electron 的 `shell.openPath`；网页没有文件管理器，我们的
+  summary 里给出**真实落盘路径**，并明写「Source file folder 时只在内存里，选 Select folder 才写盘」。
+
+### 4. 实现位置
+
+| 位置 | 内容 |
+|---|---|
+| `protocol/src/convert-pipeline.ts` | `ConvertOptions.startTime/finishTime/limitDuration/affix`；`applyTimeWindow` 从 CLI 搬进来（GUI 与 CLI 共用一条规则）；`affixedBase` 把 Prefix/Suffix 套到**输出基名**上，切分名/`.UNKNOWN`/RINEX/KML 自然跟着 |
+| `cli/src/convert.ts` | 只负责解析参数，时间窗交给 pipeline（行为不变，四条既有测试仍逐字节过） |
+| `app/src/convert.ts` | `ConvertSettings`（decimate / unknownBytes / startTime / finishTime / affix / source）；`ConvertArtifact` 加 `files[]`（含每份字节）、`base`、`unknownBytes`、`unknownFileName`、`unConvertedBytes`、`directory`、`path` |
+| `app/src/server.ts` | `/api/convert` 解析 5 组参数并校验（decimate>0、未知字节枚举、affix 18 字符 + 禁用字符、绝对路径 + 拒绝 `..` + 自动创建）；Destination 有值时按手册 4.3.2.5 布局落盘并回报 `directory`/`path`；`/api/captures` 多给 `samplesAbsolute`，供 Destination 文本框预填 |
+| `app/src/web/panels/convert.js` | 解除 disabled；`outputSettings()`（纯函数）做 5 组映射与可读报错；Unknown 两个说明文案随选择切换；Prefix 为空时那一对 radio 才灰；结果区显示**每份文件名/字节**、落盘目录、未知字节数 |
+
+### 5. 测试与端到端
+
+- `packages/app/test/convert-gui.test.ts`（13 条）：`outputSettings()` 的 5 组映射与非法值（空/0/`abc`/负/
+  >999.99/19 字符/路径字符/倒置窗口），以及 `/api/convert` 的实测字节、`.UNKNOWN`、Destination
+  落盘（文件真的在盘上、`directory`/`path` 对得上）、12 类非法字段的 400 文案。
+- `packages/protocol/test/convert-gui-options.test.ts`（9 条）：affix 在 ASCII/BINARY/KML/RINEX/切分/`.UNKNOWN`
+  上的落点、`valid:false` 与空名、窗口两端/单端、`--limit-duration`、窗口不缩小未知字节账、
+  三个小数抽稀间隔。
+- GUI 端到端（Playwright，真实 `node packages/app/src/server.ts --port 7862`）：选 b2 → Convert →
+  Sample Rate `0.5`、Unknown 点过 Interleave 再回 SEPARATE、Prefix `abc`、Time Interval
+  `2026-10-31 16:29:02 → 16:29:12` → Convert：结果行 `abcb2-20261101.ASCII +1 · 109,239 B · 61 lines`，
+  Files 列出 `abcb2-20261101.UNKNOWN (7,056 B)`，Unknown bytes 行 7,056 B，预览 61 行且首行
+  `…,2442,577760.000,…`；**0 console / 0 pageerror**。另跑一遍 Select folder →
+  `…\agent-convertgui\gui-dest`，落盘 `…\b2-20261101\Converted_On_20261031_T1629\ASCII\` 两个文件，
+  与套件同参数产物 sha256 相同；Sample Rate 填 `abc` 时字段旁出
+  `Sample Rate must be a number in Hz.` 且不发请求。
+  截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-convertgui\gui-convert.png`（SOURCE 模式）、
+  `gui-convert-destination.png`（落盘）、`gui-convert-error.png`（非法 Sample Rate）。
+
+### 6. 未做到的 / 未确认的
+
+- **原生直调 `readmessage` 会崩**（`FATAL ERROR: Error::New napi_get_last_error_info`，进程 0xC0000409），
+  所以 `InternalMap` 这条 GUI 路径没走通；Prefix/Suffix 与抽稀是用 `Convert` 直接量的（SBF 不需要
+  `InternalMap`）。SDK 里也没有 `--prefix` 之类的开关。
+- **原生直调 `timeInterval` 会抛 C++ 异常**（`0xE06D7363`，试过 `{week,msec}`、字符串周、加
+  `messageIdFilter` 等写法都崩），所以时间窗的 oracle 用的是**套件 CLI** 同参数（`cli.js:276-289`
+  把 `--start-time/--finish-time` 原样写进同一个 `timeInterval` 字段），并附上 `1 362 914 B` 的
+  逐字节产物。
+- 既有未复刻项未动：`--decimate` + `--unknown-bytes=file` 在 b1 上仍是 5386 B（套件 4014 B）；
+  **文本记录进 BINARY**、`--daily-utc` 的 b7 三片。窗口 + `interleave` 组合未测，保持关闭。
+- 面板的点击交互（radio 走 `click` 委派，因为弹窗里套了一层 `<label>`，点文字不触发外层 input）
+  只有 Playwright 端到端覆盖，没有 DOM 单测——`packages/view` 的 minidom 不属于本条任务的改动范围。
+
+
 

@@ -119,10 +119,41 @@ export interface ConvertOptions {
    */
   expandCmp?: boolean;
   /**
+   * `--start-time=<WEEK>,<SECONDS>` / `--finish-time=<WEEK>,<SECONDS>` / `--limit-duration=<S>`:
+   * the window Convert keeps. The suite's GUI calls the same thing **Time Interval** and fills the
+   * identical `fileList[<name>].timeInterval` object (`convert.js:1889-1893`, `cli.js:276-289`), so
+   * one implementation serves both — see `applyTimeWindow`.
+   */
+  startTime?: ConvertTimePoint;
+  finishTime?: ConvertTimePoint;
+  limitDuration?: number;
+  /**
+   * Prefix/Suffix — the native's `outputFileName: {valid, name, type}`, which the GUI fills from
+   * the Prefix/Suffix box (`convert.js:1937-1941`). It renames the **output base**, i.e. the input
+   * name without its last extension: `abc` + `clean-9600` → `abcclean-9600.ASCII`, and `SUFFIX`
+   * gives `clean-9600abc.ASCII` (measured on the 2.11.0 native, which puts the affix before the
+   * extension, never after it). Per-log (`_RANGE`) and `_Part<N>` names keep it in front of the
+   * base, so `--split` writes `abcb2-20261101_RANGE.ASCII`; `.UNKNOWN` gets it too.
+   */
+  affix?: ConvertOutputAffix;
+  /**
    * The raw capture. Only needed for the unknown-byte accounting: those bytes are, by definition,
    * in no frame, so they cannot be recovered from the frame list.
    */
   source?: Uint8Array;
+}
+
+/** A point in GPS time, as `--start-time` spells it: `{week}, {seconds of week}`. */
+export interface ConvertTimePoint {
+  week: number;
+  seconds: number;
+}
+
+/** The suite's `outputFileName`: `valid` is false when the UI's text box is empty. */
+export interface ConvertOutputAffix {
+  valid?: boolean;
+  name: string;
+  type: 'PREFIX' | 'SUFFIX';
 }
 
 export type UnknownBytesMode = 'file' | 'interleave' | 'ignore';
@@ -142,6 +173,8 @@ export interface ConvertOutcome {
   formatDirectory: string;
   /** `<input name>` with its last extension removed. */
   base: string;
+  /** The name every output file starts from: `base` with the Prefix/Suffix applied. */
+  outputBase: string;
   /** In the order the CLI writes them; the first one is the log the GUI previews. */
   files: ConvertFile[];
   /** Every SBF record in capture order, `PASSTHROUGH` included, text records excluded. */
@@ -175,6 +208,21 @@ export interface ConvertOutcome {
 export function captureBase(name: string): string {
   const dot = name.lastIndexOf('.');
   return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/**
+ * `base` with the GUI's Prefix/Suffix applied.
+ *
+ * Measured on the 2.11.0 native (`Edie/edie-node-wrappers.node`, run through `Convert` with
+ * `outputFileName` set, no CLI flag exists for this): `{valid:true, name:'abc', type:'PREFIX'}`
+ * writes `abcclean-9600.ASCII`, `type:'SUFFIX'` writes `clean-9600abc.ASCII` — the affix joins the
+ * **stem**, before the extension — and `{valid:false, name:'abc'}` is ignored (plain
+ * `clean-9600.ASCII`). Under `--split`/LOGS every per-log file carries it too
+ * (`abcb2-20261101_RANGE.ASCII`), and so does `.UNKNOWN`.
+ */
+export function affixedBase(base: string, affix: ConvertOutputAffix | undefined): string {
+  if (!affix || affix.valid === false || affix.name === '') return base;
+  return affix.type === 'SUFFIX' ? `${base}${affix.name}` : `${affix.name}${base}`;
 }
 
 function textFile(name: string, text: string): ConvertFile {
@@ -985,6 +1033,57 @@ function binaryBlocks(
 }
 
 /**
+ * `--start-time` / `--finish-time` / `--limit-duration` (manual 4.5.4), and the GUI's Time
+ * Interval, which is the same object.
+ *
+ * The window is applied to the SBF records by their own GPS stamp. A text record carries no stamp,
+ * so it survives only when its position in the capture sits between the first and the last kept
+ * record — capture order is the only time information it has. WEEK `0` means "the week of the first
+ * log", as the manual says. Measured against the suite: b2 `--start-time=2442,577760
+ * --finish-time=2442,577770` writes 1 362 914 B / 262 lines, exactly what this returns.
+ */
+export function applyTimeWindow(
+  frames: readonly Frame[],
+  startTime: ConvertTimePoint | undefined,
+  finishTime: ConvertTimePoint | undefined,
+  limitDuration: number | undefined,
+): readonly Frame[] {
+  if (!startTime && !finishTime && !Number.isFinite(limitDuration)) return frames;
+  const sbf = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
+  if (!sbf.length) return frames;
+  const firstWeek = sbf[0].header.week;
+  const absolute = (week: number, seconds: number) => week * 604_800_000 + seconds * 1000;
+  // The anchor is the first record that carries an **observation** time: `SATTIME` records hold an
+  // almanac's reference epoch (b2's first record is `ALMANAC 577140.000`, while the file really
+  // starts at 577758.950 — the same rule the suite's own Summary uses).
+  const anchor = sbf.find((frame) => frame.header.timeStatus !== 200) ?? sbf[0];
+  const firstStamp = absolute(anchor.header.week, anchor.header.milliseconds / 1000);
+  const from = startTime
+    ? absolute(startTime.week || firstWeek, startTime.seconds)
+    : Number.isFinite(limitDuration)
+      ? firstStamp
+      : -Infinity;
+  let to = finishTime ? absolute(finishTime.week || firstWeek, finishTime.seconds) : Infinity;
+  if (Number.isFinite(limitDuration)) to = Math.min(to, from + (limitDuration as number) * 1000);
+
+  let firstIndex = -1;
+  let lastIndex = -1;
+  const keep = frames.map((frame, index) => {
+    if (frame.kind !== 'sbf') return false;
+    const stamp = absolute(frame.header.week, frame.header.milliseconds / 1000);
+    const inside = stamp >= from && stamp <= to;
+    if (inside) {
+      if (firstIndex < 0) firstIndex = index;
+      lastIndex = index;
+    }
+    return inside;
+  });
+  if (firstIndex < 0) return [];
+  return frames.filter((frame, index) =>
+    keep[index] || (frame.kind !== 'sbf' && index > firstIndex && index < lastIndex));
+}
+
+/**
  * Build every file Convert writes for one capture.
  *
  * `frames` must be the frames **Convert** sees: `SbfDeframer({crcMode: 'validate'})`, text records
@@ -992,11 +1091,17 @@ function binaryBlocks(
  * CRC and therefore splits a damaged capture differently (b1: 1322 binary frames there, 1325 here),
  * so it passes a separate frame list — see `app/src/capture.ts#CaptureData.allFrames`.
  */
-export function convertFrames(inputFrames: readonly Frame[], options: ConvertOptions): ConvertOutcome {
+export function convertFrames(captureFrames: readonly Frame[], options: ConvertOptions): ConvertOutcome {
   const { format, at, tables, name } = options;
   const base = captureBase(name);
+  const outputBase = affixedBase(base, options.affix);
   const expand = options.expandCmp !== false;
   const splitMode: ConvertSplitMode | undefined = options.splitMode ?? (options.split ? 'logs' : undefined);
+
+  // The GUI's Time Interval and the CLI's `--start-time`/`--finish-time`/`--limit-duration` are one
+  // rule, so the window is applied here rather than in the CLI.
+  const inputFrames = applyTimeWindow(captureFrames, options.startTime, options.finishTime, options.limitDuration);
+  const windowed = inputFrames !== captureFrames;
 
   // `--decimate` filters the record stream itself, so the summary's Source # column follows it:
   // the suite's b1 run at `--decimate=5` lists `BESTPOS 17 → 17` where the full capture has 32.
@@ -1030,16 +1135,21 @@ export function convertFrames(inputFrames: readonly Frame[], options: ConvertOpt
   let countsText: Map<number, string | string[]> | undefined;
 
   // Unknown bytes, when the caller handed us the capture itself (they are in no frame). Measured
-  // over the **whole** capture, before `--decimate` drops anything: the suite's b1 run at
-  // `--decimate=5` still reports the full 3 695 in the summary's UNKNOWN row.
+  // over the **whole** capture and before `--decimate` drops anything: the suite's b1 run at
+  // `--decimate=5` still reports the full 3 695 in the summary's UNKNOWN row, and a Time Interval
+  // does not narrow the account either — b2 with `--start-time=2442,577760
+  // --finish-time=2442,577770 --unknown-bytes=file` still writes the full 7 056-byte `.UNKNOWN`.
   const mode: UnknownBytesMode = options.unknownBytes ?? 'ignore';
   const source = options.source;
-  const spans = source && source.length > 0 && inputFrames.every((frame) => frame.offset !== undefined)
-    ? unknownSpans(inputFrames, tables, source.length)
+  const spans = source && source.length > 0 && captureFrames.every((frame) => frame.offset !== undefined)
+    ? unknownSpans(captureFrames, tables, source.length)
     : undefined;
   const textFamily = format === 'ASCII' || format === 'ABBREV_ASCII' || format === 'BINARY';
   // The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`).
-  const interleaving = mode === 'interleave' && textFamily && splitMode === undefined && spans !== undefined && source !== undefined;
+  // Interleave splices runs from the whole capture, so it is only meaningful without a window
+  // (window + interleave is unmeasured on the suite; the count and `.UNKNOWN` are not).
+  const interleaving = mode === 'interleave' && textFamily && splitMode === undefined
+    && !windowed && spans !== undefined && source !== undefined;
 
   if (format === 'ASCII') {
     const rendered = new Map<number, number>();
@@ -1049,9 +1159,9 @@ export function convertFrames(inputFrames: readonly Frame[], options: ConvertOpt
       return line ? [line] : [];
     }, stamps, expand, rendered);
     if (interleaving) {
-      files.push(interleave(`${base}.ASCII`, blocks, spans!.fileRuns, source!));
+      files.push(interleave(`${outputBase}.ASCII`, blocks, spans!.fileRuns, source!));
     } else {
-      files.push(...assembleFiles(base, 'ASCII', true, blocks, splitMode, options));
+      files.push(...assembleFiles(outputBase, 'ASCII', true, blocks, splitMode, options));
     }
     countsRendered = rendered;
     countsText = textAt;
@@ -1064,9 +1174,9 @@ export function convertFrames(inputFrames: readonly Frame[], options: ConvertOpt
       stamps, expand, rendered,
     );
     if (interleaving) {
-      files.push(interleave(`${base}.ABBREV_ASCII`, blocks, spans!.fileRuns, source!));
+      files.push(interleave(`${outputBase}.ABBREV_ASCII`, blocks, spans!.fileRuns, source!));
     } else {
-      files.push(...assembleFiles(base, 'ABBREV_ASCII', true, blocks, splitMode, options));
+      files.push(...assembleFiles(outputBase, 'ABBREV_ASCII', true, blocks, splitMode, options));
     }
     countsRendered = rendered;
     countsText = textAt;
@@ -1090,31 +1200,31 @@ export function convertFrames(inputFrames: readonly Frame[], options: ConvertOpt
         positionType: String(get('position_type')?.text),
       });
     }
-    files.push(textFile(`${base}_BESTPOS.KML`, buildKml(points, { name: `${base}_BESTPOS` })));
+    files.push(textFile(`${outputBase}_BESTPOS.KML`, buildKml(points, { name: `${outputBase}_BESTPOS` })));
   } else if (format === 'RINEX21') {
-    files.push(textFile(`${base}.${yy}O`, buildRinex21Obs(accepted, tables, { builtAt: at })));
-    files.push(textFile(`${base}.${yy}N`, buildRinex21Nav(accepted, tables, { builtAt: at })));
-    files.push(textFile(`${base}.${yy}G`, buildRinex21GloNav({ builtAt: at })));
+    files.push(textFile(`${outputBase}.${yy}O`, buildRinex21Obs(accepted, tables, { builtAt: at })));
+    files.push(textFile(`${outputBase}.${yy}N`, buildRinex21Nav(accepted, tables, { builtAt: at })));
+    files.push(textFile(`${outputBase}.${yy}G`, buildRinex21GloNav({ builtAt: at })));
   } else if (format.startsWith('RINEX30')) {
     // `RINEX301` -> `3.01`. The offsets are 5 and 6 (the `3` of `RINEX3` is at index 5); slicing from
     // 6 would build `0.1`, which is not a version and used to slip through into the `.YYO` header.
     const version = `${format.slice(5, 6)}.${format.slice(6)}` as Rinex3Version;
-    files.push(textFile(`${base}.${yy}O`, buildRinex3Obs(accepted, tables, version, { builtAt: at })));
-    files.push(textFile(`${base}.${yy}N`, buildRinex3Nav(accepted, tables, version, { builtAt: at })));
+    files.push(textFile(`${outputBase}.${yy}O`, buildRinex3Obs(accepted, tables, version, { builtAt: at })));
+    files.push(textFile(`${outputBase}.${yy}N`, buildRinex3Nav(accepted, tables, version, { builtAt: at })));
     // One header-only nav file per constellation the version supports (the set grows from 3.01 to
     // 3.03); none of these captures carries a non-GPS ephemeris, so they are all bare headers.
     for (const system of rinex3NavSystems(version)) {
       files.push(textFile(
-        `${base}.${yy}${RINEX3_NAV_EXTENSIONS[system]}`,
+        `${outputBase}.${yy}${RINEX3_NAV_EXTENSIONS[system]}`,
         buildRinex3EmptyNav(system, version, { builtAt: at }),
       ));
     }
   } else {
     const blocks = binaryBlocks(frames, tables, stamps, expand);
     if (interleaving) {
-      files.push(interleave(`${base}.BINARY`, blocks, spans!.fileRuns, source!));
+      files.push(interleave(`${outputBase}.BINARY`, blocks, spans!.fileRuns, source!));
     } else {
-      files.push(...assembleFiles(base, 'BINARY', false, blocks, splitMode, options));
+      files.push(...assembleFiles(outputBase, 'BINARY', false, blocks, splitMode, options));
     }
   }
 
@@ -1150,7 +1260,7 @@ export function convertFrames(inputFrames: readonly Frame[], options: ConvertOpt
     unknownCount = countUnknown(source, spans.parseRuns);
     unknownBytes = concatBytes(spans.fileRuns.map((run) => source.subarray(run.start, run.end)));
     if (mode === 'file' && textFamily) {
-      files.push({ name: `${base}.UNKNOWN`, text: null, bytes: unknownBytes });
+      files.push({ name: `${outputBase}.UNKNOWN`, text: null, bytes: unknownBytes });
     }
   }
 
@@ -1158,6 +1268,7 @@ export function convertFrames(inputFrames: readonly Frame[], options: ConvertOpt
     format,
     formatDirectory: formatDirectory(format),
     base,
+    outputBase,
     files,
     all,
     passthrough,

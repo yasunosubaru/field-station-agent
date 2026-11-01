@@ -31,55 +31,6 @@ import type { EdieTables } from '../../protocol/src/edie.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA = resolve(here, '..', '..', 'protocol', 'data');
 
-/**
- * `--start-time` / `--finish-time` / `--limit-duration` (user manual 4.5.4).
- *
- * The window is applied to the SBF records by their own GPS stamp. A text record carries no stamp,
- * so it survives only when its position in the capture sits between the first and the last kept
- * record — capture order is the only time information it has. WEEK `0` means "the week of the first
- * log", as the manual says.
- */
-function applyTimeWindow(
-  frames: Frame[],
-  startTime: { week: number; seconds: number } | undefined,
-  finishTime: { week: number; seconds: number } | undefined,
-  limitDuration: number | undefined,
-): Frame[] {
-  if (!startTime && !finishTime && !Number.isFinite(limitDuration)) return frames;
-  const sbf = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
-  if (!sbf.length) return frames;
-  const firstWeek = sbf[0].header.week;
-  const absolute = (week: number, seconds: number) => week * 604_800_000 + seconds * 1000;
-  // The anchor is the first record that carries an **observation** time: `SATTIME` records hold an
-  // almanac's reference epoch (b2's first record is `ALMANAC 577140.000`, while the file really
-  // starts at 577758.950 — the same rule the suite's own Summary uses).
-  const anchor = sbf.find((frame) => frame.header.timeStatus !== 200) ?? sbf[0];
-  const firstStamp = absolute(anchor.header.week, anchor.header.milliseconds / 1000);
-  const from = startTime
-    ? absolute(startTime.week || firstWeek, startTime.seconds)
-    : Number.isFinite(limitDuration)
-      ? firstStamp
-      : -Infinity;
-  let to = finishTime ? absolute(finishTime.week || firstWeek, finishTime.seconds) : Infinity;
-  if (Number.isFinite(limitDuration)) to = Math.min(to, from + (limitDuration as number) * 1000);
-
-  let firstIndex = -1;
-  let lastIndex = -1;
-  const keep = frames.map((frame, index) => {
-    if (frame.kind !== 'sbf') return false;
-    const stamp = absolute(frame.header.week, frame.header.milliseconds / 1000);
-    const inside = stamp >= from && stamp <= to;
-    if (inside) {
-      if (firstIndex < 0) firstIndex = index;
-      lastIndex = index;
-    }
-    return inside;
-  });
-  if (firstIndex < 0) return [];
-  return frames.filter((frame, index) =>
-    keep[index] || (frame.kind !== 'sbf' && index > firstIndex && index < lastIndex));
-}
-
 function stamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_T${pad(date.getHours())}${pad(date.getMinutes())}`;
@@ -180,12 +131,7 @@ function main(): void {
   const frames: Frame[] = [...deframer.push(capture)];
   // Trailing bytes that never completed a record are dropped like any other unknown byte.
   deframer.end();
-  const windowed = applyTimeWindow(frames, startTime, finishTime, limitDuration);
-  // Unknown bytes are measured over the whole capture, so a windowed conversion reports none: the
-  // records outside the window are not "unknown", and the suite's own accounting for that
-  // combination is unmeasured. Every unwindowed run reports the suite's exact number.
-  const source = windowed.length === frames.length ? capture : undefined;
-  const outcome = convertFrames(windowed, {
+  const outcome = convertFrames(frames, {
     format: format as ConvertFormat,
     at,
     tables,
@@ -197,7 +143,12 @@ function main(): void {
     ...(Number.isFinite(decimate) ? { decimate } : {}),
     expandCmp,
     unknownBytes,
-    ...(source ? { source } : {}),
+    // The Time Interval (manual 4.5.4) is `convert-pipeline.ts#applyTimeWindow`, shared with the
+    // app's Convert panel; it narrows the output only (the unknown-byte account stays whole).
+    ...(startTime ? { startTime } : {}),
+    ...(finishTime ? { finishTime } : {}),
+    ...(Number.isFinite(limitDuration) ? { limitDuration } : {}),
+    ...(capture ? { source: capture } : {}),
   });
 
   const outputRoot = outRoot ? resolve(outRoot) : join(dirname(inputPath), 'converted');

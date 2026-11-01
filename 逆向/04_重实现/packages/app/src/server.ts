@@ -9,11 +9,21 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import { CONVERT_FORMATS, convertCapture, FORMAT_LABELS, FORMAT_NOTES, isConvertFormat, type ConvertFormat } from './convert.ts';
+import {
+  CONVERT_FORMATS,
+  convertCapture,
+  FORMAT_LABELS,
+  FORMAT_NOTES,
+  isConvertFormat,
+  type ConvertArtifact,
+  type ConvertFormat,
+} from './convert.ts';
+import type { ConvertOutputAffix, ConvertTimePoint, UnknownBytesMode } from '../../protocol/src/convert-pipeline.ts';
+import { utcDateToGps } from '../../protocol/src/time.ts';
 import { loadCapture, tables } from './capture.ts';
 import {
   applyConfigEvent,
@@ -312,6 +322,147 @@ function health() {
   };
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * /api/convert — the Convert wizard's Output Settings
+ *
+ * The five controls map onto the suite's own request (`01_解包/app/view/convert/convert.js`):
+ *
+ *   Sample Rate (Hz)  → `decimationFilter = 1 / rate` seconds        (:1922)
+ *   Unknown Data      → `unconvertedBytes` SEPARATEFILE|INTERLEAVE   (:1923, cli.js:161-164)
+ *   Destination       → `outputPath` (a folder, created if missing)  (:1924-1934)
+ *   Prefix/Suffix     → `outputFileName = {valid, name, type}`        (:1937-1941)
+ *   Time Interval     → `timeInterval = {startTime, endTime}`          (:1889-1893)
+ *
+ * The page posts the wire spellings `decimate` (seconds), `unknown`, `destination`, `prefix` /
+ * `suffix` and `start` / `finish`; the time points are ISO instants because the browser has no GPS
+ * week to send, and `utcDateToGps` is the documented inverse of what `/api/playback/info` prints.
+ * ------------------------------------------------------------------------------------------- */
+
+function optionalNumber(raw: unknown, label: string): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const value = typeof raw === 'number' ? raw : Number(String(raw));
+  if (!Number.isFinite(value)) throw new HttpError(400, `${label} 必须是数字`);
+  return value;
+}
+
+/**
+ * Sample Rate is the GUI's unit; the pipeline's `decimate` is a period in seconds. The page sends
+ * the period (`1 / Hz`), and this only refuses what cannot be a period.
+ */
+function decimationField(raw: unknown): number | undefined {
+  const value = optionalNumber(raw, 'decimate');
+  if (value === undefined) return undefined;
+  if (value <= 0) throw new HttpError(400, 'decimate 必须是大于 0 的秒数（= 1 / Sample Rate）');
+  if (value > 604_800) throw new HttpError(400, 'decimate 不能超过一个 GPS 周（604800 秒）');
+  return value;
+}
+
+/** `--unknown-bytes=[file|interleave|ignore]`, and the GUI's `SEPARATE` / `INTERLEAVE` spellings. */
+function unknownModeField(raw: unknown): UnknownBytesMode | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const text = String(raw).trim().toUpperCase();
+  if (text === 'SEPARATE' || text === 'SEPARATEFILE' || text === 'FILE') return 'file';
+  if (text === 'INTERLEAVE') return 'interleave';
+  if (text === 'IGNORE' || text === 'SKIP') return 'ignore';
+  throw new HttpError(400, 'unknown 必须是 SEPARATE / INTERLEAVE / ignore');
+}
+
+/**
+ * Prefix/Suffix: the suite rejects `/ : * ? " < > | \` in the box and caps it at 18 characters
+ * (`convert.html`'s `maxlength="18"`, `convert.js:1862-1873`); the same rule runs here because the
+ * value ends up in a file name.
+ */
+const AFFIX_FORBIDDEN = /[\\/:*?"<>|]/;
+const AFFIX_MAX = 18;
+
+function affixField(body: Record<string, unknown>): ConvertOutputAffix | undefined {
+  const prefix = typeof body.prefix === 'string' ? body.prefix : '';
+  const suffix = typeof body.suffix === 'string' ? body.suffix : '';
+  if (prefix !== '' && suffix !== '') throw new HttpError(400, 'prefix 与 suffix 只能给一个');
+  const name = prefix || suffix;
+  if (!name) return undefined;
+  if (name.length > AFFIX_MAX) throw new HttpError(400, `Prefix/Suffix 最多 ${AFFIX_MAX} 个字符`);
+  if (AFFIX_FORBIDDEN.test(name)) throw new HttpError(400, 'Prefix/Suffix 不能包含 \\ / : * ? " < > |');
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f]/.test(name)) throw new HttpError(400, 'Prefix/Suffix 含控制字符');
+  return { valid: true, name, type: suffix ? 'SUFFIX' : 'PREFIX' };
+}
+
+/**
+ * Time Interval: `{week, seconds}` directly (what `--start-time` takes), or an ISO instant, which
+ * is converted the way `/api/playback/info` converts the other direction.
+ */
+function timePointField(raw: unknown, label: string): ConvertTimePoint | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  if (typeof raw === 'object') {
+    const point = raw as { week?: unknown; seconds?: unknown };
+    const week = Number(point.week);
+    const seconds = Number(point.seconds);
+    if (!Number.isFinite(week) || !Number.isFinite(seconds) || week < 0 || seconds < 0 || seconds >= 604_800) {
+      throw new HttpError(400, `${label} 必须是 {week, seconds}`);
+    }
+    return { week, seconds };
+  }
+  // A number would be read as "milliseconds since the epoch" by `new Date` — 1970, not the capture.
+  if (typeof raw !== 'string') throw new HttpError(400, `${label} 必须是 ISO 时间或 {week, seconds}`);
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new HttpError(400, `${label} 不是合法时间`);
+  const gps = utcDateToGps(date);
+  return { week: gps.week, seconds: gps.milliseconds / 1000 };
+}
+
+/**
+ * Destination: an absolute folder, created when it does not exist (the suite does the same with
+ * `mkdirp`, `convert.js:1929-1933`). `..` is refused rather than normalised away so the request
+ * cannot name a folder it did not spell out, and every written path is re-checked for containment.
+ */
+function destinationField(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string') throw new HttpError(400, 'destination 必须是字符串');
+  const text = raw.trim();
+  if (!text) return null;
+  if (text.includes('\0')) throw new HttpError(400, 'destination 含非法字符');
+  if (!isAbsolute(text)) throw new HttpError(400, 'destination 必须是绝对路径');
+  if (text.split(/[\\/]+/).some((part) => part === '..')) throw new HttpError(400, 'destination 不允许包含 ..');
+  const absolute = resolve(text);
+  if (existsSync(absolute)) {
+    if (!statSync(absolute).isDirectory()) throw new HttpError(400, 'destination 已存在但不是目录');
+    return absolute;
+  }
+  try {
+    mkdirSync(absolute, { recursive: true });
+  } catch (error) {
+    throw new HttpError(400, `destination 无法创建：${error instanceof Error ? error.message : String(error)}`);
+  }
+  return absolute;
+}
+
+/** The suite's `Converted_On_YYYYMMDD_THHMM`, in UTC so the page's label is the folder that exists. */
+function convertedStamp(at: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `Converted_On_${at.getUTCFullYear()}${pad(at.getUTCMonth() + 1)}${pad(at.getUTCDate())}`
+    + `_T${pad(at.getUTCHours())}${pad(at.getUTCMinutes())}`;
+}
+
+/**
+ * Write the run into `destination` with the suite's layout
+ * (`SelectedFolder/Source/TimeStamp/Format/FileName`, manual 4.3.2.5), the same tree the CLI writes
+ * under `--out`. Every file of the run goes there — RINEX's nav files and `<base>.UNKNOWN` included.
+ */
+function writeConvertFiles(artifact: ConvertArtifact, destination: string, at: Date): void {
+  const directory = join(destination, artifact.base, convertedStamp(at), artifact.formatDirectory);
+  const guard = destination.endsWith(sep) ? destination : `${destination}${sep}`;
+  if (!`${directory}${sep}`.startsWith(guard)) throw new HttpError(400, 'destination 越界');
+  mkdirSync(directory, { recursive: true });
+  for (const file of artifact.files) {
+    const target = join(directory, file.fileName);
+    if (!target.startsWith(guard)) throw new HttpError(400, 'destination 越界');
+    writeFileSync(target, file.data);
+  }
+  artifact.directory = directory;
+  artifact.path = join(directory, artifact.fileName);
+}
+
 async function handleConvert(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
   if (method !== 'POST') throw new HttpError(405, '/api/convert 只接受 POST');
   const body = await readJsonBody(req);
@@ -328,10 +479,35 @@ async function handleConvert(req: IncomingMessage, res: ServerResponse, method: 
     at = parsed;
   }
 
+  // The Output Settings, parsed before the capture is read so a bad field costs nothing.
+  const decimate = decimationField(body.decimate);
+  const unknownBytes = unknownModeField(body.unknown);
+  const affix = affixField(body);
+  const startTime = timePointField(body.start, 'start');
+  const finishTime = timePointField(body.finish, 'finish');
+  if (startTime && finishTime) {
+    const from = startTime.week * 604_800_000 + startTime.seconds * 1000;
+    const to = finishTime.week * 604_800_000 + finishTime.seconds * 1000;
+    if (to < from) throw new HttpError(400, 'finish 早于 start');
+  }
+  const destination = destinationField(body.destination);
+
   const capture = resolveCapture(body.capture);
   const started = process.hrtime.bigint();
   const data = loadCapture(capture);
-  const artifact = convertCapture(data, tables(), format, at);
+  // The raw bytes again: unknown bytes are in no frame, so the pipeline can only count them from
+  // the capture itself (`--unknown-bytes=file`, `interleave`, and the summary's UNKNOWN row).
+  const source = new Uint8Array(readFileSync(capture.absolutePath));
+  const artifact = convertCapture(data, tables(), format, at, {
+    ...(decimate !== undefined ? { decimate } : {}),
+    ...(unknownBytes ? { unknownBytes } : {}),
+    ...(startTime ? { startTime } : {}),
+    ...(finishTime ? { finishTime } : {}),
+    ...(affix ? { affix } : {}),
+    source,
+  });
+  // Destination has a value: the files really land there, in the suite's layout.
+  if (destination) writeConvertFiles(artifact, destination, at);
   const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
 
   const token = randomBytes(9).toString('hex');
@@ -364,6 +540,20 @@ async function handleConvert(req: IncomingMessage, res: ServerResponse, method: 
     downloadUrl: `/api/download?token=${token}`,
     elapsedMs: Math.round(elapsedMs * 10) / 10,
     at: at.toISOString(),
+    // What the run produced, where it went, and what the Output Settings did.
+    base: artifact.base,
+    files: artifact.files.map((file) => ({ fileName: file.fileName, bytes: file.bytes })),
+    directory: artifact.directory,
+    path: artifact.path,
+    unknownBytes: artifact.unknownBytes,
+    unknownFileName: artifact.unknownFileName,
+    unConvertedBytes: artifact.unConvertedBytes,
+    decimate: decimate ?? null,
+    unknown: unknownBytes ?? 'ignore',
+    prefix: affix && affix.type === 'PREFIX' ? affix.name : null,
+    suffix: affix && affix.type === 'SUFFIX' ? affix.name : null,
+    start: startTime ?? null,
+    finish: finishTime ?? null,
     records: { total: data.totalRecords, accepted: data.accepted, dropped: data.dropped, textRecords: data.textRecords },
   }, method);
 }
@@ -872,6 +1062,9 @@ const server = createServer((req, res) => {
         sendJson(res, 200, {
           ok: true,
           samples: relative(REPO_DIR, SAMPLES_DIR).split('\\').join('/'),
+          // The samples tree's absolute path: the Convert panel's Destination field is a text box
+          // (the suite opens a folder picker instead), so it needs something absolute to prefill.
+          samplesAbsolute: SAMPLES_DIR,
           captures,
           formats: formatOptions(),
         }, method);
