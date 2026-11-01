@@ -230,3 +230,48 @@ D3 把 `<OK`/`<ERR` 接进 `LiveLink` 之后，两条路径现在都能在 `/api
 
 同时看到左侧 Status 卡是实时值（`Single / 30.5399761° / 114.3528119° / 65.71 m / 10 used of 26 tracked`），
 说明这一轮是"链路上同时看配置页与状态页"，不是离线回放。
+
+### 17.7 实机：`.cfg` 写入真机（2026-11-01，COM10/USB2）
+
+四条日志形态是这一轮最值钱的实测，`READBACK_REQUEST` 与语句解析都按它改：
+
+```
+LOG RXCONFIGB ONCE      -> 271 条 message 128，#RXCONFIGA,…,18278;#SERIALCONFIGA,…,18278;COM1,9600,N,8,1,N,ON*80f21651
+LOG SERIALCONFIGB ONCE  -> #SERIALCONFIGA,SPECIAL,2,…,18278;COM1,9600,N,8,1,N,ON*3a5821cf
+LOG RXCONFIG ONCE       -> 缩略 ASCII，三行一组（<RXCONFIG USB2 270 … / <     ELEVATIONCUTOFF … / <     GLONASS 5.0 0）
+LOG RXCONFIGA ONCE      -> 本口 20 s 内一条不出（不要用它做回读）
+```
+
+**语句名在 header、参数用逗号**：`configurationLineOf` 原来只取最后一个 `;` 之后，真机上得到的是
+没有命令名的 `COM1 9600 N 8 1 N ON`，导出的 190 行 `.cfg` 全是残句。现在按 header 名重建，
+`RXCONFIG` 包装层递归进内层（`#RXCONFIGA,…;#SERIALCONFIGA,…;COM1,…` → `SERIALCONFIG COM1 9600 N 8 1 N ON`），
+单参数的 `#LOCKOUTSYSTEMA,…;NAVIC` → `LOCKOUTSYSTEM NAVIC`。
+
+**回读是记录不是文本**：`LiveLink.collect(..., { records: true })` 把请求期间新到的记录按
+`entry.ascii` 一并交回；只保留**请求的那条日志**（RANGE 20 条/秒会把回读撑成"382 行"，
+真值 271 条），`<     GLONASS 5.0 0` 这种续行不算独立应答，`[USB2]` 前缀的端口文本直接跳过。
+
+**两次导入的实测**（`POST /api/config/device/import`，正文一行）：
+
+| 行 | 应答 | 耗时 | 回读 |
+|---|---|---|---|
+| `SERIALCONFIG COM1 19200 N 8 1 N ON` | `<OK` | 32 ms | matched（回读原文 `…#SERIALCONFIGA,…;COM1,19200,N,8,1,N,ON*3cdd001e*a9277c26`） |
+| `SERIALCONFIG COM1 9600 N 8 1 N ON` | `<OK` | 92 ms | matched（`…COM1,9600,…*e20c7d77*0c308657`） |
+
+`verification` 两次都是 `{"attempted":true,"ok":true,"request":"LOG RXCONFIGB ONCE","lines":249,"matched":1,"mismatched":[],"absent":[]}`。
+串口侧用 `LOG SERIALCONFIGB ONCE` 单独回读，`COM1` 亲眼从 `9600` 变 `19200` 再变回 `9600`，COM2/COM3 的
+`38400` 全程没动。负例 `SERIALCONFIG COM99 9600 N 8 1 N ON` → `<ERROR:Invalid Message. Field = 2`，
+`sent:1`、`failedAt:1`、`verification:null`（后续行与回读都没发）。
+
+**配置页的数据缺口根因**（这一轮最该修、但不在本轮文件范围的一项）：
+`config-feed.ts#CONFIG_MESSAGE_IDS = [3, 5, 1246, 1248, 1249, 1344]` 只放行 6 个 id，
+而接收机实测能回答 `HEADINGOFFSET(1335)=0.000000000,0.000000000`、`ELEVATIONCUTOFF(1735)` 七行、
+`PPSCONTROL(613)=ENABLE,NEGATIVE,1.000000000,1000`、`IPCONFIG(1243)=ETHA,STATIC,"192.168.5.10",…`——
+全部被这一行挡在页面外；`gnssConfig`/`networkingSettings` 在 `CONFIG_LOG_REQUESTS` 里也没有条目
+（`GET /config/gnssConfig` 24 ms 就返回，一条 LOG 都没发）。`deviceDetails` 不在 `ALL_PAGE_NAMES`，
+`/config/deviceDetails` 直接 `{"ok":false,"error":"未知配置页：deviceDetails"}`。
+
+原版套件本轮**没能**做控制变量：远程机只有已断开的 RDP 会话，`CopyFromScreen` 抓出纯白，
+按键/鼠标注入无效，`PostMessage` 只有首页 Manage 卡片响应；加 `--remote-debugging-port=9222`
+时 DevTools 端口一闪即被它自己的参数校验判死（`Invald option  REMOTE-DEBUGGING-PORT`）。
+完整证据与逐页对照表见 `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-live\REPORT.md`。

@@ -132,7 +132,11 @@ export function transformSavedConfigLines(
     if (!firstWord) continue;
     if (firstWord === 'LOG') continue;
     const clean = (
-      line.startsWith('<') && (line.includes('ASSIGNLBANDBEAM') || line.includes('ICOMCONFIG'))
+      // The same guard as the two lookahead branches above: without a following line there is
+      // nothing to splice in, and `lines[index + 1] ?? ''` used to leave the command name alone
+      // (`<ICOMCONFIG ICOM1 TCP ":2000" ALL` came out as just `ICOMCONFIG` when the statements are
+      // handed over one at a time — see `config-http.ts#buildCfgFromTranscript`).
+      line.startsWith('<') && (line.includes('ASSIGNLBANDBEAM') || line.includes('ICOMCONFIG')) && lines[index + 1]
         ? [firstWord, ...(lines[index + 1] ?? '').replace(/< |"/g, '').split(/\s+/).filter(Boolean)]
         : words.map((word) => word.replace(/^</, '')).filter(Boolean)
     );

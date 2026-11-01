@@ -23,6 +23,8 @@ type Verdict = { reply: string | null; status?: LiveCommandStatus };
 class ScriptedChannel implements ImportChannel {
   readonly sent: string[] = [];
   readonly requests: string[] = [];
+  /** How each read-back was asked for (`records: true` = decoded records count too). */
+  readonly collectOptions: Array<{ records?: boolean }> = [];
   private readonly verdicts: Verdict[];
   private readonly readback: string[] | null;
 
@@ -46,8 +48,12 @@ class ScriptedChannel implements ImportChannel {
     };
   }
 
-  async collect(line: string): Promise<{ ok: boolean; lines: string[]; reason: string }> {
+  async collect(
+    line: string,
+    options?: { records?: boolean },
+  ): Promise<{ ok: boolean; lines: string[]; reason: string }> {
     this.requests.push(line);
+    this.collectOptions.push(options ?? {});
     if (this.readback === null) {
       return { ok: false, lines: [], reason: `no line answered “${line}” within 8000 ms (the receiver stayed silent)` };
     }
@@ -88,6 +94,8 @@ test('every line is acknowledged and the read-back confirms each one', async () 
     'INTERFACEMODE COM2 NONE NOVATEL OFF',
   ]);
   assert.deepEqual(channel.requests, [READBACK_REQUEST], 'the read-back is the shipped RXCONFIG dump');
+  assert.equal(READBACK_REQUEST, 'LOG RXCONFIGB ONCE', 'the form the desk OEM729 actually answers');
+  assert.equal(channel.collectOptions[0].records, true, 'this receiver answers with records, not text');
   assert.equal(result.steps.length, 2);
   assert.deepEqual(result.steps.map((step) => step.reply), ['<OK', '<OK']);
   assert.deepEqual(result.steps.map((step) => step.verified), ['matched', 'matched']);
@@ -96,6 +104,32 @@ test('every line is acknowledged and the read-back confirms each one', async () 
   assert.equal(result.verification?.lines, 2);
   assert.deepEqual(result.verification?.mismatched, []);
   assert.match(result.reason, /no SAVECONFIG, no RESET/);
+});
+
+/**
+ * The desk OEM729 answers `LOG RXCONFIGB ONCE` with message 128 records whose ASCII line carries
+ * the statement name in a *second* header and comma-separated arguments:
+ *
+ *   `#RXCONFIGA,SPECIAL,270,…;#ELEVATIONCUTOFFA,SPECIAL,270,…;GLONASS,5.0,0*crc1*crc2`
+ *
+ * (measured 2026-11-01). The verifier has to read that shape, otherwise every step is "absent" over
+ * an answer that was complete.
+ */
+test('the receiver’s own nested RXCONFIGB shape is read back statement by statement', async () => {
+  const nested = (index: number, name: string, args: string): string =>
+    `#RXCONFIGA,SPECIAL,${270 - index},68.0,SATTIME,0,0.000,03801800,f702,18278;` +
+    `#${name}A,SPECIAL,${270 - index},68.0,SATTIME,0,0.000,03801800,50e0,18278;${args}*deadbeef*0badc0de`;
+  const channel = new ScriptedChannel(
+    [{ reply: '<OK' }, { reply: '<OK' }],
+    [nested(0, 'SERIALCONFIG', 'COM2,9600,N,8,1,N,ON'), nested(1, 'INTERFACEMODE', 'COM2,NONE,NOVATEL,OFF')],
+  );
+  const result = await deviceImportApply(CFG, true, undefined, channel);
+
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.verified, true, 'both lines were found in the receiver’s own words');
+  assert.deepEqual(result.steps.map((step) => step.verified), ['matched', 'matched']);
+  assert.deepEqual(result.verification?.absent, []);
+  assert.match(result.steps[0].readback[0], /;COM2,9600,N,8,1,N,ON\*/, 'the raw line is quoted verbatim');
 });
 
 test('a refused line stops the import there and quotes the receiver', async () => {

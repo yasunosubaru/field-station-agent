@@ -636,10 +636,21 @@ export function deviceImportPreview(
 export interface ImportChannel {
   /** Send one line and wait for the receiver's own `<OK` / `<ERR…`. */
   command(line: string, options?: { timeoutMs?: number }): Promise<LiveCommandReply>;
-  /** Send a read-back request and collect the receiver's data lines. */
+  /**
+   * Send a read-back request and collect the receiver's data lines.
+   *
+   * `records: true` also returns the **decoded records** the request produced (`LiveLink` keeps
+   * their rendered ASCII lines): this receiver answers `LOG RXCONFIGB ONCE` with SBF records rather
+   * than text, so a text-only collector would see nothing at all.
+   */
   collect(
     line: string,
-    options?: { timeoutMs?: number; quietMs?: number; until?: (lines: string[]) => boolean },
+    options?: {
+      timeoutMs?: number;
+      quietMs?: number;
+      until?: (lines: string[]) => boolean;
+      records?: boolean;
+    },
   ): Promise<{ ok: boolean; lines: string[]; reason: string }>;
 }
 
@@ -696,8 +707,22 @@ export interface CfgApplyResult {
   failedLine?: string;
 }
 
-/** The read-back request: the receiver's own configuration dump, asked for once. */
-export const READBACK_REQUEST = 'LOG RXCONFIG ONCE';
+/**
+ * The read-back request: the receiver's own configuration dump, asked for once.
+ *
+ * Measured on the desk OEM729 (2026-11-01, USB2/COM10 at 115200, RANGE streaming):
+ *
+ *  - `LOG RXCONFIG ONCE` answers **abbreviated ASCII** as a three-line group per statement
+ *    (`<RXCONFIG USB2 270 …` / `<     ELEVATIONCUTOFF USB2 270 …` / `<     GLONASS 5.0 0`) — the
+ *    statement name is on the second line, so it cannot be split per statement;
+ *  - `LOG RXCONFIGA ONCE` was silent on this port (no record arrived within 20 s);
+ *  - `LOG RXCONFIGB ONCE` answers **271 records of message 128 (RXCONFIG)** in one burst, each one
+ *    a whole statement with its name and arguments — the shape this verifier parses.
+ *
+ * So the request is the `B` form, and the answer comes back as *decoded records* rather than text:
+ * `LiveLink.collect` has to be asked for those (`records: true`).
+ */
+export const READBACK_REQUEST = 'LOG RXCONFIGB ONCE';
 /** One configuration line takes milliseconds on a receiver; a minute of silence means it is gone. */
 const DEFAULT_COMMAND_TIMEOUT_MS = 15_000;
 const DEFAULT_READBACK_TIMEOUT_MS = 8_000;
@@ -850,6 +875,9 @@ export async function deviceImportApply(
 
   const readback = await channel.collect(READBACK_REQUEST, {
     timeoutMs: options.readbackTimeoutMs ?? DEFAULT_READBACK_TIMEOUT_MS,
+    // This receiver answers `LOG RXCONFIGB ONCE` with 271 *decoded records*, not text lines: the
+    // channel has to hand those over too or the read-back looks silent and every step is "absent".
+    records: true,
   });
   const parsed = parseReadback(readback.lines);
   const verification: CfgApplyVerification = {
@@ -940,16 +968,60 @@ function saveLogNameOf(name: string): string {
   return upper.replace(/[AB]$/, '');
 }
 
-/** The payload line `transformSavedConfigLines` can read, or `null` when the record is opaque. */
+/**
+ * The payload line `transformSavedConfigLines` can read, or `null` when the record is opaque.
+ *
+ * Three shapes are in the wild, and the desk OEM729 emits the third one:
+ *
+ *  1. abbreviated ASCII, already a command — `<SERIALCONFIG COM1 9600 N 8 1 N ON*0b6e…`;
+ *  2. full ASCII with the command spelled out in the body —
+ *     `<RXCONFIGA,COM1,0,53.5,…;INTERFACEMODE COM1 NOVATEL NOVATEL ON*11…` (the shape the shipped
+ *     save flow and the tests use);
+ *  3. full ASCII whose body is **another full ASCII record**, comma-separated —
+ *     `#RXCONFIGA,SPECIAL,268,…;NAVIC,5.0,0*…` for a single statement, and for a nested one
+ *     `#RXCONFIGA,SPECIAL,270,…;#ELEVATIONCUTOFFA,SPECIAL,270,…;GLONASS,5.0,0*…*…`.
+ *     Measured on the desk OEM729 on 2026-11-01: `LOG RXCONFIGB ONCE` answers 271 records in this
+ *     shape, and `LOG SERIALCONFIGB ONCE` answers `#SERIALCONFIGA,SPECIAL,2,…;COM1,9600,N,8,1,N,ON*…`.
+ *     The statement name lives in the *header* and the arguments are comma-separated, so shape 3
+ *     has to be rebuilt as `<NAME arg arg …`; taking the body alone (what this function did before
+ *     the hardware run) yields `COM1 9600 …` with no command name and the `.cfg` came out empty.
+ */
 function configurationLineOf(ascii: string): string | null {
-  const text = ascii.trim();
-  if (!text) return null;
-  /* Full ASCII is `<RXCONFIGA,<header>;<command …>*crc`: the command is the body after the last
-   * `;`. Abbreviated ASCII (`<SERIALCONFIG COM1 …*crc`) is already the body. */
-  const body = text.includes(';') ? text.slice(text.lastIndexOf(';') + 1) : text;
-  const withoutCrc = body.replace(/\*[0-9a-fA-F]+\s*$/, '').trim();
-  if (!withoutCrc || withoutCrc.startsWith('%')) return null;
-  return withoutCrc.startsWith('<') ? withoutCrc : `<${withoutCrc}`;
+  return statementOf(ascii.trim(), 0);
+}
+
+/** `configurationLineOf`'s recursion step; `depth` stops a malformed record from looping. */
+function statementOf(text: string, depth: number): string | null {
+  if (!text || text.startsWith('%') || depth > 3) return null;
+  const semicolon = text.indexOf(';');
+  if (semicolon < 0) {
+    /* Abbreviated ASCII (`<SERIALCONFIG COM1 …`) or a bare command: strip the CRC and hand it on. */
+    const withoutCrc = text
+      .replace(/^[<#%](?=\S)/, '<')
+      .replace(/\*[0-9a-fA-F]+\s*$/, '')
+      .trim();
+    if (!withoutCrc) return null;
+    return withoutCrc.startsWith('<') ? withoutCrc : `<${withoutCrc}`;
+  }
+  const header = text.slice(0, semicolon).replace(/^[<#%]/, '');
+  const headerName = header.split(',')[0].trim();
+  const body = text.slice(semicolon + 1);
+  /* Body of another full ASCII record: its own header names the statement. */
+  if (/^[#<]/.test(body)) return statementOf(body, depth + 1);
+  const withoutCrc = body.replace(/(\*[0-9a-fA-F]+)+(\s*\*\S*)?\s*$/, '').trim();
+  if (!withoutCrc) return null;
+  /* The `RXCONFIGA` wrapper whose body already reads as one command (the shape the shipped save
+   * flow produces): keep it verbatim. Any other header name is the statement itself — its body is
+   * only the arguments, comma-separated on the wire (`COM1,9600,N,8,1,N,ON`) or single
+   * (`LOCKOUTSYSTEMA,…;NAVIC`), so the name has to come from the header. */
+  const stripped = headerName.replace(/[AB]$/, '');
+  if (/^RXCONFIG$/i.test(stripped)) return withoutCrc.startsWith('<') ? withoutCrc : `<${withoutCrc}`;
+  if (!stripped) return null;
+  const args = withoutCrc
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return `<${[stripped, ...args].join(' ')}`;
 }
 
 /**
@@ -988,7 +1060,19 @@ export function buildCfgFromTranscript(
   }
   const lines: string[] = [];
   for (const [name, block] of blocks) {
-    lines.push(...transformSavedConfigLines(block, name, portDetails));
+    if (name === 'PROFILEINFO') {
+      // PROFILEINFO is one record made of many lines; `transformProfileInfo` needs them together.
+      lines.push(...transformSavedConfigLines(block, name, portDetails));
+      continue;
+    }
+    /* Every entry here is one **whole** statement (the name was unwrapped from the header), while
+     * `transformSavedConfigLines` still carries the original's two-line lookahead for
+     * ASSIGNLBANDBEAM and ICOMCONFIG — which assumed the receiver's abbreviated layout, where the
+     * arguments sit on a following line. Handed a block, the lookahead reads the *next statement*
+     * instead: measured on the desk OEM729, `ICOMCONFIG ICOM1 TCP ":2000" ALL` came out as
+     * `ICOMCONFIG <INTERFACEMODE COM3 NOVATEL NOVATEL ON`. One statement per call keeps the
+     * lookahead from having a neighbour to swallow. */
+    for (const line of block) lines.push(...transformSavedConfigLines([line], name, portDetails));
   }
   const text = lines.length ? `${lines.join('\n')}\n` : '';
   if (!text) {

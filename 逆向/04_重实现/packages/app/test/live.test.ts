@@ -83,6 +83,30 @@ test('a live session decodes a replayed capture and renders Convert-style lines'
   }
 });
 
+test('collect(records: true) hands back the records the request asked for, not the whole stream', async () => {
+  const { server, port } = await replayServer();
+  const link = new LiveLink(dataDir);
+  try {
+    await link.connect({ kind: 'tcp', host: '127.0.0.1', port });
+    const deadline = Date.now() + 20_000;
+    while (link.status().records < 5 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+
+    // The receiver answers a log request with SBF records rather than text (measured: `LOG
+    // RXCONFIGB ONCE` → 271 records of message 128). The replay keeps streaming RANGE at the same
+    // time, so this also pins the filter: only the asked-for log may show up in the answer.
+    const result = await link.collect('LOG BESTPOSB ONCE', { records: true, timeoutMs: 4_000, quietMs: 1_200 });
+    assert.ok(result.lines.length > 0, result.reason);
+    assert.ok(
+      result.lines.every((line) => /BESTPOS/i.test(line)),
+      `only BESTPOS answers belong in the read-back, got ${result.lines.slice(0, 3).join(' | ')}`,
+    );
+    assert.equal(result.lines.some((line) => /RANGE/i.test(line)), false, 'the RANGE stream is not an answer');
+  } finally {
+    await link.disconnect();
+    server.close();
+  }
+});
+
 test('a command typed in the Terminal reaches the socket as ASCII + CRLF', async () => {
   const { server, port, received } = await replayServer();
   const link = new LiveLink(dataDir);

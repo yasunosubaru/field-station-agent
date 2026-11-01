@@ -36,6 +36,22 @@ const RXCONFIG = [
   '<RXCONFIGA,COM1,0,53.5,FINESTEERING,2287,137890.000,02000020,4b5f,1684;INTERFACEMODE COM9 NOVATEL NOVATEL ON*33445566',
 ];
 
+/**
+ * The desk OEM729's own shape (measured 2026-11-01, USB2/COM10): the statement name lives in a
+ * nested header and the arguments are comma-separated. Taking the text after the last `;` used to
+ * hand `transformSavedConfigLines` a nameless `COM1,9600,…` and the file came out empty.
+ */
+const RXCONFIG_WIRE = [
+  '#RXCONFIGA,SPECIAL,268,68.0,SATTIME,0,0.000,03801800,f702,18278;' +
+    '#SERIALCONFIGA,SPECIAL,268,68.0,SATTIME,0,0.000,03801800,6be8,18278;COM1,9600,N,8,1,N,ON*80f21651',
+  '#RXCONFIGA,SPECIAL,270,68.0,SATTIME,0,0.000,03801800,f702,18278;' +
+    '#ELEVATIONCUTOFFA,SPECIAL,270,68.0,SATTIME,0,0.000,03801800,50e0,18278;GLONASS,5.0,0*f46f6f34*f48f48c2',
+  '#RXCONFIGA,SPECIAL,262,68.0,SATTIME,0,0.000,03801800,f702,18278;' +
+    '#LOCKOUTSYSTEMA,SPECIAL,262,68.0,SATTIME,0,0.000,03801800,a6f7,18278;NAVIC*4b5ede34*6f61b52d',
+  '#RXCONFIGA,SPECIAL,56,68.0,SATTIME,0,0.000,03801800,f702,18278;' +
+    '#ICOMCONFIGA,SPECIAL,56,68.0,SATTIME,0,0.000,03801800,1faa,18278;ICOM1,TCP,":2000",ALL*9cb339a2',
+];
+
 test('a .cfg is generated from the receiver records the link holds', () => {
   const entries = RXCONFIG.map((ascii) => ({ name: 'RXCONFIG', ascii }));
   assert.equal(countConfigurationRecords(entries), 3);
@@ -50,6 +66,28 @@ test('a .cfg is generated from the receiver records the link holds', () => {
   // `COM9` is not one of the OEM729's ports, so `isAllowedPort` drops it — as the desktop flow does.
   assert.equal(/COM9/.test(text), false);
   assert.ok(text.endsWith('\n'));
+});
+
+test('the desk receiver’s nested, comma-separated records become real .cfg lines', () => {
+  const entries = RXCONFIG_WIRE.map((ascii) => ({ name: 'RXCONFIG', ascii }));
+  assert.equal(countConfigurationRecords(entries), 4);
+  const file = buildCfgFromTranscript(entries, PORTS, 'wire.cfg');
+  assert.equal(file.ok, true, file.reason);
+  const text = file.text ?? '';
+  assert.match(text, /^SERIALCONFIG COM1 9600 N 8 1 N ON$/m, 'name from the nested header, commas to spaces');
+  assert.match(text, /^ELEVATIONCUTOFF GLONASS 5\.0 0$/m);
+  assert.match(text, /^LOCKOUTSYSTEM NAVIC$/m, 'a single, comma-less argument keeps its command name');
+  assert.match(
+    text,
+    /^ICOMCONFIG ICOM1 TCP ":2000" ALL$/m,
+    'the ported two-line lookahead must not swallow the next statement',
+  );
+
+  // And the file it wrote is a file the loader can read back (the round trip the buttons promise).
+  const parsed = deviceImportPreview(text);
+  assert.equal(parsed.ok, true, parsed.error);
+  assert.ok(parsed.commands.includes('SERIALCONFIG COM1 9600 N 8 1 N ON'));
+  assert.ok(parsed.commands.includes('ELEVATIONCUTOFF GLONASS 5.0 0'));
 });
 
 test('records that are not configuration logs never become a .cfg', () => {

@@ -267,6 +267,24 @@ export interface LiveStatus {
   unsolicitedReplies: number;
 }
 
+/**
+ * Is this text line an answer to the log request for `asked`?
+ *
+ * A text answer carries the log's own name in its first field — `<RXCONFIG USB2 270 …` (abbreviated)
+ * or `#RXCONFIGA,SPECIAL,270,…` (full ASCII) — while the stream's own records carry theirs. With no
+ * name asked for, everything is kept, and so is a line that carries no record prefix at all (a
+ * banner, a note), because nothing says it is not the answer.
+ */
+function answeredBy(line: string, asked: string | undefined): boolean {
+  if (!asked) return true;
+  if (!/^[<#%]/.test(line)) return true;
+  const match = /^[<#%]\s*([A-Za-z0-9_]+)/.exec(line);
+  /* A record prefix with no name is a continuation of the record above (`<     GLONASS 5.0 0`),
+   * never an answer of its own. */
+  if (!match) return false;
+  return match[1].toUpperCase().replace(/[AB]$/, '') === asked;
+}
+
 const BUFFER = 400;
 const COMMAND_LOG = 50;
 /** A receiver answers a configuration line in milliseconds; a minute of silence means it is gone. */
@@ -521,7 +539,7 @@ export class LiveLink {
     // The receiver's own words: `<OK` / `<ERR…` answer a command, everything else is data (a
     // read-back `RXCONFIG` line, an NMEA sentence). This is the channel the decoded-log stream
     // cannot carry, and the reason a `.cfg` can now be verified.
-    session.on('text', (_prefix: string, text: string) => this.onText(text));
+    session.on('text', (prefix: string, text: string) => this.onText(prefix, text));
     session.on('drop', (count: number) => {
       this.droppedBytes += count;
     });
@@ -590,13 +608,23 @@ export class LiveLink {
   }
 
   /**
-   * Send a request whose answer is **data**, not `<OK` — `LOG RXCONFIG ONCE` and its kind.
+   * Send a request whose answer is **data**, not `<OK` — `LOG RXCONFIGB ONCE` and its kind.
    * Collects the receiver's text lines until it has been quiet for `quietMs`, `until` is satisfied,
    * or `timeoutMs` elapses; the lines are returned verbatim so the caller can quote them.
+   *
+   * `records: true` also returns the **decoded records** that arrived while the request was in
+   * flight, as their rendered ASCII lines. This receiver answers `LOG RXCONFIGB ONCE` with 271 SBF
+   * records of message 128 rather than with text (measured 2026-11-01 on the desk OEM729), so a
+   * text-only collector would report silence over an answer that was complete.
    */
   async collect(
     line: string,
-    options: { timeoutMs?: number; quietMs?: number; until?: (lines: string[]) => boolean } = {},
+    options: {
+      timeoutMs?: number;
+      quietMs?: number;
+      until?: (lines: string[]) => boolean;
+      records?: boolean;
+    } = {},
   ): Promise<LiveCollectResult> {
     const text = line.replace(/[\r\n]+$/, '');
     if (!text) return { ok: false, lines: [], reason: 'empty request' };
@@ -604,6 +632,18 @@ export class LiveLink {
     const timeoutMs = options.timeoutMs ?? COLLECT_TIMEOUT_MS;
     const quietMs = options.quietMs ?? COLLECT_QUIET_MS;
     const collector = { lines: [] as string[] };
+    /** Records already in the ring are not answers to *this* request. */
+    const mark = this.seq;
+    /* Only the records the request itself asks for count as an answer: a receiver streaming RANGE
+     * at 20 Hz puts ~110 RANGE records in the ring during one read-back, and counting them would
+     * report "382 configuration lines" for a 271-statement dump. */
+    const asked = /^LOG\s+([A-Za-z0-9_]+)/i.exec(text)?.[1]?.toUpperCase().replace(/[AB]$/, '');
+    const recordsSoFar = (): LiveEntry[] =>
+      options.records
+        ? this.buffer.filter(
+            (entry) => entry.seq > mark && (!asked || entry.name.toUpperCase().replace(/[AB]$/, '') === asked),
+          )
+        : [];
     this.collectors.push(collector);
     try {
       this.session.sendRaw(`${text}\r`);
@@ -612,15 +652,21 @@ export class LiveLink {
       let quietSince = Date.now();
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 40));
-        if (collector.lines.length !== lastCount) {
-          lastCount = collector.lines.length;
+        const arrived = collector.lines.length + recordsSoFar().length;
+        if (arrived !== lastCount) {
+          lastCount = arrived;
           quietSince = Date.now();
         }
         if (options.until?.(collector.lines)) break;
-        if (collector.lines.length > 0 && Date.now() - quietSince >= quietMs) break;
+        // A record-only answer never fills `collector.lines`; without counting the records here the
+        // loop would sit out the whole timeout after the burst had already finished.
+        if (arrived > 0 && Date.now() - quietSince >= quietMs) break;
         if (Date.now() >= deadline) break;
       }
-      const lines = [...collector.lines];
+      const lines = [
+        ...collector.lines.filter((line) => answeredBy(line, asked)),
+        ...recordsSoFar().map((entry) => entry.ascii).filter(Boolean),
+      ];
       return {
         ok: lines.length > 0,
         lines,
@@ -645,7 +691,11 @@ export class LiveLink {
   }
 
   /** One text record from the receiver: a command response, or data. */
-  private onText(text: string): void {
+  private onText(prefix: string, text: string): void {
+    /* `[USB2]` and friends are the deframer's port-text prefix, not a log record and not an answer
+     * to anything: the desk OEM729 emits them continuously, and counting them would both fill a
+     * read-back with noise and keep it from ever going quiet. */
+    if (prefix === '[text]') return;
     const line = text.replace(/[\r\n]+$/, '');
     if (!line.trim()) return;
     if (REPLY_PATTERN.test(line.trim())) {
