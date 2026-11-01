@@ -87,6 +87,12 @@
  *     and it is read *after* the band, the matrix and the dock have painted, so opening a capture
  *     never waits for the spectrum. A 1024-sample record is 7 043 B in that shape (measured on
  *     `b1-20261101.sbf`, 25 records = 172 395 B) against 50 381 B of field objects for one;
+ *   - **capture, text only**: this receiver writes `ITPSDFINAL`/`ITPSDDETECT` **only as ASCII**
+ *     (`#ITPSDFINALA`/`#ITPSDDETECTA`, §13.3 of `03_分析/05_GRIT-Monitor.md`), so `b7-20261101.sbf`
+ *     has 47 + 90 text lines and zero #1968/#2063 payloads. Such a capture is read by `name=`
+ *     (the same `/api/records` endpoint, served by `readTextRecords`) and the samples are rebuilt
+ *     from the `samples[i].samples` fields; the note then says `replayed from N text … record(s)`,
+ *     because a recording read back is not a live sweep;
  *   - one sweep can span several logs (max 1024 samples each). They are grouped by the **OEM7
  *     header sequence word** — buffered while `sequence !== 0`, merged when `sequence === 0`, which
  *     is the manual's rule ("grouped together through the sequence number of the log header") and
@@ -1425,9 +1431,17 @@ async function readStatus(ctx, capture) {
   /* Spectrum is not decoded here: `load()` kicks `requestCaptureSpectrum` off after the first
      paint, so the band, the matrix and the dock never wait for 1024-sample pages. Only the
      per-log counts are taken from `/api/logs`, which this page already fetched. */
+  const textCount = (wanted) => {
+    const group = textGroups.find((item) => String(item.name).toUpperCase() === wanted);
+    return group ? Number(group.count) || 0 : 0;
+  };
   out.spectrumTotals = {
     final: counts.get(ITPSD_FINAL) ?? 0,
     detect: counts.get(ITPSD_DETECT) ?? 0,
+    /* This receiver writes ITPSDFINAL/ITPSDDETECT only as ASCII (§13.3): b7 has 47 + 90 text
+       lines and no #1968/#2063 payload. The counts are what the page is asked for by `name=`. */
+    textFinal: textCount('ITPSDFINAL'),
+    textDetect: textCount('ITPSDDETECT'),
   };
   /* The one event source a recording can have: MARKxPOS. `/api/logs` already answered. */
   out.eventLogs = gritEventLogs(types);
@@ -1454,6 +1468,12 @@ export function emptySpectrumStore() {
     source: 'live',
     /** Capture the sweeps were read from (empty for a live session). */
     capture: '',
+    /**
+     * `{ name, count }` when the sweeps were replayed from a capture's **text** records
+     * (`#ITPSDFINALA` / `#ITPSDDETECTA`), `null` for binary records and for a live session.
+     * The note prints it, so a replay is never described as a live sweep.
+     */
+    textSource: null,
   };
 }
 
@@ -1593,22 +1613,87 @@ function rawField(record, path) {
   return found ? found.value : undefined;
 }
 
+/** `ITPSDFINAL` / `ITPSDDETECT` with an optional ASCII version letter (`ITPSDFINALA`). */
+function spectrumLogOf(name) {
+  const upper = String(name ?? '').toUpperCase();
+  if (/^ITPSDFINAL[A-Z]?$/.test(upper)) return 'final';
+  if (/^ITPSDDETECT[A-Z]?$/.test(upper)) return 'detect';
+  return '';
+}
+
+/**
+ * The 1024 (or 341, or 512) samples of one record, in bin order.
+ *
+ * Binary rows carry them in `record.arrays` — `logs.ts` `projectFields` lifts the single-leaf
+ * numeric vector out of the 800-row field table and ships plain numbers. A **text** row has no
+ * `arrays` at all (`readTextRecords` never lifts anything), so the same numbers are read back from
+ * the `samples[i].samples` rows and sorted by their own index: the ASCII line prints them in order,
+ * but nothing in the row object promises that the field table is ordered.
+ */
+function captureSamples(record) {
+  const array = (record?.arrays ?? []).find((item) => item?.path === 'samples');
+  if (array && Array.isArray(array.values) && array.values.length) return array.values.map(Number);
+  const collected = [];
+  for (const field of record?.fields ?? []) {
+    const match = /^samples\[(\d+)\]\.samples$/.exec(String(field?.path ?? ''));
+    if (!match) continue;
+    const value = Number(field.value);
+    if (!Number.isFinite(value)) return [];
+    collected.push({ index: Number(match[1]), value });
+  }
+  if (!collected.length) return [];
+  collected.sort((a, b) => a.index - b.index);
+  return collected.map((entry) => entry.value);
+}
+
+/**
+ * `status_word` of a **text** ITPSD record.
+ *
+ * The ASCII line prints the word with `%x` (`04020920`, `0c020821`), while the app's text
+ * projection hands a token back as a number whenever it reads as one (`04020920` → 4020920) and as
+ * the string otherwise (`0c020821`). Neither form alone is the word, but the eight printed
+ * characters are recoverable from both: a decimal reading of at most eight digits, zero-padded.
+ */
+function textStatusWord(record) {
+  const raw = rawField(record, 'status_word');
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const digits = String(Math.trunc(raw)).padStart(8, '0');
+    return /^[0-9a-fA-F]{8}$/.test(digits) ? parseInt(digits, 16) : raw;
+  }
+  if (typeof raw === 'string' && /^[0-9a-fA-F]{8}$/.test(raw)) return parseInt(raw, 16);
+  return 0;
+}
+
 /**
  * One `/api/records` row → the shape `/api/live/logs` gives a sweep chunk, so `ingestSpectrum`
  * cannot tell the two apart. `null` when the row is not an ITPSD log or carries no sample array.
  *
- * The samples travel in `record.arrays`: `logs.ts` `projectFields` lifts the 1024-element
- * `samples[i].samples` vector out of the 800-row field table and ships it as plain numbers. They
- * are still the wire's `uint16`, so the manual's `raw / 256 − 200` dBm conversion happens here —
- * the same two steps `live.ts` applies to the same bytes.
+ * Two shapes reach this function, and both are the **same** record:
+ *
+ *  - a binary row (`header.messageId` 1968 / 2063) whose samples travel in `record.arrays`;
+ *  - a text row (`header.messageId` 0, `header.name` `ITPSDFINAL` / `ITPSDDETECT`) whose samples
+ *    are the `samples[i].samples` fields — on this receiver `ITPSDFINAL`/`ITPSDDETECT` have no
+ *    binary form at all (§13.3 of `03_分析/05_GRIT-Monitor.md`), so b7 carries 47 + 90 text lines
+ *    and zero #1968/#2063 payloads. The name is the identity; the id is 0 for every text log.
+ *
+ * Samples are the wire's `uint16` either way, so the manual's `raw / 256 − 200` dBm conversion
+ * happens exactly here — the same two steps `live.ts` applies to the same bytes, and the only
+ * place in this file that scales a sample.
  */
 export function captureSpectrumEntry(record) {
   const messageId = Number(record?.messageId ?? record?.header?.messageId);
-  const log = messageId === ITPSD_FINAL ? 'final' : messageId === ITPSD_DETECT ? 'detect' : '';
+  const text = messageId === 0;
+  const log = messageId === ITPSD_FINAL
+    ? 'final'
+    : messageId === ITPSD_DETECT
+      ? 'detect'
+      : text
+        ? spectrumLogOf(record?.header?.name)
+        : '';
   if (!log) return null;
 
-  const array = (record?.arrays ?? []).find((item) => item?.path === 'samples');
-  if (!array || !Array.isArray(array.values) || !array.values.length) return null;
+  const raw = captureSamples(record);
+  if (!raw.length) return null;
 
   const frequencyStart = Number(rawField(record, 'frequency_start_m_hz'));
   const stepSize = Number(rawField(record, 'step_size_hz'));
@@ -1623,12 +1708,67 @@ export function captureSpectrumEntry(record) {
       kind: 'itpsd',
       log,
       sequence: Number(record?.header?.sequence) || 0,
-      status: spectrumStatus(rawField(record, 'status_word')),
+      status: spectrumStatus(text ? textStatusWord(record) : rawField(record, 'status_word')),
       frequencyStart,
       stepSize,
-      samples: array.values.map((value) => Number(value) / SAMPLE_SCALE - SAMPLE_OFFSET),
+      samples: raw.map((value) => value / SAMPLE_SCALE - SAMPLE_OFFSET),
     },
   };
+}
+
+/**
+ * Which `/api/records` page draws the open capture's spectrum — `null` when it carries none.
+ *
+ * Binary first, and FINAL before DETECT: `ITPSDFINAL` is the processed PSD the original's plot tab
+ * is built on, `ITPSDDETECT` the detection view of the same sweep. A capture with **no** binary
+ * payload of either (b7: 47 `#ITPSDFINALA` + 90 `#ITPSDDETECTA`, nothing at 1968/2063) is read by
+ * `name=` instead — the same endpoint, served by `logs.ts` `readTextRecords`.
+ *
+ * `offset` is the **last** page: `limit` 25 is the server's cap and more than the ten sweeps the
+ * waterfall keeps. A DETECT sweep is two 1024/341 chunks, so its page is one shorter and therefore
+ * even — a page starting on a tail (`sequence 0`) would draw a 341-bin sweep of its own.
+ */
+export function captureSpectrumRequest(totals, capture = '') {
+  if (!capture || !totals) return null;
+  const binary = [
+    { log: 'final', count: Number(totals.final) || 0, msgId: ITPSD_FINAL, name: '' },
+    { log: 'detect', count: Number(totals.detect) || 0, msgId: ITPSD_DETECT, name: '' },
+  ];
+  for (const entry of binary) {
+    if (entry.count <= 0) continue;
+    const limit = entry.log === 'detect' ? CAPTURE_SPECTRUM_PAGE - 1 : CAPTURE_SPECTRUM_PAGE;
+    const offset = Math.max(0, entry.count - limit);
+    return {
+      kind: 'binary',
+      log: entry.log,
+      msgId: entry.msgId,
+      name: entry.name,
+      count: entry.count,
+      offset,
+      limit,
+      key: `${capture}|binary|${entry.log}|${offset}`,
+    };
+  }
+  const textRows = [
+    { log: 'final', count: Number(totals.textFinal) || 0, name: 'ITPSDFINAL' },
+    { log: 'detect', count: Number(totals.textDetect) || 0, name: 'ITPSDDETECT' },
+  ];
+  for (const entry of textRows) {
+    if (entry.count <= 0) continue;
+    const limit = entry.log === 'detect' ? CAPTURE_SPECTRUM_PAGE - 1 : CAPTURE_SPECTRUM_PAGE;
+    const offset = Math.max(0, entry.count - limit);
+    return {
+      kind: 'text',
+      log: entry.log,
+      msgId: undefined,
+      name: entry.name,
+      count: entry.count,
+      offset,
+      limit,
+      key: `${capture}|text|${entry.log}|${offset}`,
+    };
+  }
+  return null;
 }
 
 /**
@@ -1686,6 +1826,20 @@ function spectrumCaption(frame) {
   const log = frame.log === 'detect' ? 'ITPSDDETECT' : 'ITPSDFINAL';
   const chunks = frame.parts.length > 1 ? ` · ${frame.parts.length} logs (sequence ${frame.parts.map((part) => part.sequence).join(' → ')})` : '';
   return `${log} · ${from.toFixed(3)}–${to.toFixed(3)} MHz · RBW ${rbw} · ${n} samples${chunks} · ${frame.time ? frame.time.replace('T', ' ').replace('Z', '') + ' UTC' : '--'}`;
+}
+
+/**
+ * Where the sweeps on screen came from. A live session says nothing extra (the band above already
+ * says `Connected to …`); a capture names the file, and a **text** replay says so in words, because
+ * `#ITPSDFINALA` lines are a recording read back — not a live sweep.
+ */
+export function spectrumSourceNote(store) {
+  if (!store || store.source !== 'capture' || !store.capture) return '';
+  const origin = ` · capture ${baseName(store.capture)}`;
+  const text = store.textSource;
+  if (!text || !text.name) return origin;
+  const count = Number(text.count) || 0;
+  return `${origin} · replayed from ${count} text ${text.name} record${count === 1 ? '' : 's'}`;
 }
 
 /**
@@ -1879,6 +2033,13 @@ function readDevice(record) {
   };
 }
 
+/** Every ITPSD chunk the open capture holds — binary first, then the ASCII form. */
+function spectrumTotal(totals) {
+  if (!totals) return 0;
+  return (Number(totals.final) || 0) + (Number(totals.detect) || 0)
+    + (Number(totals.textFinal) || 0) + (Number(totals.textDetect) || 0);
+}
+
 /**
  * Why the Spectrum tile is empty. Every branch is something this build can actually check; none
  * of them guesses. The order is "what the user just did" first, so the sentence names the fix.
@@ -1898,11 +2059,11 @@ function spectrumReason(state) {
   }
   if (live.lastError && !name) return `Live link error: ${live.lastError}`;
   const totals = state.spectrumTotals;
-  if (name && totals && !totals.final && !totals.detect) {
+  if (name && totals && spectrumTotal(totals) === 0) {
     return (
-      `No spectrum data — ${name} carries no ITPSDFINAL #1968 / ITPSDDETECT #2063 record, and no live ` +
-      'session is open. The receiver only logs a PSD while ITSPECTRALANALYSIS runs ' +
-      '(Settings → Spectrum Analysis).'
+      `No spectrum data — ${name} carries no ITPSDFINAL / ITPSDDETECT record (binary #1968 / #2063 ` +
+      'or ASCII), and no live session is open. The receiver only logs a PSD while ' +
+      'ITSPECTRALANALYSIS runs (Settings → Spectrum Analysis).'
     );
   }
   if (live.everConnected) {
@@ -2046,7 +2207,7 @@ function renderSpectrum(root, state) {
   if (note) {
     note.hidden = false;
     const base = spectrumCaption(frame);
-    const origin = store.source === 'capture' && store.capture ? ` · capture ${baseName(store.capture)}` : '';
+    const origin = spectrumSourceNote(store);
     note.textContent =
       state.view === 'waterfall'
         ? `${base} · waterfall ${rows.length}/${WATERFALL_FRAMES} sweeps${origin}`
@@ -2225,38 +2386,37 @@ export function mount(root, ctx = {}) {
   /**
    * Read the newest ITPSD page of the open capture, once, after the first paint.
    *
-   * `limit` is capped at 25 by `/api/records`, and 25 chunks are more than the ten sweeps the
-   * waterfall keeps, so one request covers curve + waterfall. Measured on `b1-20261101.sbf`:
-   * 25 ITPSDFINAL records = 172 395 B (7 043 B each — the 1024 samples as numbers, not as 1024
-   * field rows, which cost 50 381 B per record). Nothing is fetched while a live session owns the
-   * tile, and nothing is fetched twice for the same capture and page.
+   * `captureSpectrumRequest` picks the page: binary #1968/#2063 first, otherwise the capture's
+   * **text** records by `name=` (b7 has no binary ITPSD at all). `limit` is capped at 25 by
+   * `/api/records`, and 25 chunks are more than the ten sweeps the waterfall keeps, so one request
+   * covers curve + waterfall. Measured on `b1-20261101.sbf`: 25 ITPSDFINAL records = 172 395 B
+   * (7 043 B each — the 1024 samples as numbers, not as 1024 field rows, which cost 50 381 B per
+   * record). Nothing is fetched while a live session owns the tile, and nothing is fetched twice
+   * for the same capture and page.
    */
   async function requestCaptureSpectrum() {
+    if (disposed || state.live.connected) return;
     const capture = state.capture;
-    const totals = state.spectrumTotals;
-    if (disposed || !capture || !totals || state.live.connected) return;
+    const request = captureSpectrumRequest(state.spectrumTotals, capture);
+    if (!request) return;
+    if (request.key === spectrumPage) return;
 
-    /* ITPSDFINAL is the processed PSD the original's plot tab is built on; ITPSDDETECT is the
-       detection view of the same sweep. Both decode into one store, one log at a time. */
-    const log = totals.final > 0 ? 'final' : totals.detect > 0 ? 'detect' : '';
-    if (!log) return;
-    const total = log === 'final' ? totals.final : totals.detect;
-    const msgId = log === 'final' ? ITPSD_FINAL : ITPSD_DETECT;
-    /* A DETECT sweep is two chunks (`sequence 1 → 0`), so its page is even: an odd offset would
-       be as likely to split a sweep as not. */
-    const page = log === 'detect' ? CAPTURE_SPECTRUM_PAGE - 1 : CAPTURE_SPECTRUM_PAGE;
-    const offset = Math.max(0, total - page);
-    const key = `${capture}|${log}|${offset}`;
-    if (key === spectrumPage) return;
-
-    spectrumPage = key;
+    spectrumPage = request.key;
     state.spectrumLoading = true;
     renderSpectrum(root, state);
     try {
-      const data = await api.get('/api/records', { capture, msgId, offset, limit: page });
+      const query = { capture, offset: request.offset, limit: request.limit };
+      if (request.kind === 'text') query.name = request.name;
+      else query.msgId = request.msgId;
+      const data = await api.get('/api/records', query);
       if (disposed) return;
       state.spectrumLoading = false;
-      ingestCaptureRecords(state.spectrum, data?.records ?? [], capture);
+      const changed = ingestCaptureRecords(state.spectrum, data?.records ?? [], capture);
+      /* A text replay is named in the note as a replay, with the capture's own count — never as a
+         live sweep. Binary rows keep the plain `capture …` origin. */
+      if (request.kind === 'text' && changed > 0) {
+        state.spectrum.textSource = { name: request.name, count: request.count };
+      }
       renderSpectrum(root, state);
     } catch (error) {
       if (disposed) return;
@@ -2330,6 +2490,7 @@ export function mount(root, ctx = {}) {
             /* The live stream owns the tile from now on; a capture page must not blend into it. */
             state.spectrum.source = 'live';
             state.spectrum.capture = '';
+            state.spectrum.textSource = null;
           }
         }
         if (changed) renderSpectrum(root, state);
@@ -2889,9 +3050,10 @@ export function mount(root, ctx = {}) {
         }
         note.textContent =
           `GRIT Monitor — NovAtel Application Suite reimplementation. ` +
-          `Spectrum: ITPSDFINAL #1968 / ITPSDDETECT #2063, sample = raw/256 − 200 dBm, ` +
+          `Spectrum: ITPSDFINAL #1968 / ITPSDDETECT #2063 (or the ASCII #ITPSDFINALA/#ITPSDDETECTA ` +
+          `records when a capture has no binary form), sample = raw/256 − 200 dBm, ` +
           `chunks grouped by the OEM7 header sequence word (0 = last chunk), read from the live ` +
-          `session or from the open capture's records. ` +
+          `session or from the open capture's records — a capture replay is labelled as a replay. ` +
           `Waterfall: newest ${WATERFALL_FRAMES} sweeps, −135 … −30 dBm. ` +
           (health ? `Server ${health.version ?? '--'} on Node ${health.node ?? '--'}.` : 'Server build info unavailable.');
       }

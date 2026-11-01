@@ -1489,3 +1489,79 @@ ITSPECTRALANALYSIS PREDECIMATION GPSL1 200 2K 1 1   → <OK
 `UNLOGALL` → `UNLOGALL USB2_29` → `UNLOGALL USB2_30` → `UNLOGALL USB2`，随后
 `port-state.ps1`：`COM8 FREE / COM9 FREE / COM10 FREE`。
 
+## 14. 重实现补记：b7 的**文本** ITPSD 接进 Spectrum Viewer（2026-11-01）
+
+§13.3 说这几种记录在这台机器上没有二进制形态，于是 `b7-20261101.sbf` 里
+`/api/logs` 的 `groups` 既没有 1968 也没有 2063，`textGroups` 才有
+`ITPSDFINAL ×47`、`ITPSDDETECT ×90`。而 GRIT 的 `captureSpectrumEntry()` 原来只按
+`messageId === 1968/2063` 认记录、只读 `record.arrays`（只有二进制行才有），
+所以**唯一带 ITPSD 的抓包反而只能画占位帧**。本轮把它接上了，顺手修掉一个真 bug。
+
+### 14.1 文本记录头的时间一直是错的（`logs.ts`）
+
+`protocol/src/text-log.ts#textRecordFields()` 返回的 `head` 是**按名字排的九个 token**：
+
+```
+[port, sequence, idleTime, timeStatus, week, milliseconds, rxStatus, msgDefCrc, version]
+```
+
+`logs.ts#textRecordLines` 当时用 `head[5]` 当 week、`head[6]` 当秒（`head[6]` 其实是
+接收机状态字 `03808800`），于是 b7 每条文本记录都变成 `week 35956, ms 3 808 800 000`
+（`utc 2669-03-30…`），`textGroups.firstWeek` 恒为 0、`lastWeek` 是 `35777.735`。
+
+改成 `head[4]` / `head[5]`（`head[5]` 是**秒**，×1000 得毫秒；二进制帧的
+`milliseconds` 是同一个时刻）。实测 `#ITPSDFINALA,USB2,0,77.0,COARSESTEERING,2443,35956.000,…`：
+
+| | 修前 | 修后 |
+|---|---|---|
+| `header.week` | 35956 | **2443** |
+| `header.milliseconds` | 3 808 800 000 | **35 956 000** |
+| `header.utc` | 2669-03-30T02:00:00Z | **2026-11-01T09:59:16Z**（= `gpsAsUtc(2443, 35 956 000)`）|
+
+`textGroups` 的首末（b7，两类 ITPSD 相同）：first `2443 / 35 956 000`、
+last `2443 / 36 002 000`（`2026-11-01T09:59:16Z` … `10:00:02Z`），与抓包里首末
+`#ITPSD…A` 行一致。同一处还补了 `sequence`（`head[1]`）：文本 DETECT 的一次
+sweep 就是 `sequence 1`（1024 点）+ `sequence 0`（341 点），原来 `readTextRecords`
+把 `header.sequence` 写死 0，合并规则无从判断"哪条是最后一块"。协议层的
+`textRecordFields` 返回形状未动。
+
+### 14.2 读数与谱图（`grit.js`）
+
+- `captureSpectrumEntry()`：`arrays` 缺失时从 `fields` 的 `samples[i].samples` 按 `i`
+  排序拼出采样；`messageId === 0`（文本）时按 `header.name` 判
+  `ITPSDFINAL` / `ITPSDDETECT`（允许一位版本字母）；`frequencyStart`/`stepSize`/`sequence`
+  都取字段或头；`raw/256 − 200` 的 dBm 换算仍只在这一处。
+- 文本行的 `status_word` 用 `%x` 打印（`04020920`、`0c020821`）。app 的文本投影会把
+  "读起来像数字"的 token 交成数字（`04020920 → 4020920`），所以状态字按"八个打印字符"
+  还原后再解位：`textStatusWord()`，两种形态都能拿回 `0x04020920`（GPSL1 /
+  POSTDECIMATION）。
+- `captureSpectrumRequest()`（新增、可单测）：二进制计数 > 0 时走 `msgId=`，否则查
+  `textGroups` 的 `ITPSDFINAL`/`ITPSDDETECT` 并用 `name=` 取**最后一页**；FINAL 优先
+  （原版 plot 页画的就是处理后的 PSD）。DETECT 一页 24 条（偶数），否则会从一次 sweep
+  的尾巴（341 点）开始，凭空多出半条 sweep。
+- 来源写清楚：文本回放时备注为
+  `… · capture b7-20261101.sbf · replayed from 47 text ITPSDFINAL records`
+  （N 来自 `textGroups.count`），不会说成实时；实时链路 `/api/live/logs` 未改动。
+
+### 14.3 实测（Playwright，本地 `--port 7861`，无接收机）
+
+| 抓包 | 结果 |
+|---|---|
+| `b7-20261101.sbf` | 曲线 512 点 `1202.598–1302.598 MHz`（RBW 195.31 kHz，GPSL2 / POSTDECIMATION），备注带 `replayed from 47 text ITPSDFINAL records`；瀑布 4/10 条 sweep × 512 bin，1270 MHz 附近可见真实干扰凸起 |
+| `b6/b2…`（无 ITPSD） | 仍是 `No spectrum data` 空态，备注点名"没有 ITPSDFINAL/ITPSDDETECT（二进制或 ASCII）" |
+| `b1-20261101.sbf` | 二进制通路照旧：1024 点 `1531.299–1631.299 MHz`，备注无 `replayed` |
+
+注意 **b1 有** ITPSD（`1968 ×127` / `2063 ×50`，§13.4 那批）——"没 ITPSD 的样本"
+是 b2…b6，不是 b1。
+
+b7 的瀑布只有 4 行而不是 10 行，原因是抓包末尾（10:00 UTC 前后）接收机被改成
+GPSL2 / 195.3125 kHz / 512 点，最新网格上只有 4 条 sweep；同一页里更早的 21 条
+（1531.299 MHz / 1024 点）属于另一张频率网格，按"只看与最新 sweep 同网格的帧"
+规则不叠加。这是数据本身，不是渲染丢弃。
+
+截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-spectrum\`
+（`b7-spectrum-tile.png`、`b7-waterfall-tile.png`、`b2-spectrum-empty.png`、
+`b1-spectrum-binary.png`）。测试：`packages/app/test/grit-text-spectrum.test.ts`
+新增 10 项（头时间、`textGroups` 首末、1024 点、FINAL/DETECT 判定、无二进制时按
+`name=` 取数、文本 DETECT 12 次 sweep 合并、来源说明）。
+

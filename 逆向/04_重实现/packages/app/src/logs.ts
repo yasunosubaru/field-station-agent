@@ -107,10 +107,24 @@ function headerSummary(frame: SbfFrame): string {
 interface TextRecordLine {
   name: string;
   line: string;
+  /** OEM7 header sequence word — the chunk index of a multi-log sweep (`0` = last chunk). */
+  sequence: number;
   week: number;
   milliseconds: number;
   fields: Array<{ path: string; token: string; value: number | string }>;
 }
+
+/**
+ * The nine tokens `textRecordFields` hands back as `head`, in the order a `#NAME` line writes them:
+ *
+ *   `port, sequence, idleTime, timeStatus, week, milliseconds, receiverStatus, msgDefCrc, version`
+ *
+ * `head[5]` is the time of week in **seconds** (`35956.000`), printed by the `%T` spec; the binary
+ * frame's `milliseconds` is the same instant ×1000.
+ */
+const HEAD_SEQUENCE = 1;
+const HEAD_WEEK = 4;
+const HEAD_SECONDS = 5;
 
 function textRecordLines(data: CaptureData, tables: EdieTables): TextRecordLine[] {
   const out: TextRecordLine[] = [];
@@ -122,11 +136,17 @@ function textRecordLines(data: CaptureData, tables: EdieTables): TextRecordLine[
     if (!line.startsWith('#')) continue;
     const parsed = textRecordFields(line, tables);
     if (!parsed) continue;
-    const week = Number(parsed.head[5] ?? 0);
-    const seconds = Number(parsed.head[6] ?? 0);
+    /* `head` is the nine header tokens **by name**, not by byte: week is the fifth token and the
+       time of week (seconds) the sixth. Reading `head[5]`/`head[6]` here used to take the seconds
+       as the week and the receiver-status word as the seconds, which put every b7 text record in
+       year 2669 (`week 35956, ms 3 808 800 000`) — see `HEAD_*` above. */
+    const week = Number(parsed.head[HEAD_WEEK] ?? 0);
+    const seconds = Number(parsed.head[HEAD_SECONDS] ?? 0);
+    const sequence = Number(parsed.head[HEAD_SEQUENCE] ?? 0);
     out.push({
       name: parsed.name,
       line,
+      sequence: Number.isFinite(sequence) ? sequence : 0,
       week: Number.isFinite(week) ? week : 0,
       milliseconds: Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0,
       fields: parsed.fields,
@@ -388,6 +408,10 @@ export function readRecords(
  * `ITDETECTSTATUS` is the reason: on this receiver it is logged as `ITDETECTSTATUSA`, so a capture
  * has 48 `#ITDETECTSTATUSA` lines and zero binary #2065 payloads. `messageId` is -1 and the header's
  * message id is 0 — a text record genuinely has neither; the name is the identity.
+ *
+ * `sequence` is the head's own token, not zero: `ITPSDDETECT` splits one sweep over two logs
+ * (`sequence 1` = 1024 samples, `sequence 0` = the remaining 341), and the GRIT spectrum viewer
+ * groups text chunks by exactly that word (`grit.js` `ingestSpectrum`).
  */
 export function readTextRecords(
   data: CaptureData,
@@ -405,7 +429,7 @@ export function readTextRecords(
     header: {
       messageId: 0,
       name: record.name,
-      sequence: 0,
+      sequence: record.sequence,
       portAddress: 0,
       portName: '',
       week: record.week,
