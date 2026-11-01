@@ -45,6 +45,14 @@
  *             has no INS pane), and `Velocity` is a real tile that only draws for a project whose
  *             export contains `Velocity.csv` — `clean` carries no BESTVEL, so there it says so
  *             instead of inventing a curve
+ *   real      the Pre-process flags: up to 10 timeline markers, added by right-clicking the scrub
+ *             area (at that x) or by Add Flag on the playhead, with a comment, colour, hide/show,
+ *             trash + restore, hover tooltip (flag #, GPS time, lat/lon/height, comment) and
+ *             click-to-seek. Store shape, limit, duplicate window and trash states are the
+ *             original's (`MAX_FLAGS` @1410884, `flags` slice @191475); persistence is per project
+ *             in `localStorage` because this build has no `.gpf` — see `flagStorageKey`.
+ *             Click-to-seek and the panel's Add button are **local** conveniences, not measured
+ *             original interactions.
  *
  * Contract with the shell (`src/web/index.html`): `mount(root, ctx)` / `unmount(root)`,
  * `ctx = { api: { get, post }, capture, onCaptureChange }`.
@@ -94,8 +102,332 @@ export const LUCIAD_READY_TIMEOUT_MS = 30_000;
 /** `Speed` dropdown choices — the original ships 1× / 2× / 5× / 10×. */
 const SPEEDS = [1, 2, 5, 10];
 
-/** `Flags (0/10)`: no flag store exists in this build, so the counter is honest zeros. */
-const FLAG_LIMIT = 10;
+/* ---------------- flags: the Pre-process timeline markers ---------------- */
+
+/**
+ * The original's flag store, measured from the shipped bundle
+ * (`逆向/01_解包/Graph/out/renderer/assets/index-B86bHcCD.js`):
+ *
+ *   slice `flags`  @191475   `{allFlags:[], editFlagId:0, newFlagId:1, isFlagsPanelOpen:false}`
+ *   `MAX_FLAGS`    @1410884  `10`, `DEFAULT_FLAG_COLOR = "#F95B61"`
+ *   duplicate test @1424277  `|flag.timeCaptured - t| < 1000` (ms), trash excluded
+ *   `FlagsStatus`  @191150   `activeFlag | hiddenFlag | hoverFlag | trashFlag | selectedFlag`
+ *   `.gpf` field   @16246801 `FlagsInitialState: {allFlags, isFlagsPanelOpen}`, written on close and
+ *                            read back by `setStoreDefaults` with `newFlagId = max(id)+1`
+ *
+ * A flag is `{id, timeCaptured(ms), color, latitude, longitude, height, description, state}` —
+ * note it is **`color`/`description`**, not `colour`/`comment`. `timeCaptured` is the original's
+ * millisecond timestamp; this build has no `.gpf`, so the same shape is persisted per project in
+ * `localStorage` under `flagStorageKey(projectKey)`.
+ *
+ * `timeBase` is a **local addition** (the original always has an absolute project time): `'gps'`
+ * means `timeCaptured` is a real epoch ms derived from the CSV's `#Start Time(GPS)`, `'elapsed'`
+ * is that CSV's own `current*1000` when a file carries no GPS header.
+ */
+export const FLAG_LIMIT = 10;
+
+/** `DEFAULT_FLAG_COLOR` @1410884 — the flag red the shipped AddFlag dialog stamps on every flag. */
+export const DEFAULT_FLAG_COLOR = '#F95B61';
+
+/** `FlagsStatus` @191150 — the enum values are the strings themselves. */
+export const FLAG_STATES = {
+  active: 'activeFlag',
+  hidden: 'hiddenFlag',
+  hover: 'hoverFlag',
+  trash: 'trashFlag',
+  selected: 'selectedFlag',
+};
+
+/** @1424277 — two flags closer than this are "already a flag at this timestamp". */
+export const FLAG_DUPLICATE_WINDOW_MS = 1000;
+
+/** `localStorage` namespace; one bucket per project so switching projects cannot leak flags. */
+export const FLAG_STORAGE_PREFIX = 'nas.graph.flags.v1::';
+
+const GPS_EPOCH_MS = Date.UTC(1980, 0, 6);
+const GPS_UTC_LEAP_SECONDS = 18;
+
+/** GPS absolute seconds (`parseGpsStamp('2442,463097.350')`) → JS epoch ms. */
+export function gpsSecondsToMs(absoluteSeconds) {
+  return Number.isFinite(absoluteSeconds)
+    ? GPS_EPOCH_MS + (absoluteSeconds - GPS_UTC_LEAP_SECONDS) * 1000
+    : null;
+}
+
+/** JS epoch ms → GPS absolute seconds (the inverse of `gpsSecondsToMs`). */
+export function msToGpsSeconds(ms) {
+  return (Number(ms) - GPS_EPOCH_MS) / 1000 + GPS_UTC_LEAP_SECONDS;
+}
+
+/** `W2442 463109.350` for a GPS flag, `00:01:12` for an elapsed one. */
+export function flagTimeLabel(flag) {
+  const ms = Number(flag && flag.timeCaptured);
+  if (!Number.isFinite(ms)) return '—';
+  return flag.timeBase === 'elapsed' ? hhmmss(ms / 1000) : gpsWeekLabel(msToGpsSeconds(ms));
+}
+
+/**
+ * Where a flag sits on **this file's** playhead, in seconds. `null` when a GPS-based flag is asked
+ * to land in a file that carries no `#Start Time(GPS)` — better to leave it off the track than to
+ * seek somewhere invented.
+ */
+export function flagOffsetSeconds(flag, fileStartSeconds) {
+  const ms = Number(flag && flag.timeCaptured);
+  if (!Number.isFinite(ms)) return null;
+  if (flag.timeBase === 'elapsed') return ms / 1000;
+  if (fileStartSeconds == null || fileStartSeconds === '') return null;
+  const start = Number(fileStartSeconds);
+  if (!Number.isFinite(start)) return null;
+  return msToGpsSeconds(ms) - start;
+}
+
+/** The empty store, same shape as the slice's `initialState`. */
+export function emptyFlagState() {
+  return { allFlags: [], editFlagId: 0, newFlagId: 1, isFlagsPanelOpen: false };
+}
+
+function flagListOf(value) {
+  if (Array.isArray(value)) return value;
+  return value && Array.isArray(value.allFlags) ? value.allFlags : [];
+}
+
+function flagStateOf(value) {
+  if (value && Array.isArray(value.allFlags)) return value;
+  return { ...emptyFlagState(), allFlags: flagListOf(value) };
+}
+
+/** Flags that still count against the limit — every state except `trashFlag` (`getActiveFlags`). */
+export function activeFlags(flags) {
+  return flagListOf(flags).filter((flag) => flag.state !== FLAG_STATES.trash);
+}
+
+/** Flags a timeline draws — `getOnlyActiveFlags` also drops `hiddenFlag`. */
+export function visibleFlags(flags) {
+  return flagListOf(flags).filter(
+    (flag) => flag.state !== FLAG_STATES.trash && flag.state !== FLAG_STATES.hidden,
+  );
+}
+
+/** `(/10)` numerator — `getTotalFlags` @1414959. */
+export function flagTotal(flags) {
+  return activeFlags(flags).length;
+}
+
+/** The flag already standing at `timeCaptured` (any live state), within the 1 s window. */
+export function flagAtTime(flags, timeCaptured) {
+  const time = Number(timeCaptured);
+  if (!Number.isFinite(time)) return null;
+  return activeFlags(flags).find(
+    (flag) => Math.abs(Number(flag.timeCaptured) - time) < FLAG_DUPLICATE_WINDOW_MS,
+  ) || null;
+}
+
+/** `canAddFlag` @1414831: under the limit **and** not the same timestamp. */
+export function canAddFlag(flags, timeCaptured) {
+  if (flagTotal(flags) >= FLAG_LIMIT) return { ok: false, reason: 'limit' };
+  if (flagAtTime(flags, timeCaptured)) return { ok: false, reason: 'duplicate' };
+  return { ok: true, reason: '' };
+}
+
+/** `max(id) + 1` — the reducer's `newFlagId`, and what `setStoreDefaults` recomputes on load. */
+export function nextFlagId(flags) {
+  let max = 0;
+  for (const flag of flagListOf(flags)) {
+    const id = Number(flag && flag.id);
+    if (Number.isFinite(id) && id > max) max = id;
+  }
+  return max + 1;
+}
+
+/**
+ * `addFlag` reducer @191629, with the gate the original enforces in its UI before dispatching.
+ * Returns the new state plus the flag, or `{ok:false, reason}` and the untouched state.
+ */
+export function addFlag(state, payload) {
+  const base = flagStateOf(state);
+  const timeCaptured = Number(payload && payload.timeCaptured);
+  if (!Number.isFinite(timeCaptured)) return { ok: false, reason: 'invalid', state: base };
+  const gate = canAddFlag(base.allFlags, timeCaptured);
+  if (!gate.ok) return { ok: false, reason: gate.reason, state: base };
+  const flag = {
+    id: Number(base.newFlagId) > 0 ? Number(base.newFlagId) : nextFlagId(base.allFlags),
+    timeCaptured,
+    timeBase: payload.timeBase === 'elapsed' ? 'elapsed' : 'gps',
+    description: String(payload.description == null ? '' : payload.description).slice(0, 200),
+    color: typeof payload.color === 'string' && payload.color ? payload.color : DEFAULT_FLAG_COLOR,
+    latitude: Number.isFinite(payload.latitude) ? payload.latitude : null,
+    longitude: Number.isFinite(payload.longitude) ? payload.longitude : null,
+    height: Number.isFinite(payload.height) ? payload.height : null,
+    state: FLAG_STATES.active,
+  };
+  return {
+    ok: true,
+    reason: '',
+    flag,
+    state: { ...base, allFlags: [...base.allFlags, flag], newFlagId: flag.id + 1 },
+  };
+}
+
+/** `updateFlag` reducer @191700 — merge by id, every other flag untouched. */
+export function updateFlag(state, patch) {
+  const base = flagStateOf(state);
+  const id = Number(patch && patch.id);
+  if (!Number.isFinite(id)) return base;
+  return {
+    ...base,
+    allFlags: base.allFlags.map((flag) => (flag.id === id ? { ...flag, ...patch } : flag)),
+  };
+}
+
+/** Move a flag to the trash (`state = trashFlag`) and drop it from the editor. */
+export function trashFlag(state, id) {
+  const base = flagStateOf(state);
+  const flag = base.allFlags.find((item) => item.id === Number(id));
+  if (!flag) return base;
+  return {
+    ...updateFlag(base, { ...flag, state: FLAG_STATES.trash }),
+    editFlagId: base.editFlagId === flag.id ? 0 : base.editFlagId,
+  };
+}
+
+/**
+ * Restore from the trash. The panel's eye tooltip @1454591 refuses with `MAX_FLAGS` at ten flags
+ * and with `HAS_ALREADY_DUPLICATEACTIVE_FLAG` when the timestamp is taken, so the reducer does too.
+ */
+export function restoreFlag(state, id) {
+  const base = flagStateOf(state);
+  const flag = base.allFlags.find((item) => item.id === Number(id));
+  if (!flag) return { ok: false, reason: 'missing', state: base };
+  if (flag.state !== FLAG_STATES.trash) return { ok: false, reason: 'not-trash', state: base };
+  if (flagTotal(base.allFlags) >= FLAG_LIMIT) return { ok: false, reason: 'limit', state: base };
+  if (flagAtTime(base.allFlags, flag.timeCaptured)) {
+    return { ok: false, reason: 'duplicate', state: base };
+  }
+  return { ok: true, reason: '', state: updateFlag(base, { ...flag, state: FLAG_STATES.active }) };
+}
+
+/** `deleteTrash` reducer @191800 — permanently drop every trashed flag. */
+export function emptyTrash(state) {
+  const base = flagStateOf(state);
+  return { ...base, allFlags: base.allFlags.filter((flag) => flag.state !== FLAG_STATES.trash) };
+}
+
+/** Hide / show one flag (`Hide Flag` / `Show flag` @1454591). Trashed flags do not toggle. */
+export function toggleFlagVisibility(state, id) {
+  const base = flagStateOf(state);
+  const flag = base.allFlags.find((item) => item.id === Number(id));
+  if (!flag || flag.state === FLAG_STATES.trash) return base;
+  const next = flag.state === FLAG_STATES.hidden ? FLAG_STATES.active : FLAG_STATES.hidden;
+  return updateFlag(base, { ...flag, state: next });
+}
+
+/** One selected flag at a time — selecting another returns the old one to `activeFlag`. */
+export function selectFlag(state, id) {
+  const base = flagStateOf(state);
+  const target = base.allFlags.find((item) => item.id === Number(id));
+  if (!target || target.state === FLAG_STATES.trash) return base;
+  return {
+    ...base,
+    editFlagId: target.id,
+    allFlags: base.allFlags.map((flag) => {
+      if (flag.id === target.id) return { ...flag, state: FLAG_STATES.selected };
+      if (flag.state === FLAG_STATES.selected) return { ...flag, state: FLAG_STATES.active };
+      return flag;
+    }),
+  };
+}
+
+/** Close the editor: no flag stays selected. */
+export function clearFlagSelection(state) {
+  const base = flagStateOf(state);
+  return {
+    ...base,
+    editFlagId: 0,
+    allFlags: base.allFlags.map((flag) => (
+      flag.state === FLAG_STATES.selected ? { ...flag, state: FLAG_STATES.active } : flag
+    )),
+  };
+}
+
+/** `FlagsInitialState` as `.gpf` writes it — `newFlagId` is derived on load, not stored. */
+export function serializeFlagState(state) {
+  const base = flagStateOf(state);
+  return { allFlags: base.allFlags, isFlagsPanelOpen: !!base.isFlagsPanelOpen };
+}
+
+function normaliseFlag(raw, index) {
+  if (!raw || typeof raw !== 'object') return null;
+  const timeCaptured = Number(raw.timeCaptured);
+  if (!Number.isFinite(timeCaptured)) return null;
+  const id = Number(raw.id);
+  const state = Object.values(FLAG_STATES).includes(raw.state) ? raw.state : FLAG_STATES.active;
+  return {
+    id: Number.isFinite(id) && id > 0 ? id : index + 1,
+    timeCaptured,
+    timeBase: raw.timeBase === 'elapsed' ? 'elapsed' : 'gps',
+    description: String(raw.description == null ? '' : raw.description),
+    color: typeof raw.color === 'string' && raw.color ? raw.color : DEFAULT_FLAG_COLOR,
+    latitude: Number.isFinite(raw.latitude) ? raw.latitude : null,
+    longitude: Number.isFinite(raw.longitude) ? raw.longitude : null,
+    height: Number.isFinite(raw.height) ? raw.height : null,
+    state,
+  };
+}
+
+/**
+ * Persisted JSON → store. Accepts either the flat `{allFlags, isFlagsPanelOpen}` or a `.gpf`-shaped
+ * `{FlagsInitialState:{…}}`, drops rows without a timestamp, and clamps `id`s to positive integers.
+ * Anything unreadable yields the empty store rather than throwing.
+ */
+export function restoreFlagState(raw) {
+  let data = raw;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return emptyFlagState();
+    }
+  }
+  if (!data || typeof data !== 'object') return emptyFlagState();
+  const source = data.FlagsInitialState && typeof data.FlagsInitialState === 'object'
+    ? data.FlagsInitialState
+    : data;
+  const list = Array.isArray(source.allFlags) ? source.allFlags : [];
+  const allFlags = list.map(normaliseFlag).filter(Boolean);
+  return {
+    allFlags,
+    editFlagId: 0,
+    newFlagId: nextFlagId(allFlags),
+    isFlagsPanelOpen: !!source.isFlagsPanelOpen,
+  };
+}
+
+/** One `localStorage` bucket per project: `b1` and `clean` never share flags. */
+export function flagStorageKey(projectKey) {
+  const key = String(projectKey == null ? '' : projectKey).trim();
+  return `${FLAG_STORAGE_PREFIX}${key || '(default)'}`;
+}
+
+/** Read a project's flags; a missing bucket, bad JSON or a throwing storage all mean "none". */
+export function loadFlagState(storage, projectKey) {
+  try {
+    if (!storage || typeof storage.getItem !== 'function') return emptyFlagState();
+    return restoreFlagState(storage.getItem(flagStorageKey(projectKey)));
+  } catch {
+    return emptyFlagState();
+  }
+}
+
+/** Write a project's flags (`FlagsInitialState` shape); returns false when storage refuses. */
+export function saveFlagState(storage, projectKey, state) {
+  try {
+    if (!storage || typeof storage.setItem !== 'function') return false;
+    storage.setItem(flagStorageKey(projectKey), JSON.stringify(serializeFlagState(state)));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -168,6 +500,20 @@ function defaultApi() {
         body: JSON.stringify(body ?? {}),
       }),
   };
+}
+
+/**
+ * `localStorage` when the page has a usable one, `null` otherwise (sandboxed iframe, tests). The
+ * flag store writes per project through `loadFlagState` / `saveFlagState`, both of which already
+ * swallow a throwing storage, so a `null` here just means "flags live for this session only".
+ */
+function browserStorage() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function pad2(value) {
@@ -1244,6 +1590,30 @@ export function mapSvg(model, width, height) {
 const ICON_FLAG = '<svg class="gp-flag-icon" viewBox="0 0 24 24" aria-hidden="true">'
   + '<path d="M5 3h2v18H5z" fill="currentColor"/><path d="M8 4h11l-2.4 4.2L19 12.4H8z" fill="currentColor"/></svg>';
 
+/**
+ * The shipped `activeFlagRaw` (`index-B86bHcCD.js @1410952`, 15×16 pennant). The original paints
+ * `{{FLAG_COLOR}}` per flag, so this one is a template rather than a fixed icon.
+ */
+const FLAG_PENNANT = '<svg viewBox="0 0 15 16" aria-hidden="true"><path fill-rule="evenodd" '
+  + 'clip-rule="evenodd" d="M8.99935 2.99992L8.66602 1.33325H1.16602V15.4999H2.83268V9.66659H7.49935'
+  + 'L7.83268 11.3333H13.666V2.99992H8.99935Z" fill="{{COLOR}}" stroke="#984246"/></svg>';
+
+/** Trash / eye icons for the flag list rows (16 px, currentColor). */
+const ICON_EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5c4.6 0 8.4 3 9.7 6.5'
+  + '-1.3 3.5-5.1 6.5-9.7 6.5S3.6 15.5 2.3 12C3.6 8.5 7.4 5.5 12 5.5Z" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="2.8" fill="currentColor"/></svg>';
+const ICON_EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5c4.6 0 8.4 3 9.7 6.5'
+  + '-1.3 3.5-5.1 6.5-9.7 6.5S3.6 15.5 2.3 12C3.6 8.5 7.4 5.5 12 5.5Z" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 3"/><path d="M4 20 20 4" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2'
+  + 'M6.5 6.5 7.5 20h9l1-13.5M10 10v6M14 10v6" fill="none" stroke="currentColor" stroke-width="1.6" '
+  + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_RESTORE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.6 4.7" '
+  + 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 2.4 8.7 '
+  + '5.6 12 8.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+  + 'stroke-linejoin="round"/></svg>';
+
 const ICON_CHEVRON = '<svg class="gp-chevron" viewBox="0 0 24 24" aria-hidden="true">'
   + '<path d="M6 9.5 12 15l6-5.5" fill="none" stroke="currentColor" stroke-width="2" '
   + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1368,6 +1738,84 @@ function template() {
 
   return `
 <div class="graph-panel" data-view="home" data-dock="open">
+  <style>
+    /* Flags — everything below is additive, scoped to this panel; graph.css is untouched. */
+    .gp-tl-flags { appearance: none; -webkit-appearance: none; border: 0; background: none;
+      color: inherit; font: inherit; padding: 0; margin: 0; text-align: left; cursor: pointer;
+      width: 90px; line-height: 1; }
+    .gp-tl-flags:focus-visible { outline: 1px dotted #00abc8; outline-offset: 2px; }
+    .gp-tl-flags:hover .gp-tl-flagbox { border-color: #b3abab; background: #1d1d1d; }
+    .gp-tl-flags[aria-expanded="true"] .gp-tl-flagbox { border-color: #00abc8; background: #08222b; }
+    .gp-tl-flaglayer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+    .gp-tl-track { z-index: 2; }
+    .gp-tl-flag { position: absolute; top: -6px; transform: translateX(-50%); width: 20px;
+      height: 24px; display: flex; align-items: flex-end; justify-content: center; padding: 0;
+      border: 0; background: none; cursor: pointer; pointer-events: auto;
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+    .gp-tl-flag svg { width: 15px; height: 16px; display: block; }
+    .gp-tl-flag:hover, .gp-tl-flag:focus-visible { z-index: 5; transform: translateX(-50%) scale(1.2); }
+    .gp-tl-flag[data-flag-state="selectedFlag"] { z-index: 4; transform: translateX(-50%) scale(1.25); }
+    .gp-tl-flag[data-flag-state="selectedFlag"] svg { filter: drop-shadow(0 0 3px #00abc8); }
+    .gp-flags-panel { position: absolute; left: 75px; bottom: 76px; z-index: 30; width: 440px;
+      max-height: 360px; display: flex; flex-direction: column; background: #1b1b1b;
+      border: 1px solid #6d6d6d; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); color: #ffffff;
+      font-family: var(--gp-sans); font-size: 12px; }
+    .gp-flags-panel[hidden] { display: none; }
+    .gp-flags-head { display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px; border-bottom: 1px solid #3a3a3a; }
+    .gp-flags-title { font-weight: 600; letter-spacing: 0.02em; }
+    .gp-flags-count { color: #b3abab; }
+    .gp-flags-x { border: 0; background: none; color: #ffffff; font-size: 16px; line-height: 1;
+      cursor: pointer; padding: 0 2px; }
+    .gp-flags-addrow { display: flex; align-items: center; gap: 6px; padding: 8px 10px; }
+    .gp-flags-draft { flex: 0 0 auto; font-family: Consolas, monospace; color: #00abc8;
+      min-width: 92px; }
+    .gp-flags-input { flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
+      background: #0f0f0f; color: #ffffff; border: 1px solid #6d6d6d; font: inherit; }
+    .gp-flags-input:focus { border-color: #00abc8; outline: none; }
+    .gp-flags-btn { flex: 0 0 auto; height: 26px; padding: 0 10px; border: 1px solid #00abc8;
+      background: #00516f; color: #ffffff; font: inherit; cursor: pointer; }
+    .gp-flags-btn:hover { background: #00678d; }
+    .gp-flags-hint { margin: 0; padding: 0 10px 6px; color: #b3abab; font-size: 11px; }
+    .gp-flags-hint.is-error { color: #f95b61; }
+    .gp-flags-list { flex: 1 1 auto; overflow-y: auto; border-top: 1px solid #3a3a3a; }
+    .gp-flag-row { display: flex; align-items: flex-start; gap: 6px; padding: 6px 10px;
+      border-bottom: 1px solid #2c2c2c; }
+    .gp-flag-row.is-selected { background: #08222b; }
+    .gp-flag-row.is-hidden { opacity: 0.55; }
+    .gp-flag-main { flex: 1 1 auto; min-width: 0; text-align: left; border: 0; background: none;
+      color: #ffffff; font: inherit; padding: 0; cursor: pointer; }
+    .gp-flag-main:hover .gp-flag-time { color: #00abc8; }
+    .gp-flag-head { display: flex; gap: 8px; align-items: baseline; }
+    .gp-flag-no { color: #f95b61; font-weight: 600; }
+    .gp-flag-time { font-family: Consolas, monospace; color: #ffffff; }
+    .gp-flag-sub { display: block; color: #b3abab; font-size: 11px; margin-top: 1px; }
+    .gp-flag-desc { display: block; color: #ffffff; margin-top: 2px; word-break: break-word; }
+    .gp-flag-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+    .gp-flag-tools button { width: 22px; height: 22px; padding: 2px; border: 0; background: none;
+      color: #b3abab; cursor: pointer; }
+    .gp-flag-tools button:hover { color: #ffffff; }
+    .gp-flag-tools button:disabled { color: #4d4d4d; cursor: not-allowed; }
+    .gp-flag-tools button svg { width: 16px; height: 16px; }
+    .gp-flag-tools input[type="color"] { width: 20px; height: 20px; padding: 0; border: 1px solid
+      #6d6d6d; background: none; cursor: pointer; }
+    .gp-flags-foot { display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px; border-top: 1px solid #3a3a3a; }
+    .gp-flags-link { border: 0; background: none; color: #00abc8; font: inherit; cursor: pointer;
+      padding: 2px 0; }
+    .gp-flags-link:hover { color: #ffffff; text-decoration: underline; }
+    .gp-flags-link:disabled { color: #4d4d4d; cursor: not-allowed; text-decoration: none; }
+    .gp-flags-empty { padding: 14px 10px; color: #b3abab; }
+    .gp-flag-tip { position: absolute; bottom: 76px; z-index: 40; max-width: 340px; padding: 8px 10px;
+      background: #1b1b1b; border: 1px solid #6d6d6d; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      color: #ffffff; font-family: var(--gp-sans); font-size: 11px; line-height: 1.45;
+      pointer-events: none; }
+    .gp-flag-tip[hidden] { display: none; }
+    .gp-flag-tip strong { color: #f95b61; font-weight: 600; }
+    .gp-flag-tip .gp-flag-tip-time { color: #00abc8; font-family: Consolas, monospace; }
+    .gp-flag-tip .gp-flag-tip-coords { color: #b3abab; }
+    .gp-flag-tip .gp-flag-tip-desc { color: #ffffff; margin-top: 2px; }
+  </style>
   <section class="gp-home" aria-label="Graph 首页">
     <div class="gp-home-head">
       <div class="gp-home-left">
@@ -1466,16 +1914,20 @@ function template() {
     </div>
 
     <div class="gp-timeline">
-      <div class="gp-tl-track"><span class="gp-tl-marker" data-ref="marker"></span></div>
+      <div class="gp-tl-track" data-ref="tlTrack">
+        <span class="gp-tl-marker" data-ref="marker"></span>
+        <div class="gp-tl-flaglayer" data-ref="flagLayer"></div>
+      </div>
 
       <div class="gp-tl-row">
-        <div class="gp-tl-flags">
+        <button type="button" class="gp-tl-flags" data-act="flags" aria-haspopup="dialog"
+          aria-expanded="false" aria-label="Flags 面板">
           <span class="gp-tl-flagbox">${ICON_FLAG}</span>
           <span class="gp-tl-flags-text">
             <span class="gp-tl-flags-label">Flags ${ICON_INFO}</span>
-            <span class="gp-tl-flags-count">(0/${FLAG_LIMIT})</span>
+            <span class="gp-tl-flags-count" data-ref="flagCount">(0/${FLAG_LIMIT})</span>
           </span>
-        </div>
+        </button>
 
         <div class="gp-tl-times">
           <span class="gp-tl-fact"><span class="gp-tl-label">Start Time (GPS)</span>
@@ -1502,6 +1954,27 @@ function template() {
             aria-label="显示事件"><span class="gp-tl-knob"></span></button>
         </div>
       </div>
+
+      <div class="gp-flags-panel" data-ref="flagsPanel" role="dialog" aria-label="Flags" hidden>
+        <div class="gp-flags-head">
+          <span class="gp-flags-title">Flags <span class="gp-flags-count" data-ref="flagPanelCount">(0/10)</span></span>
+          <button type="button" class="gp-flags-x" data-act="flags-close" aria-label="关闭 Flags 面板">×</button>
+        </div>
+        <div class="gp-flags-addrow">
+          <span class="gp-flags-draft" data-ref="flagDraft">00:00:00</span>
+          <input class="gp-flags-input" data-ref="flagComment" type="text" maxlength="120"
+            placeholder="Type a comment (optional)" aria-label="flag 标签">
+          <button type="button" class="gp-flags-btn" data-act="flag-add">Add Flag</button>
+        </div>
+        <p class="gp-flags-hint" data-ref="flagHint">右键时间轴任意位置加标记，或按 Add Flag 打在 playhead；最多 10 个。</p>
+        <div class="gp-flags-list" data-ref="flagList" role="list"></div>
+        <div class="gp-flags-foot">
+          <button type="button" class="gp-flags-link" data-act="flags-trash" data-ref="flagTrash">Trash</button>
+          <button type="button" class="gp-flags-link" data-act="flags-empty" data-ref="flagEmpty">Empty trash</button>
+        </div>
+      </div>
+
+      <div class="gp-flag-tip" data-ref="flagTip" hidden></div>
     </div>
   </section>
 </div>`;
@@ -1561,6 +2034,19 @@ export function mount(root, ctx) {
     speed: $('speed'),
     marker: $('marker'),
     playButton: root.querySelector('[data-act="play"]'),
+    timeline: root.querySelector('.gp-timeline'),
+    tlTrack: $('tlTrack'),
+    flagLayer: $('flagLayer'),
+    flagsPanel: $('flagsPanel'),
+    flagCount: $('flagCount'),
+    flagPanelCount: $('flagPanelCount'),
+    flagComment: $('flagComment'),
+    flagDraft: $('flagDraft'),
+    flagHint: $('flagHint'),
+    flagList: $('flagList'),
+    flagTrash: $('flagTrash'),
+    flagEmpty: $('flagEmpty'),
+    flagTip: $('flagTip'),
   };
 
   const state = {
@@ -1607,6 +2093,12 @@ export function mount(root, ctx) {
     chipOff: new Set(),
     filesLoaded: false,
     deferredTab: '',
+    /* Pre-process flags — per project, same store shape as the original's `flags` slice. */
+    flags: emptyFlagState(),
+    flagProject: null,
+    flagTrash: false,
+    flagDraft: null,
+    flagHintTimer: 0,
   };
 
   /* ---- small UI helpers ---- */
@@ -2920,6 +3412,7 @@ export function mount(root, ctx) {
       state.current = 0;
       state.geometry = null;
       stopPlayback();
+      syncFlagProject();
     }
     await loadFiles();
     renderCards();
@@ -2977,12 +3470,14 @@ export function mount(root, ctx) {
 
   async function loadFiles() {
     try {
+      syncFlagProject();
       const body = await api.get('/graph/files', state.projectKey ? { project: state.projectKey } : null);
       state.files = body.files || [];
       state.directory = body.directory || '';
       if (body.project && body.project.key) {
         state.projectKey = body.project.key;
         state.project = body.project.name || state.project;
+        syncFlagProject();
       }
       fillFileSelect();
       const preferred = state.files.find((file) => file.name === PREFERRED_CSV) || state.files[0];
@@ -3024,6 +3519,7 @@ export function mount(root, ctx) {
       renderData();
       drawChart();
       updateTimeline();
+      renderFlags();
     } catch (error) {
       showNotice(`读取 CSV 失败：${error.message}`);
     }
@@ -3093,6 +3589,7 @@ export function mount(root, ctx) {
       el.playButton.setAttribute('aria-pressed', state.playing ? 'true' : 'false');
     }
     updatePlayhead();
+    updateFlagDraftLabel();
   }
 
   function stopPlayback() {
@@ -3133,6 +3630,294 @@ export function mount(root, ctx) {
   function seek(seconds) {
     state.current = Math.min(state.span, Math.max(0, seconds));
     updateTimeline();
+  }
+
+  /* ---- flags: store ⇄ timeline, panel and tooltip ---- */
+
+  const flagStorage = browserStorage();
+
+  /**
+   * `#Start Time(GPS)` of the CSV on screen, in absolute GPS seconds. `null` when the file has no
+   * GPS header — then flags are pinned to this file's own elapsed time (`timeBase: 'elapsed'`).
+   */
+  function fileStartSeconds() {
+    const comment = state.data && state.data.comments && state.data.comments.startTime;
+    const absolute = parseGpsStamp(comment);
+    return Number.isFinite(absolute) ? absolute : null;
+  }
+
+  /** A flag timestamp for `seconds` on **this** file's playhead. */
+  function flagTimeAt(seconds) {
+    const start = fileStartSeconds();
+    const offset = Math.max(0, Number(seconds) || 0);
+    return start == null
+      ? { timeCaptured: offset * 1000, timeBase: 'elapsed' }
+      : { timeCaptured: gpsSecondsToMs(start + offset), timeBase: 'gps' };
+  }
+
+  /** The time the Add Flag button will use: a right-click draft, else the current playhead. */
+  function draftTime() {
+    return state.flagDraft || flagTimeAt(state.current);
+  }
+
+  function flagOffset(flag) {
+    return flagOffsetSeconds(flag, fileStartSeconds());
+  }
+
+  /** Nearest fix on the loaded trajectory for a flag's offset — the original stores lat/lon/height. */
+  function mapFixAt(offset) {
+    if (!Number.isFinite(offset) || mapState.status !== 'ready' || !mapState.points.length) return null;
+    const ratio = state.span > 0 ? offset / state.span : 0;
+    const index = indexForRatio(mapState.points, Math.min(1, Math.max(0, ratio)));
+    const point = mapState.points[index];
+    if (!point) return null;
+    const height = mapState.heights[index];
+    return {
+      latitude: Number.isFinite(point.lat) ? point.lat : null,
+      longitude: Number.isFinite(point.lon) ? point.lon : null,
+      height: Number.isFinite(height) ? height : null,
+    };
+  }
+
+  function safeFlagColor(color) {
+    const text = String(color || '');
+    return /^#[0-9a-fA-F]{3,8}$/.test(text) ? text : DEFAULT_FLAG_COLOR;
+  }
+
+  function flagPennant(color) {
+    return FLAG_PENNANT.replace('{{COLOR}}', safeFlagColor(color));
+  }
+
+  function flagCoordsText(flag) {
+    return [
+      Number.isFinite(flag.latitude) ? `LATITUDE ${flag.latitude.toFixed(5)}°` : '',
+      Number.isFinite(flag.longitude) ? `LONGITUDE ${flag.longitude.toFixed(5)}°` : '',
+      Number.isFinite(flag.height) ? `HEIGHT(MSL): ${flag.height.toFixed(2)} m` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  /** Every mutation lands here: one write to the project's bucket, then one repaint. */
+  function commitFlags() {
+    saveFlagState(flagStorage, state.projectKey, state.flags);
+    renderFlags();
+  }
+
+  function showFlagHint(text, isError) {
+    if (!el.flagHint) return;
+    if (state.flagHintTimer) window.clearTimeout(state.flagHintTimer);
+    state.flagHintTimer = 0;
+    el.flagHint.textContent = text;
+    el.flagHint.classList.toggle('is-error', !!isError);
+    state.flagHintTimer = window.setTimeout(() => {
+      state.flagHintTimer = 0;
+      if (!el.flagHint) return;
+      el.flagHint.classList.remove('is-error');
+      el.flagHint.textContent = '右键时间轴任意位置加标记，或按 Add Flag 打在 playhead；最多 10 个。';
+    }, 4000);
+  }
+
+  function setFlagsPanel(open) {
+    const next = !!open;
+    if (state.flags.isFlagsPanelOpen !== next) {
+      state.flags = { ...state.flags, isFlagsPanelOpen: next };
+      saveFlagState(flagStorage, state.projectKey, state.flags);
+    }
+    if (el.flagsPanel) el.flagsPanel.hidden = !next;
+    const toggle = root.querySelector('[data-act="flags"]');
+    if (toggle) toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+    if (!next) {
+      /* Cancel drops a right-click draft, so the next Add Flag is the playhead again. */
+      state.flagDraft = null;
+      updateFlagDraftLabel();
+      hideFlagTip();
+    }
+  }
+
+  /** A project owns its flags; `b1` and `clean` never see each other's list. */
+  function loadFlagsForProject(projectKey) {
+    state.flagProject = projectKey == null ? '' : String(projectKey);
+    state.flags = loadFlagState(flagStorage, state.flagProject);
+    state.flagTrash = false;
+    state.flagDraft = null;
+    setFlagsPanel(!!state.flags.isFlagsPanelOpen);
+    renderFlags();
+  }
+
+  function syncFlagProject() {
+    const key = state.projectKey == null ? '' : String(state.projectKey);
+    if (key === state.flagProject) return;
+    loadFlagsForProject(key);
+  }
+
+  function updateFlagDraftLabel() {
+    if (!el.flagDraft) return;
+    el.flagDraft.textContent = flagTimeLabel(draftTime());
+  }
+
+  function flagMarkerHtml(flag) {
+    const offset = flagOffset(flag);
+    if (offset == null) return '';
+    const ratio = state.span > 0 ? Math.min(1, Math.max(0, offset / state.span)) : 0;
+    const label = flagTimeLabel(flag);
+    return `<button type="button" class="gp-tl-flag" data-flag-marker="${flag.id}"`
+      + ` data-flag-jump="${flag.id}" data-flag-state="${esc(flag.state)}"`
+      + ` style="left:${(ratio * 100).toFixed(4)}%"`
+      + ` aria-label="flag #${flag.id} ${esc(label)}"`
+      + ` title="flag #${flag.id} · ${esc(label)}">${flagPennant(flag.color)}</button>`;
+  }
+
+  function renderFlagMarkers() {
+    if (!el.flagLayer) return;
+    hideFlagTip();
+    el.flagLayer.innerHTML = visibleFlags(state.flags.allFlags)
+      .slice()
+      .sort((a, b) => a.timeCaptured - b.timeCaptured)
+      .map(flagMarkerHtml)
+      .join('');
+  }
+
+  function flagRowHtml(flag) {
+    const trashed = flag.state === FLAG_STATES.trash;
+    const hidden = flag.state === FLAG_STATES.hidden;
+    const selected = flag.state === FLAG_STATES.selected;
+    const offset = flagOffset(flag);
+    const coords = flagCoordsText(flag);
+    const restoreBlocked = flagTotal(state.flags.allFlags) >= FLAG_LIMIT
+      || !!flagAtTime(state.flags.allFlags, flag.timeCaptured);
+    const tools = trashed
+      ? `<button type="button" data-flag-restore="${flag.id}" title="Restore Flag"`
+        + ` aria-label="Restore Flag"${restoreBlocked ? ' disabled' : ''}>${ICON_RESTORE}</button>`
+      : `<input type="color" data-flag-color="${flag.id}" value="${safeFlagColor(flag.color)}"`
+        + ' aria-label="Select flag colour" title="Select flag colour">'
+        + `<button type="button" data-flag-eye="${flag.id}" title="${hidden ? 'Show flag' : 'Hide Flag'}"`
+        + ` aria-label="${hidden ? 'Show flag' : 'Hide Flag'}">${hidden ? ICON_EYE_OFF : ICON_EYE}</button>`
+        + `<button type="button" data-flag-trash="${flag.id}" title="Move flag to trash"`
+        + ` aria-label="Move flag to trash">${ICON_TRASH}</button>`;
+    return `<div class="gp-flag-row${selected ? ' is-selected' : ''}${hidden ? ' is-hidden' : ''}"`
+      + ` role="listitem" data-flag-row="${flag.id}">`
+      + `<button type="button" class="gp-flag-main" data-flag-jump="${flag.id}"`
+      + ` title="${trashed ? 'Restore it to jump' : '点击跳到这个时间点'}">`
+      + `<span class="gp-flag-head"><span class="gp-flag-no">flag #${flag.id}</span>`
+      + `<span class="gp-flag-time">${esc(flagTimeLabel(flag))}</span></span>`
+      + (offset == null ? ''
+        : `<span class="gp-flag-sub">+${esc(hhmmss(offset))} on this file</span>`)
+      + (coords ? `<span class="gp-flag-sub">${esc(coords)}</span>` : '')
+      + `<span class="gp-flag-desc">${esc(flag.description || '—')}</span></button>`
+      + `<span class="gp-flag-tools">${tools}</span></div>`;
+  }
+
+  function renderFlagList() {
+    if (!el.flagList) return;
+    const all = state.flags.allFlags.slice().sort((a, b) => a.timeCaptured - b.timeCaptured);
+    const trashed = all.filter((flag) => flag.state === FLAG_STATES.trash);
+    const shown = state.flagTrash ? trashed : all.filter((flag) => flag.state !== FLAG_STATES.trash);
+    el.flagList.innerHTML = shown.length
+      ? shown.map(flagRowHtml).join('')
+      : `<p class="gp-flags-empty">${state.flagTrash ? 'Trash is empty' : 'No flag added yet.'}</p>`;
+    if (el.flagTrash) {
+      el.flagTrash.textContent = state.flagTrash ? 'Back to flags' : 'Trash';
+    }
+    if (el.flagEmpty) {
+      el.flagEmpty.disabled = trashed.length === 0;
+    }
+  }
+
+  function renderFlags() {
+    if (!state.alive) return;
+    const total = flagTotal(state.flags.allFlags);
+    if (el.flagCount) el.flagCount.textContent = `(${total}/${FLAG_LIMIT})`;
+    if (el.flagPanelCount) el.flagPanelCount.textContent = `(${total}/${FLAG_LIMIT})`;
+    renderFlagMarkers();
+    renderFlagList();
+    updateFlagDraftLabel();
+  }
+
+  function hideFlagTip() {
+    if (el.flagTip) el.flagTip.hidden = true;
+  }
+
+  function showFlagTip(id) {
+    if (!el.flagTip || !el.tlTrack) return;
+    const flag = state.flags.allFlags.find((item) => item.id === Number(id));
+    if (!flag) return;
+    const coords = flagCoordsText(flag);
+    el.flagTip.innerHTML = `<strong>flag #${flag.id}</strong> `
+      + `<span class="gp-flag-tip-time">${esc(flagTimeLabel(flag))}</span>`
+      + (coords ? `<div class="gp-flag-tip-coords">${esc(coords)}</div>` : '')
+      + `<div class="gp-flag-tip-desc">${esc(flag.description || '(no comment)')}</div>`;
+    el.flagTip.hidden = false;
+    const host = el.tlTrack.parentElement;
+    const hostRect = host.getBoundingClientRect();
+    const marker = el.flagLayer
+      ? el.flagLayer.querySelector(`[data-flag-marker="${flag.id}"]`)
+      : null;
+    const markerRect = marker ? marker.getBoundingClientRect() : null;
+    const centre = markerRect
+      ? markerRect.left + markerRect.width / 2 - hostRect.left
+      : 0;
+    const width = el.flagTip.offsetWidth || 260;
+    el.flagTip.style.left = `${Math.max(8, Math.min(hostRect.width - width - 8, centre - width / 2)).toFixed(1)}px`;
+  }
+
+  /** Right-click on the scrub area → a draft at that x (the original's contextmenu handler). */
+  function onTrackContextMenu(event) {
+    if (state.view !== 'work' || !state.span || !el.tlTrack) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('.gp-flags-panel')) return;
+    if (target instanceof Element
+      && target.closest('.gp-tl-flags, .gp-tl-transport, .gp-tl-speed, .gp-tl-events, input, select, a')) {
+      return;
+    }
+    event.preventDefault();
+    const rect = el.tlTrack.getBoundingClientRect();
+    const ratio = rect.width > 0
+      ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+      : 0;
+    state.flagDraft = flagTimeAt(ratio * state.span);
+    setFlagsPanel(true);
+    renderFlags();
+    if (el.flagComment) el.flagComment.focus();
+  }
+
+  function addFlagFromDraft() {
+    const time = draftTime();
+    const offset = flagOffsetSeconds(time, fileStartSeconds());
+    const fix = mapFixAt(offset);
+    const result = addFlag(state.flags, {
+      timeCaptured: time.timeCaptured,
+      timeBase: time.timeBase,
+      description: el.flagComment ? el.flagComment.value.trim() : '',
+      color: DEFAULT_FLAG_COLOR,
+      ...(fix || {}),
+    });
+    if (!result.ok) {
+      showFlagHint(result.reason === 'limit'
+        ? 'Maximum number of flags reached'
+        : "There's already a flag at this timestamp", true);
+      return;
+    }
+    state.flags = result.state;
+    state.flagDraft = null;
+    if (el.flagComment) el.flagComment.value = '';
+    showFlagHint(`flag #${result.flag.id} added`, false);
+    commitFlags();
+  }
+
+  function jumpToFlag(id) {
+    const flag = state.flags.allFlags.find((item) => item.id === Number(id));
+    if (!flag || flag.state === FLAG_STATES.trash) return;
+    state.flags = selectFlag(state.flags, flag.id);
+    const offset = flagOffset(flag);
+    if (offset == null) {
+      showNotice('这个 flag 只有 GPS 时间，当前 CSV 没有 #Start Time(GPS)，无法换算到播放头');
+    } else if (offset < 0 || offset > state.span + 1e-6) {
+      showNotice(`flag #${flag.id} 不在当前 CSV 的时间范围内（${flagTimeLabel(flag)}）`);
+    } else {
+      showNotice('');
+      seek(offset);
+    }
+    setFlagsPanel(true);
+    commitFlags();
   }
 
   /* ---- export ---- */
@@ -3301,6 +4086,42 @@ ${svgMarkup}
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    const flagJump = target.closest('[data-flag-jump]');
+    if (flagJump) {
+      jumpToFlag(flagJump.dataset.flagJump);
+      return;
+    }
+
+    const flagEye = target.closest('[data-flag-eye]');
+    if (flagEye) {
+      state.flags = toggleFlagVisibility(state.flags, flagEye.dataset.flagEye);
+      commitFlags();
+      return;
+    }
+
+    const flagTrashButton = target.closest('[data-flag-trash]');
+    if (flagTrashButton) {
+      state.flags = trashFlag(state.flags, flagTrashButton.dataset.flagTrash);
+      showFlagHint('Flag moved to trash', false);
+      commitFlags();
+      return;
+    }
+
+    const flagRestore = target.closest('[data-flag-restore]');
+    if (flagRestore) {
+      const result = restoreFlag(state.flags, flagRestore.dataset.flagRestore);
+      if (!result.ok) {
+        showFlagHint(result.reason === 'limit'
+          ? 'Maximum number of flags reached'
+          : "There's already a flag at this timestamp", true);
+        return;
+      }
+      state.flags = result.state;
+      showFlagHint('Flag restored successfully', false);
+      commitFlags();
+      return;
+    }
+
     const worktab = target.closest('[data-worktab]');
     if (worktab) {
       setTab(worktab.dataset.worktab);
@@ -3372,6 +4193,26 @@ ${svgMarkup}
         zoomMap(1 / 1.6);
       } else if (act === 'map-zoomout') {
         zoomMap(1.6);
+      } else if (act === 'flags') {
+        setFlagsPanel(!state.flags.isFlagsPanelOpen);
+      } else if (act === 'flags-close') {
+        setFlagsPanel(false);
+      } else if (act === 'flag-add') {
+        addFlagFromDraft();
+      } else if (act === 'flags-trash') {
+        state.flagTrash = !state.flagTrash;
+        renderFlagList();
+      } else if (act === 'flags-empty') {
+        const trashed = state.flags.allFlags
+          .filter((flag) => flag.state === FLAG_STATES.trash).length;
+        if (!trashed) {
+          showFlagHint('Trash is empty', true);
+          return;
+        }
+        state.flags = emptyTrash(state.flags);
+        state.flagTrash = false;
+        showFlagHint('Flag trash emptied', false);
+        commitFlags();
       }
       return;
     }
@@ -3395,6 +4236,33 @@ ${svgMarkup}
     applyColourMode(el.colourOriginal && el.colourOriginal.checked ? 'original' : 'readable');
   }
 
+  /** `<input type="color" data-flag-color>` — the original's `ColorPicker` per flag. */
+  function onFlagColourChange(event) {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) return;
+    const id = Number(input.dataset.flagColor);
+    if (!Number.isFinite(id)) return;
+    state.flags = updateFlag(state.flags, { id, color: input.value });
+    commitFlags();
+  }
+
+  function onFlagPointerOver(event) {
+    const marker = event.target instanceof Element
+      ? event.target.closest('[data-flag-marker]')
+      : null;
+    if (marker) showFlagTip(marker.dataset.flagMarker);
+  }
+
+  function onFlagPointerOut(event) {
+    const marker = event.target instanceof Element
+      ? event.target.closest('[data-flag-marker]')
+      : null;
+    if (!marker) return;
+    const next = event.relatedTarget;
+    if (next instanceof Element && marker.contains(next)) return;
+    hideFlagTip();
+  }
+
   function onDocumentClick(event) {
     if (el.exportMenu.hidden) return;
     if (!(event.target instanceof Element)) return;
@@ -3403,6 +4271,15 @@ ${svgMarkup}
   }
 
   function onKeydown(event) {
+    if (event.key === 'Enter' && event.target === el.flagComment) {
+      event.preventDefault();
+      addFlagFromDraft();
+      return;
+    }
+    if (event.key === 'Escape' && el.flagsPanel && !el.flagsPanel.hidden) {
+      setFlagsPanel(false);
+      return;
+    }
     if (event.key === 'Escape' && !el.exportMenu.hidden) closeExport();
   }
 
@@ -3414,6 +4291,7 @@ ${svgMarkup}
   }
 
   root.addEventListener('click', onRootClick);
+  root.addEventListener('change', onFlagColourChange);
   document.addEventListener('click', onDocumentClick);
   document.addEventListener('keydown', onKeydown);
   window.addEventListener('message', onLuciadMessage);
@@ -3423,6 +4301,11 @@ ${svgMarkup}
   if (el.speed) el.speed.addEventListener('change', onSpeedChange);
   if (el.colourOriginal) el.colourOriginal.addEventListener('change', onColourToggle);
   if (el.colourOriginal) el.colourOriginal.checked = state.colourMode === 'original';
+  if (el.timeline) el.timeline.addEventListener('contextmenu', onTrackContextMenu);
+  if (el.flagLayer) {
+    el.flagLayer.addEventListener('pointerover', onFlagPointerOver);
+    el.flagLayer.addEventListener('pointerout', onFlagPointerOut);
+  }
   applyColourMode(state.colourMode);
   if (el.map) {
     el.map.addEventListener('pointerdown', onMapPointerDown);
@@ -3445,10 +4328,19 @@ ${svgMarkup}
   root.__graphCleanup = () => {
     state.alive = false;
     stopPlayback();
+    saveFlagState(flagStorage, state.projectKey, state.flags);
+    if (state.flagHintTimer) window.clearTimeout(state.flagHintTimer);
+    state.flagHintTimer = 0;
     root.removeEventListener('click', onRootClick);
+    root.removeEventListener('change', onFlagColourChange);
     document.removeEventListener('click', onDocumentClick);
     document.removeEventListener('keydown', onKeydown);
     window.removeEventListener('message', onLuciadMessage);
+    if (el.timeline) el.timeline.removeEventListener('contextmenu', onTrackContextMenu);
+    if (el.flagLayer) {
+      el.flagLayer.removeEventListener('pointerover', onFlagPointerOver);
+      el.flagLayer.removeEventListener('pointerout', onFlagPointerOut);
+    }
     if (luciad.timer) window.clearTimeout(luciad.timer);
     luciad.timer = 0;
     luciad.status = 'idle';
@@ -3480,6 +4372,8 @@ ${svgMarkup}
   setTab('overview');
   setLegend(false);
   setDock(true);
+  syncFlagProject();
+  renderFlags();
   updateTimeline();
   // The landing page lists every export project first; `loadProjects` then opens the default one's
   // CSVs, which is the single-project behaviour this panel had before (the shipped `clean`).
