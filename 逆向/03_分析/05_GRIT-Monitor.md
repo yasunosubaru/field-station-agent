@@ -1194,3 +1194,123 @@ Good（警告只来自干扰，不是接收机错误）。回归用例：
 
 **没覆盖到的**：干扰频率 1270 MHz 来自 GRIT 自己的频谱采集通道，这次抓包没有
 `ITDETECTSTATUS`（该端口未订阅），要复现干扰判定必须同时录该日志与频谱数据。
+
+---
+
+## 12. 重实现补的三块：Map Settings / Terminal / Mitigation Assistant（2026-11-01 实测）
+
+重实现（`04_重实现`）此前把手册 5.7 / 5.8 / 5.2.5 三块留成占位：Settings ▸ Map… 只弹一句
+"没有底图渲染器"，Tools ▸ Terminal 直接把页签切到 Manage，Mitigation Assistant 只有一个
+`Not detected` 文本。这次按手册补齐，并在浏览器里实测（无接收机，数据来自仓库里的抓包与
+Graph 导出的 CSV）。截图与结论如下；详细交互契约见
+`packages/app/test/grit-map.test.ts`（14 项）。
+
+### 12.1 Map Settings（手册 5.7）
+
+`Settings ▸ Map…` 打开三段式设置窗（原版 `mapSettings.js` 的 `.map-settings-tabs` +
+`.totaldata` 三页），Position Overview 的齿轮按钮也开同一窗；`Add Point of Interest` 直接落到
+POI 段。
+
+| 段 | 内容 | 数据来源 |
+|---|---|---|
+| Points of Interest | 表格列照手册 List View：Name / Symbol / Radius / Latitude / Longitude / Notification / Visibility / Status / Triggered by，另有 Show、Active、Delete 三个行内动作 | **本机列表**，`localStorage` `nas.grit.map.poi.v1`；不来自接收机，也没有新增／`api` 路由（原版写在 Electron 的 `userStore.userStoreJSON.app.poi[tabid]`） |
+| Triggers | Event / Point Name / Active 三列 + 空态说明 | **没有事件源**：不订阅 MARKxPOS、无实时会话；只报告本抓包里有没有 MARK 事件日志（`/api/logs` 的 `groups`） |
+| Display | Graticule / Labels / Metric Grid / Scale Bar / North Arrow 五个开关 | 共享地图舞台 `/geo/luciad-stage.js` 的 `chrome` 参数（`{type:'chrome'}` 消息），存 `nas.grit.map.display.v1` |
+
+POI 会真的画到 Position Overview 的 LuciadRIA 舞台上：新增 `{type:'pois', pois:[…]}` 消息，
+舞台为此加了两层（`pois` 环+标记、`poi-labels` 名字），半径按手册画成圆
+（`ringPolyline`，与 1σ 环同一套几何）。实测（`__luciadStage.storeSize()`）：
+
+- 加一个带 6 m 半径的点 → `pois` 层 2 个要素（圈 + 标记），`poi-labels` 1 个；
+- 加第二个 → 4 个；删掉第二个 → 回到 2 个、标签 1 个；
+- 把该行 Show 关掉 → `pois` 层 0 个、标签 0 个（地图上确实消失），再打开回到 2 个；
+- Status 关闭只改颜色（灰），仍留在图上 —— 与手册把 Show / Active 当两个开关一致。
+
+Display 开关与舞台自报逐项对齐（`window.__gritPos.status().chrome` 与
+`__luciadStage.status().chrome` 一致）：
+
+| 操作 | 舞台 `chrome` | 画面 |
+|---|---|---|
+| 开机 | `graticule:true, labels:false, metric:true, scale:true, north:true` | GRIT profile：有经纬网、无经纬度文字 |
+| 打开 Labels | `labels:true` | 出现 `114.35270°E` / `30.53998°N` 等刻度文字 |
+| 关 Graticule + Labels | `graticule:false, labels:false` | 经纬线与文字一起消失（比例尺、指北针仍在） |
+| 关 Scale Bar | `scale:false` | 左下角比例尺隐藏 |
+| 关 North Arrow | `north:false` | 右上角 `N` 隐藏（读舞台 DOM `.north.hidden === true`） |
+| 关 Metric Grid | `metric:false` | 1-2-5 m 网格消失 |
+
+截图对照：`06-map-graticule-labels-on.png`（经纬网 + 标注开）与
+`07-map-graticule-labels-off.png`（两者关）。两张都先把**米制网格关掉**，所以画面里唯一的变量就是
+经纬网与标注；其余不变（同一视野、`2D Trajectory.csv` 的 5 点、1σ 1.34 m、同一个 POI 圈、比例尺
+与指北针）。关掉后画面只剩轨迹、1σ 环、POI 与两件 HUD 仪表。
+
+**没做到**：自绘回退图（`mapSvg()`，Luciad 起不来时用）不吃 `chrome` —— 它属于 Graph 面板的
+导出函数，不在本次改动范围。Display 段因此写明"舞台已就绪 / 回退图不随之变化"。
+
+### 12.2 Triggers 的事件源：按抓包如实报告
+
+`/api/logs` 的 `groups` 里筛 `MARK\d*(POS|TIME)`，实测时 `/api/captures` 的 18 份样本里
+**只有两份带 MARK 日志**：
+
+- `live-20261031/b2-20261101.sbf` → `MARKPOS ×31`；
+- `live-20261031/b4-20261101.sbf` → `MARK1TIME ×1`、`MARKTIME ×1`；
+- 其余 16 份（含 `grit/live-20261031/com11-live-8s.bin`、`convert/clean-9600.gps`）没有任何
+  MARK 日志。
+
+于是 Triggers 段在两份抓包上给出两句不同的话（截图
+`04-sheet-triggers.png` / `04b-sheet-triggers-marks.png`）：
+
+- 无 MARK 的抓包：`没有事件源：clean-9600.gps 不含 MARKxPOS 事件日志，也没有实时会话…触发器列表为空。`
+- b2：`b2-20261101.sbf 里有 MARKPOS ×31，但触发器需要接收机侧先配置好 MARKxPOS 才会产生事件…列表为空，只报告数据源。`
+
+没有 Add / Apply：本 build 不写接收机，也不在图上打事件点，加一个存不进去的触发器没有意义。
+
+### 12.3 Terminal（手册 5.8）
+
+`Tools ▸ Terminal` 现在在 GRIT 面板内打开抽屉（右下角，压在 Timeline 条上方），**不再切页签**
+（实测 `#tab-manage` 的 `aria-selected` 保持 `false`）。它与 Manage 的 Terminal 是同一个服务端
+会话、同一个端点：
+
+- 发命令 `POST /api/live/command`（`{line}`）；
+- 回显 `/api/live/logs`：GRIT 面板本来就在轮询同一个游标，抽屉把那些 `entry.ascii` 原样追加，
+  不另开连接；
+- 连接行（Serial/Baud 或 TCP host/port、Connect/Disconnect）走 `/api/live/connect|disconnect`。
+
+没有会话时如实报错，不伪造回显（截图 `08-terminal.png`）：
+
+```
+> LOG COM1 BESTPOSB ONTIME 1
+! 未发送（没有实时会话）：not connected — 在 Manage ▸ Terminal 或本抽屉的 Connect 建立会话后重发。
+```
+
+`manage.js` 只导出 `mount/unmount`（且本次改动不许碰它），所以这里按同一套 DOM/行为契约重画了
+第二个前台，而不是 import 一个组件。
+
+### 12.4 Mitigation Assistant（手册 5.2.5）
+
+值仍然是 `Not detected` —— 这些抓包里没有 ITK 报文，原版这时也只打印它；不编干扰类型、频率或
+时间。补的是**交互**（截图 `00-mitigation-collapsed.png` / `09-mitigation-details.png`）：
+
+- `Details ▾` 展开 / 收起（`aria-expanded` 同步），展开时瓦片收紧顶部留白让正文放得下；
+- 正文写清手册的两个状态：没检测到时是 `Not detected`；检测到（干扰 / 压制 / 欺骗）时列出每一项
+  及简要说明，点击进入 Interference details（查看详情、Add filter、上一条 / 下一条、返回列表）；
+- 写明数据何时才会出现：**需要 ITK 报文**（接收机干扰监测通道上报，或重放带 ITK 的 GRIT 录制
+  文件）；
+- `Add filter` 标成不可用并说明原因（没有干扰条目）。
+
+**没做到**：`remote-23types.sbf`、`b1`、`broad-clean.gps`、`usb1-broad-60s.bin` 里有
+`ITDETECTSTATUS`（21 / 1 / 1 / 1 条），但该日志的字段与"干扰条目"的对应关系本次没有解，且它
+不是手册所说的 ITK 通道；Assistant 因此仍然只用 `Not detected`，没有拿 `ITDETECTSTATUS` 去
+冒充干扰判定。
+
+### 12.5 回归与实测记录
+
+- 新增 `packages/app/test/grit-map.test.ts`：14 项（Display→chrome 映射、脏 localStorage、
+  POI 表单校验/增删/Show-Active、POI 图层消息、事件源筛选、触发器空态文案、Terminal 回声与
+  "在 GRIT 内打开"、Map Settings 三段骨架、Mitigation 交互）。该文件 14/14 通过。
+- 浏览器实测（Chromium，1706×1066，`http://127.0.0.1:7815`，LuciadRIA 2026.0 / WebGPU 就绪）：
+  **0 console error、0 pageerror**；切换抓包、开关 Display、增删 POI、发命令各一轮。
+- 起点基线：`node --test --test-force-exit "packages/*/test/*.test.ts"` 777 项全绿（本次改动前
+  实测）。跑完本次改动后整套 828 项里有 6 项失败，全部落在 `config-endpoints` /
+  `config-host` / `summary-counts`（"18 !== 15"，配置页数量）—— 这些文件正被别的会话同时改动，
+  与本次改的三块无交集；本文件的 14 项与 `grit-position` / `grit-capture-spectrum` 全绿。
+

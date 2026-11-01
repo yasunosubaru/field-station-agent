@@ -399,6 +399,7 @@ body[data-page="grit"] .app-panel {
   padding: 51px 0 0 15px;
 }
 .grit-mitigation-value {
+  display: block;
   font-family: var(--grit-light, OpenSans-Regular), sans-serif;
   font-size: 24px;
   line-height: 30px;
@@ -1122,4 +1123,480 @@ body:not([data-page="grit"]) #tabs-list li.grit-appbar-add {
 #tabs-list li.grit-appbar-file .grit-appbar-count,
 #tabs-list li.grit-appbar-file .grit-appbar-close {
   color: inherit;
+}
+
+/* ================================================================================================
+ * ⑨ Mitigation Assistant 的展开区（手册 5.2.5）
+ *
+ * 值本身仍是原版的「Not detected」；这里补的是它下面那层可折叠说明：手册描述的两种状态、
+ * Interference details 的操作，以及数据（ITK）什么时候才会出现。
+ * ============================================================================================== */
+.grit-mitigation.is-open {
+  /* The value, the toggle and the details must fit the 375 px tile; the reference's generous top
+     padding only holds while the details are collapsed. */
+  padding-top: 18px;
+}
+.grit-mitigation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--grit-teal);
+  font-family: var(--grit-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+.grit-mitigation-toggle:hover {
+  color: var(--grit-cyan);
+}
+.grit-mitigation-caret {
+  display: inline-block;
+  width: 9px;
+  height: 6px;
+  transition: transform 0.15s ease;
+}
+.grit-mitigation-caret svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.grit-mitigation-toggle.is-open .grit-mitigation-caret {
+  transform: rotate(180deg);
+}
+.grit-mitigation-details {
+  margin-top: 6px;
+  max-height: 190px;
+  overflow: auto;
+  padding-right: 8px;
+}
+.grit-mitigation-details[hidden] {
+  display: none;
+}
+.grit-mitigation-line {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--grit-ink-60);
+}
+.grit-mitigation-line strong {
+  color: var(--grit-ink);
+}
+.grit-mitigation-when {
+  color: var(--grit-teal);
+}
+.grit-mitigation-off {
+  color: rgba(0, 0, 0, 0.38);
+}
+
+/* ================================================================================================
+ * ⑩ Map Settings（手册 5.7）：Points of Interest / Triggers / Display
+ *
+ * 固定定位的整页遮罩 + 居中的卡片：设置窗只跟视口有关，页面滚动到哪儿都能看见（截图对照也稳）。
+ * 原版是 .map-settings-tabs + .totaldata 的三页结构，这里保留同样的三段与字段。
+ * ============================================================================================== */
+.grit-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.35);
+}
+.grit-sheet[hidden] {
+  display: none;
+}
+.grit-sheet-card {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  max-height: min(86vh, 760px);
+  background: #fcfcfc;
+  border: 1px solid var(--grit-teal);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  color: var(--grit-ink);
+  overflow: hidden;
+}
+.grit-sheet-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--grit-rule);
+}
+.grit-sheet-title {
+  font-family: var(--grit-semi);
+  font-size: 17px;
+  font-weight: 600;
+}
+.grit-sheet-sub {
+  color: var(--grit-ink-60);
+  font-size: 12px;
+}
+.grit-sheet-close {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--grit-ink-60);
+  font-size: 20px;
+  line-height: 20px;
+  cursor: pointer;
+}
+.grit-sheet-close:hover {
+  color: var(--grit-poor);
+}
+.grit-sheet-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--grit-rule);
+}
+.grit-sheet-tab {
+  padding: 9px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 14px;
+  cursor: pointer;
+}
+.grit-sheet-tab:hover {
+  color: var(--grit-teal);
+}
+.grit-sheet-tab.is-active {
+  color: var(--grit-teal);
+  border-bottom-color: var(--grit-teal);
+  font-family: var(--grit-semi);
+  font-weight: 600;
+}
+.grit-sheet-body {
+  padding: 12px 16px 16px;
+  overflow: auto;
+}
+.grit-sheet-body[hidden] {
+  display: none;
+}
+.grit-sheet-note {
+  margin: 0 0 10px;
+  color: var(--grit-ink-60);
+  font-size: 12px;
+  line-height: 18px;
+}
+.grit-sheet-note code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  color: var(--grit-teal);
+}
+.grit-sheet-msg {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--grit-good);
+}
+.grit-sheet-msg.is-bad {
+  color: var(--grit-poor);
+}
+.grit-sheet-msg[hidden] {
+  display: none;
+}
+.grit-sheet-empty {
+  margin: 10px 0;
+  color: var(--grit-ink-60);
+  font-size: 12px;
+  line-height: 18px;
+}
+.grit-sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ---- POI 表单 + 列表（手册 5.7.1 的 List View 各列） ---- */
+.grit-poi-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.grit-poi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--grit-ink-60);
+}
+.grit-poi-input {
+  width: 128px;
+  height: 26px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--grit-ink);
+  font-family: var(--grit-sans);
+  font-size: 12px;
+}
+.grit-poi-input:focus-visible {
+  outline: 1px solid var(--grit-cyan);
+}
+.grit-poi-table {
+  border-top: 1px solid var(--grit-rule);
+}
+.grit-poi-row > * {
+  min-width: 0;
+  width: 100%;
+  /* The cells are grid items, and a grid item with a fixed preferred width does not stretch on its
+     own; `width:100%` resolves against the track, which is what fills every column evenly. */
+  justify-self: stretch;
+}
+.grit-poi-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1.3fr) 48px 64px 96px 96px 90px 72px 72px 88px 62px;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  font-size: 12px;
+}
+.grit-poi-row.is-head {
+  min-height: 26px;
+  border-bottom: 1px solid var(--grit-rule);
+  color: var(--grit-ink-60);
+  font-family: var(--grit-semi);
+  font-weight: 600;
+  font-size: 11px;
+}
+.grit-poi-row.is-trig {
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) 96px;
+}
+.grit-poi-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grit-poi-cell-name {
+  font-family: var(--grit-semi);
+  font-weight: 600;
+}
+.grit-poi-cell-sym svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  color: var(--grit-teal);
+}
+.grit-poi-cell-act {
+  text-align: right;
+}
+.grit-mini-btn {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--grit-ink-60);
+  font-family: var(--grit-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+.grit-mini-btn.is-on {
+  border-color: var(--grit-teal);
+  color: var(--grit-teal);
+}
+.grit-mini-btn.is-danger {
+  border-color: rgba(160, 2, 20, 0.4);
+  color: var(--grit-poor);
+}
+.grit-mini-btn:hover {
+  background: rgba(0, 81, 111, 0.08);
+}
+
+/* ---- Display 开关 ---- */
+.grit-disp {
+  border-top: 1px solid var(--grit-rule);
+}
+.grit-disp-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) 1fr 62px;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  font-size: 13px;
+}
+.grit-disp-name em {
+  margin-left: 6px;
+  color: var(--grit-ink-60);
+  font-style: normal;
+  font-size: 12px;
+}
+.grit-disp-hint {
+  color: var(--grit-ink-60);
+  font-size: 12px;
+}
+.grit-disp-toggle {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--grit-ink-60);
+  font-family: var(--grit-semi);
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+}
+.grit-disp-toggle.is-on {
+  border-color: var(--grit-teal);
+  background: var(--grit-teal);
+  color: #fff;
+}
+
+/* ================================================================================================
+ * ⑪ Terminal（手册 5.8）—— GRIT tab 自己的抽屉，右下角，压在 Timeline 折叠条上方
+ * ============================================================================================== */
+.grit-term {
+  position: fixed;
+  right: 6px;
+  bottom: 32px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(52vh, 460px);
+  background: #1e1e1e;
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.4);
+  font-family: var(--grit-sans);
+}
+.grit-term[hidden] {
+  display: none;
+}
+.grit-term-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  background: #111;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.grit-term-title {
+  font-family: var(--grit-semi);
+  font-weight: 600;
+  font-size: 14px;
+}
+.grit-term-scope {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+.grit-term-status {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+.grit-term-status.is-live {
+  color: #7fd3e8;
+}
+.grit-term-close {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.grit-term-close:hover {
+  color: #fff;
+}
+.grit-term-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.grit-term-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.grit-term-field input {
+  width: 128px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 2px;
+  background: #2b2b2b;
+  color: #fff;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+.grit-term-btn {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  font-family: var(--grit-sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+.grit-term-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.grit-term-out {
+  flex: 1 1 auto;
+  min-height: 110px;
+  overflow: auto;
+  padding: 8px 12px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  line-height: 17px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.grit-term-line {
+  color: rgba(255, 255, 255, 0.82);
+}
+.grit-term-send {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.grit-term-prompt {
+  color: var(--grit-cyan);
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+.grit-term-send input {
+  flex: 1 1 auto;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 2px;
+  background: #2b2b2b;
+  color: #fff;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+.grit-term-send input:focus-visible {
+  outline: 1px solid var(--grit-cyan);
 }

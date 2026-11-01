@@ -22,6 +22,8 @@
  *                                                this panel wants; `chrome` can override one flag
  *                   {type:'chrome', …}           {graticule, labels, metric, scale, north} booleans
  *                   {type:'track', points:[[lon,lat]], sigmaM, trackColor, fit}
+ *                   {type:'pois', pois:[{id,name,lon,lat,radiusM,visible,active}]}   GRIT's Map
+ *                                                Settings list — marker + radius circle + name
  *                   {type:'cursor', index}      index < 0 hides the marker
  *                   {type:'zoom', factor}       1.6 zooms out, 1/1.6 zooms in
  *                   {type:'fit'} / {type:'recenter'}
@@ -114,6 +116,8 @@ const state = {
   sigmaM: 0,
   trackColor: MAP_TRACK_COLOR,
   cursorIndex: -1,
+  /** Points of interest from the panel's Map Settings list (never read from the receiver). */
+  pois: [],
   map: null,
   toMap: null,
   toGeo: null,
@@ -195,6 +199,32 @@ function bodyPainter() {
         return;
       case 'cursor':
         geoCanvas.drawShape(shape, { stroke: { width: 2, color: '#00516f' }, fill: { color: '#00abc8' } });
+        return;
+      /* GRIT's points of interest: the marker and, when a radius was set, its circle. An inactive
+       * point stays on the map, greyed — the manual keeps Show and Active as two separate switches. */
+      case 'poi':
+        geoCanvas.drawShape(shape, {
+          stroke: { width: 1.6, color: '#a00214' },
+          fill: { color: '#d0021b' },
+        });
+        return;
+      case 'poi-ring':
+        geoCanvas.drawShape(shape, {
+          stroke: { width: 1.4, color: '#c1272d' },
+          fill: { color: 'rgba(193,39,45,0.06)' },
+        });
+        return;
+      case 'poi-idle':
+        geoCanvas.drawShape(shape, {
+          stroke: { width: 1.4, color: '#5f5f5f' },
+          fill: { color: '#9a9a9a' },
+        });
+        return;
+      case 'poi-idle-ring':
+        geoCanvas.drawShape(shape, {
+          stroke: { width: 1.2, color: 'rgba(0,0,0,0.4)' },
+          fill: { color: 'rgba(0,0,0,0.05)' },
+        });
         return;
       default:
         geoCanvas.drawShape(shape, { stroke: { width: 1.6, color: state.trackColor }, fill: { color: '#ffffff' } });
@@ -491,6 +521,41 @@ function drawTrack() {
   setFeatures(state.layers.markers, markers);
 }
 
+/**
+ * GRIT's points of interest — the panel's local list, drawn on the same stage as the track.
+ *
+ * The manual (5.7.1) shows the radius as "a circle around the point of interest", so a POI with
+ * `radiusM > 0` gets the same lon/lat ring the 1σ circle uses (one geometry model for both, and the
+ * same one the self-drawn SVG uses). `visible: false` removes it; `active: false` greys it.
+ */
+function drawPois() {
+  const bodies = [];
+  const labels = [];
+  for (const poi of state.pois) {
+    if (!poi.visible) continue;
+    const kind = poi.active ? 'poi' : 'poi-idle';
+    if (poi.radiusM > 0) {
+      bodies.push({
+        id: `r:${poi.id}`,
+        shape: ringPolyline(poi.lon, poi.lat, poi.radiusM),
+        properties: { kind: `${kind}-ring` },
+      });
+    }
+    bodies.push({
+      id: `p:${poi.id}`,
+      shape: createPoint(CRS84, [poi.lon, poi.lat], 0),
+      properties: { kind },
+    });
+    labels.push({
+      id: `l:${poi.id}`,
+      shape: createPoint(CRS84, [poi.lon, poi.lat], 0),
+      properties: { text: poi.name },
+    });
+  }
+  setFeatures(state.layers.pois, bodies);
+  setFeatures(state.layers.poiLabels, labels);
+}
+
 /* ---------------- pixels ---------------- */
 
 /** lon/lat → stage pixels, straight off the engine's own view rectangle. */
@@ -645,6 +710,9 @@ async function boot() {
   state.layers.track = addLayer('track', bodyPainter());
   state.layers.markers = addLayer('markers', bodyPainter());
   state.layers.cursor = addLayer('cursor', bodyPainter());
+  /* GRIT's Map Settings POI list: rings + markers on one layer, names on the label layer. */
+  state.layers.pois = addLayer('pois', bodyPainter());
+  state.layers.poiLabels = addLayer('poi-labels', labelPainter());
 
   map.on('MapChange', () => {
     window.requestAnimationFrame(() => {
@@ -708,6 +776,21 @@ window.addEventListener('message', (event) => {
     else refresh();
     return;
   }
+  if (data.type === 'pois') {
+    state.pois = (Array.isArray(data.pois) ? data.pois : [])
+      .map((poi) => ({
+        id: String(poi && poi.id ? poi.id : ''),
+        name: String((poi && poi.name) || ''),
+        lon: Number(poi && poi.lon),
+        lat: Number(poi && poi.lat),
+        radiusM: Number(poi && poi.radiusM) || 0,
+        visible: !poi || poi.visible !== false,
+        active: !poi || poi.active !== false,
+      }))
+      .filter((poi) => Number.isFinite(poi.lon) && Number.isFinite(poi.lat));
+    drawPois();
+    return;
+  }
   if (data.type === 'cursor') {
     state.cursorIndex = Number.isInteger(data.index) ? data.index : -1;
     drawCursor();
@@ -761,6 +844,7 @@ window.__luciadStage = {
       profile: state.profile,
       chrome: { ...state.chrome },
       points: state.points.length,
+      pois: state.pois.length,
       layers: Object.keys(state.layers),
       canvases: document.querySelectorAll('canvas').length,
       cursorIndex: state.cursorIndex,

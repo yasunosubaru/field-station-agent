@@ -34,6 +34,32 @@
  * Blocks that are deliberately empty on this build, because the data is not in the capture:
  *   Interference / Jamming / Mitigation Assistant → `Not detected` (no ITK in any sample)
  *
+ * Map Settings (manual 5.7) — Settings ▸ Map opens a sheet with the original's three sections
+ * (`mapSettings.js` `.map-settings-tabs` + three `.totaldata` pages):
+ *
+ *   Points of Interest  a **local** list, `localStorage` key `nas.grit.map.poi.v1` — there is no
+ *                       receiver-side store to read (the original keeps it in Electron's userStore)
+ *                       and no `/api` route is introduced for it, so the sheet says in its own words
+ *                       that the points are local. They are drawn on the same Luciad stage through
+ *                       `{type:'pois'}` (marker + radius circle + name), so Show / Active / Delete
+ *                       really change the map; coordinates are prefilled from the current fix.
+ *   Triggers            no event source: this build does not subscribe to MARKxPOS and no receiver
+ *                       is attached, so nothing can fire. The list stays empty and the tab reports
+ *                       what it actually found — the MARKxPOS groups of the open capture, or that
+ *                       there are none (`/api/logs`).
+ *   Display             five switches → the shared stage's `chrome` flags (graticule, labels,
+ *                       metric grid, scale bar, north arrow), persisted in `nas.grit.map.display.v1`
+ *                       and pushed as `{type:'chrome'}` — the map repaints on every change.
+ *
+ * Terminal (manual 5.8) — Tools ▸ Terminal opens a drawer **inside this panel**; it no longer hands
+ * off to Manage. It speaks to the same server-side live session and the same `POST /api/live/command`,
+ * with its own transcript fed by the `/api/live/logs` poll this panel already runs. With no session
+ * the server refuses the line and the drawer prints that refusal — never a fabricated echo.
+ *
+ * Mitigation Assistant (manual 5.2.5) — the value stays `Not detected`; what is added is the
+ * interaction the manual documents: expand/collapse, both states described, the Interference
+ * details operations, and the plain statement that entries need ITK traffic.
+ *
  * Position Overview — the whole stage is the **shared LuciadRIA stage** (`web/geo/luciad-stage.html`,
  * the same iframe Graph's Overview boots; `/geo/luciad-engine.js` is the shipped Graph renderer
  * bundle). This panel only says *what to draw* and never loads the engine itself:
@@ -96,7 +122,7 @@ import {
   trackLength,
   trajectoryPoints,
 } from './graph.js';
-import { createStageClient } from '../geo/luciad-panel.js';
+import { createStageClient, stageChrome } from '../geo/luciad-panel.js';
 
 const CSS_URL = new URL('./grit.css', import.meta.url).href;
 const CSS_ID = 'nas-panel-grit-css';
@@ -118,6 +144,23 @@ const WATERFALL_FRAMES = 10;
 const LIVE_POLL_MS = 900;
 /** `/api/records` caps `limit` at 25 — the most one capture page can ask for. */
 const CAPTURE_SPECTRUM_PAGE = 25;
+
+/* ---- Map Settings (manual 5.7) ----
+ *
+ * The POI list and the Display switches are **this panel's own state**: they are written to
+ * `localStorage` under one key each, because there is no receiver-side store to write (the original
+ * keeps `userStore.userStoreJSON.app.poi[tabid]`, an Electron main-process file) and no server route
+ * is introduced for it. Triggers have no store at all: nothing in this build subscribes to an event
+ * stream, so the tab reports the source it looked for and why the list is empty.
+ */
+const POI_STORE_KEY = 'nas.grit.map.poi.v1';
+const DISPLAY_STORE_KEY = 'nas.grit.map.display.v1';
+/** The original's Add-POI dialog caps the name at 16 characters (`addPOIDialog.js` maxlength). */
+const POI_NAME_MAX = 16;
+/** A local list, not a database: the sheet stays responsive and localStorage stays small. */
+const POI_LIMIT = 200;
+/** Entries the GRIT Terminal asks for when it opens (same slice `manage.js` uses). */
+const TERMINAL_BACKFILL = 150;
 /**
  * `sample = raw / 256 − 200` dBm — the manual's two steps, the same conversion `live.ts`
  * `LiveSpectrum` applies to the same `uint16` samples (03_分析 §5.2, `logparsers.js:1126-1143`).
@@ -562,6 +605,23 @@ function template() {
         <button type="button" class="grit-tile-more" aria-label="More">${ICON.dots}</button>
         <div class="grit-mitigation">
           <span class="grit-mitigation-value" data-el="mitigation">Not detected</span>
+          <button type="button" class="grit-mitigation-toggle" data-el="mitToggle"
+                  aria-expanded="false" aria-controls="gritMitDetails">
+            <span class="grit-mitigation-caret">${ICON.caret}</span><span data-el="mitToggleLabel">Details</span>
+          </button>
+          <!-- Manual 5.2.5: the window is a list of detected interference signals; with none detected
+               it shows Not detected. Both states are described here instead of printing a number
+               this build has no source for. -->
+          <div class="grit-mitigation-details" id="gritMitDetails" data-el="mitDetails" hidden>
+            <p class="grit-mitigation-line"><strong>Not detected</strong> — 抓包里没有 ITK 报文（干扰判定），
+              也没有实时接收机，因此这里不显示任何干扰条目或数值。</p>
+            <p class="grit-mitigation-line">手册 5.2.5：检测到干扰（干扰 / 压制 / 欺骗）时，本窗口列出
+              每一项及简要说明；点击某一项进入 Interference details —— 查看详情、<em>Add filter</em>
+              添加滤波器、上一条 / 下一条、返回列表。</p>
+            <p class="grit-mitigation-line grit-mitigation-when">需要 ITK 报文：接收机的干扰监测通道上报
+              ITK（或重放带 ITK 的 GRIT 录制文件）后，才可能在这里出现条目。</p>
+            <p class="grit-mitigation-line grit-mitigation-off">Add filter — 不可用：需要先有干扰条目。</p>
+          </div>
         </div>
       </section>
 
@@ -638,6 +698,128 @@ function template() {
         </div>
       </section>
     </div>
+  </div>
+
+  <!-- ============================================================================================
+       Map Settings （手册 5.7）：Points of Interest / Triggers / Display。
+       原版是一个带三个 page tab 的设置窗（mapSettings.js 的 .map-settings-tabs + .totaldata），
+       这里保留同样的三段与字段；数据来源在每一段里写明。
+       ============================================================================================ -->
+  <div class="grit-sheet" data-el="mapSheet" hidden>
+    <div class="grit-sheet-card" role="dialog" aria-label="Map Settings">
+      <div class="grit-sheet-head">
+        <span class="grit-sheet-title">Map Settings</span>
+        <span class="grit-sheet-sub">Settings ▸ Map · 手册 5.7</span>
+        <button type="button" class="grit-sheet-close" data-el="mapClose" aria-label="Close Map Settings">×</button>
+      </div>
+      <div class="grit-sheet-tabs" role="tablist" aria-label="Map settings sections">
+        <button type="button" class="grit-sheet-tab is-active" role="tab" aria-selected="true"
+                data-map-tab="poi">Points of Interest</button>
+        <button type="button" class="grit-sheet-tab" role="tab" aria-selected="false"
+                data-map-tab="triggers">Triggers</button>
+        <button type="button" class="grit-sheet-tab" role="tab" aria-selected="false"
+                data-map-tab="display">Display</button>
+      </div>
+
+      <!-- ---- 5.7.1 Points of Interest ---- -->
+      <section class="grit-sheet-body" data-map-panel="poi" role="tabpanel">
+        <p class="grit-sheet-note" data-el="poiSource">POI 为本地列表，不来自接收机：保存在本机浏览器
+          localStorage（<code>nas.grit.map.poi.v1</code>）。本 build 没有接收机侧的 POI 存储（原版写在
+          Electron 的 userStore 里），也没有 /api 路由可用。</p>
+        <form class="grit-poi-form" data-el="poiForm">
+          <label class="grit-poi-field"><span>Name</span>
+            <input class="grit-poi-input" data-poi-field="name" maxlength="16" placeholder="Gate 3" spellcheck="false"></label>
+          <label class="grit-poi-field"><span>Latitude</span>
+            <input class="grit-poi-input" data-poi-field="lat" type="number" step="0.000001" placeholder="30.539975"></label>
+          <label class="grit-poi-field"><span>Longitude</span>
+            <input class="grit-poi-input" data-poi-field="lon" type="number" step="0.000001" placeholder="114.352811"></label>
+          <label class="grit-poi-field"><span>Radius (m)</span>
+            <input class="grit-poi-input" data-poi-field="radius" type="number" min="0" step="1" value="0"></label>
+          <label class="grit-poi-field"><span>Notification</span>
+            <select class="grit-poi-input" data-poi-field="notification">
+              ${POI_NOTIFICATIONS.map((item) => `<option value="${item.key}">${item.label}</option>`).join('')}
+            </select></label>
+          <button type="submit" class="grit-pop-btn">Add point</button>
+        </form>
+        <p class="grit-sheet-msg" data-el="poiMsg" hidden></p>
+        <div class="grit-poi-table">
+          <div class="grit-poi-row is-head">
+            <span class="grit-poi-cell grit-poi-cell-name">Name</span>
+            <span class="grit-poi-cell grit-poi-cell-sym">Symbol</span>
+            <span class="grit-poi-cell">Radius</span>
+            <span class="grit-poi-cell">Latitude</span>
+            <span class="grit-poi-cell">Longitude</span>
+            <span class="grit-poi-cell">Notification</span>
+            <span class="grit-poi-cell">Visibility</span>
+            <span class="grit-poi-cell">Status</span>
+            <span class="grit-poi-cell">Triggered by</span>
+            <span class="grit-cell grit-poi-cell-act"></span>
+          </div>
+          <div class="grit-poi-rows" data-el="poiRows"></div>
+        </div>
+        <p class="grit-sheet-note">Visibility / Status 直接改共享地图舞台上的 POI 图层（显示或隐藏、激活或灰色），
+          Radius 不为 0 时按手册画成圆；勾选与删除只影响本机列表。</p>
+      </section>
+
+      <!-- ---- 5.7.2 Triggers ---- -->
+      <section class="grit-sheet-body" data-map-panel="triggers" role="tabpanel" hidden>
+        <div class="grit-poi-row is-head is-trig">
+          <span class="grit-poi-cell grit-poi-cell-name">Event</span>
+          <span class="grit-poi-cell grit-poi-cell-name">Point Name</span>
+          <span class="grit-poi-cell">Active</span>
+        </div>
+        <div class="grit-poi-rows" data-el="trigRows"></div>
+        <p class="grit-sheet-msg" data-el="trigSource"></p>
+        <p class="grit-sheet-note">手册 5.7.2：触发器在接收机收到 EVENT 输入时，往 Position Overview 地图上
+          加一个图标（先决条件是接收机上配好 MARKxPOS）。本 build 不订阅事件流、也不写接收机，所以这里既没有
+          Add、也没有 Apply —— 列表如实为空，只报告本抓包里的事件日志。</p>
+      </section>
+
+      <!-- ---- 5.7.3 Display ---- -->
+      <section class="grit-sheet-body" data-map-panel="display" role="tabpanel" hidden>
+        <p class="grit-sheet-note">Display 开关改的是共享地图舞台的 <code>chrome</code> 参数
+          （<code>/geo/luciad-stage.js</code>，<code>{type:'chrome'}</code> 消息），所以开关一改，Position
+          Overview 的地图会立刻重画；GRAPH 面板用的是同一个舞台，不受这里影响。</p>
+        <div class="grit-disp" data-el="displayRows"></div>
+        <p class="grit-sheet-note grit-disp-state" data-el="dispState"></p>
+        <div class="grit-sheet-actions">
+          <button type="button" class="grit-pop-btn is-ghost" data-el="dispReset">Reset to GRIT defaults</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============================================================================================
+       Terminal （手册 5.8）—— 在 GRIT 面板内打开，作用域是这个 tab。
+       命令走的是与 Manage ▸ Terminal 同一个服务端会话与同一个端点（POST /api/live/command），
+       这里只是第二个前台：自己的回显缓冲、自己的连接状态。Manage 的终端没有可导入的组件
+       （manage.js 只导出 mount/unmount），所以按同一套 DOM/行为契约在这里重画。
+       ============================================================================================ -->
+  <div class="grit-term" data-el="term" role="dialog" aria-label="Terminal — GRIT tab" hidden>
+    <div class="grit-term-head">
+      <span class="grit-term-title">Terminal</span>
+      <span class="grit-term-scope">GRIT · <span data-el="termScope">--</span></span>
+      <span class="grit-term-status" data-el="termStatus">Not connected</span>
+      <button type="button" class="grit-term-close" data-el="termClose" aria-label="Close Terminal">×</button>
+    </div>
+    <div class="grit-term-fields">
+      <label class="grit-term-field"><span>Serial</span>
+        <input type="text" data-el="termPath" placeholder="COM8" spellcheck="false"></label>
+      <label class="grit-term-field"><span>Baud</span>
+        <input type="text" data-el="termBaud" value="115200" spellcheck="false"></label>
+      <label class="grit-term-field"><span>or TCP</span>
+        <input type="text" data-el="termHost" placeholder="127.0.0.1" spellcheck="false"></label>
+      <label class="grit-term-field"><span>Port</span>
+        <input type="text" data-el="termPort" placeholder="3001" spellcheck="false"></label>
+      <button type="button" class="grit-term-btn" data-el="termConnect">Connect</button>
+      <button type="button" class="grit-term-btn" data-el="termDisconnect">Disconnect</button>
+    </div>
+    <div class="grit-term-out" data-el="termOut" tabindex="0"></div>
+    <form class="grit-term-send" data-el="termForm">
+      <span class="grit-term-prompt" aria-hidden="true">&gt;</span>
+      <input type="text" data-el="termLine" placeholder="LOG COM1 BESTPOSB ONTIME 1" autocomplete="off" spellcheck="false">
+      <button type="submit" class="grit-term-btn">Send</button>
+    </form>
   </div>
 
   <div class="grit-dock" data-el="dock">
@@ -760,6 +942,291 @@ export function gritPositionReason(view) {
   return '';
 }
 
+/* ---------------- Map Settings · Display (manual 5.7.3) ---------------- */
+
+/**
+ * The decorations the Positions Overview map can show, in the manual's order (5.7.3 "Display"
+ * groups them under *Position* and *Overlays*; the stage carries the five that are drawable here).
+ *
+ * `scale` / `north` are the two HUD instruments, `graticule` the degree grid, `labels` its degree
+ * text and `metric` the 1-2-5 m grid — exactly the five flags `/geo/luciad-stage.js` reads from
+ * `chrome`. Nothing new is invented: the switches drive that existing table.
+ */
+export const GRIT_DISPLAY_FLAGS = [
+  { key: 'graticule', label: 'Graticule', zh: '经纬网', hint: '经线 / 纬线' },
+  { key: 'labels', label: 'Labels', zh: '标注', hint: '经纬度刻度文字' },
+  { key: 'metric', label: 'Metric Grid', zh: '米制网格', hint: '1-2-5 m 网格' },
+  { key: 'scale', label: 'Scale Bar', zh: '比例尺', hint: '左下角比例尺' },
+  { key: 'north', label: 'North Arrow', zh: '指北针', hint: '右上角 N' },
+];
+
+/** What GRIT asks the shared stage for before the operator changes anything (`profile: 'grit'`). */
+export function gritDisplayDefaults() {
+  return stageChrome('grit');
+}
+
+/**
+ * A stored Display object → the five booleans, merged over the `grit` profile. Anything that is not
+ * a boolean (a hand-edited localStorage, a future flag) is dropped instead of propagated, so a
+ * broken store cannot make the stage draw something the panel cannot describe.
+ */
+export function gritDisplayFromStored(stored) {
+  const display = gritDisplayDefaults();
+  if (!stored || typeof stored !== 'object') return display;
+  for (const flag of GRIT_DISPLAY_FLAGS) {
+    if (typeof stored[flag.key] === 'boolean') display[flag.key] = stored[flag.key];
+  }
+  return display;
+}
+
+/** Flip one flag; an unknown key returns the incoming set unchanged (a typo draws nothing). */
+export function gritDisplayToggle(display, key) {
+  const next = gritDisplayFromStored(display);
+  if (!GRIT_DISPLAY_FLAGS.some((flag) => flag.key === key)) return next;
+  next[key] = !next[key];
+  return next;
+}
+
+/**
+ * `{type:'chrome', chrome}` — the message `luciad-stage.js` applies with `setProfile('', chrome)`:
+ * the profile (and therefore everything not listed) stays as it was, only these five flags move.
+ * Pure, so the switch → `chrome` mapping is pinned without a browser.
+ */
+export function gritChromeMessage(display) {
+  return { type: 'chrome', chrome: gritDisplayFromStored(display) };
+}
+
+/** A stored Display object as text → the five booleans (`localStorage` is user-editable). */
+export function gritDisplayParse(text) {
+  if (typeof text !== 'string' || !text.trim()) return gritDisplayDefaults();
+  try {
+    return gritDisplayFromStored(JSON.parse(text));
+  } catch {
+    return gritDisplayDefaults();
+  }
+}
+
+/* ---------------- Map Settings · Points of Interest (manual 5.7.1) ---------------- */
+
+/** Notification options, in the manual's wording (5.7.1 "Notification"). */
+export const POI_NOTIFICATIONS = [
+  { key: 'none', label: 'None' },
+  { key: 'entry', label: 'On entry' },
+  { key: 'exit', label: 'On exit' },
+];
+
+/**
+ * One POI as this panel stores it. The fields are the manual's List View columns: name, radius,
+ * latitude, longitude, notification, visibility, status, triggered-by. `triggeredBy` is always
+ * `Manual` here — every point in this list was added in the interface, which is exactly what the
+ * manual says that column shows for a manual point.
+ *
+ * @param {object} input  { name, lat, lon, radius, notification }
+ * @returns {{ok:true, poi:object}|{ok:false, error:string}}
+ */
+export function gritPoiForm(input) {
+  const source = input || {};
+  const name = String(source.name ?? '').trim();
+  if (!name) return { ok: false, error: 'Name 不能为空。' };
+  if (name.length > POI_NAME_MAX) {
+    return { ok: false, error: `Name 最多 ${POI_NAME_MAX} 个字符（原版输入框 maxlength=16）。` };
+  }
+  const lat = Number(source.lat);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    return { ok: false, error: 'Latitude 必须是 -90…90 之间的数字（度）。' };
+  }
+  const lon = Number(source.lon);
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+    return { ok: false, error: 'Longitude 必须是 -180…180 之间的数字（度）。' };
+  }
+  const rawRadius = source.radius;
+  const radius = rawRadius === '' || rawRadius === undefined || rawRadius === null ? 0 : Number(rawRadius);
+  if (!Number.isFinite(radius) || radius < 0 || radius > 1e6) {
+    return { ok: false, error: 'Radius 必须是 0…1000000 之间的数字（米，0 = 只画点不画圈）。' };
+  }
+  const notification = POI_NOTIFICATIONS.some((item) => item.key === source.notification)
+    ? source.notification
+    : 'none';
+  return {
+    ok: true,
+    poi: {
+      name,
+      lat,
+      lon,
+      radius,
+      notification,
+      /** Manual 5.7.1: Show / Active both default on for a point added in the interface. */
+      visible: true,
+      active: true,
+      triggeredBy: 'Manual',
+    },
+  };
+}
+
+/** Append one POI; `id` is injectable so a test gets a stable row. */
+export function gritPoiAdd(list, poi, id) {
+  const items = Array.isArray(list) ? list : [];
+  if (items.length >= POI_LIMIT) return items;
+  const entry = { ...poi, id: id || `poi-${Date.now().toString(36)}-${items.length + 1}` };
+  return [...items, entry];
+}
+
+export function gritPoiRemove(list, id) {
+  return (Array.isArray(list) ? list : []).filter((poi) => poi.id !== id);
+}
+
+/** Toggle Show / Active on one row; only those two booleans are writable. */
+export function gritPoiSetFlag(list, id, field) {
+  if (field !== 'visible' && field !== 'active') return Array.isArray(list) ? list : [];
+  return (Array.isArray(list) ? list : []).map(
+    /* A missing flag counts as on (see `gritPoiMessage`), so the first click hides it. */
+    (poi) => (poi.id === id ? { ...poi, [field]: poi[field] === false } : poi),
+  );
+}
+
+function gritPoiNormalize(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const name = String(entry.name ?? '').trim();
+  const lat = Number(entry.lat);
+  const lon = Number(entry.lon);
+  if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const radius = Number(entry.radius);
+  return {
+    id: String(entry.id || poiFallbackId(entry)),
+    name: name.slice(0, POI_NAME_MAX),
+    lat,
+    lon,
+    radius: Number.isFinite(radius) && radius >= 0 ? radius : 0,
+    notification: POI_NOTIFICATIONS.some((item) => item.key === entry.notification) ? entry.notification : 'none',
+    visible: entry.visible !== false,
+    active: entry.active !== false,
+    triggeredBy: entry.triggeredBy === 'Manual' || !entry.triggeredBy ? 'Manual' : String(entry.triggeredBy),
+  };
+}
+
+/** A deterministic id for a stored row that lost its own (`localStorage` is user-editable). */
+function poiFallbackId(entry) {
+  return `poi-${String(entry.name ?? '').length}-${Number(entry.lat) || 0}-${Number(entry.lon) || 0}`
+    .replace(/[^0-9a-z-]/gi, '');
+}
+
+/**
+ * Stored JSON → the POI list. Never throws: a corrupt store (or a different build's key) yields an
+ * empty list rather than a page that cannot mount.
+ */
+export function gritPoiParse(text) {
+  if (typeof text !== 'string' || !text.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out = [];
+  for (const entry of parsed) {
+    const poi = gritPoiNormalize(entry);
+    if (poi) out.push(poi);
+    if (out.length >= POI_LIMIT) break;
+  }
+  return out;
+}
+
+/**
+ * `{type:'pois', pois:[…]}` — what the stage draws: a marker per point and, when the radius is not
+ * zero, the circle the manual describes ("the area defined by this radius is shown as a circle").
+ * Hidden points travel along with `visible:false` so the stage decides, and a screenshot can prove
+ * the switch reached it.
+ */
+export function gritPoiMessage(list) {
+  return {
+    type: 'pois',
+    pois: (Array.isArray(list) ? list : []).map((poi) => ({
+      id: poi.id,
+      name: poi.name,
+      lon: poi.lon,
+      lat: poi.lat,
+      radiusM: poi.radius,
+      /* Show / Active default to on: the stage reads `!== false`, so an entry written before those
+         flags existed still draws. */
+      visible: poi.visible !== false,
+      active: poi.active !== false,
+    })),
+  };
+}
+
+/* ---------------- Map Settings · Triggers (manual 5.7.2) ---------------- */
+
+/**
+ * The event logs a capture actually contains: `MARKPOS`, `MARK1POS` … and their `MARKxTIME`
+ * companions — the logs the manual says must be configured on the receiver before a trigger can use
+ * them ("The MARKxPOS logs must be configured on the receiver before they are used as Event
+ * Triggers"). Read from `/api/logs` `groups`, so the Triggers tab can say whether this recording has
+ * an event source at all instead of asserting one. Pure: `groups` is `[{id, name, count}]`.
+ *
+ * Measured on the 2026-10-31 samples: `b2` carries `MARKPOS` ×31, `b4` carries `MARK1TIME` ×1 and
+ * `MARKTIME` ×1, and the other fourteen carry none — so "no event source" is a per-capture fact,
+ * not a guess.
+ */
+export function gritEventLogs(groups) {
+  return (Array.isArray(groups) ? groups : [])
+    .filter((group) => /^MARK\d*(POS|TIME)$/i.test(String(group?.name ?? '')))
+    .map((group) => ({
+      name: String(group.name).toUpperCase(),
+      count: Number(group.count) || 0,
+      firstUtc: group.firstUtc || null,
+      lastUtc: group.lastUtc || null,
+    }));
+}
+
+/**
+ * What the Triggers tab says under an empty list. Three honest states, no invented trigger:
+ * a live session has no event subscription in this build, a capture may carry MARKxPOS rows, and
+ * a capture may carry none at all.
+ */
+export function gritTriggerSourceNote({ eventLogs = [], live = false, capture = '' } = {}) {
+  const marks = Array.isArray(eventLogs) ? eventLogs : [];
+  if (live) {
+    return '实时会话里没有事件订阅：本 build 不订阅 MARKxPOS，接收机的 EVENT 输入也不会变成触发器。'
+      + '触发器列表为空。';
+  }
+  if (marks.length) {
+    const list = marks.map((log) => `${log.name} ×${log.count}`).join('、');
+    return `${capture || '当前抓包'} 里有 ${list}，但触发器需要接收机侧先配置好 MARKxPOS 才会产生事件`
+      + '（手册 5.7.2），而且本 build 不保存触发器配置、不在图上打事件点 —— 列表为空，只报告数据源。';
+  }
+  return `没有事件源：${capture || '当前抓包'} 不含 MARKxPOS 事件日志，也没有实时会话`
+    + '（触发器由接收机的 EVENT 输入产生，见手册 5.7.2）—— 触发器列表为空。';
+}
+
+/* ---------------- Terminal (manual 5.8) ---------------- */
+
+/**
+ * The lines one `Send` writes into the transcript. The command goes to the **same** endpoint and
+ * the same server-side live session `manage.js` uses (`POST /api/live/command`); only the transcript
+ * is this panel's own. A command that could not be written says so — "sent" is never printed when
+ * the server answered `connected: false`.
+ *
+ * @param {string} line                       what the operator typed
+ * @param {object} status                     the `/api/live/command` body (`LiveStatus`)
+ * @returns {string[]}                        transcript lines, oldest first
+ */
+export function gritTerminalEcho(line, status) {
+  const text = String(line ?? '').trim();
+  const body = status || {};
+  const out = [`> ${text}`];
+  if (body.connected !== true) {
+    out.push(`! 未发送（没有实时会话）：${body.lastError || 'not connected'}`
+      + ' — 在 Manage ▸ Terminal 或本抽屉的 Connect 建立会话后重发。');
+    return out;
+  }
+  const last = Array.isArray(body.commands) ? body.commands[body.commands.length - 1] : null;
+  if (body.lastError) out.push(`! 发送失败：${body.lastError}`);
+  else if (last && last.status === 'send-failed') out.push('! 发送失败：接收机连接已断开。');
+  else out.push('  已发送 — 接收机的 <OK/<ERR 应答从 /api/live/logs 回显到本窗口。');
+  return out;
+}
+
 /* ---------------- data ---------------- */
 
 /**
@@ -779,6 +1246,8 @@ async function readStatus(ctx, capture) {
     info: null,
     /** Chunks of each spectrum log in this capture — what sizes the one `/api/records` page. */
     spectrumTotals: null,
+    /** MARKxPOS rows of this capture — the Triggers tab's only possible event source. */
+    eventLogs: [],
   };
 
   const [info, logs] = await Promise.allSettled([
@@ -881,6 +1350,8 @@ async function readStatus(ctx, capture) {
     final: counts.get(ITPSD_FINAL) ?? 0,
     detect: counts.get(ITPSD_DETECT) ?? 0,
   };
+  /* The one event source a recording can have: MARKxPOS. `/api/logs` already answered. */
+  out.eventLogs = gritEventLogs(types);
   return out;
 }
 
@@ -1567,6 +2038,8 @@ export function mount(root, ctx = {}) {
     matrix: null,
     info: null,
     events: 0,
+    /** MARKxPOS groups of the open capture — the Triggers tab's only possible event source. */
+    eventLogs: [],
     /** `spectrum` | `waterfall` — which renderer the tile draws. */
     view: 'spectrum',
     /** ITPSD sweeps from whichever source owns the tile, see `ingestSpectrum`. */
@@ -1630,6 +2103,8 @@ export function mount(root, ctx = {}) {
       renderSpectrum(root, state);
       renderDock(root, state);
       injectAppBar(root, state);
+      /* The Triggers tab's "does this capture have MARKxPOS" sentence comes from this read. */
+      renderTriggers();
       /* Only now that the dashboard has painted: the spectrum and the position track are two
          second, optional reads. */
       void requestCaptureSpectrum();
@@ -1755,6 +2230,13 @@ export function mount(root, ctx = {}) {
         if (changed) renderSpectrum(root, state);
         if (moved) applyLiveTrack();
         if (state.live.lastRecordAt) setText(root, 'devTime', hhmmss(state.live.lastRecordAt));
+        /* The GRIT Terminal's transcript is this tab's: the same poll's entries, appended as the
+           receiver's own ASCII lines. Nothing is fetched twice and no second session is opened. */
+        if (term.open) {
+          for (const entry of page.entries ?? []) {
+            termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
+          }
+        }
       } catch (error) {
         if (disposed) return;
         state.live.lastError = error.message;
@@ -1763,6 +2245,7 @@ export function mount(root, ctx = {}) {
 
     const wasConnected = state.live.connected;
     state.live.connected = connected;
+    if (term.open) renderTermStatus();
     if (wasConnected !== connected) {
       /* The band's clock follows the live records while a session is up, and falls back to the
          capture's own last solution when it closes. */
@@ -1784,6 +2267,8 @@ export function mount(root, ctx = {}) {
         }
       }
       renderSpectrum(root, state);
+      /* The Triggers tab's sentence depends on whether a live session exists. */
+      renderTriggers();
     }
   }
 
@@ -1839,14 +2324,21 @@ export function mount(root, ctx = {}) {
     onReady: () => {
       state.track.engine = 'ready';
       state.track.engineError = '';
+      /* Map Settings is this panel's addition to the shared stage: the Display switches and the POI
+       * layer go down as soon as the stage says it can take messages, so a sheet opened before the
+       * engine booted is not lost. */
+      applyDisplay();
+      pushPois();
       pushTrack(false);
       renderPosition();
+      renderDisplay();
     },
     onError: (reason) => {
       /* Graph's `failLuciad()`: drop the frame, keep the data, say why on the tile. */
       state.track.engine = 'failed';
       state.track.engineError = reason;
       renderPosition();
+      renderDisplay();
     },
     /* Hover/view/cursor are the stage's own HUD for Graph; GRIT's tile has no readout to fill, so
      * nothing is written back — the messages are still handled (and filtered by source). */
@@ -2195,10 +2687,10 @@ export function mount(root, ctx = {}) {
     settings: () => [
       popItem('Spectrum Analysis…', 'spectrum-settings', 'ITSPECTRALANALYSIS'),
       popItem('Networking…', 'networking', 'not in this build'),
-      popItem('Map…', 'map', 'not in this build'),
+      popItem('Map…', 'map', '5.7 · POI / Triggers / Display'),
     ],
     tools: () => [
-      popItem('Terminal', 'terminal', 'opens Manage'),
+      popItem('Terminal', 'terminal', 'this tab · /api/live/command'),
       popItem('Clear spectrum buffers', 'clear', `${state.spectrum.sweeps} sweeps held`),
       popItem('Export spectrum (CSV)', 'export', state.spectrum.latest ? `${state.spectrum.latest.samples.length} samples` : 'no data'),
     ],
@@ -2210,7 +2702,6 @@ export function mount(root, ctx = {}) {
 
   const PLACEHOLDER = {
     networking: 'Networking settings are the receiver’s IP configuration; this build has that page under Configuration, not inside GRIT — the menu entry keeps the original’s position.',
-    map: 'Map settings configure the basemap layer (Luciad in the original). No basemap renderer ships here, so there is nothing to configure.',
     helpfile: 'The original opens its offline helpFile.html (680 KB of GRIT documentation). That file is not part of this reimplementation; the tile captions and the About panel carry what is known.',
   };
 
@@ -2233,6 +2724,16 @@ export function mount(root, ctx = {}) {
     clampPop();
   }
 
+  /** Close the popover and drop every `aria-expanded`/`is-open` it set on the menu buttons. */
+  function closeMenu() {
+    menuPop.hidden = true;
+    menuPop.dataset.for = '';
+    for (const button of menuButtons) {
+      button.setAttribute('aria-expanded', 'false');
+      button.classList.remove('is-open');
+    }
+  }
+
   async function runMenuAction(act) {
     const note = menuPop.__note;
     if (act === 'spectrum-settings') {
@@ -2242,13 +2743,14 @@ export function mount(root, ctx = {}) {
       clampPop();
       return;
     }
+    /* Manual 5.7: Settings ▸ Map opens the three-section Map Settings window. */
+    if (act === 'map') {
+      openMapSheet('poi');
+      return;
+    }
+    /* Manual 5.8: the Terminal opens inside this panel; it is not a hand-off to Manage. */
     if (act === 'terminal') {
-      const tab = document.querySelector('[data-tab="manage"]');
-      if (tab) tab.click();
-      if (note) {
-        note.hidden = false;
-        note.textContent = 'Switched to Manage — its Terminal drawer is where a connection is opened and commands are typed.';
-      }
+      openTerminal();
       return;
     }
     if (act === 'clear') {
@@ -2358,14 +2860,439 @@ export function mount(root, ctx = {}) {
     if (menuPop.contains(event.target)) return;
     if (event.target instanceof Element && event.target.closest('[data-grit-menu]')) return;
     if (event.target instanceof Element && event.target.closest('[data-el="specGear"]')) return;
-    menuPop.hidden = true;
-    menuPop.dataset.for = '';
-    for (const button of menuButtons) {
-      button.setAttribute('aria-expanded', 'false');
-      button.classList.remove('is-open');
-    }
+    closeMenu();
   };
   document.addEventListener('click', onDocumentClick);
+
+  /* ============================================================================================
+   * Map Settings （手册 5.7）—— Points of Interest / Triggers / Display
+   *
+   * 每一块的数据来源都写在界面里，不猜：
+   *   POI       本机列表（localStorage `nas.grit.map.poi.v1`），不来自接收机；坐标由操作者填，
+   *             首次打开时从当前定位预填（轨迹最后一点 / BESTPOS），并标注来源；
+   *   Triggers  没有事件源：本 build 不订阅 MARKxPOS、也没有实时接收机，所以列表为空，
+   *             只报告本抓包里到底有没有事件日志（/api/logs 的 groups）；
+   *   Display   五个装饰开关 → 共享舞台的 `chrome` 参数，改完地图立刻重画。
+   * ============================================================================================ */
+
+  const mapSheet = root.querySelector('[data-el="mapSheet"]');
+  const mapTabs = Array.from(root.querySelectorAll('[data-map-tab]'));
+  const mapPanels = Array.from(root.querySelectorAll('[data-map-panel]'));
+  const poiRowsEl = root.querySelector('[data-el="poiRows"]');
+  const poiForm = root.querySelector('[data-el="poiForm"]');
+  const poiMsg = root.querySelector('[data-el="poiMsg"]');
+  const trigRowsEl = root.querySelector('[data-el="trigRows"]');
+  const trigSource = root.querySelector('[data-el="trigSource"]');
+  const displayRows = root.querySelector('[data-el="displayRows"]');
+  const dispReset = root.querySelector('[data-el="dispReset"]');
+  const mapClose = root.querySelector('[data-el="mapClose"]');
+  const posGear = root.querySelector('[data-el="posGear"]');
+  const addPoiBtn = root.querySelector('[data-el="addPoi"]');
+
+  /** `localStorage` is a convenience here, not a dependency: a blocked store keeps the list in RAM. */
+  function readStore(key, parse, fallback) {
+    try {
+      const text = window.localStorage.getItem(key);
+      return text === null ? fallback() : parse(text);
+    } catch {
+      return fallback();
+    }
+  }
+  function writeStore(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* private mode / quota: the list still works for the lifetime of this page */
+    }
+  }
+
+  let poiList = readStore(POI_STORE_KEY, gritPoiParse, () => []);
+  let display = readStore(DISPLAY_STORE_KEY, gritDisplayParse, gritDisplayDefaults);
+  let mapTab = 'poi';
+
+  function savePoi() {
+    writeStore(POI_STORE_KEY, poiList);
+  }
+  function saveDisplay() {
+    writeStore(DISPLAY_STORE_KEY, display);
+  }
+
+  /** Display → the shared stage. A no-op before `ready`; `onReady` sends the same set again. */
+  function applyDisplay() {
+    stage.send(gritChromeMessage(display));
+  }
+  /** POI layer → the shared stage. Same deal: it is re-sent when the engine reports `ready`. */
+  function pushPois() {
+    stage.send(gritPoiMessage(poiList));
+  }
+
+  function poiMessageText(text, bad) {
+    if (!poiMsg) return;
+    poiMsg.hidden = !text;
+    poiMsg.textContent = text || '';
+    poiMsg.classList.toggle('is-bad', Boolean(bad));
+  }
+
+  function poiRow(poi) {
+    const notification = POI_NOTIFICATIONS.find((item) => item.key === poi.notification)?.label ?? 'None';
+    return `
+      <div class="grit-poi-row" data-poi-id="${esc(poi.id)}">
+        <span class="grit-poi-cell grit-poi-cell-name" title="${esc(poi.name)}">${esc(poi.name)}</span>
+        <span class="grit-poi-cell grit-poi-cell-sym">${ICON.pin}</span>
+        <span class="grit-poi-cell">${poi.radius > 0 ? `${esc(poi.radius)} m` : '—'}</span>
+        <span class="grit-poi-cell">${poi.lat.toFixed(7)}</span>
+        <span class="grit-poi-cell">${poi.lon.toFixed(7)}</span>
+        <span class="grit-poi-cell">${esc(notification)}</span>
+        <span class="grit-poi-cell"><button type="button" class="grit-mini-btn${poi.visible ? ' is-on' : ''}"
+          data-poi-flag="visible" aria-pressed="${poi.visible ? 'true' : 'false'}">${poi.visible ? 'Show' : 'Hidden'}</button></span>
+        <span class="grit-poi-cell"><button type="button" class="grit-mini-btn${poi.active ? ' is-on' : ''}"
+          data-poi-flag="active" aria-pressed="${poi.active ? 'true' : 'false'}">${poi.active ? 'Active' : 'Inactive'}</button></span>
+        <span class="grit-poi-cell">${esc(poi.triggeredBy)}</span>
+        <span class="grit-poi-cell grit-poi-cell-act"><button type="button" class="grit-mini-btn is-danger"
+          data-poi-delete aria-label="Delete ${esc(poi.name)}">Delete</button></span>
+      </div>`;
+  }
+
+  function renderPoi() {
+    if (poiRowsEl) {
+      poiRowsEl.innerHTML = poiList.length
+        ? poiList.map(poiRow).join('')
+        : '<p class="grit-sheet-empty">还没有本地点：用上面的表单加一个（Name + Latitude + Longitude，Radius 0 = 只画点）。'
+          + '这份列表存在本机浏览器里，不来自接收机。</p>';
+    }
+    pushPois();
+  }
+
+  function renderTriggers() {
+    if (trigRowsEl) {
+      trigRowsEl.innerHTML = '<p class="grit-sheet-empty">No triggers configured — 本 build 没有事件源。</p>';
+    }
+    if (trigSource) {
+      trigSource.textContent = gritTriggerSourceNote({
+        eventLogs: state.eventLogs,
+        live: state.live.connected,
+        capture: state.capture ? baseName(state.capture) : '',
+      });
+    }
+  }
+
+  function renderDisplay() {
+    if (!displayRows) return;
+    displayRows.innerHTML = GRIT_DISPLAY_FLAGS.map((flag) => `
+      <div class="grit-disp-row" data-display-row="${flag.key}">
+        <span class="grit-disp-name">${esc(flag.label)} <em>${esc(flag.zh)}</em></span>
+        <span class="grit-disp-hint">${esc(flag.hint)}</span>
+        <button type="button" class="grit-disp-toggle${display[flag.key] ? ' is-on' : ''}"
+                data-display-toggle="${flag.key}" role="switch"
+                aria-checked="${display[flag.key] ? 'true' : 'false'}"
+                aria-label="${esc(flag.label)}">${display[flag.key] ? 'On' : 'Off'}</button>
+      </div>`).join('');
+    const dispState = root.querySelector('[data-el="dispState"]');
+    if (dispState) {
+      /* Only the engine reads `chrome`; the self-drawn fallback is honest about not doing so. */
+      dispState.textContent = state.track.engine === 'ready'
+        ? 'LuciadRIA 舞台已就绪：开关即时生效。'
+        : state.track.engine === 'failed'
+          ? 'LuciadRIA 不可用，当前是自绘回退图：开关只写进舞台参数（回退图不随之变化）。'
+          : 'LuciadRIA 正在启动：开关先存下来，舞台就绪时一并应用。';
+    }
+  }
+
+  function setMapTab(tab) {
+    mapTab = ['poi', 'triggers', 'display'].includes(tab) ? tab : 'poi';
+    for (const button of mapTabs) {
+      const on = button.getAttribute('data-map-tab') === mapTab;
+      button.classList.toggle('is-active', on);
+      button.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    for (const panel of mapPanels) {
+      panel.hidden = panel.getAttribute('data-map-panel') !== mapTab;
+    }
+  }
+
+  /** Fill the empty coordinate fields from the position the receiver already gave us. */
+  function prefillPoi() {
+    if (!poiForm) return;
+    const latEl = poiForm.querySelector('[data-poi-field="lat"]');
+    const lonEl = poiForm.querySelector('[data-poi-field="lon"]');
+    if (!latEl || !lonEl || latEl.value || lonEl.value) return;
+    const last = state.track.points[state.track.points.length - 1];
+    const lat = last && Number.isFinite(last.lat) ? last.lat : finiteNumber(state.position?.lat);
+    const lon = last && Number.isFinite(last.lon) ? last.lon : finiteNumber(state.position?.lon);
+    if (lat === null || lon === null) return;
+    latEl.value = lat.toFixed(6);
+    lonEl.value = lon.toFixed(6);
+  }
+
+  function openMapSheet(tab) {
+    if (!mapSheet) return;
+    closeTerminal();
+    closeMenu();
+    prefillPoi();
+    renderPoi();
+    renderTriggers();
+    renderDisplay();
+    setMapTab(tab || mapTab);
+    mapSheet.hidden = false;
+  }
+  function closeMapSheet() {
+    if (mapSheet) mapSheet.hidden = true;
+  }
+
+  const onMapTabClick = (event) => {
+    const button = event.currentTarget;
+    setMapTab(button.getAttribute('data-map-tab'));
+  };
+  for (const button of mapTabs) button.addEventListener('click', onMapTabClick);
+
+  const onPoiSubmit = (event) => {
+    event.preventDefault();
+    const read = (name) => poiForm.querySelector(`[data-poi-field="${name}"]`).value;
+    const result = gritPoiForm({
+      name: read('name'),
+      lat: read('lat'),
+      lon: read('lon'),
+      radius: read('radius'),
+      notification: read('notification'),
+    });
+    if (!result.ok) {
+      poiMessageText(result.error, true);
+      return;
+    }
+    poiList = gritPoiAdd(poiList, result.poi);
+    savePoi();
+    renderPoi();
+    poiForm.querySelector('[data-poi-field="name"]').value = '';
+    poiMessageText(`已添加「${result.poi.name}」：本地列表 ${poiList.length} 项，已推到 Position Overview 的地图舞台。`, false);
+  };
+  if (poiForm) poiForm.addEventListener('submit', onPoiSubmit);
+
+  const onPoiRowsClick = (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const row = target.closest('[data-poi-id]');
+    if (!row) return;
+    const id = row.getAttribute('data-poi-id');
+    const flag = target.closest('[data-poi-flag]');
+    if (flag) {
+      poiList = gritPoiSetFlag(poiList, id, flag.getAttribute('data-poi-flag'));
+      savePoi();
+      renderPoi();
+      return;
+    }
+    if (target.closest('[data-poi-delete]')) {
+      const removed = poiList.find((poi) => poi.id === id);
+      poiList = gritPoiRemove(poiList, id);
+      savePoi();
+      renderPoi();
+      poiMessageText(removed ? `已删除「${removed.name}」：本地列表 ${poiList.length} 项。` : '', false);
+    }
+  };
+  if (poiRowsEl) poiRowsEl.addEventListener('click', onPoiRowsClick);
+
+  const onDisplayClick = (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target ? target.closest('[data-display-toggle]') : null;
+    if (!button) return;
+    display = gritDisplayToggle(display, button.getAttribute('data-display-toggle'));
+    saveDisplay();
+    renderDisplay();
+    applyDisplay();
+  };
+  if (displayRows) displayRows.addEventListener('click', onDisplayClick);
+
+  const onDisplayReset = () => {
+    display = gritDisplayDefaults();
+    saveDisplay();
+    renderDisplay();
+    applyDisplay();
+  };
+  if (dispReset) dispReset.addEventListener('click', onDisplayReset);
+
+  const onMapClose = () => closeMapSheet();
+  if (mapClose) mapClose.addEventListener('click', onMapClose);
+  const onSheetBackdrop = (event) => {
+    if (event.target === mapSheet) closeMapSheet();
+  };
+  if (mapSheet) mapSheet.addEventListener('click', onSheetBackdrop);
+
+  /* The tile's own two buttons open the same sheet (manual: the gear is "Map settings", the pin
+   * button is Add Point of Interest). */
+  const onPosGear = () => openMapSheet('display');
+  const onAddPoi = () => openMapSheet('poi');
+  if (posGear) posGear.addEventListener('click', onPosGear);
+  if (addPoiBtn) addPoiBtn.addEventListener('click', onAddPoi);
+
+  /* ============================================================================================
+   * Terminal （手册 5.8）—— 在 GRIT 面板内打开，作用域是这个 tab。
+   *
+   * 同一个服务端会话、同一个端点：POST /api/live/command（工作台 Manage ▸ Terminal 用的也是它），
+   * 回显来自 /api/live/logs —— 本面板已经在轮询同一个游标，所以终端把那些条目照原样追加进来，不另开
+   * 一条连接。transcript 只属于这个 tab。
+   *
+   * `manage.js` 没有导出终端组件（只有 mount/unmount），所以这里是同一套 DOM/行为契约的第二个前台：
+   * 同样的 Serial / Baud / TCP / Port 连接行、同样的 `> line` 回显、同样的连接状态。
+   * ============================================================================================ */
+
+  const termEl = root.querySelector('[data-el="term"]');
+  const termOut = root.querySelector('[data-el="termOut"]');
+  const termStatusEl = root.querySelector('[data-el="termStatus"]');
+  const termForm = root.querySelector('[data-el="termForm"]');
+  const termLine = root.querySelector('[data-el="termLine"]');
+  const termScope = root.querySelector('[data-el="termScope"]');
+  const termCloseBtn = root.querySelector('[data-el="termClose"]');
+  const termConnectBtn = root.querySelector('[data-el="termConnect"]');
+  const termDisconnectBtn = root.querySelector('[data-el="termDisconnect"]');
+  const term = { open: false, lines: [], backfilled: false };
+
+  function termAppend(text) {
+    const line = String(text);
+    term.lines.push(line);
+    if (term.lines.length > 400) term.lines.splice(0, term.lines.length - 400);
+    if (!termOut) return;
+    const node = document.createElement('div');
+    node.className = 'grit-term-line';
+    node.textContent = line;
+    termOut.appendChild(node);
+    while (termOut.childElementCount > 400) termOut.firstElementChild.remove();
+    termOut.scrollTop = termOut.scrollHeight;
+  }
+
+  function renderTermStatus() {
+    if (termScope) termScope.textContent = state.capture ? baseName(state.capture) : 'no capture';
+    if (!termStatusEl) return;
+    termStatusEl.textContent = state.live.connected
+      ? `Connected — ${state.live.target || 'live session'}`
+      : state.live.lastError
+        ? `Not connected — ${state.live.lastError}`
+        : 'Not connected';
+    termStatusEl.classList.toggle('is-live', Boolean(state.live.connected));
+  }
+
+  /** The newest slice of the server's ring buffer, exactly like Manage's Terminal does. */
+  async function termBackfill() {
+    if (term.backfilled) return;
+    term.backfilled = true;
+    try {
+      const page = await api.get('/api/live/logs', { after: 0, limit: TERMINAL_BACKFILL });
+      for (const entry of page.entries ?? []) {
+        termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
+      }
+    } catch (error) {
+      termAppend(`API error: ${error.message}`);
+    }
+  }
+
+  function openTerminal() {
+    if (!termEl) return;
+    closeMapSheet();
+    closeMenu();
+    term.open = true;
+    termEl.hidden = false;
+    renderTermStatus();
+    void termBackfill();
+    termLine?.focus();
+  }
+  function closeTerminal() {
+    if (!termEl) return;
+    termEl.hidden = true;
+    term.open = false;
+  }
+
+  const onTermSubmit = async (event) => {
+    event.preventDefault();
+    const line = (termLine?.value ?? '').trim();
+    if (!line) return;
+    if (termLine) termLine.value = '';
+    let status = null;
+    try {
+      status = await api.post('/api/live/command', { line });
+    } catch (error) {
+      termAppend(`> ${line}`);
+      termAppend(`! 请求失败：${error.message}`);
+      return;
+    }
+    for (const text of gritTerminalEcho(line, status)) termAppend(text);
+    if (status?.connected) state.live.lastError = status.lastError || '';
+    renderTermStatus();
+    /* The reply (`<OK` / `<ERR…`) is a log line: the poller picks it up and appends it here. */
+    void pollLive();
+  };
+  if (termForm) termForm.addEventListener('submit', onTermSubmit);
+
+  const onTermConnect = async () => {
+    const path = (root.querySelector('[data-el="termPath"]')?.value ?? '').trim();
+    const body = path
+      ? {
+        kind: 'serial',
+        path,
+        baud: Number(root.querySelector('[data-el="termBaud"]')?.value) || 115200,
+      }
+      : {
+        kind: 'tcp',
+        host: (root.querySelector('[data-el="termHost"]')?.value ?? '').trim() || '127.0.0.1',
+        port: Number(root.querySelector('[data-el="termPort"]')?.value) || 3001,
+      };
+    termAppend(`Connecting ${body.kind === 'serial' ? `serial ${body.path}` : `tcp ${body.host}:${body.port}`} …`);
+    try {
+      const status = await api.post('/api/live/connect', body);
+      term.lines = [];
+      if (termOut) termOut.innerHTML = '';
+      term.backfilled = true;
+      termAppend(`Connected to ${status.target}`);
+      await pollLive();
+    } catch (error) {
+      termAppend(`Connect failed: ${error.message}`);
+    }
+    renderTermStatus();
+  };
+  const onTermDisconnect = async () => {
+    try {
+      await api.post('/api/live/disconnect', {});
+      termAppend('Disconnected');
+    } catch (error) {
+      termAppend(`Disconnect failed: ${error.message}`);
+    }
+    await pollLive();
+    renderTermStatus();
+  };
+  const onTermClose = () => closeTerminal();
+  if (termConnectBtn) termConnectBtn.addEventListener('click', onTermConnect);
+  if (termDisconnectBtn) termDisconnectBtn.addEventListener('click', onTermDisconnect);
+  if (termCloseBtn) termCloseBtn.addEventListener('click', onTermClose);
+
+  /* ============================================================================================
+   * Mitigation Assistant （手册 5.2.5）
+   *
+   * 数值上没有可编的东西：没有 ITK 报文就没有干扰条目 —— 原版这时也只打印 `Not detected`。补的是
+   * **交互**：展开 / 收起、手册描述的两个状态、以及数据什么时候才会出现。
+   * ============================================================================================ */
+
+  const mitToggle = root.querySelector('[data-el="mitToggle"]');
+  const mitDetails = root.querySelector('[data-el="mitDetails"]');
+  const mitToggleLabel = root.querySelector('[data-el="mitToggleLabel"]');
+
+  const onMitToggle = () => {
+    if (!mitDetails) return;
+    const open = mitDetails.hidden;
+    mitDetails.hidden = !open;
+    mitToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    mitToggle?.classList.toggle('is-open', open);
+    mitToggle?.closest('.grit-mitigation')?.classList.toggle('is-open', open);
+    if (mitToggleLabel) mitToggleLabel.textContent = open ? 'Hide' : 'Details';
+  };
+  if (mitToggle) mitToggle.addEventListener('click', onMitToggle);
+
+  /* Escape closes whichever of the two panels is open (the map sheet first, it sits on top). */
+  const onKey = (event) => {
+    if (event.key !== 'Escape') return;
+    if (mapSheet && !mapSheet.hidden) {
+      closeMapSheet();
+      return;
+    }
+    if (term.open) closeTerminal();
+  };
+  document.addEventListener('keydown', onKey);
 
   const offCapture = typeof ctx.onCaptureChange === 'function' ? ctx.onCaptureChange(load) : () => {};
 
@@ -2397,6 +3324,10 @@ export function mount(root, ctx = {}) {
         note: posNote && !posNote.hidden ? posNote.textContent : '',
         frameHidden: Boolean(posFrame && posFrame.hidden),
         stage: stageStatus,
+        /* Map Settings: the local POI list and the Display set the panel believes it sent. A check
+           can compare these with `stage.chrome` (the echo) instead of reading booleans off a PNG. */
+        poi: { count: poiList.length, stored: true },
+        chrome: { ...display },
       };
     },
   };
@@ -2418,6 +3349,22 @@ export function mount(root, ctx = {}) {
     for (const tab of tabs) tab.removeEventListener('click', onTab);
     for (const seg of segs) seg.removeEventListener('click', onSeg);
     for (const button of menuButtons) button.removeEventListener('click', onMenu);
+    /* Map Settings + Terminal + Mitigation Assistant */
+    document.removeEventListener('keydown', onKey);
+    for (const button of mapTabs) button.removeEventListener('click', onMapTabClick);
+    if (poiForm) poiForm.removeEventListener('submit', onPoiSubmit);
+    if (poiRowsEl) poiRowsEl.removeEventListener('click', onPoiRowsClick);
+    if (displayRows) displayRows.removeEventListener('click', onDisplayClick);
+    if (dispReset) dispReset.removeEventListener('click', onDisplayReset);
+    if (mapClose) mapClose.removeEventListener('click', onMapClose);
+    if (mapSheet) mapSheet.removeEventListener('click', onSheetBackdrop);
+    if (posGear) posGear.removeEventListener('click', onPosGear);
+    if (addPoiBtn) addPoiBtn.removeEventListener('click', onAddPoi);
+    if (termForm) termForm.removeEventListener('submit', onTermSubmit);
+    if (termConnectBtn) termConnectBtn.removeEventListener('click', onTermConnect);
+    if (termDisconnectBtn) termDisconnectBtn.removeEventListener('click', onTermDisconnect);
+    if (termCloseBtn) termCloseBtn.removeEventListener('click', onTermClose);
+    if (mitToggle) mitToggle.removeEventListener('click', onMitToggle);
   };
 
   renderSpectrum(root, state);
