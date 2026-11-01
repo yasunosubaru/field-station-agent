@@ -41,7 +41,8 @@ import { buildRinex21GloNav, buildRinex21Nav } from './rinex21-nav.ts';
 import { buildRinex3Obs, type Rinex3Version } from './rinex3.ts';
 import { RINEX3_NAV_EXTENSIONS, buildRinex3EmptyNav, buildRinex3Nav, rinex3NavSystems } from './rinex3-nav.ts';
 import { formatDirectory } from './summary.ts';
-import { abbrevTextLogLines, collectTextLogs, textLogLines } from './text-log.ts';
+import { abbrevTextLogLines, collectBinaryRecords, collectTextLogs, textLogLines } from './text-log.ts';
+import { encodeRecord, type TextEncodeFailure } from './binary-log.ts';
 export const CONVERT_FORMATS = [
   'ASCII',
   'ABBREV_ASCII',
@@ -206,6 +207,12 @@ export interface ConvertOutcome {
   unknown: Uint8Array;
   /** `N bytes could not be converted.` — records of a type this format cannot represent. */
   unConvertedBytes: number;
+  /**
+   * Text records a `BINARY` conversion could not re-encode, with the reason. Empty for every other
+   * format and for every capture this project has (`b1`–`b7`); the field exists so a record can
+   * never be lost without a trace.
+   */
+  unencodedText: TextEncodeFailure[];
 }
 
 /**
@@ -595,7 +602,10 @@ function countTextRecords(
   }
   frames.forEach((frame, index) => {
     if (frame.kind !== 'text' || textAt.has(index)) return;
-    const found = textRecordId(`${frame.prefix}${frame.text}`, byName);
+    // `TextFrame.text` already carries its leading `#`/`<`/`$`; prepending the prefix again (as this
+    // once did) made the name regex fail on `##RXCONFIGA…`, so a text record that rendered nothing
+    // was missing from the Summary instead of counting as input-only (`b7`: 269 → 247).
+    const found = textRecordId(String(frame.text), byName);
     if (found) bump(found.id, found.name, false);
   });
 }
@@ -1049,30 +1059,67 @@ function expandedRangeFrame(frame: SbfFrame, observations: ReturnType<typeof dec
 }
 
 /**
- * `BINARY`'s blocks: one accepted record's bytes each, or the unpacked `RANGE` frame that replaces a
- * `RANGECMP*` record under the suite's default `--expand-cmp`. `--no-expand-cmp` copies the
- * compressed record verbatim: b2 writes 2 574 334 B (the capture minus its 7 056 unknown bytes,
- * the same bytes the ASCII family calls `RANGECMP2`/`RANGECMP4` lines) instead of 2 733 338 B.
+ * `BINARY`'s blocks: one accepted record's bytes each, one re-encoded frame per **text** record, or
+ * the unpacked `RANGE` frame that replaces a `RANGECMP*` record under the suite's default
+ * `--expand-cmp`. `--no-expand-cmp` copies the compressed record verbatim: b2 writes 2 574 334 B
+ * (the capture minus its 7 056 unknown bytes, the same bytes the ASCII family calls
+ * `RANGECMP2`/`RANGECMP4` lines) instead of 2 733 338 B.
  *
  * A record that **renders nothing** is not written at all: the suite's binary output follows the
  * same rule as its text output, so b1 writes 256 of its 278 `RXCONFIG` records (22 carry an embedded
  * message the dictionary lacks) and b4 writes 225 of its 244 `RXCONFIGUSER` ones — measured by
  * counting the ids in the suite's own `-b` files.
  *
- * Not reproduced: a **text** record in a `BINARY` conversion. The suite encodes it back into a
- * binary frame (b1's `-b` file holds 39 more `BESTPOS` and 26 more `RANGE` frames than it has SBF
- * records — exactly its 99 rendered text records), and rebuilding that payload needs a full
- * field-serialiser, which this package does not have. See `03_Convert简介.md`.
+ * A **text** record is encoded back into a binary frame at its own position (`binary-log.ts`): the
+ * suite re-serializes the fields it just parsed, so `b1`'s `-b` file holds 39 more `BESTPOS`, 26
+ * more `RANGE`, 24 more `SATVIS2`, 6 `RXSTATUS`, 2 `TIMESYNC` and 2 `HWMONITOR` frames than it has
+ * SBF records — exactly its 99 rendered text records — and `b7`'s holds 247 `RXCONFIG`, 90
+ * `ITPSDDETECT`, 47 `ITDETECTSTATUS` and 47 `ITPSDFINAL`. A record that cannot be encoded is
+ * collected into `failures` (and surfaced as `ConvertOutcome.unencodedText`), never dropped in
+ * silence.
  */
 function binaryBlocks(
   frames: readonly Frame[],
   tables: EdieTables,
   stamps: ReadonlyArray<RecordStamp | undefined>,
   expand: boolean,
+  textAt: Map<number, string | string[]> | undefined,
+  failures: TextEncodeFailure[],
+  /** Per log id, how many frames the writer emitted (the Summary reports output, not input). */
+  rendered: Map<number, number> = new Map(),
 ): ConvertBlock[] {
   const carries: RangeCarries = new Map();
+  const textRecords = textAt ? collectBinaryRecords(frames, tables) : new Map();
   const blocks: ConvertBlock[] = [];
+  const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
   frames.forEach((frame, index) => {
+    // A rendered text record: the suite writes its re-encoded frame here, in capture order.
+    if (textAt?.has(index)) {
+      const stamp = stamps[index];
+      const line = textAt.get(index);
+      const first = Array.isArray(line) ? (line[0] ?? '') : String(line ?? '');
+      const source = textRecords.get(index);
+      if (!source) {
+        failures.push({ index, name: textName(first), reason: 'no dictionary layout for this text record' });
+        return;
+      }
+      const encoded = encodeRecord(source, tables);
+      if (!encoded.bytes) {
+        failures.push({ index, name: source.name, reason: encoded.error ?? 'encoding failed' });
+        return;
+      }
+      const timeStatus = textTimeStatus(first);
+      blocks.push({
+        lines: [],
+        bytes: encoded.bytes,
+        name: source.name,
+        ...(stamp ? { stamp } : {}),
+        ...(timeStatus !== undefined ? { timeStatus } : {}),
+        text: true,
+        ...(frame.offset !== undefined ? { offset: frame.offset } : {}),
+      });
+      return;
+    }
     if (frame.kind !== 'sbf' || !frame.crcOk) return;
     const layout = tables.messages[String(frame.header.messageId)];
     const stamp = stamps[index];
@@ -1089,11 +1136,18 @@ function binaryBlocks(
     if (expand && isRangeCmp(frame)) {
       const observations = unpackRangeCmp(frame, carries);
       blocks.push({ lines: [], bytes: expandedRangeFrame(frame, observations), ...common, name: 'RANGE' });
+      bump(RANGE_ID, 1);
       return;
     }
     blocks.push({ lines: [], bytes: frame.bytes, ...common });
+    bump(frame.header.messageId, 1);
   });
   return blocks;
+}
+
+/** `#BESTPOSA,…` / `<BESTPOS …` → `BESTPOS`, for the failure report. */
+function textName(line: string): string {
+  return /^[<#]\s*([A-Za-z][A-Za-z0-9_]*)/.exec(line)?.[1]?.replace(/[AB]$/, '') ?? '';
 }
 
 /**
@@ -1172,9 +1226,12 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   // `--decimate` filters the record stream itself, so the summary's Source # column follows it:
   // the suite's b1 run at `--decimate=5` lists `BESTPOS 17 → 17` where the full capture has 32.
   const writesText = format === 'ASCII' || format === 'ABBREV_ASCII';
+  // `BINARY` needs the text records too: it writes one re-encoded frame for each, decimates by the
+  // record's own header and counts it in the summary (`b1` BESTPOS 90 = 51 binary + 39 text).
+  const consumesText = writesText || format === 'BINARY';
   const textLinesOf = (list: readonly Frame[]) =>
     format === 'ABBREV_ASCII' ? abbrevTextLogLines(list, tables) : textLogLines(list, tables);
-  const inputText = writesText ? textLinesOf(inputFrames) : undefined;
+  const inputText = consumesText ? textLinesOf(inputFrames) : undefined;
   const inputStamps: Array<RecordStamp | undefined> = stampsFor(
     inputFrames,
     inputText ? textRecordStamps(inputText) : new Map<number, RecordStamp>(),
@@ -1183,7 +1240,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     ? (options.decimate as number)
     : undefined;
   const frames = interval ? decimateFrames(inputFrames, inputStamps, interval) : inputFrames;
-  const textMap = frames === inputFrames ? inputText : (writesText ? textLinesOf(frames) : undefined);
+  const textMap = frames === inputFrames ? inputText : (consumesText ? textLinesOf(frames) : undefined);
   const stamps = frames === inputFrames
     ? inputStamps
     : stampsFor(frames, textMap ? textRecordStamps(textMap) : new Map<number, RecordStamp>());
@@ -1210,7 +1267,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   if (interval) {
     const captureStamps = stampsFor(
       captureFrames,
-      textRecordStamps(writesText ? textLinesOf(captureFrames) : new Map<number, RecordStamp>()),
+      textRecordStamps(consumesText ? textLinesOf(captureFrames) : new Map<number, RecordStamp>()),
     );
     const keptByDecimation = new Set<Frame>(decimateFrames(captureFrames, captureStamps, interval));
     for (const frame of captureFrames) if (!keptByDecimation.has(frame)) skipped.push(frame);
@@ -1227,6 +1284,8 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   /** Row counts from the writer, and the text lines it placed (only the ASCII family has them). */
   let countsRendered: Map<number, number> | undefined;
   let countsText: Map<number, string | string[]> | undefined;
+  /** `BINARY` only: text records whose re-encoding failed (never silently dropped). */
+  let unencodedText: TextEncodeFailure[] = [];
 
   // Unknown bytes, when the caller handed us the capture itself (they are in no frame). The account
   // is over the **whole** capture and the Summary's UNKNOWN row never moves: the suite's b1 run at
@@ -1314,12 +1373,20 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
       ));
     }
   } else {
-    const blocks = binaryBlocks(frames, tables, stamps, expand);
+    const failures: TextEncodeFailure[] = [];
+    const rendered = new Map<number, number>();
+    const blocks = binaryBlocks(frames, tables, stamps, expand, textMap, failures, rendered);
+    unencodedText = failures;
     if (interleaving) {
       files.push(interleave(`${outputBase}.BINARY`, blocks, spans!.fileRuns, source!));
     } else {
       files.push(...assembleFiles(outputBase, 'BINARY', false, blocks, splitMode, options));
     }
+    // The Summary's OUTPUT column: a record that renders nothing is not written (`RXCONFIG
+    // 278 → 256`), and an expanded `RANGECMP*` counts as the `RANGE` frame it becomes. Text records
+    // are added by `countTextRecords`, so they are not in this map.
+    countsRendered = rendered;
+    countsText = textMap;
   }
 
   const counts = countLogs(converted, tables, {
@@ -1384,6 +1451,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     unknownCount,
     unknown: unknownBytes,
     unConvertedBytes,
+    unencodedText,
   };
 }
 

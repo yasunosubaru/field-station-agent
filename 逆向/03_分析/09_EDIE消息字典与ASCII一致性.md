@@ -1995,3 +1995,92 @@ packages/protocol/test/*.test.ts   298 项全绿（含本轮新增 8 项）
   记为已知缺口。
 - `%` 短 ASCII、越界读这些既有差异不变（§9.x.14「剩余」）。
 
+## 9.x.19 文本 → 二进制：`-b` 把 ASCII 记录重新编码成帧（2026-11-02）
+
+`Convert -b` 不是「复制 SBF 帧」：它把每条**打得出文本的**记录重新序列化。b1 的 `-b` 因此比它的
+SBF 记录多出 99 条帧，b7 多出 431 条。逆推方法是拿套件自己的 `-b` 产物当 oracle：我们现有的
+BINARY 产物是它的**子序列**，按顺序对齐后剩下的就是文本记录的编码结果
+（`逆向/tools/probe-binary-text.ts`），再逐帧、逐字段比。
+
+### ① 头部：九个 token → 28 字节长头
+
+| 头字段 | 文本 | 规则 | 实测 |
+|---|---|---|---|
+| `messageId` | 名字（去版本字母） | 字典 id | `#BESTPOSA` → 42，`#ITDETECTSTATUSA` → 2065 |
+| `messageType` | — | 固定 **0** | 全部插入帧都是 0 |
+| `portAddress` | 端口名 | 套件 `nameToAddressForLog` 的地址 **& 0xFF** | `USB2` = 1696 → **160**；`USB1/USB3/NCOM1` 也都是 160；`COM1` → 32；`THISPORT` → 192；`FILE` → 224；`USB2_29` → 189；未知名 → 192（`probe-text-port.ts`） |
+| `sequence` | 第 2 个 token | 十进制 | 原样 |
+| `idleTimeRaw` | 第 3 个 token | `round(打印值 × 2)` | `76.5` → 153 |
+| `timeStatus` | 第 4 个 token | `GPSTimeStatus` 枚举反查 | `COARSESTEERING` → 120、`SATTIME` → 200、`UNKNOWN` → 20 |
+| `week` | 第 5 个 | 十进制 | 原样 |
+| `milliseconds` | 第 6 个 | **截断** `double × 1000` | `2.018` → **2017**、`2.022` → 2021（不是四舍五入） |
+| `receiverStatus` | 第 7 个 | 8 位 hex | `03801800` → `0x03801800` |
+| `reserved`（报文定义 CRC） | 第 8 个 | 4 位 hex | `cdba` → `0xcdba` |
+| `softwareVersion` | 第 9 个 | 十进制 | 18278 |
+
+端口 160 回读时打印成 `SPECIAL`（不是 `USB2`）：b1 的 golden 里 51 行 `#BESTPOSA,SPECIAL` 是
+**二进制**帧，39 行 `USB2` 才是文本记录——地址只有一个字节，`USB2` 的 1696 被截掉了。
+
+### ② 正文：按字段类型回写，`pack(4)`
+
+- `f64` = 打印十进制**最近的 double**；`f32` = 该 double 再 `Math.fround`。这不是「复制相邻帧」：
+  b1 的 `#BESTPOSA` 打印 `30.53997306366`，编码出 `0024b9ac3b8a3e40`；同一测量值的接收机二进制帧
+  是 `cc20b9ac3b8a3e40`（低 3 位不同）。文本记录独立编码时（`probe-oracle-binary-text`）套件也给
+  `0024…`，证实它读的是文本。
+- 枚举按**名字**查表；查不到的名字写 **`max + 1`**（表的非法哨兵）：`CommPort` 的 `LCOM1/LCOM4/
+  BOGUSNAME` → 53（表最大 52），`InterfaceMode` 的未知名 → 69（最大 68）；`COM5` → 31、
+  `UNKNOWN` → 5（`probe-text-enum.ts`）。
+- `bool`：`TRUE/FALSE` → 1/0；`%m`：名字 → id（`A` 后缀带 `0x200000`、`B` 后缀不带、无后缀带
+  `0x400000`）；`%T`：秒 → 毫秒；`%c`：字符 → 码点；`%x/%X/%XB/%B` 按 hex，其余十进制。
+- `STRING`：NUL 结尾、零填充。固定宽度的装不下 → 套件**整条丢弃**（`base_id` 写 `"ABCDEF"` 无
+  输出），我们同样失败上报；`variable` 的按 4 字节对齐（`SETNAV` 的 `"FROM"` 占 8 字节，`"TO"`
+  占 4 字节，payload 52 B）。
+- 数组：先写 count 前缀（u8/u16/u32），元素从 `at + countSize` 开始，固定元素按 `pack(4)` 结构体
+  步长（RANGE 44 B/元素），含 `variable` 字符串的按内容重走。`%Z` 是一个小写 hex token，`%P` 是
+  一个转义 token（`\xNN`、`\\`），两者都只占一个 token。
+- 正文 token 不够时套件丢掉整条记录（与 ASCII 输出同一闸门），我们同样不写，并记一条失败。
+
+### ③ `%R`：`RXCONFIG` 的 payload 是内嵌报文的整帧
+
+b7 的 `#RXCONFIGA` 正文是一条 `#ELEVATIONCUTOFFA,…*crc`。套件把它编码成 44 B 的 SBF 帧，连头带
+CRC 一起放进外层 payload（`aa44121c c70600a0 …`），外层帧头用外层表头。
+
+**内层帧的 CRC 是按位取反的**：内层 plain CRC 是 `b916e5b3`，套件写 `46e91a4c`；外层 `RXCONFIG`
+的 CRC 仍是 plain。这与 ASCII 里内嵌 `*crc` 用 `~CRC32` 是同一规则（§9.x.17③）。
+
+### ④ 数字
+
+| 输入 | 套件 | 我们 |
+|---|---:|---:|
+| b1 `-b` | 2 623 374 B | **2 623 374 B**，sha256 `b40f10277c72403d…` |
+| b7 `-b` | 473 262 B | **473 262 B**，sha256 `55074c977f67bd6c…` |
+| b2/b3/b4/b5/b6 `-b` | — | 逐字节相同（这几份没有可渲染的文本记录） |
+| `live-nav` / `live-nav2` / `remote-23types` `-b` | — | 逐字节相同（1 546 904 / 1 472 250 / 2 018 742 B） |
+
+文本记录的分布（= 插入帧的分布）：b1 `BESTPOS 39 / RANGE 26 / SATVIS2 24 / RXSTATUS 6 /
+TIMESYNC 2 / HWMONITOR 2`；b7 `RXCONFIG 247 / ITPSDDETECT 90 / ITDETECTSTATUS 47 /
+ITPSDFINAL 47`。b7 另有 22 条 `#RXCONFIGA` 的内嵌报文名不在字典里，ASCII 与 BINARY 都丢弃，
+Summary 记 `269 → 247`。
+
+### ⑤ 代码与测试
+
+- `packages/protocol/src/binary-log.ts`：`encodeRecord` / `collectBinaryRecords`（后者在
+  `text-log.ts`，与 `textLogLines` 共用同一套闸门）。
+- `convert-pipeline.ts#binaryBlocks` 在帧序里把文本记录编码回原位；`unencodedText` 汇报失败。
+- `packages/protocol/test/text-to-binary.test.ts`（12 项）：两个整文件 sha256、`--decimate=5` 的
+  130 048 B、七类记录逐字段头部、BESTPOS/RANGE/SATVIS2/RXSTATUS/TIMESYNC/HWMONITOR 正文字节、
+  固定与变长字符串、`%R` 内嵌帧与取反 CRC、三条失败路径。
+- 探针：`probe-binary-blocks.ts`（逐帧定位差异，并打印该帧来自哪条文本记录）、
+  `probe-binary-captures.ts`（一键跑套件比 sha）、`oracle-binary-text.ts`、`probe-binary-lookup.ts`
+  （证明套件读文本而不是抄相邻帧）、`probe-text-{port,enum,string,layouts}.ts`。
+
+### ⑥ 剩余 / 未确认
+
+- 目录里没有的文本记录类型（如 `RAWALM`、`CLOCKMODEL`、`LOGLIST` 的 `%m`、`SETNAV` 的变长
+  字符串）用**合成文本捕获**逐字节量过（`probe-text-layouts.ts` 六种全等），但没有真机样本。
+- `%P` 的 count 前缀：合成 `PASSCOM1` 里套件写的是**转义后 payload 的长度**（5），我们跟它；没有
+  真机 `PASSTHROUGH` 文本记录可验。
+- 未知端口名的回退（192）来自一次合成探测；套件是否对某些名字另有规则没有穷举。
+- 一条正文里有两个 `%R` 时套件只转第一个（ASCII 侧已如此），编码器沿用这个上限。
+
+

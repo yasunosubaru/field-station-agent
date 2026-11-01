@@ -312,15 +312,41 @@ b2/b3/b5 的 `-b` 产物与套件**逐字节相同**（b5 的 3 478 252 B 里连
 （输入 278，22 条内嵌报文不在字典里），b4 的 `RXCONFIGUSER` 只有 225 条（输入 244）——BINARY 与
 ASCII 一样，按「能否渲染」决定写不写。这条已实现，b4 的 `-b`（4 138 280 B）因此**逐字节相同**。
 
-未复刻：**文本记录进 BINARY**。套件把文件里的 ASCII 日志重新编码成二进制帧再写：b1 的 `-b` 比它的
-SBF 记录多出 39 条 `BESTPOS`、26 条 `RANGE`、24 条 `SATVIS2`……正好是那 99 条文本记录按名字的分布。
-这需要一整套「字段 → 字节」的编码器（本项目只有解码方向），没有做：
+### 文本记录也写进 BINARY（已复刻）
+
+套件把文件里的 ASCII 日志**重新编码**成二进制帧，插在它在捕获里的位置：b1 的 `-b` 比它的 SBF 记录
+多出 39 条 `BESTPOS`、26 条 `RANGE`、24 条 `SATVIS2`、6 条 `RXSTATUS`、2 条 `TIMESYNC`、2 条
+`HWMONITOR`（正好是那 99 条文本记录按名字的分布），b7 多出 247 条 `RXCONFIG`、90 条
+`ITPSDDETECT`、47 条 `ITDETECTSTATUS`、47 条 `ITPSDFINAL`（431 条）。编码器是
+`protocol/src/binary-log.ts`，规则全部对套件的 `-b` 产物逐字节量出来：
+
+| 部分 | 规则 |
+|---|---|
+| 头 | 九个表头 token 直接落进 28 字节长头。端口名走套件自己的地址表再截成一个字节：`USB2` = 1696 → **160**（所以套件回读时打印 `SPECIAL`，b1 的 golden 里 51 行 `#BESTPOSA,SPECIAL` 就是这些二进制帧，39 行 `USB2` 才是文本记录）；`idle` 打印成 `raw/2`，乘 2 还原；`timeStatus` 名字按套件的 `GPSTimeStatus` 枚举反查（`COARSESTEERING` → 120，`SATTIME` → 200，`UNKNOWN` → 20）；`week`、`rxStatus`/`defCrc`（hex）、版本（十进制）照抄；`messageType` 固定 0。 |
+| 毫秒 | **截断** `秒 × 1000`，不是四舍五入：b7 那 25 条 `UNKNOWN` 状态的记录打印 `2.018`，套件写 **2017**（double 的 2.018 是 2017.999…），`2.022` → 2021。 |
+| 正文 | 按字段类型回写：`f64` = 打印的十进制对应的 double，`f32` = 该 double 先 `Math.fround`；枚举按名字查表，**查不到的名字写 `max+1`**（实测：`CommPort` 的 `LCOM1` → 53，`InterfaceMode` 的未知名 → 69）；`TRUE/FALSE` → 1/0；`%x/%X/%XB/%B` 按 hex，`%m` 名字 → 带 A/B 标志位的 id，`%T` 秒 → 毫秒，`%c` 字符 → 码点；字符串 NUL 补齐（`variable` 的按 4 字节对齐，如 `SETNAV` 的 `"FROM"` 占 8 字节）；`FIELD_ARRAY` 先写 count 再按 `pack(4)` 步长铺元素；`%Z` 一个 hex token、`%P` 一个转义 token。固定宽度的字符串装不下时套件**整条丢弃**（`base_id` 写 `"ABCDEF"` → 什么都不写），我们也按失败上报。 |
+| `%R` | `RXCONFIG` 的 payload 就是内嵌报文编码出来的整帧（`#ELEVATIONCUTOFFA` → 44 B，以 `aa44121c` 开头）；它的 CRC 是 NovAtel CRC 的**按位取反**（与 ASCII 里内嵌 `*crc` 同一规则），外层 `RXCONFIG` 的 CRC 不取反。 |
+
+失败不静默：`ConvertOutcome.unencodedText` 列出每一条编码不了的文本记录（帧序号、名字、原因），
+`packages/protocol/test/text-to-binary.test.ts` 断言 b1/b7 的这个列表为空，另外用合成记录覆盖
+「未知时间状态」「正文 token 不够」「字符串超宽」三条失败路径。
 
 | 输入 | 套件 | 我们 |
 |---|---:|---:|
-| b1 `-b` | 2 623 374 B | 2 498 494 B |
-| b7 `-b` | 473 262 B | 227 860 B |
-| b2/b3/b4/b5 `-b` | — | 逐字节相同（这几份没有可渲染的文本记录） |
+| b1 `-b` | 2 623 374 B | **2 623 374 B**（sha256 `b40f1027…`） |
+| b7 `-b` | 473 262 B | **473 262 B**（sha256 `55074c97…`） |
+| b2/b3/b4/b5/b6 `-b` | — | 逐字节相同（b2–b6 没有可渲染的文本记录） |
+
+`live-nav` / `live-nav2` / `remote-23types` 的 `-b` 也一并对上（分别 1 546 904 / 1 472 250 /
+2 018 742 B），其中 `live-nav` 的 79 条、`live-nav2` 的 74 条 `#BESTPOSA` 回声同样被重新编码。
+
+复跑对照：
+
+```powershell
+node 逆向\tools\probe-binary-captures.ts               # 逐份跑套件 -b，比字节与 sha256
+node 逆向\tools\probe-binary-blocks.ts <捕获> <套件.BINARY> --diff 10   # 定位第一条不同的帧
+node 逆向\tools\probe-text-layouts.ts                  # SETNAV/LOGLIST/SENDHEX/PASSCOM1 等无样本布局
+```
 
 ### 实现与测试
 
@@ -331,7 +357,9 @@ SBF 记录多出 39 条 `BESTPOS`、26 条 `RANGE`、24 条 `SATVIS2`……正�
 | `convert-pipeline.ts#decimateFrames` | 抽稀（记录 + 文本记录各自的时间） |
 | `convert-pipeline.ts#unknownSpans` | `.UNKNOWN` 的两套口径（预扫描计数 / 实际产物）、`interleave`、以及 `--decimate` 丢掉的记录不进 `.UNKNOWN` |
 | `convert-pipeline.ts#buildRangeBinaryPayload` | BINARY 展开时的 float32 存储规则与 CMP5 `sd_adr` 表 |
-| `convert-pipeline.ts#binaryBlocks` | BINARY 的块序列（展开、跳过打不出行的记录） |
+| `convert-pipeline.ts#binaryBlocks` | BINARY 的块序列（展开、跳过打不出行的记录、把文本记录编码成帧插回原位） |
+| `protocol/src/binary-log.ts` | 文本记录 → SBF 帧（头部映射、`pack(4)` 正文、float/枚举/字符串/数组/`%R`、CRC） |
+| `protocol/test/text-to-binary.test.ts` | 12 条用例：b1/b7 整文件 sha256、b1 `--decimate=5`、七类记录逐字段头部、BESTPOS/RANGE/SATVIS2/RXSTATUS/TIMESYNC/HWMONITOR 正文、固定与变长字符串、`%R` 内嵌帧与取反 CRC、三条失败路径 |
 | `protocol/test/convert-cli-options.test.ts` | 19 条用例：四种 `--limit-output-size` 产物、五种 `--limit-output-duration` 边界（含合成捕获）、`--daily-utc` 的状态矩阵（二进制 / 文本两套闸门、回拨、起点）、b7 三片逐字节、三种 `--decimate`（含对齐基准与文本记录）、`--expand-cmp` 两档 |
 | `protocol/test/unknown-bytes.test.ts` | `.UNKNOWN` 的五个口径：四份 golden、ignore/SKIP、interleave、`--decimate=5` 的 4 014 B，以及合成捕获上「网格外打不出行的记录消失、网格上的留下」 |
 
@@ -339,7 +367,7 @@ SBF 记录多出 39 条 `BESTPOS`、26 条 `RANGE`、24 条 `SATVIS2`……正�
 
 ```powershell
 cd 逆向\04_重实现
-node --test --test-force-exit "packages/*/test/*.test.ts"   # 全部通过（本次运行 1 014 条；总数随 packages/view 的并行改动增长）
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 全部通过（本项新增 12 条；本次 991 条，总数随并行改动增长；packages/graph 另有并行未完成改动，不在本项范围）
 node 逆向\tools\golden-check.ts                            # 14 份 golden 全字节相同
 ```
 
@@ -449,7 +477,8 @@ Prefix/Suffix 的**落点**没有 CLI 开关可测（`cli.js:228-232` 恒发 `{v
   把 `--start-time/--finish-time` 原样写进同一个 `timeInterval` 字段），并附上 `1 362 914 B` 的
   逐字节产物。
 - 既有未复刻项未动：`--decimate` + `--unknown-bytes=file` 在 b1 上仍是 5386 B（套件 4014 B）；
-  **文本记录进 BINARY**、`--daily-utc` 的 b7 三片。窗口 + `interleave` 组合未测，保持关闭。
+  `--daily-utc` 的 b7 三片。窗口 + `interleave` 组合未测，保持关闭。（**文本记录进 BINARY 已复刻**，
+  见上一节；b1/b7 的 `-b` 现在与套件逐字节相同。）
 - 面板的点击交互（radio 走 `click` 委派，因为弹窗里套了一层 `<label>`，点文字不触发外层 input）
   只有 Playwright 端到端覆盖，没有 DOM 单测——`packages/view` 的 minidom 不属于本条任务的改动范围。
 

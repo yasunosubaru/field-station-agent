@@ -593,6 +593,96 @@ export function encodeHashLog(record: HashRecord, tables: EdieTables): string | 
 }
 
 /**
+ * One text record as the **binary** writer consumes it: the nine header tokens, the body tokens in
+ * print order, and the raw `#NAME,…*crc` blob when the whole body is one `%R` payload.
+ *
+ * `text-log.ts` parses a record in order to print it again; `binary-log.ts` parses the same tokens
+ * in order to serialize them. Both need the *original* tokens (a re-render is lossy for a float:
+ * RANGE's `75947.813` prints as `75947.812`), so the collector below hands back the record rather
+ * than the line `textLogLines` produces.
+ */
+export interface BinaryTextRecord {
+  /** Frame index of the record's header line — the output frame is emitted there, in capture order. */
+  index: number;
+  /** Dictionary name without the version letter (`RANGE`, `BESTPOS`). */
+  name: string;
+  layout: EdieLayout;
+  /** The nine header tokens after the name. */
+  head: string[];
+  /** Body tokens in print order (a `<` record's continuation lines flattened). */
+  body: string[];
+  /** A whole-body `%R` payload (`RXCONFIG`): the embedded `#NAME,…*crc` line, undecoded. */
+  embedded?: string;
+}
+
+/**
+ * The text records a `BINARY` conversion has to encode, keyed by frame index.
+ *
+ * The gate is exactly the one `textLogLines` applies, because the suite renders the same records in
+ * both directions: a `#` record needs a correct CRC and a name the dictionary knows, a `<` block
+ * needs a data line, and an `RXCONFIG` whose embedded message is unknown is dropped whole. The
+ * measured consequence is that this map's key set is the same as `textLogLines`' on every capture
+ * (`b1` 99, `b7` 431) — that equality is asserted in `text-to-binary.test.ts`.
+ */
+export function collectBinaryRecords(
+  frames: readonly Frame[],
+  tables: EdieTables,
+): Map<number, BinaryTextRecord> {
+  const byName = layoutIndex(tables);
+  const names = new Set(byName.keys());
+  const records = new Map<number, BinaryTextRecord>();
+
+  for (const [index, record] of collectTextLogs(frames, tables)) {
+    if (record.tokens.length <= 9) continue;
+    const layout = byName.get(record.name);
+    if (!layout) continue;
+    records.set(index, {
+      index,
+      name: record.name,
+      layout,
+      head: record.tokens.slice(0, 9),
+      body: record.tokens.slice(9),
+    });
+  }
+
+  frames.forEach((frame, index) => {
+    if (frame.kind !== 'text' || frame.prefix !== '#') return;
+    const line = passThroughAscii(frame.text, names);
+    if (line === undefined) return;
+    const record = parseHashLine(line, byName);
+    if (!record || !record.layout) return;
+    if (rawBodyLayout(record.layout)) {
+      // The same gate `encodeEmbeddedAscii` applies: a blob the dictionary cannot resolve, or one
+      // with an empty body, drops the outer record.
+      const inner = parseEmbeddedRecord(record.rawBody, byName);
+      if (!inner || inner.body.length === 0) return;
+      records.set(index, {
+        index,
+        name: record.name,
+        layout: record.layout,
+        head: record.head,
+        body: [],
+        embedded: record.rawBody,
+      });
+      return;
+    }
+    // Mirrors `encodeHashLog`: a body that runs out of tokens prints nothing, so it is not encoded
+    // either; extra tokens are ignored.
+    const rendered: string[] = [];
+    if (!renderBody(record.layout.fields, record.body, tables, rendered)) return;
+    records.set(index, {
+      index,
+      name: record.name,
+      layout: record.layout,
+      head: record.head,
+      body: record.body,
+    });
+  });
+
+  return records;
+}
+
+/**
  * The abbreviated-ASCII lines a capture's text records produce, keyed by frame index.
  *
  * This is the ABBREV form of the same records `textLogLines` renders as `#…` lines. Convert does
