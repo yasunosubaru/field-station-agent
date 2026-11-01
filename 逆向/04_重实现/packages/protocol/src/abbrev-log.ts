@@ -17,7 +17,9 @@
  *    with no values at all is `<    `;
  *  - one element line per array element of a `FIELD_ARRAY`: `<` + **nine** spaces, the separator
  *    space, the values — an element line with no values is `<         ` (nine spaces), which is what
- *    a zero-element array leaves behind (`SATVIS2 … SBAS TRUE FALSE 0` in `b1`);
+ *    a zero-element array leaves behind (`SATVIS2 … SBAS TRUE FALSE 0` in `b1`). An array **inside**
+ *    an element (a nested `FIELD_ARRAY`, first seen on `CHANCONFIGLIST` in `b5`) indents five more
+ *    columns per level: 9, then 14, then 19;
  *  - a `FIXED_LENGTH_ARRAY` prints no count and no line break (`CLOCKMODEL`'s `par`/`data` stay on
  *    the data line), and so does a `VARIABLE_LENGTH_ARRAY` **with** its count in front
  *    (`ITPSDFINAL`'s 1024 samples are one very long data line, not 1024 lines);
@@ -58,8 +60,18 @@ import { SbfDeframer, type SbfFrame } from './framing.ts';
 
 /** Indent of the record's first data line. */
 const DATA_INDENT = 4;
-/** Indent of one array-element line. */
+/** Indent of one array-element line (nine = four + one level of five). */
 const ELEMENT_INDENT = 9;
+/**
+ * Extra indent one more level of `FIELD_ARRAY` nesting adds.
+ *
+ * `CHANCONFIGLIST` (id 1148) is the first log in any capture with an array **inside** an array
+ * element — `chan_cfg_list_array` → `chan_cfg_list_sys_array` → `num_chans`/`signal_type` — and the
+ * suite indents the second level by five more columns: `<          5 ` for the per-system count and
+ * `<               16 GPSL1L2PL5 ` for its two values (measured in `golden-b5-…ABBREV_ASCII`, 25
+ * lines). The first level keeps the usual nine.
+ */
+const NESTED_INDENT = 5;
 
 function readScalar(bytes: Uint8Array, type: string, at: number): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -220,6 +232,8 @@ function renderSegments(
   body: Body,
   depth: number,
   state: RenderState,
+  /** How many `FIELD_ARRAY`s enclose this segment list; each one indents its element lines. */
+  arrayDepth = 0,
 ): void {
   // Same placement rule as the ASCII writer: a segment the table cannot place (`dynamicOffset`,
   // i.e. anything behind a counted array) starts where the previous one ended; the rest start at
@@ -298,17 +312,18 @@ function renderSegments(
     // element on the line they started on.
     const kind = array.arrayKind ?? (array.countSize ? 'field' : 'fixed');
     if (kind === 'field') {
+      const elementIndent = ELEMENT_INDENT + NESTED_INDENT * arrayDepth;
       for (let i = 0; i < Math.max(1, walk.count); i++) {
-        body.newLine(ELEMENT_INDENT);
-        if (i < walk.count) renderSegments(bytes, array.elements, walk.starts[i] as number, tables, body, depth, state);
+        body.newLine(elementIndent);
+        if (i < walk.count) renderSegments(bytes, array.elements, walk.starts[i] as number, tables, body, depth, state, arrayDepth + 1);
       }
       // What follows the elements starts a **new data line**, not the last element's line:
       // `IPSTATUS` prints `<     1 ` (its `ip_status` count), one element line, then `<     1 `
       // for `dns_server` and its element (measured on the b2 frame through the suite).
-      if (index < segments.length - 1) body.newLine(DATA_INDENT);
+      if (index < segments.length - 1) body.newLine(DATA_INDENT + NESTED_INDENT * arrayDepth);
     } else {
       for (let i = 0; i < walk.count; i++) {
-        renderSegments(bytes, array.elements, walk.starts[i] as number, tables, body, depth, state);
+        renderSegments(bytes, array.elements, walk.starts[i] as number, tables, body, depth, state, arrayDepth);
       }
     }
     cursor = at + walk.size - base;

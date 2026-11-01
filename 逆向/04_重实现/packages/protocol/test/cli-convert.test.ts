@@ -9,9 +9,12 @@
  *     (645 in abbreviated ASCII), and we now write the same, where UTF-8 would have written two
  *     bytes more. (`NovAtelApplicationSuite.exe -a` / `--abbrev`, run on the remote host 2026-11-01.)
  *
- *  2. **`PASSTHROUGH` (1342) never reaches an output.** The suite parses the port-forwarding record
- *     and writes it nowhere — not even in BINARY, where every other accepted record is copied
- *     verbatim — so `convert.ts` filters it before any format and before the summary's counts.
+ *  2. **`PASSTHROUGH` (1342) is converted like any other log.** The suite renders the
+ *     port-forwarding record from the dictionary (`#PASSTHROUGHA,…;COM3,80,_\x9f…`, port name, byte
+ *     count, `%P`-escaped payload), counts it in the summary and copies it in BINARY. The first real
+ *     passthrough record this project has (b5, one at epoch 17024.106) is what settled it; the
+ *     earlier "writes it nowhere" reading came from a synthetic record whose payload the `%P` count
+ *     consumed differently.
  *
  * The third and fourth tests cover the abbreviated-ASCII wiring: text records (`<` / `#` / `$`
  * frames) and the expanded RANGECMP records are records like any other, so `ABBREV_ASCII` walks the
@@ -132,7 +135,7 @@ test('%c above 0x7f is written as one raw byte, as the suite writes it', () => {
   }
 });
 
-test('PASSTHROUGH never reaches an output, not even BINARY', () => {
+test('PASSTHROUGH reaches every output, BINARY included', () => {
   const bestpos = b2Frame(42);
   const pass = Buffer.from(bestpos);
   pass.writeUInt16LE(1342, 4); // messageId is the u16 at offset 4 of the long header
@@ -144,16 +147,23 @@ test('PASSTHROUGH never reaches an output, not even BINARY', () => {
 
     const ascii = runConvert(capture, 'ASCII');
     const asciiLines = ascii.bytes.toString('latin1').split('\r\n').filter((line) => line.length > 0);
-    assert.equal(asciiLines.length, 1, 'the BESTPOS record only');
+    assert.equal(asciiLines.length, 2, 'the BESTPOS record and the passthrough');
     assert.ok(asciiLines[0].startsWith('#BESTPOSA,'), asciiLines[0].slice(0, 40));
-    assert.equal(ascii.summary.includes('PASSTHROUGH'), false, 'the summary does not count it');
+    // The suite prints this exact line for this synthetic record (`-a`, 2026-11-01): port 0 is
+    // `NOPORT`, the count is the payload's fifth byte (`16`), and the rest is `%P`-escaped.
+    assert.equal(
+      asciiLines[1],
+      '#PASSTHROUGHA,SPECIAL_29,0,74.0,COARSESTEERING,2442,577759.000,03800800,cdba,18278;NOPORT,16,\\xf8\\xf8T];\\x8a>@\\x06\\x04\\xf8\\\\\\x94\\x96\\\\@*90d562c3',
+    );
+    assert.ok(ascii.summary.includes('PASSTHROUGH'), 'the summary counts it');
 
     const abbrev = runConvert(capture, 'ABBREV_ASCII');
-    assert.equal(abbrev.bytes.toString('latin1').includes('PASSTHROUGH'), false);
+    assert.ok(abbrev.bytes.toString('latin1').includes('PASSTHROUGH'));
 
-    // BINARY copies the accepted records verbatim, which would have included the passthrough.
+    // BINARY copies the accepted records verbatim, the passthrough included.
     const binary = runConvert(capture, 'BINARY');
-    assert.deepEqual(binary.bytes, bestpos, 'only the BESTPOS frame is copied');
+    assert.equal(binary.bytes.length, bestpos.length * 2);
+    assert.deepEqual(binary.bytes.subarray(bestpos.length), pass);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

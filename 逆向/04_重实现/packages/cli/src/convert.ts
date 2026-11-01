@@ -95,7 +95,7 @@ function main(): void {
   console.log(`summary   : ${join(convertedDir, `Summary_${base}.txt`)}`);
   console.log(
     `dropped   : ${outcome.converted.length - outcome.accepted.length} (bad CRC)`
-    + (outcome.passthrough.length ? `, ${outcome.passthrough.length} PASSTHROUGH (not a converted log)` : ''),
+    + (outcome.passthrough.length ? `, ${outcome.passthrough.length} PASSTHROUGH (converted like any other log)` : ''),
   );
 }
 

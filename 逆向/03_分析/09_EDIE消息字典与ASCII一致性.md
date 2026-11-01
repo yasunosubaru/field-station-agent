@@ -851,3 +851,237 @@ LOGLIST 的顶层变长数组、RXCONFIGUSER 的 `%R`），一条也没破——
   但下次抓包前要么先接受它（像这次一样按 id 排除），要么先查接收机的 `LOGLIST` 输出确认
   这 41 条 RANGE 到底挂在哪个端口的日志表上（`LOGLIST` 本包已抓到，可离线看）。
 
+
+
+## 9.x.13 B1 第五批（b5）：20 类新类型 + **三种压缩测距版本**，1478 行逐字节（2026-11-01）
+
+这一批和前四批不一样：前四批是「加布局、加渲染」，这批撞上的是**套件对本项目还没解过的
+三种报文做了转译**（`RANGECMP` v1 / v3 / v5 全部解压成 `RANGE` 行），外加两条此前记错的
+规则（`PASSTHROUGH` 其实照常输出、ABBREV 里嵌套数组要多缩 5 列）。所以这篇记的是
+**六条规则修正 + 覆盖面**。
+
+### 怎么抓的
+
+`tools/remote/b5-probe.ps1`（探测）→ `tools/remote/b5-capture.ps1`（抓包，五段、每段前裸
+`UNLOGALL`）。探测名单不再靠猜，按「608 条字典 − 已进 golden 的 97 个名字」直接生成，
+再按下面两条筛掉不值得占配额的名字：
+
+- **字典里没有的名字不探测。** 上一批的建议清单里，`FANSPEED` / `TEMPERATURE` / `PWRSTATUS` /
+  `SUPERSWSTATUS` / `BLOBSTATUS` / `TIMEH` / `PPSTIME` / `PPSSTATUS` / `TRACKSTAT2` 九个
+  **在 608 条 EDIE 字典里一条都没有**，接收机就算回数据也不可能进 golden（套件按字典渲染）。
+  HWMONITOR（已有）本来就是这台机器的风扇/温度出口。这九个名字直接从名单里划掉，省下 9 个
+  1.5 s 窗口。
+- **上一批已被拒的名字不再重试**（b4 拒掉的 16 个：RTK 系 6 个、SPAN/双天线 3 个、
+  名字根本不存在的 7 个），只留 `FILESTATUS`、`LBANDINFO` 这类「上批没单独试过」的。
+
+最终 72 个名字，一条 `LOG <名> ONCE`、单独 1.5 s 窗口、按报文 id 判（41/42/43 与
+93/72/963 一律不计，理由见 §9.x.12）。
+
+### 三类清单（72 个名字）
+
+**收下并抓到（25 个名字；20 类真的吐出 ASCII 行，5 类解压成 `RANGE` 行）**
+
+| 类 | id | 条数 | | 类 | id | 条数 |
+|---|---|---|---|---|---|---|
+| CLOCKSTEERING | 26 | 1 | | RXSTATUSEVENT | 94 | 2 |
+| VALIDMODELS | 206 | 1 | | COMCONFIG | 317 | 1 |
+| **PDPPOS** | 469 | 9 | | **PDPVEL** | 470 | 9 |
+| **PDPXYZ** | 471 | 9 | | RANGEGPSL1 | 631 | 12 |
+| GALINAVRAWEPHEMERIS | 1126 | 216 | | CHANCONFIGLIST | 1148 | 1 |
+| PDPSATS | 1234 | 9 | | SOFTLOADSTATUS | 1235 | 1 |
+| **PASSTHROUGH** | 1342 | 1 | | VERIPOSSTATUS | 1730 | 1 |
+| GEODETICDATUMS | 2296 | 1 | | DATUMTRANSFORMATIONS | 2298 | 1 |
+| PSRDATUMINFO | 2300 | 1 | | BESTGNSSDATUMINFO | 2302 | 1 |
+| BESTDATUMINFO | 2305 | 1 | | BDSBCNAV3RAWMESSAGE2 | 2520 | 8 |
+| **RANGECMP**（v1） | 140 | 13 | | **RANGECMP2** | 1273 | 13 |
+| **RANGECMP3** | 1734 | 12 | | **RANGECMP4** | 2050 | 12 |
+| **RANGECMP5** | 2537 | 12 | | | | |
+
+四种 `PDP*` 是这次最划算的一笔：`PPPPOS` 在上批就有，同一个 PPP 引擎的 PDP 系列一次性全回
+（`PDPPOS` 21 字段、`PDPXYZ` 28、`PDPSATS` 105、`PDPVEL` 8），而 `PDPDOP` / `PDPDOP2` /
+`PDPDATUMINFO` 三个是 `<OK` 但不出（见下）。
+
+**被拒（26 个，一个字节都没进 golden）**
+
+- `<ERROR:Message is invalid for this model`（25 个，固件选项没开）：
+  `SATELSTATUSB` `SATEL4INFOB` `SATEL9INFOB` `FILELISTB` `FILESTATUSB`
+  `FILESYSTEMSTATUSB` `FILESYSTEMCAPACITYB` `FILETRANSFERSTATUSB` `LUASTATUSB`
+  `LUAFILELISTB` `LUAFILESYSTEMSTATUSB` `INSDATUMINFOB` `ITFILTTABLEB` `ITBANDPASSBANKB`
+  `ITPROGFILTBANKB` `TSS1B` `INSVELXB` `INSPVAXB` `INSCONFIGB` `INSSTDEVB` `HEAVEB`
+  `TILTDATAB` `WIFISTATUSB` `WIFINETLISTB` `EXTERNALPVASB`。
+  两点值得记：**整个存储/文件系统族（FILE\*、LUAFILE\*）和整个 SPAN 族、整个 Wi-Fi 族都是
+  模型级被拒**，不是名字写错；干扰检测族里 `ITDETECTSTATUS` 能用而 `ITFILTTABLE` /
+  `ITBANDPASSBANK` / `ITPROGFILTBANK` 三个表被拒——这台机器的固件只输出检测结果，不输出
+  滤波器表。
+- `<ERROR:Invalid Message. Field = 2`（1 个，名字不存在）：`LBANDINFOB`。**`LBANDTRACKSTAT`
+  能出、`LBANDINFO` 这个名字接收机不认**，尽管 EDIE 字典里有它——字典有 ≠ 接收机有
+  （与上一批 `RAWLBANDFRAMEB` 同理）。
+
+**不出（21 个：`<OK` 收下，1.5 s 窗口一条不来）**
+
+`MODELB` `AUTHB` `PDPDATUMINFOB` `RTKDATUMINFOB` `USERANTENNAB` `USERDATUMB` `GALCLOCKB`
+`GLORAWFRAMEB` `GLORAWSTRINGB` `REFSTATIONINFOB` `SAVEDSURVEYPOSITIONSB` `USERCANSTATUSB`
+`USERCANDATAB` `QZSSCNAVRAWMESSAGEB` `GPSCNAVRAWMESSAGEB` `GALCNAVRAWPAGEB`
+`GALHASRAWMTB` `PDPDOPB` `PDPDOP2B` `PROFILERESPONSEB` `HEADINGB`。
+
+其中 `GALCLOCKB` / `GLORAWFRAMEB` 值得单独说：**Galileo 和 GLONASS 的星历这两批一直在进
+golden（`GALEPHEMERIS`、`GLOEPHEMERIS`、`GLOALMANAC` 都有），但这两个时钟/原始帧日志就是
+不出**——不是没星，是这台机器的固件不解这些信号。
+
+### 这批逼出的五条规则（第一遍 38 行不对 → 0）
+
+#### ① `RANGECMP`（v1，id 140）从来没有解压过（13 条 → 13 行 `RANGE`）
+
+前两批只实现了 `RANGECMP2` / `RANGECMP4`，`RANGECMP` v1 一直当**自己的类型**打。这一批的
+summary 直接暴露了它：`RANGE 1050 in / 1112 out`，多出的 **62 行正好等于 13+13+12+12+12**，
+而五个 `RANGECMP*` 自己的输出列全写 `0`。也就是说 Convert 把**五个版本全部**解压。
+
+v1 是五个版本里唯一「不压缩结构」的：`ULONG #obs` + 每条 **24 字节定长**记录（Table 186），
+十个 RANGE 字段全在记录里，连 `c_status` 都是原文，不需要像 CMP2/4 那样合成状态字。两条
+派生物是重点：
+
+- **表头是「观测条数」不是「字节数」**。第一版照抄 CMP2/4 的 `declared` 当字节数切载荷，
+  每条记录只剩 2 个观测（69 → 2），`#RANGEA` 行的第一个字段就露馅了。
+- **`adr` 要按信号自己的波长做 roll 还原**。Table 186 的公式是
+  `ADR_ROLLS = round((PSR / WAVELENGTH + ADR) / 8388608)`、`CORRECTED = ADR − 8388608 × ROLLS`。
+  波长用错（把 L2 观测按 L1 波长算）时，同一颗星的两条记录的 roll 数会差 2~10 个，
+  误差正好是 16 777 216 的整倍数——b5 的 897 个观测里，用对波长后 **897/897** 与 golden 相同
+  （`-91298527.250000` 这种 6 位小数值逐个对上）。
+- `sd_psr` 走 **Table 187**（0.050 / 0.075 / 0.113 …），不是 CMP2/4 的 Table 190/204：
+  同一个观测 v1 打 `0.050`、CMP2 打 `0.045`，这是两张表，不是同一张表的两个舍入。
+
+#### ② `RANGECMP3`（1734）的载荷与 `RANGECMP4`（2050）**逐字节相同**
+
+OEM7 手册里没有 RANGECMP3 的表（§3.160/3.161/3.162/3.163 是 v1/v2/v4/v5），所以先做了
+一条实测：把 b5 里 12 条 1734 与 12 条 2050 按 epoch 配对，**载荷 866 B × 12 全部
+`Buffer.compare === 0`**，解码出来的观测值也全等。两者唯一的差别在**报文头的 reserved 字段**
+（1734 是 `12097`、2050 是 `64270`），而 ASCII 行里那个位置正是 `<…,2f41,18278>` 与
+`<…,fb0e,18278>` 的差别——也就是「同一行数据、不同的回显字段」。
+
+结论：**1734 直接用 v4 的读取器**，这不是猜，是 12/12 的字节相等。风险写在 `rangecmp.ts`：
+哪天遇到载荷不相等的 1734，就该退回来重新做表。
+
+#### ③ `RANGECMP5`（2537）自成一派：5 bit 标准差 + m/s 多普勒（12 条 → 12 行的 828 个观测）
+
+v5 不是 v4 的变体而是另一套结构（§3.163，Table 205–213）：16 bit GNSS 掩码 → 每系统
+64 bit 卫星掩码 + 16 bit 信号掩码 + `m×n` 关联矩阵 → 每星一个 4 bit（GLONASS 9 bit）头 →
+每信号一个主块（115 bit）或差块（86 bit）。三处和别的版本不同、且**都有实测**：
+
+1. **多普勒是 m/s（0.0001），不是 Hz**；转成 RANGE 的 Hz 要除该信号自己的波长（与 v4 同一
+   条公式），12 条记录 828 个观测的 `dop` 全对。
+2. **`sd_psr` / `sd_adr` 是 5 bit**，走 Table 213 / Table 212 的指数式（不是查表）：
+   `0.020·exp(0.4x)` / `(1/256)·exp(x/(3.65√3))`。所以同一观测 v5 打 `0.014`（x=8 → 0.01385）、
+   v4 打 `0.016`（index 5）——**两张不同的标尺**，不是同一个 index 的两种舍入。
+3. **差块的多普勒步长是 0.0001 m/s，手册写的是 0.0002**。按手册写时，460 个差块观测里
+   424 个的 `dop` 差 0.002–0.13 Hz（例如 `1298.433` vs golden 的 `1298.359`）；按 0.0001
+   写全对。手册那一栏的范围 `±6.554`（=2¹⁵×0.0002）与实测矛盾，实测优先。
+
+`c_status` 与 v2/v4 一样是合成的（Table 182 的跟踪状态 4/11、分组位、信号类型码），
+v5 的块里只有 parity / half-cycle 两个标志，其余沿用 v4 的合成规则，828 个观测的字全对。
+
+#### ④ `ADR Std Dev` 的 index 0 是 **0.003**，不是 Table 203 的 0.0039
+
+把 ①②③ 都接上后，整份文件只剩 **2 行**不对，而且是同一个观测（epoch 17142，BeiDou B2B_I，
+两条压缩记录各一条）：`sd_adr` 我们打 `0.004`、golden 打 `0.003`。把 12 条 2050 记录里
+`index → golden` 的对应全部统计出来是：
+
+```
+0→0.003  1→0.005  2→0.007  3→0.009  4→0.012  5→0.016  6→0.022  7→0.029  8→0.039
+```
+
+除 index 0 之外全部等于 Table 203 的印刷值（5、7 两个是 §9.x.11 已经订正过的
+0.0165/0.02947）。index 0 的 Table 203 写的是「≤ 0.0039」——**它是上界，不是代表值**，
+套件自己的表用了一个更小的数（打印 0.003）。改成 0.003 后整份文件 **0 / 0**。
+这条只影响 index 0，b1–b4 里没有一条 v4 观测落在 index 0（改前改后四份 ASCII 全部逐字节不变，
+见下面的回归）。
+
+#### ⑤ `PASSTHROUGH`（1342）其实**照常输出**，之前的「写不出任何东西」是错的
+
+前四批一直记着「`PASSTHROUGH` 不产出任何东西，连 BINARY 都不复制」，`convert-pipeline.ts`
+里还有一条 `if (isPassthrough(frame)) return;`。这一批第一次抓到**真的** `PASSTHROUGH`
+（epoch 17024.106，端口 COM3，80 字节），套件给出的行是：
+
+```
+#PASSTHROUGHA,SPECIAL,0,73.5,COARSESTEERING,2443,17024.106,03801800,5fa3,18278;COM3,80,_\x9f\xef\xff\xac…
+```
+
+即：端口名（enum，0 是 `NOPORT`）+ 字节数 + `%P` 转义载荷（可打印字节原样，其余 `\xnn`，
+`\` 双写）。summary 里也照常记 `1342 … 1 in / 1 out`，BINARY 也复制它。
+
+为确认这不是「只有真记录才输出」，又拿 b2 的 BESTPOS 载荷改 id 成 1342 造了一条合成记录
+（端口 0、count = 载荷第 5 字节 = 16），本地套件 `-a` / `-b` 各跑一遍：**ASCII 与 BINARY 都
+输出**（`#PASSTHROUGHA,…,;NOPORT,16,\xf8\xf8T];\x8a>@…`）。所以旧结论不是「形状特殊」，
+就是记错了 —— 当时大概是看了 GUI 预览或 summary 的某一路，把"视图不解析"当成了"Convert 不写"。
+
+改动：删掉 `isPassthrough` 的过滤，`converted` 回到「全部二进制记录」，summary 与 BINARY 都
+跟着恢复；`passthrough` 字段留着只作统计用途（CLI 会打一行提示）。
+
+#### ⑥ ABBREV 里**嵌套数组再多缩 5 列**
+
+`CHANCONFIGLIST`（1148）是第一个把数组放在数组元素里的日志：外层 `chan_cfg_list_array`，
+每个元素又是一个 `chan_cfg_list_sys_array`（`num_chans` + `signal_type`）。ASCII 一行打完，
+ABBREV 却按层缩进：
+
+```
+<     1 5                                    ← 数据行：< + 4 空格
+<          5                                 ← 第一层元素：9 空格
+<               16 GPSL1L2PL5                ← 第二层元素：14 空格
+<               7 QZSSL1CAL2CL5
+```
+
+原来的实现把每一层都固定用 9 空格，于是 25 行差 5 列。改成 `4 + 5 × 层数`
+（第一层 9、第二层 14，数据行 4）后，81 561 行 ABBREV 一次对上。
+
+### 结果：1478 / 1478，81561 / 81561
+
+```
+b5-20261101.sbf              3 357 697 B   1 565 条记录（1 478 二进制 + 87 文本 / <OK 回显）
+golden-b5-20261101.ASCII     6 354 933 B   1 478 行   SHA-256 5F169C9032BAA621…315E81FB
+  ours                       6 354 933 B   1 478 行   逐字节相同（cmp-lines：0 / 0，SHA 相同）
+golden-b5-20261101.ABBREV_ASCII 7 372 489 B 81 561 行 逐字节相同（0 / 0，SHA 相同）
+RANGE 1050 → 1112（62 条压缩记录各 +1 行）；五个 RANGECMP* 自己都是 N → 0
+```
+
+`#RANGEA` 行数 1 112，`#RANGEGPSL1A` 12 行（名字以 RANGE 开头但是另一条日志，别用
+`grep '^#RANGE'` 数 RANGE）。
+
+### 回归
+
+七份老 golden（`convert.ts --to ASCII` 后比 SHA-256）全部 IDENTICAL：
+b1 5 088 882 / b2 4 931 973 / b3 6 137 463 / b4 7 646 463 / remote-23types 3 845 232 /
+live-nav 2 798 307 / live-nav2 2 657 890；b1–b4 的 `--abbrev` 四份也全部 IDENTICAL
+（`PASSTHROUGH` 与 ABBREV 缩进两处改动**没有**动到老样本，因为老样本里既没有 1342，
+也没有嵌套数组）。
+`node --test --test-force-exit "packages/*/test/*.test.ts"`：**721 / 721 全绿**
+（本批新增 `live-b5.test.ts` 9 条 + `convert-pipeline.test.ts` 表里 b5 两行；
+`PASSTHROUGH` 的两条旧断言按新事实改写）。
+
+### 这批的交叉验证（不用 oracle 也能自查）
+
+五个压缩版本在 b5 里覆盖**同一批卫星、同一批 epoch**，所以解出来的观测集合应该一致：
+
+| 版本 | 记录 | 观测 | 系统分布（Table 182 码） |
+|---|---|---|---|
+| v1 (140) | 13 | 897 | GPS 312 / BeiDou 468 / QZSS 117 |
+| v2 (1273) | 13 | 897 | 同上 |
+| v3 (1734) | 12 | 828 | GPS 288 / BeiDou 432 / QZSS 108 |
+| v4 (2050) | 12 | 828 | 同上 |
+| v5 (2537) | 12 | 828 | 同上 |
+
+PRN 集合也完全一样（1,2,3,4,6,7,9,10,12,16,19,20,23,25,26,28,29,31,32,37,194,196,199）。
+四个不同年代的压缩算法 + 两套不同的标尺给出同一批观测，任何一个偏移错半位都会立刻分叉 ——
+这比逐字段比对更狠。
+
+### 剩余（无样本，不做硬凑）
+
+- **`RANGECMP4` / `RANGECMP5` 的差分块没用例**：b5 的 24 条 v4/v5 记录全部是 Reference
+  （`Data format flag = 0`，整秒时刻），Table 199/200 的差分路径仍只有表、没有 golden。
+- **v5 只走通 GPS / BeiDou / QZSS 三个系统**：2537 的 GNSS 掩码是 `0x00C1`，GLONASS、SBAS、
+  Galileo 三支（含 GLONASS 的 9 bit 头）没有样本；v1 同理（它的 `c_status` 里也没出现 GLO/SBAS）。
+- **被拒/静默的 47 个名字**（存储族、SPAN 族、Wi-Fi 族、NavIC 族、GAL F/NAV 与 BDS B1C 族）
+  只能换机器或换固件；`SATEL*` 系列连这台机器都不支持。
+- **ABBREV 里第三层嵌套**仍无样本：现在是按「每层 +5」外推的，`CHANCONFIGLIST` 只到第二层。
+- **USB2 那条 20 Hz RANGE 活流为什么 `UNLOGALL` 清不掉，仍然不明**（同 §9.x.12），
+  这一批继续按 id 排除（41/42/43）。
+- 同一个合成 `PASSTHROUGH` 在**视图**里（GRIT/Playback 的报文列表）怎么显示，本轮没测；
+  Convert 三路（ASCII / ABBREV / BINARY）都已对上。

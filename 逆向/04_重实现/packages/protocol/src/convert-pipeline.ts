@@ -11,11 +11,15 @@
  *
  *  - **only CRC-good records are written** (`accepted`); Convert validates where the view's
  *    `genericparser.js` only drops zero-CRC fields;
- *  - **`PASSTHROUGH` (1342) reaches no output at all** — not ASCII, not abbreviated ASCII, not
- *    BINARY, and not the summary's per-log counts. The suite parses the port-forwarding record and
- *    writes nothing for it;
- *  - **`RANGECMP2/4` are unpacked into `RANGE` rows** (b2: 638 RANGE in, 699 out) with the per-signal
- *    lock-time carry shared across consecutive blocks, so the printed lock times keep growing;
+ *  - **`PASSTHROUGH` (1342) is an ordinary converted log**, rendered from the dictionary like any
+ *    other: `#PASSTHROUGHA,…;COM3,80,_\x9f\xef…` — port name, byte count, then the payload escaped
+ *    per `%P`. b5 carries the first real passthrough record this project has seen and its line is
+ *    what corrected this rule (see §9.x.13 in `03_分析/09_EDIE消息字典与ASCII一致性.md`); the
+ *    earlier "writes nothing" reading came from a synthetic record whose payload a `%P` count
+ *    consumed differently;
+ *  - **every RANGECMP variant is unpacked into `RANGE` rows** (b2: 638 RANGE in, 699 out; b5 adds
+ *    versions 1, 3 and 5) with a per-signal lock-time carry per log id, so the printed lock times
+ *    keep growing;
  *  - **text records are records**: the receiver's own ASCII logs mixed into the capture are
  *    re-rendered in capture order, one line per record in ASCII and one block per record in
  *    abbreviated ASCII — so the frame list, not `accepted`, drives both text branches.
@@ -30,7 +34,7 @@ import type { Frame, SbfFrame } from './framing.ts';
 import { encodeAbbrevLines, encodeBinaryCapture } from './abbrev-log.ts';
 import { encodeAsciiLog, latin1Bytes } from './ascii-log.ts';
 import { buildKml, type KmlPoint } from './kml.ts';
-import { buildRangePayload, decodeRangeCmp2, decodeRangeCmp4, lockTimeCarry } from './rangecmp.ts';
+import { buildRangePayload, decodeRangeCmp1, decodeRangeCmp2, decodeRangeCmp4, decodeRangeCmp5, lockTimeCarry } from './rangecmp.ts';
 import { buildRinex21Obs } from './rinex21.ts';
 import { buildRinex21GloNav, buildRinex21Nav } from './rinex21-nav.ts';
 import { buildRinex3Obs, type Rinex3Version } from './rinex3.ts';
@@ -56,14 +60,20 @@ export function isConvertFormat(value: unknown): value is ConvertFormat {
   return typeof value === 'string' && (CONVERT_FORMATS as readonly string[]).includes(value.toUpperCase());
 }
 
-/** `PASSTHROUGH`: the receiver's port-forwarding record. The suite parses it and writes nothing. */
+/** `PASSTHROUGH`: the receiver's port-forwarding record. Converted like any other log. */
 export const PASSTHROUGH_ID = 1342;
 
-/** Compressed observation logs Convert unpacks into ordinary `RANGE` rows. */
-const RANGECMP2_ID = 1273;
-const RANGECMP4_ID = 2050;
-const RANGECMP_IDS = [RANGECMP2_ID, RANGECMP4_ID];
-/** The ordinary observation log those two unpack into. */
+/**
+ * Compressed observation logs Convert unpacks into ordinary `RANGE` rows.
+ *
+ * All five compression versions are in the capture now (b5), and Convert maps every one of them the
+ * same way: the compressed record prints as the `RANGE` rows it unpacks into and the summary shows
+ * its own row as `N in → --`. RANGECMP3 has no table in the OEM7 manual, and its payload is byte for
+ * byte the RANGECMP4 payload (measured: 12/12 records in b5), so it decodes with the RANGECMP4
+ * reader.
+ */
+const RANGECMP_IDS = [140, 1273, 1734, 2050, 2537];
+/** The ordinary observation log those unpack into. */
 const RANGE_ID = 43;
 
 export interface ConvertOptions {
@@ -95,7 +105,7 @@ export interface ConvertOutcome {
   files: ConvertFile[];
   /** Every SBF record in capture order, `PASSTHROUGH` included, text records excluded. */
   all: SbfFrame[];
-  /** The `PASSTHROUGH` records, which no output and no summary count carries. */
+  /** The `PASSTHROUGH` records. They are converted like any other log — the field is bookkeeping. */
   passthrough: SbfFrame[];
   /** `all` without the passthrough records. */
   converted: SbfFrame[];
@@ -128,18 +138,26 @@ function isPassthrough(frame: SbfFrame): boolean {
 }
 
 function isRangeCmp(frame: SbfFrame): boolean {
-  return frame.header.messageId === RANGECMP2_ID || frame.header.messageId === RANGECMP4_ID;
+  return RANGECMP_IDS.includes(frame.header.messageId);
 }
 
-/** Unpack one RANGECMP2/4 block into the observations a `RANGE` payload is rebuilt from. */
-function unpackRangeCmp(
-  frame: SbfFrame,
-  carry: { cmp2: ReturnType<typeof lockTimeCarry>; cmp4: ReturnType<typeof lockTimeCarry> },
-) {
-  const epochMs = frame.header.milliseconds;
-  return frame.header.messageId === RANGECMP2_ID
-    ? decodeRangeCmp2(frame.payload, { epochMs, lockCarry: carry.cmp2 })
-    : decodeRangeCmp4(frame.payload, { epochMs, lockCarry: carry.cmp4 });
+/** Per-log-id lock-time carry state: each compression version keeps its own. */
+type RangeCarries = Map<number, ReturnType<typeof lockTimeCarry>>;
+
+/** Unpack one compressed block into the observations a `RANGE` payload is rebuilt from. */
+function unpackRangeCmp(frame: SbfFrame, carries: RangeCarries) {
+  const id = frame.header.messageId;
+  let carry = carries.get(id);
+  if (!carry) {
+    carry = lockTimeCarry();
+    carries.set(id, carry);
+  }
+  const options = { epochMs: frame.header.milliseconds, lockCarry: carry };
+  if (id === 140) return decodeRangeCmp1(frame.payload, options);
+  if (id === 1273) return decodeRangeCmp2(frame.payload, options);
+  // 1734 (RANGECMP3) and 2050 (RANGECMP4) are the same payload - see RANGECMP_IDS.
+  if (id === 1734 || id === 2050) return decodeRangeCmp4(frame.payload, options);
+  return decodeRangeCmp5(frame.payload, options);
 }
 
 /**
@@ -155,7 +173,7 @@ function textLinesFor(
   rendered: Map<number, number> = new Map(),
 ): string[] {
   const rangeLayout = tables.messages['43'];
-  const carry = { cmp2: lockTimeCarry(), cmp4: lockTimeCarry() };
+  const carries: RangeCarries = new Map();
   const lines: string[] = [];
   const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
   frames.forEach((frame, index) => {
@@ -167,12 +185,11 @@ function textLinesFor(
       return;
     }
     if (frame.kind !== 'sbf' || !frame.crcOk) return;
-    if (isPassthrough(frame)) return;
     if (isRangeCmp(frame)) {
       if (!rangeLayout) return;
       // `Convert` unpacks the compressed block into ordinary RANGE rows and lets the normal writer
       // print them: b2's 638 RANGE + 31 RANGECMP2 + 30 RANGECMP4 become 699 RANGE lines.
-      const observations = unpackRangeCmp(frame, carry);
+      const observations = unpackRangeCmp(frame, carries);
       const unpacked = { ...frame, payload: buildRangePayload(observations) };
       lines.push(...render(unpacked, rangeLayout));
       // One `RANGE` record per compressed record — its observations are that record's array, not
@@ -191,7 +208,7 @@ function textLinesFor(
   return lines;
 }
 
-/** `Summary_<name>.txt`'s table, restricted to records Convert maps (no text, no passthrough). */
+/** `Summary_<name>.txt`'s table. Text records are added by `countTextRecords`; `PASSTHROUGH` counts like any other log. */
 export function countLogs(
   converted: readonly SbfFrame[],
   tables: EdieTables,
@@ -315,8 +332,9 @@ export function convertFrames(frames: readonly Frame[], options: ConvertOptions)
   const base = captureBase(name);
 
   const all = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
+  // `PASSTHROUGH` is converted like every other log — b5's summary lists `1342 … 1 in / 1 out`.
   const passthrough = all.filter(isPassthrough);
-  const converted = all.filter((frame) => !isPassthrough(frame));
+  const converted = all;
   const accepted = converted.filter((frame) => frame.crcOk);
 
   const yy = String(at.getFullYear() % 100).padStart(2, '0');

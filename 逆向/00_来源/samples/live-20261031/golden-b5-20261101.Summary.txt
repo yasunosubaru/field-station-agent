@@ -1,0 +1,64 @@
+
+The following conversion was completed at 2026-11-01T12:46:10.713Z
+
+
+Input File was b5.sbf, 3357697 bytes from C:\Users\SunCh\AppData\Local\Temp\opencode\b5
+
+
+Converted files were output to C:\Users\SunCh\AppData\Local\Temp\opencode\b5\out-ascii\b5
+
+
+Logs were converted within the following time range from the input file 
+
+    GNSS Time:
+      Start time : 2443, 17113.2
+      Finish time: 2443, 17165.65
+
+    UTC Time:
+      Start time : 2026-11-01T04:45:13.200Z
+      Finish time: 2026-11-01T04:46:05.650Z
+
+    Total Duration: 00:00:52
+      
+
+The following 32 log(s) were converted successfully to ASCII 
+
+      ID | Name                          | Source #| Output #|
+---------+-------------------------------+---------+---------+
+    2520 | BDSBCNAV3RAWMESSAGE2          |       8 |       8 |
+    2305 | BESTDATUMINFO                 |       1 |       1 |
+    2302 | BESTGNSSDATUMINFO             |       1 |       1 |
+      42 | BESTPOS                       |      52 |      52 |
+    1148 | CHANCONFIGLIST                |       1 |       1 |
+      26 | CLOCKSTEERING                 |       1 |       1 |
+     317 | COMCONFIG                     |       1 |       1 |
+    2298 | DATUMTRANSFORMATIONS          |       1 |       1 |
+    1126 | GALINAVRAWEPHEMERIS           |     216 |     216 |
+    2296 | GEODETICDATUMS                |       1 |       1 |
+     963 | HWMONITOR                     |       5 |       5 |
+    1342 | PASSTHROUGH                   |       1 |       1 |
+     469 | PDPPOS                        |       9 |       9 |
+    1234 | PDPSATS                       |       9 |       9 |
+     470 | PDPVEL                        |       9 |       9 |
+     471 | PDPXYZ                        |       9 |       9 |
+      72 | PORTSTATS                     |       5 |       5 |
+    2300 | PSRDATUMINFO                  |       1 |       1 |
+      43 | RANGE                         |    1050 |    1112 |
+     140 | RANGECMP                      |      13 |       0 |
+    1273 | RANGECMP2                     |      13 |       0 |
+    1734 | RANGECMP3                     |      12 |       0 |
+    2050 | RANGECMP4                     |      12 |       0 |
+    2537 | RANGECMP5                     |      12 |       0 |
+     631 | RANGEGPSL1                    |      12 |      12 |
+      41 | RAWEPHEM                      |      16 |      16 |
+      93 | RXSTATUS                      |       2 |       2 |
+      94 | RXSTATUSEVENT                 |       2 |       2 |
+    1235 | SOFTLOADSTATUS                |       1 |       1 |
+     206 | VALIDMODELS                   |       1 |       1 |
+    1730 | VERIPOSSTATUS                 |       1 |       1 |
+       0 | UNKNOWN                       |     350 |       0 |
+
+
+
+
+

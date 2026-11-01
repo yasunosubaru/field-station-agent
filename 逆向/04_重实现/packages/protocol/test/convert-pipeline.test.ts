@@ -67,6 +67,7 @@ const ASCII: Case[] = [
   { format: 'ASCII', capture: join(live, 'b2-20261101.sbf'), golden: join(live, 'golden-b2-20261101.ASCII'), bytes: 4_931_973 },
   { format: 'ASCII', capture: join(live, 'b3-20261101.sbf'), golden: join(live, 'golden-b3-20261101.ASCII'), bytes: 6_137_463 },
   { format: 'ASCII', capture: join(live, 'b4-20261101.sbf'), golden: join(live, 'golden-b4-20261101.ASCII'), bytes: 7_646_463 },
+  { format: 'ASCII', capture: join(live, 'b5-20261101.sbf'), golden: join(live, 'golden-b5-20261101.ASCII'), bytes: 6_354_933 },
 ];
 
 const ABBREV: Case[] = [
@@ -74,6 +75,7 @@ const ABBREV: Case[] = [
   { format: 'ABBREV_ASCII', capture: join(live, 'b2-20261101.sbf'), golden: join(live, 'golden-b2-20261101.ABBREV_ASCII'), bytes: 5_723_813 },
   { format: 'ABBREV_ASCII', capture: join(live, 'b3-20261101.sbf'), golden: join(live, 'golden-b3-20261101.ABBREV_ASCII'), bytes: 7_116_268 },
   { format: 'ABBREV_ASCII', capture: join(live, 'b4-20261101.sbf'), golden: join(live, 'golden-b4-20261101.ABBREV_ASCII'), bytes: 8_725_124 },
+  { format: 'ABBREV_ASCII', capture: join(live, 'b5-20261101.sbf'), golden: join(live, 'golden-b5-20261101.ABBREV_ASCII'), bytes: 7_372_489 },
 ];
 
 const AT = new Date('2026-11-01T00:00:00');
@@ -134,7 +136,7 @@ test('the other three format families still reproduce their goldens', () => {
   }
 });
 
-test('PASSTHROUGH is dropped before every format and from the summary counts', () => {
+test('PASSTHROUGH is an ordinary converted log, in every format and in the summary', () => {
   const b2 = framesOf(join(live, 'b2-20261101.sbf'));
   const bestpos = b2.find((frame) => frame.kind === 'sbf' && frame.header.messageId === 42);
   assert.ok(bestpos && bestpos.kind === 'sbf');
@@ -145,13 +147,19 @@ test('PASSTHROUGH is dropped before every format and from the summary counts', (
   const frames: Frame[] = [...new SbfDeframer({ crcMode: 'validate' }).push(new Uint8Array(Buffer.concat([Buffer.from(bestpos.bytes), passthrough])))];
   const ascii = convertFrames(frames, { format: 'ASCII', at: AT, tables, name: 'pass.sbf' });
   assert.equal(ascii.all.length, 2);
-  assert.equal(ascii.passthrough.length, 1);
-  assert.equal(ascii.accepted.length, 1);
-  assert.equal(ascii.files[0].text, `${ascii.files[0].text!.split('\r\n')[0]}\r\n`, 'one line, the BESTPOS record');
-  assert.equal(ascii.counts.has(1342), false, 'not in the summary table');
+  assert.equal(ascii.passthrough.length, 1, 'still reported separately, for the CLI’s note');
+  assert.equal(ascii.accepted.length, 2);
+  // Rewriting a BESTPOS payload into a PASSTHROUGH leaves a `0` port and a `16` count, and the
+  // suite prints exactly this line for it (measured 2026-11-01 against the local suite, `-a` on this
+  // same synthetic two-record capture):
+  assert.deepEqual(ascii.files[0].text!.split('\r\n').slice(0, 2), [
+    '#BESTPOSA,SPECIAL_29,0,74.0,COARSESTEERING,2442,577759.000,03800800,cdba,18278;SOL_COMPUTED,SINGLE,30.53996833157,114.35280536862,65.1865,-14.4000,WGS84,0.9387,1.1604,2.8396,"",0.000,0.000,32,19,19,19,00,06,30,03*aee08f96',
+    '#PASSTHROUGHA,SPECIAL_29,0,74.0,COARSESTEERING,2442,577759.000,03800800,cdba,18278;NOPORT,16,\\xf8\\xf8T];\\x8a>@\\x06\\x04\\xf8\\\\\\x94\\x96\\\\@*90d562c3',
+  ]);
+  assert.equal(ascii.counts.get(1342)?.output, 1, 'the summary counts it');
 
   const binary = convertFrames(frames, { format: 'BINARY', at: AT, tables, name: 'pass.sbf' });
-  assert.deepEqual(Buffer.from(binary.files[0].bytes), Buffer.from(bestpos.bytes), 'BINARY copies the BESTPOS record only');
+  assert.equal(binary.files[0].bytes.length, bestpos.bytes.length * 2, 'BINARY copies both records');
 });
 
 test('RANGECMP2/4 are unpacked into RANGE rows (638 in, 699 out)', () => {

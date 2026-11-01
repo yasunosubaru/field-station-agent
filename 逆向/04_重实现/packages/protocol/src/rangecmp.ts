@@ -1,15 +1,30 @@
 /**
- * RANGECMP2 / RANGECMP4 → RANGE field rows.
+ * RANGECMP (v1/v2/v3/v4/v5) → RANGE field rows.
  *
  * Convert reads a compressed range log and writes it out as an ordinary `RANGEA` line, so the
  * compressed block has to be unpacked into exactly the ten fields the `RANGE` layout declares
  * (`sv_prn / sv_freq / psr / sd_psr / adr / sd_adr / dop / C_No / lock_time / c_status`).
  *
+ * All five compression versions reach this file and **none of them prints under its own name** —
+ * b5's summary reads `RANGE 1050 → 1112` with `RANGECMP…RANGECMP5` each `N → 0`. They differ in how
+ * much work that takes:
+ *
+ *  - `RANGECMP` (v1, id 140, §3.160 Table 186/187) is 24-byte fixed records that already carry all
+ *    ten fields, `c_status` included — `decodeRangeCmp1`;
+ *  - `RANGECMP2` (1273, §3.161 Table 188-193) is per-satellite blocks with per-signal deltas —
+ *    `decodeRangeCmp2`;
+ *  - `RANGECMP3` (1734) has **no table in the OEM7 manual** and its payload is byte for byte the
+ *    RANGECMP4 payload (measured: 12/12 records of b5), so it decodes with `decodeRangeCmp4`;
+ *  - `RANGECMP4` (2050, §3.162 Table 194-204) adds system/satellite/signal masks and differential
+ *    blocks — `decodeRangeCmp4`;
+ *  - `RANGECMP5` (2537, §3.163 Table 205-213) is a separate design with 5-bit standard deviations
+ *    and Doppler in m/s — `decodeRangeCmp5`.
+ *
  * Ground truth: `samples/live-20261031/b2-20261101.sbf` (31 RANGECMP2 + 30 RANGECMP4 records) and
  * `golden-b2-20261101.ASCII`, which Convert produced from it. Every rule below was measured against
  * the 61 `RANGEA` lines Convert wrote for those records (the capture holds 699 = 638 `RANGE` + 31 +
  * 30), which pins down not just the scaling factors but the exact floating-point path and the field
- * storage width (see "Numerics" below).
+ * storage width (see "Numerics" below). b5 then added v1, v3 and v5 on the same terms.
  *
  * Format: `OEM7-Commands-and-Logs-Reference-Manual.txt`
  *  - §3.161 RANGECMP2 — Table 188 (satellite block), Table 189 (signal block), Table 190/191
@@ -94,8 +109,14 @@ const ADR_STD_CMP2 = [0.00391, 0.00521, 0.00696, 0.00929, 0.01239, 0.01654, 0.02
  * and 0.02947 prints 0.029); indices 1-4 and 6 agree with Table 203 as printed. Note that this is
  * *not* the RANGECMP2 table — the same index 5 prints `0.017` from a RANGECMP2 record in the same
  * capture, so the two logs really do carry two tables.
+ *
+ * Index 0 is the third measured entry and the only one that is *below* Table 203's bound: b5 prints
+ * `0.003` for it (one observation, in both the RANGECMP3 and RANGECMP4 logs of epoch 17142), where
+ * the bound 0.0039 would print `0.004`. Indices 1 and 2 in the same records print `0.005` and
+ * `0.007`, i.e. the bound itself, so the suite's first entry is a value of its own and not a
+ * different rounding rule.
  */
-const ADR_STD_CMP4 = [0.00391, 0.00521, 0.00696, 0.00929, 0.01239, 0.0165, 0.02208, 0.02947, 0.03933, 0.05249, 0.07006, 0.0935, 0.1248, 0.16656, 0.2223];
+const ADR_STD_CMP4 = [0.003, 0.00521, 0.00696, 0.00929, 0.01239, 0.0165, 0.02208, 0.02947, 0.03933, 0.05249, 0.07006, 0.0935, 0.1248, 0.16656, 0.2223];
 
 /** Table 202 (`Lock time`), indicator → minimum lock time in ms; RANGECMP4 only. */
 const LOCK_MIN_MS = [0, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144];
@@ -617,6 +638,256 @@ export function decodeRangeCmp4(bytes: Uint8Array, options: RangeCmpOptions = {}
           C_No: cmp4CNo(cnoRaw),
           lock_time: Math.fround(phaseLock ? lockMs / 1000 : 0),
           // RANGECMP4 has no SV channel (bit 5-9 reports 0) and no correlator type (bits 13-15 = 0).
+          c_status: statusWord(info.status, 0, primary, phaseLock, parity, codeLock, 0, signal.status, halfCycle),
+        });
+        primary = false;
+      }
+    }
+  }
+  return rows;
+}
+
+/** Table 187 (`StdDev-PSR values`, RANGECMP only), code → metres. */
+const PSR_STD_CMP1 = [0.05, 0.075, 0.113, 0.169, 0.253, 0.38, 0.57, 0.854, 1.281, 2.375, 4.75, 9.5, 19, 38, 76, 152];
+
+/**
+ * Table 182 `Signal type` code → the signal, per system.
+ *
+ * RANGECMP2/4 carry a *compressed* signal code that has to be translated (Table 193 / Table 201);
+ * RANGECMP carries the Table 182 code itself in its channel status word, so this is the same table
+ * read the other way round. Every code is unique inside its system, which is what makes the lookup
+ * unambiguous.
+ */
+const SIGNAL_BY_STATUS: Record<string, Record<number, SignalInfo>> = (() => {
+  const byStatus: Record<string, Record<number, SignalInfo>> = {};
+  for (const [system, signals] of Object.entries(SIGNALS)) {
+    const map: Record<number, SignalInfo> = {};
+    for (const info of Object.values(signals)) map[info.status] = info;
+    byStatus[system] = map;
+  }
+  return byStatus;
+})();
+
+/** Table 182 bit 16-19 (`Satellite system`) → the `SYSTEMS` entry whose name indexes `SIGNALS`. */
+const SYSTEM_BY_STATUS: Record<number, SystemInfo> = (() => {
+  const byStatus: Record<number, SystemInfo> = {};
+  for (const info of Object.values(SYSTEMS)) byStatus[info.status] = info;
+  return byStatus;
+})();
+
+/** Table 186 `ADR` roll modulus: `MAX_VALUE = 8388608`, and the rolled field is 32 bits wide. */
+const CMP1_ADR_MAX = 8388608;
+
+/**
+ * Unpack one `RANGECMP` (version 1, message id 140) payload into RANGE observations.
+ *
+ * The log is the oldest of the five: a `ULONG` observation count followed by that many fixed
+ * **24-byte** records (Table 186), each carrying all ten RANGE fields already — no per-system
+ * blocks, no signal masks, no differential blocks. So unlike RANGECMP2/4 nothing has to be
+ * reconstructed except two derived quantities:
+ *
+ *  - **`sd_psr`** comes from Table 187 (12 m steps at the top, 0.05 m at the bottom), not from
+ *    Table 190/204, which is why the same observation prints `0.050` here and `0.045` for
+ *    RANGECMP2 in the same capture;
+ *  - **`adr`** is the 32-bit accumulation in cycles with its roll count restored. Table 186 gives
+ *    the recipe (`ADR_ROLLS = (PSR / WAVELENGTH + ADR) / MAX_VALUE`, rounded away from zero, then
+ *    `CORRECTED_ADR = ADR - MAX_VALUE × ADR_ROLLS`); the wavelength is the *signal's own* one, and
+ *    getting that wrong is what makes an L2 observation look like a 20 000 000-cycle discontinuity
+ *    (b5: 13 records, 897 observations, every one reproduces its golden value).
+ *
+ * `c_status` is the record's own 32-bit channel status word, verbatim — the log already stores the
+ * Table 182 word, so this decoder invents none of the bits that RANGECMP2/4 have to synthesise.
+ */
+export function decodeRangeCmp1(bytes: Uint8Array, options: RangeCmpOptions = {}): RangeObservation[] {
+  if (bytes.length < 4) return [];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // Unlike every other RANGECMP version this header is the **observation count**, not a byte count
+  // (Table 186 field 2: `Ulong`, "number of satellite observations with information to follow").
+  const declared = view.getUint32(0, true);
+  const body = bytes.subarray(4, Math.min(bytes.length, 4 + declared * 24));
+  const reader = new BitReader(body);
+  const rows: RangeObservation[] = [];
+  const epochMs = options.epochMs;
+
+  while (reader.bitsLeft >= 192) {
+    const status = reader.read(32);
+    const dopRaw = reader.signed(28);
+    const psrRaw = reader.read(36);
+    const adrRaw = reader.signed(32);
+    const psrStd = reader.read(4);
+    const adrStd = reader.read(4);
+    const prn = reader.read(8);
+    const lockRaw = reader.read(21);
+    const cnoRaw = reader.read(5);
+    const glonass = reader.read(6);
+    reader.read(16); // reserved
+
+    const system = SYSTEM_BY_STATUS[(status >>> 16) & 0xf];
+    const signal = system ? SIGNAL_BY_STATUS[system.name]?.[(status >>> 21) & 0x1f] : undefined;
+    if (!signal) {
+      // Without the signal's carrier neither the ADR roll count nor anything else can be scaled;
+      // the record is 24 bytes wide, so the next one still starts where it says it does.
+      continue;
+    }
+    const freq = typeof signal.freq === 'function' ? signal.freq(glonass) : signal.freq;
+    const wavelength = C / freq;
+
+    const psr = psrRaw / 128;
+    const adr = adrRaw / 256 - CMP1_ADR_MAX * Math.round((psr / wavelength + adrRaw / 256) / CMP1_ADR_MAX);
+
+    rows.push({
+      sv_prn: prn,
+      sv_freq: glonass,
+      psr,
+      sd_psr: Math.fround(PSR_STD_CMP1[psrStd] ?? PSR_STD_CMP1[15]),
+      adr,
+      // Table 186: `StdDev-ADR` = (n+1)/512 cycles.
+      sd_adr: Math.fround((adrStd + 1) / 512),
+      dop: Math.fround(dopRaw / 256),
+      C_No: Math.fround(20 + cnoRaw),
+      // 21 bits of 1/32 s (Table 186 caps the field at 2 097 151 = 65 535.96875 s). A saturated
+      // value is carried forward exactly like RANGECMP2's, so the printed lock times keep growing.
+      lock_time: Math.fround(carriedLock(options.lockCarry, `cmp1:${status & 0x1f}:${(status >>> 21) & 0x1f}`, lockRaw, lockRaw * 31.25, epochMs) / 1000),
+      c_status: status,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Table 212 (`Phaserange standard deviation`, RANGECMP5), 5-bit index → cycles.
+ *
+ * The table prints four-decimal upper bounds of `(1/256)·exp(x/(3.65·√3))`, which is what makes
+ * b5 print `0.014` for index 8 (0.01385) where the same observation arrives from RANGECMP4 as
+ * `0.016` — the two logs carry two different standard-deviation scales, not two indices of one.
+ */
+const ADR_STD_CMP5 = Array.from({ length: 32 }, (_, x) => (1 / 256) * Math.exp(x / (3.65 * Math.sqrt(3))));
+
+/**
+ * Table 213 (`Pseudorange standard deviation`, RANGECMP5), 5-bit index → metres.
+ *
+ * `0.020·exp(0.4x)` up to 14, `5.409·exp(0.24(x−14))` above it; the first fifteen entries are the
+ * same numbers as Table 190/204 (`PSR_STD`), which is why an observation's `sd_psr` does not change
+ * between compression versions while its `sd_adr` does.
+ */
+const PSR_STD_CMP5 = Array.from({ length: 32 }, (_, x) => (x <= 14 ? 0.02 * Math.exp(0.4 * x) : 5.409 * Math.exp(0.24 * (x - 14))));
+
+/** Sentinel of "not locked" in a RANGECMP5 block (Tables 208/209: `-2^n − 1`). */
+const CMP5_NO_PSR = 0x1fffffffffn;
+const CMP5_NO_PHASE = -(2 ** 23 - 1);
+const CMP5_NO_PSR_DIFF = -(2 ** 20 - 1);
+const CMP5_NO_PHASE_DIFF = -(2 ** 23 - 1);
+const CMP5_NO_DOP = -(2 ** 27 - 1);
+const CMP5_NO_DOP_DIFF = -(2 ** 15 - 1);
+
+/**
+ * Unpack one `RANGECMP5` payload into RANGE observations (§3.163, message id 2537).
+ *
+ * Structure (Tables 205-210): a 16-bit `GNSS` header naming the systems present, then one block per
+ * system in bit order — a 64-bit satellite mask, a 16-bit signal mask, and the `m × n` "included
+ * signals" matrix — and only then the measurements: one 4-bit header per satellite (9 bits for
+ * GLONASS, whose slot number rides there), followed by one block per signal set in that satellite's
+ * row. The **first** signal of a satellite carries the primary block of Table 208 (absolute
+ * pseudorange, phase as a 23-bit difference from it, Doppler); the rest carry Table 209, which is
+ * differential against the same satellite's primary value.
+ *
+ * Units differ from the other compressed logs, and the printed RANGE fields are what proves it:
+ * Doppler is in **m/s** (0.0001) rather than Hz, the phaserange difference is in **metres** (0.0001)
+ * and the C/No step is 0.05 dB-Hz like RANGECMP4's. RANGE wants Hz and cycles, so this routine
+ * divides by the signal's own wavelength exactly as the RANGECMP2/4 paths do; all 12 records of b5
+ * (828 observations) reproduce the golden `RANGE` rows byte for byte, including the 46 whose
+ * Doppler lands on a printing tie.
+ */
+export function decodeRangeCmp5(bytes: Uint8Array, options: RangeCmpOptions = {}): RangeObservation[] {
+  if (bytes.length < 4) return [];
+  const declared = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true);
+  const body = bytes.subarray(4, Math.min(bytes.length, 4 + declared));
+  const reader = new BitReader(body);
+  const rows: RangeObservation[] = [];
+  const epochMs = options.epochMs;
+
+  const gnss = reader.read(16);
+  for (let systemBit = 0; systemBit < 16; systemBit++) {
+    if (!((gnss >>> systemBit) & 1)) continue;
+    const info = SYSTEMS[systemBit];
+    if (!info) break;
+
+    const satellites = reader.wide(64);
+    const signalMask = reader.read(16);
+    const prns: number[] = [];
+    for (let i = 0; i < 64; i++) if ((satellites >> BigInt(i)) & 1n) prns.push(cmp4Prn(info.name, i));
+    const signalBits: number[] = [];
+    for (let i = 1; i < 16; i++) if ((signalMask >>> i) & 1) signalBits.push(i);
+    const included = reader.wide(prns.length * signalBits.length);
+    const isGlonass = info.name === 'GLONASS';
+
+    for (let row = 0; row < prns.length; row++) {
+      reader.read(1); // Data format flag (1 = reserved)
+      reader.read(3); // Reserved
+      const glonass = isGlonass ? reader.read(5) : 0;
+
+      let primaryPsr = 0;
+      let primaryDop = 0;
+      let primary = true;
+      for (let column = 0; column < signalBits.length; column++) {
+        if (!((included >> BigInt(row * signalBits.length + column)) & 1n)) continue;
+        const signalType = CMP4_SIGNAL_BITS[info.name]?.[signalBits[column]];
+        const signal = signalType === undefined ? undefined : SIGNALS[info.name]?.[signalType];
+        if (!signal) return rows;
+        const freq = typeof signal.freq === 'function' ? signal.freq(glonass) : signal.freq;
+        const wavelength = C / freq;
+
+        const parity = reader.read(1) === 1;
+        const halfCycle = reader.read(1) === 1;
+        const quality = reader.read(11);
+        const lockIndex = reader.read(4);
+        const psrStd = reader.read(5);
+        const adrStd = reader.read(5);
+
+        let psr: number;
+        let phase: number;
+        let dop: number;
+        let codeLock = true;
+        let phaseLock = true;
+        if (primary) {
+          const psrRaw = reader.wide(37);
+          codeLock = psrRaw !== CMP5_NO_PSR;
+          psr = Number(psrRaw) * 0.0005;
+          const phaseDiff = reader.signed(23);
+          phaseLock = phaseDiff !== CMP5_NO_PHASE;
+          phase = psr + phaseDiff * 0.0001;
+          const dopRaw = reader.signed(28);
+          dop = dopRaw === CMP5_NO_DOP ? 0 : dopRaw * 0.0001;
+          primaryPsr = psr;
+          primaryDop = dop;
+        } else {
+          const psrDiff = reader.signed(20);
+          codeLock = psrDiff !== CMP5_NO_PSR_DIFF;
+          psr = primaryPsr + psrDiff * 0.0005;
+          const phaseDiff = reader.signed(23);
+          phaseLock = phaseDiff !== CMP5_NO_PHASE_DIFF;
+          phase = psr + phaseDiff * 0.0001;
+          const dopDiff = reader.signed(16);
+          // Table 209 says 0.0002 m/s per count (±6.554 over 16 bits); the wire and the suite use
+          // 0.0001 — measured on 460 secondary rows in b5, where 0.0002 puts 424 of them off by
+          // 1–20 counts' worth (0.002–0.13 Hz) and 0.0001 reproduces every one of them.
+          dop = primaryDop + dopDiff * 0.0001;
+        }
+
+        const lockKey = `cmp5:${info.name}:${prns[row]}:${signalType}`;
+        const lockMs = carriedLock(options.lockCarry, lockKey, lockIndex, LOCK_MIN_MS[lockIndex], epochMs);
+        rows.push({
+          sv_prn: prns[row],
+          sv_freq: isGlonass ? glonass : 0,
+          psr,
+          sd_psr: Math.fround(PSR_STD_CMP5[psrStd] ?? PSR_STD_CMP5[30]),
+          // Table 212 index 31 is documented as "> 0.44940" (i.e. open-ended); the formula below is
+          // what the other 31 indices are, and it is the only value the sample never reaches.
+          adr: -(phase / wavelength),
+          sd_adr: Math.fround(phaseLock ? (ADR_STD_CMP5[adrStd] ?? ADR_STD_CMP5[31]) : 0),
+          dop: Math.fround(-(dop / wavelength)),
+          C_No: cmp4CNo(quality),
+          lock_time: Math.fround(phaseLock ? lockMs / 1000 : 0),
           c_status: statusWord(info.status, 0, primary, phaseLock, parity, codeLock, 0, signal.status, halfCycle),
         });
         primary = false;
