@@ -38,7 +38,7 @@ import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, summarizeLogs } from './logs.ts';
 import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
 import { GRAPH_CSV_DIR, graphData, listGraphCsv, readGraphCsv } from './graphcsv.ts';
-import { graphPdfReport } from './pdf.ts';
+import { graphPdfOrder, graphPdfReport } from './pdf.ts';
 import {
   HttpError,
   SAMPLES_DIR,
@@ -474,18 +474,54 @@ function handleGraphData(url: URL, res: ServerResponse, method: string): void {
 }
 
 /**
- * `GET /api/graph/pdf[?file=<one csv>]` — the document Graph's *Export → PDF* downloads.
+ * `GET /api/graph/pdf[?project=<name>][?file=<one csv>]` — what Graph's *Export → PDF* downloads.
  *
- * Built server-side from the CSVs the project already exported (all twelve by default, one with
- * `?file=`), so the bytes are a real PDF 1.4 rather than a print dialog: see `pdf.ts`. The panel
- * keeps its `window.print()` fallback for now, because `web/panels/graph.js` is owned by another
- * task; pointing its PDF entry at this URL is a one-line change.
+ * Built server-side from the CSVs that project already exported, so the bytes are a real PDF 1.4
+ * rather than a print dialog: see `pdf.ts`.
+ *
+ *   (nothing)   every CSV in the export directory, in the catalogue's tab order
+ *   ?project=   only the CSVs whose `#Project Name:` comment is that project — 404 (naming the
+ *               projects that do exist) when none is, so a typo cannot silently download a report
+ *               of somebody else's data
+ *   ?file=      one chart, exactly as the panel's single-graph export wants it
+ *
+ * `file` wins over `project` because it is the narrower request. Page order comes from
+ * `graphPdfOrder`, so page 2 is `Position Type` (the original's first PVT chart) rather than the
+ * alphabetically-first `2D Trajectory`.
  */
+function projectOfCsv(data: { comments: { projectName: string } }): string {
+  return (data.comments.projectName || '').trim();
+}
+
 function handleGraphPdf(url: URL, res: ServerResponse, method: string): void {
   const only = url.searchParams.get('file');
-  const names = only ? [only] : listGraphCsv().map((entry) => entry.name);
-  if (names.length === 0) throw new HttpError(404, '没有可导出的 CSV');
-  const sources = names.map((name) => {
+  const project = url.searchParams.get('project');
+  const known = listGraphCsv();
+  if (known.length === 0) throw new HttpError(404, '没有可导出的 CSV');
+
+  let names: string[];
+  if (only) {
+    names = [only];
+  } else if (project !== null) {
+    const wanted = project.trim();
+    if (!wanted || wanted.length > 200 || wanted.includes('\0')) throw new HttpError(400, 'project 不合法');
+    let available: string[] = [];
+    names = [];
+    for (const entry of known) {
+      // `readGraphCsv` caches by path+size+mtime, so reading every file here costs one stat each.
+      const data = readGraphCsv(entry.name);
+      const name = projectOfCsv(data);
+      if (name && !available.includes(name)) available.push(name);
+      if (name.toLowerCase() === wanted.toLowerCase()) names.push(entry.name);
+    }
+    if (names.length === 0) {
+      throw new HttpError(404, `没有工程 ${wanted} 导出的 CSV（现有：${available.join('、') || '无'}）`);
+    }
+  } else {
+    names = known.map((entry) => entry.name);
+  }
+
+  const sources = graphPdfOrder(names).map((name) => {
     const data = readGraphCsv(name);
     return { name: data.name, text: data.text };
   });
@@ -496,6 +532,7 @@ function handleGraphPdf(url: URL, res: ServerResponse, method: string): void {
     'X-PDF-Pages': String(report.pages),
     'X-PDF-Charts': String(report.charts),
     'X-PDF-Bytes': String(report.bytes.byteLength),
+    'X-PDF-Project': report.project,
   }, method);
 }
 

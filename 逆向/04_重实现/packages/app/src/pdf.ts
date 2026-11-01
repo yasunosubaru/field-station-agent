@@ -4,17 +4,31 @@
  * The page used to fall back to `window.print()` inside a hidden iframe: no PDF library exists in
  * this repository (the npm registry is unreachable), and printing is honest but it leaves the format
  * to the browser's print dialog. This module writes the document itself, so the button can download
- * a real `.pdf` byte-for-byte reproducible from the CSVs:
+ * a real `.pdf` byte-for-byte reproducible from the CSVs.
+ *
+ * The layout follows the report Graph itself exported — `逆向/00_来源/samples/graph/export/clean.pdf`
+ * (8 pages, A4 landscape, printed through Chromium), measured field by field with `pdftotext -layout`:
  *
  * ```
- * page 1      <project> Report
- *             Report Information   Generated Date / Charts / Pages
- *             Project Information  the six comment fields, same spellings as the CSVs
- *             Contents             one row per CSV: chart, rows, columns, series, min, max
- * page 2..13  one page per CSV
- *             title and caption, a plot with four gridlines and the series as one polyline,
- *             and the first rows of the file as a table
+ * every page   header  `Graph` left, `<project> · <generated> · GPS <start> – <end>` right
+ *              footer  `source: <file>.csv` left, `<page>/<pages>` right
+ * page 1       `<project> Report` centred
+ *              Report Information   Generated Date
+ *              Project Information  the six comment fields, same spellings as the CSVs
+ *              Chart Summary        one row per CSV: chart, section, rows, series, min, max, mean, page
+ * page 2..13   one page per CSV (the original groups two charts on a page; one per page here keeps
+ *              every chart legible and the page count equal to 1 + the number of CSVs):
+ *              section heading on the first page of a section (`PVT`, `Tracking & Measurements`,
+ *              `Receiver Status` — the original's own tab names), chart title, the y-axis unit
+ *              rotated beside the axis, five value ticks, GPS-week x ticks, the series as
+ *              polylines and the legend the original prints under the axis
  * ```
+ *
+ * What is **not** copied, because the data is not here: the original's `Message Summary` table
+ * (BESTPOS 5, RANGE 100 …) needs `DataSummary.json`, which no route serves, so inventing counts
+ * would be dishonest; its legend chips (`All`, `GPS L1`) are interactive filters, and a static PDF
+ * has nothing to filter. The charts are redrawn from the CSVs — nothing is a screenshot, and no
+ * number is made up: a chart whose column cannot be read says so on the page.
  *
  * Everything is ASCII and uncompressed: the object table is written in a fixed order, every string
  * can be found with a plain text search, and the `xref` holds exact byte offsets — the test reads
@@ -22,21 +36,23 @@
  * `Helvetica` / `Helvetica-Bold` referenced by name (`/WinAnsiEncoding`), never embedded; a
  * character outside printable ASCII is written as `?` because such a face cannot draw it.
  *
- * What this is *not*: a pixel copy of Graph's `clean.pdf` (348 419 B, printed through Chromium). The
- * layout is ours; the numbers are the same ones the CSV files and `packages/graph`'s HTML report
- * carry. `packages/graph/src/pdf.ts` is the other writer in this repo and is richer (it also draws
- * every column of a wide table); this one exists so the **app** can serve a download without
- * depending on that package, which is being rewritten in parallel.
+ * `packages/graph/src/pdf.ts` is the other writer in this repo and is richer (it also draws every
+ * column of a wide table); this one exists so the **app** can serve a download without depending on
+ * that package, which is being rewritten in parallel.
  */
 
 /** A4 landscape, in points — the page box the suite's own report was printed at. */
 export const PDF_PAGE = { width: 842, height: 595 } as const;
 
-/** Rows of a CSV printed under its chart. */
-export const PDF_ROWS = 8;
+/**
+ * Points drawn per page. A wide CSV (`GNSS Signal Strength.csv` has 74 numeric columns) would need
+ * ~7 300 vertices for 99 rows; above this budget every series is decimated by the same stride, so a
+ * page stays a download and not a 300 KB blob.
+ */
+export const PDF_POINT_BUDGET = 2_400;
 
-/** Points drawn per series; longer files are decimated (every n-th row, last row kept). */
-export const PDF_MAX_POINTS = 600;
+/** Legend entries per chart; the original's own legend prints twelve then wraps. */
+export const PDF_LEGEND_MAX = 12;
 
 export interface GraphPdfSource {
   /** Bare file name as exported by Graph, e.g. `Height.csv`. */
@@ -53,8 +69,79 @@ export interface GraphPdfOptions {
   generatedAt?: string;
   /** Heading; default `<project> Report`. */
   title?: string;
-  /** Rows printed under each chart (default {@link PDF_ROWS}). */
-  rows?: number;
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Chart catalogue — the titles, tab names and y-axis units of `06_Graph应用-附录/C_图表目录.json`,
+ * verbatim, keyed by the CSV the tile was exported as. `web/panels/graph.js` carries the same list
+ * for the on-screen tiles; this copy keeps the server free of the browser bundle.
+ * ---------------------------------------------------------------------------------------------- */
+
+type ChartKind = 'line' | 'category' | 'geomap' | 'interval';
+
+interface ChartSpec {
+  file: string;
+  title: string;
+  /** The original's tab, printed as a heading above the first chart of the section. */
+  section: string;
+  kind: ChartKind;
+  /** `yAxisUnits`, verbatim; empty when the catalog has none. */
+  units?: string;
+  /** `minYZero`, verbatim. */
+  minYZero?: boolean;
+  xColumn?: string;
+  yColumn?: string;
+}
+
+const PVT = 'PVT';
+const TRACKING = 'Tracking & Measurements';
+const RECEIVER = 'Receiver Status';
+
+export const CHART_SPECS: readonly ChartSpec[] = [
+  { file: 'Position Type.csv', title: 'Position Type', section: PVT, kind: 'category' },
+  { file: 'Position Status.csv', title: 'Position Status', section: PVT, kind: 'category' },
+  { file: 'Position SD.csv', title: 'Position SD', section: PVT, kind: 'line', units: '(m)' },
+  { file: 'Solution Statistics.csv', title: 'Solution Statistics', section: PVT, kind: 'line' },
+  {
+    file: '2D Trajectory.csv', title: '2D Trajectory', section: PVT, kind: 'geomap',
+    xColumn: 'Longitude', yColumn: 'Latitude',
+  },
+  { file: 'Height.csv', title: 'Height', section: PVT, kind: 'line', units: '(m)' },
+  {
+    file: 'GNSS Signal Strength.csv', title: 'GNSS Signal Strength', section: TRACKING, kind: 'line',
+    units: 'C/No (dB-Hz)',
+  },
+  {
+    file: 'Satellites and Signals.csv', title: 'Satellites and Signals', section: TRACKING, kind: 'line',
+    minYZero: true,
+  },
+  { file: 'Tracking Time.csv', title: 'Tracking Time', section: TRACKING, kind: 'line', units: '(s)', minYZero: true },
+  { file: 'Receiver Status.csv', title: 'Receiver Status', section: RECEIVER, kind: 'interval' },
+  { file: 'CPU Usage.csv', title: 'CPU Usage', section: RECEIVER, kind: 'line', units: '(%)', minYZero: true },
+  { file: 'HW Monitor Status.csv', title: 'HW Monitor Status', section: RECEIVER, kind: 'line', minYZero: true },
+];
+
+/** The catalogue entry for a CSV, or a plain line chart for a file the catalogue does not know. */
+function specOf(name: string): ChartSpec {
+  const hit = CHART_SPECS.find((entry) => entry.file === name);
+  if (hit) return hit;
+  return { file: name, title: name.replace(/\.csv$/i, ''), section: '', kind: 'line' };
+}
+
+/**
+ * Document order: the catalogue's order (PVT, Tracking & Measurements, Receiver Status — the
+ * original's tabs), then anything unknown, alphabetically. The server maps its directory listing
+ * through this so page 2 is `Position Type` like the original's, not `2D Trajectory`.
+ */
+export function graphPdfOrder(names: readonly string[]): string[] {
+  const rank = new Map<string, number>();
+  CHART_SPECS.forEach((spec, at) => rank.set(spec.file, at));
+  return [...names].sort((a, b) => {
+    const left = rank.has(a) ? rank.get(a)! : Number.MAX_SAFE_INTEGER;
+    const right = rank.has(b) ? rank.get(b)! : Number.MAX_SAFE_INTEGER;
+    if (left !== right) return left - right;
+    return a.localeCompare(b, 'en');
+  });
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -63,10 +150,11 @@ export interface GraphPdfOptions {
 
 interface CsvFile {
   name: string;
-  chart: string;
+  title: string;
   comments: Record<string, string>;
   columns: string[];
   rows: string[][];
+  timeIndex: number;
 }
 
 function parseCsvSource(source: GraphPdfSource): CsvFile {
@@ -89,26 +177,20 @@ function parseCsvSource(source: GraphPdfSource): CsvFile {
       rows.push(cells);
     }
   }
-  return { name: source.name, chart: source.name.replace(/\.csv$/i, ''), comments, columns, rows };
+  return {
+    name: source.name,
+    title: source.name.replace(/\.csv$/i, ''),
+    comments,
+    columns,
+    rows,
+    timeIndex: columns.findIndex((column) => /timestamp/i.test(column)),
+  };
 }
 
 /** `"2442  463098.000"` → absolute GPS seconds, or `null`. */
 function gpsSeconds(cell: string): number | null {
   const match = /^\s*(\d{3,5})\s+([0-9]+(?:\.[0-9]+)?)\s*$/.exec(cell ?? '');
   return match ? Number(match[1]) * 604_800 + Number(match[2]) : null;
-}
-
-interface Series {
-  label: string;
-  /** `[x, y]` pairs; x is seconds (time files) or the row index. */
-  points: Array<[number, number]>;
-  xFrom: string;
-  xTo: string;
-  min: number;
-  max: number;
-  mean: number;
-  first: number;
-  last: number;
 }
 
 function isNumericColumn(rows: string[][], index: number): boolean {
@@ -122,73 +204,52 @@ function isNumericColumn(rows: string[][], index: number): boolean {
   return seen > 0;
 }
 
-/** First numeric column that is not the timestamp, as a plottable series. */
-function seriesOf(file: CsvFile): Series | null {
-  const timeIndex = file.columns.findIndex((column) => /timestamp/i.test(column));
-  // A condition table (`name,start,end,value`, `Receiver Status.csv`) has no timestamp; there the
-  // `value` column is the measurement and the row index is the axis.
-  const preferred = timeIndex < 0 ? file.columns.findIndex((column) => /^value$/i.test(column)) : -1;
-  const index = preferred >= 0
-    ? preferred
-    : file.columns.findIndex((_column, at) => at !== timeIndex && isNumericColumn(file.rows, at));
-  if (index < 0) return null;
-
-  const times = timeIndex >= 0
-    ? file.rows.map((row) => gpsSeconds(row[timeIndex] ?? '')).filter((value): value is number => value !== null)
-    : [];
-  const timed = timeIndex >= 0 && times.length === file.rows.length && times.length > 0;
-  const base = timed ? times[0] : 0;
-
-  const points: Array<[number, number]> = [];
-  file.rows.forEach((row, at) => {
-    const value = Number(row[index] ?? '');
-    if (!Number.isFinite(value)) return;
-    points.push([timed ? times[at] - base : at, value]);
-  });
-  if (!points.length) return null;
-
-  const values = points.map(([, y]) => y);
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  for (const value of values) {
-    if (value < min) min = value;
-    if (value > max) max = value;
-    sum += value;
+/** `{ kind: 'time' }` when every row carries a GPS timestamp, else the row index. */
+function xAxis(file: CsvFile): { kind: 'time' | 'index'; values: number[]; base: number } {
+  if (file.timeIndex >= 0) {
+    const times = file.rows.map((row) => gpsSeconds(row[file.timeIndex] ?? ''));
+    if (times.length === file.rows.length && times.length > 0 && times.every((value) => value !== null)) {
+      const absolute = times as number[];
+      const base = absolute[0];
+      return { kind: 'time', values: absolute.map((value) => value - base), base };
+    }
   }
-  const week = timed ? Math.floor(base / 604_800) : 0;
-  const label = timed
-    ? (seconds: number) => `W${week} ${seconds.toFixed(3)}`
-    : (seconds: number) => `#${Math.round(seconds) + 1}`;
-  return {
-    label: file.columns[index] ?? '',
-    points,
-    xFrom: label(0),
-    xTo: label(timed ? points[points.length - 1][0] : points.length - 1),
-    min,
-    max,
-    mean: sum / values.length,
-    first: values[0],
-    last: values[values.length - 1],
-  };
+  return { kind: 'index', values: file.rows.map((_row, at) => at), base: 0 };
 }
 
 /* ------------------------------------------------------------------------------------------------
  * Content-stream primitives
  * ---------------------------------------------------------------------------------------------- */
 
-const INK = '0.12 0.13 0.15';
+const INK = '0.11 0.12 0.13';
 const MUTED = '0.42 0.46 0.5';
 const GRID = '0.9 0.91 0.93';
 const AXIS = '0.6 0.64 0.69';
 const RULE = '0 0.32 0.44';
 
-const MARGIN = 40;
-const CONTENT = PDF_PAGE.width - 2 * MARGIN;
+/**
+ * The ten colours `web/panels/graph.js` cycles through (`SERIES_COLOURS`), as PDF `rg` / `RG`
+ * operands: the Overview chart's own stroke and marker first, the suite's flag red third.
+ */
+const PALETTE: ReadonlyArray<readonly [number, number, number]> = [
+  [0, 0.318, 0.435], [0, 0.671, 0.784], [0.816, 0.008, 0.106], [0.878, 0.608, 0],
+  [0.18, 0.545, 0.341], [0.482, 0.31, 0.659], [0.761, 0.094, 0.357], [0.227, 0.431, 0.647],
+  [0.553, 0.431, 0.388], [0.306, 0.478, 0.051],
+];
+
+function colourOf(index: number): string {
+  const [r, g, b] = PALETTE[Math.abs(Math.trunc(index) || 0) % PALETTE.length];
+  const channel = (value: number) => (Math.round(value * 1000) / 1000).toString();
+  return `${channel(r)} ${channel(g)} ${channel(b)}`;
+}
+
+const MARGIN = 34;
+const WIDTH = PDF_PAGE.width;
+const HEIGHT = PDF_PAGE.height;
 
 /** Top-origin y → the PDF's bottom-origin y. */
 function top(y: number): number {
-  return PDF_PAGE.height - y;
+  return HEIGHT - y;
 }
 
 /** A PDF literal string: `(`, `)` and `\` escaped, anything undrawable becomes `?`. */
@@ -209,21 +270,61 @@ function round(value: number): string {
   return (Math.round(value * 100) / 100).toString();
 }
 
+/**
+ * Advance width of a string in points. Helvetica's own metrics are a table we do not ship; digits
+ * are 0.556 em, capitals ~0.62, lowercase ~0.52 and spaces 0.278, which is close enough to
+ * right-align a header and to pack legend chips without overlapping.
+ */
+function advance(value: string, size: number): number {
+  let em = 0;
+  for (const char of value) {
+    if (char === ' ') em += 0.278;
+    else if ('ijlt.,:;|!\''.includes(char)) em += 0.29;
+    else if ('ABCDEFGHJKLMNOPQRSTUVWXYZ0123456789'.includes(char)) em += 0.64;
+    else em += 0.53;
+  }
+  return em * size;
+}
+
+/** Cut a string so it fits `width` points, marking the cut with `...`. */
+function fit(value: string, width: number, size: number): string {
+  if (advance(value, size) <= width) return value;
+  let out = value;
+  while (out.length > 1 && advance(`${out}...`, size) > width) out = out.slice(0, -1);
+  return `${out}...`;
+}
+
+/** `1 row` / `5 rows`; `series` is its own plural. */
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 function text(x: number, y: number, size: number, bold: boolean, colour: string, value: string): string {
   return `BT ${colour} rg /${bold ? 'F2' : 'F1'} ${size} Tf ${round(x)} ${round(top(y))} Td ${literal(value)} Tj ET`;
+}
+
+/** Text whose right edge sits at `right` — headers and page numbers. */
+function textRight(right: number, y: number, size: number, bold: boolean, colour: string, value: string): string {
+  return text(right - advance(value, size), y, size, bold, colour, value);
+}
+
+/** Centred text. */
+function textCentred(centre: number, y: number, size: number, bold: boolean, colour: string, value: string): string {
+  return text(centre - advance(value, size) / 2, y, size, bold, colour, value);
+}
+
+/** Text rotated 90° counter-clockwise: the y-axis unit, as the original prints it. */
+function textUp(x: number, y: number, size: number, colour: string, value: string): string {
+  return `BT ${colour} rg /F1 ${size} Tf 0 1 -1 0 ${round(x)} ${round(top(y))} Tm ${literal(value)} Tj ET`;
 }
 
 function rule(x1: number, y1: number, x2: number, y2: number, width: number, colour: string): string {
   return `${colour} RG ${width} w ${round(x1)} ${round(top(y1))} m ${round(x2)} ${round(top(y2))} l S`;
 }
 
-/** Helvetica's average advance is ~0.55 em; enough to cut a label before it leaves the page. */
-function fit(value: string, width: number, size: number): string {
-  const budget = Math.max(1, Math.floor(width / (size * 0.55)));
-  return value.length <= budget ? value : `${value.slice(0, Math.max(1, budget - 3))}...`;
+function rect(x: number, y: number, width: number, height: number, colour: string): string {
+  return `${colour} rg ${round(x)} ${round(top(y + height))} ${round(width)} ${round(height)} re f`;
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** `2026/10/30 21:00:00` (default: now, local). */
 function stamp(date: Date): string {
@@ -237,82 +338,6 @@ function pdfDate(generatedAt: string): string {
   return `D:${digits}`;
 }
 
-/* ------------------------------------------------------------------------------------------------
- * Pages
- * ---------------------------------------------------------------------------------------------- */
-
-interface InfoField {
-  label: string;
-  value: string;
-}
-
-function infoPage(files: CsvFile[], fields: InfoField[], generatedAt: string, title: string, pages: number): string {
-  const out: string[] = [];
-  let y = MARGIN + 6;
-
-  out.push(text(MARGIN, y, 22, true, INK, fit(title, CONTENT, 22)));
-  y += 18;
-  out.push(text(MARGIN, y, 9.5, false, MUTED, `${files.length} charts - ${pages} pages - hand-written PDF 1.4`));
-  y += 14;
-  out.push(rule(MARGIN, y, PDF_PAGE.width - MARGIN, y, 1.2, RULE));
-
-  y += 30;
-  out.push(text(MARGIN, y, 12, true, RULE, 'Report Information'));
-  y += 20;
-  for (const [label, value] of [['Generated Date', generatedAt], ['Charts', String(files.length)], ['Pages', String(pages)]]) {
-    out.push(text(MARGIN + 6, y, 9.5, true, INK, label));
-    out.push(text(MARGIN + 180, y, 9.5, false, INK, value));
-    y += 15;
-  }
-
-  y += 16;
-  out.push(text(MARGIN, y, 12, true, RULE, 'Project Information'));
-  y += 20;
-  for (const field of fields) {
-    out.push(text(MARGIN + 6, y, 9.5, true, INK, field.label));
-    out.push(text(MARGIN + 180, y, 9.5, false, INK, fit(field.value || '--', CONTENT - 190, 9.5)));
-    y += 15;
-  }
-
-  y += 16;
-  out.push(text(MARGIN, y, 12, true, RULE, 'Contents'));
-  y += 18;
-  const columns: Array<[string, number]> = [
-    ['Chart', MARGIN + 6],
-    ['Rows', MARGIN + 320],
-    ['Columns', MARGIN + 380],
-    ['Series', MARGIN + 450],
-    ['Min', MARGIN + 600],
-    ['Max', MARGIN + 690],
-  ];
-  for (const [label, x] of columns) out.push(text(x, y, 8, true, MUTED, label));
-  y += 12;
-  out.push(rule(MARGIN, y, PDF_PAGE.width - MARGIN, y, 0.6, GRID));
-  y += 11;
-  for (const file of files) {
-    if (y > PDF_PAGE.height - MARGIN - 24) break;
-    const series = seriesOf(file);
-    out.push(text(MARGIN + 6, y, 8.5, false, INK, fit(file.chart, 300, 8.5)));
-    out.push(text(MARGIN + 320, y, 8.5, false, INK, String(file.rows.length)));
-    out.push(text(MARGIN + 380, y, 8.5, false, INK, String(file.columns.length)));
-    out.push(text(MARGIN + 450, y, 8.5, false, INK, fit(series?.label ?? '--', 140, 8.5)));
-    out.push(text(MARGIN + 600, y, 8.5, false, INK, series ? precision(series.min) : '--'));
-    out.push(text(MARGIN + 690, y, 8.5, false, INK, series ? precision(series.max) : '--'));
-    y += 12;
-  }
-
-  out.push(text(
-    MARGIN,
-    PDF_PAGE.height - MARGIN + 8,
-    7,
-    false,
-    MUTED,
-    'Generated from the CSVs in samples/graph/export/csv - no embedded fonts - ASCII text only',
-  ));
-  out.push(text(PDF_PAGE.width / 2 - 14, PDF_PAGE.height - MARGIN + 8, 7, false, MUTED, `page 1 / ${pages}`));
-  return out.join('\n');
-}
-
 /** `0.000` for values a chart is likely to carry, scientific notation for huge ones. */
 function precision(value: number): string {
   if (!Number.isFinite(value)) return '--';
@@ -323,69 +348,322 @@ function precision(value: number): string {
   return value.toFixed(3);
 }
 
-function chartPage(file: CsvFile, series: Series | null, rowCount: number, page: number, pages: number): string {
-  const out: string[] = [];
-  let y = MARGIN + 6;
+/* ---------------- ticks ---------------- */
 
-  out.push(text(MARGIN, y, 16, true, INK, fit(file.chart, CONTENT, 16)));
-  y += 16;
-  const caption = series
-    ? `${file.rows.length} rows - ${file.columns.length} columns - series \`${series.label}\` x ${series.xFrom} .. ${series.xTo}`
-    : `${file.rows.length} rows - ${file.columns.length} columns - no numeric column to plot`;
-  out.push(text(MARGIN, y, 8.5, false, MUTED, fit(caption, CONTENT - 210, 8.5)));
-  if (series) {
-    out.push(text(PDF_PAGE.width - MARGIN - 186, y, 7.5, false, INK,
-      `min ${precision(series.min)}  max ${precision(series.max)}  mean ${precision(series.mean)}`));
+/** `count + 1` evenly spaced ticks across `[min, max]`, ends exactly on the axis ends. */
+function ticks(min: number, max: number, count = 4): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !(max > min)) {
+    return Number.isFinite(min) ? [min] : [];
   }
-  y += 8;
-  out.push(rule(MARGIN, y, PDF_PAGE.width - MARGIN, y, 1, RULE));
-
-  const plot = { left: MARGIN + 34, right: PDF_PAGE.width - MARGIN - 10, top: y + 24, bottom: y + 218 };
-  out.push(...plotFrame(plot, series));
-
-  // Table of the first rows: timestamp column plus the numeric columns, whole columns only.
-  let tableTop = plot.bottom + 40;
-  const timeIndex = file.columns.findIndex((column) => /timestamp/i.test(column));
-  const numeric = file.columns
-    .map((column, at) => ({ column, at }))
-    .filter((entry) => entry.at !== timeIndex && isNumericColumn(file.rows, entry.at))
-    .slice(0, 3);
-  const shown = [
-    ...(timeIndex >= 0 ? [{ column: file.columns[timeIndex], at: timeIndex }] : []),
-    ...numeric,
-  ];
-  if (shown.length) {
-    const width = CONTENT / shown.length;
-    out.push(text(MARGIN, tableTop, 9, true, RULE, 'First rows'));
-    tableTop += 14;
-    shown.forEach((entry, at) => {
-      out.push(text(MARGIN + at * width, tableTop, 7.5, true, MUTED, fit(entry.column, width - 6, 7.5)));
-    });
-    tableTop += 10;
-    out.push(rule(MARGIN, tableTop, PDF_PAGE.width - MARGIN, tableTop, 0.6, GRID));
-    tableTop += 10;
-    for (const row of file.rows.slice(0, rowCount)) {
-      shown.forEach((entry, at) => {
-        out.push(text(MARGIN + at * width, tableTop, 7.5, false, INK, fit(row[entry.at] ?? '', width - 6, 7.5)));
-      });
-      tableTop += 10;
-    }
-    if (file.rows.length > rowCount) {
-      out.push(text(MARGIN, tableTop + 2, 7, false, MUTED, `showing ${rowCount} of ${file.rows.length} rows`));
-    }
-  }
-
-  out.push(text(
-    MARGIN,
-    PDF_PAGE.height - MARGIN + 8,
-    7,
-    false,
-    MUTED,
-    `source: ${file.name}`,
-  ));
-  out.push(text(PDF_PAGE.width / 2 - 14, PDF_PAGE.height - MARGIN + 8, 7, false, MUTED, `page ${page} / ${pages}`));
-  return out.join('\n');
+  const step = (max - min) / count;
+  const values: number[] = [];
+  for (let at = 0; at <= count; at += 1) values.push(min + step * at);
+  return values;
 }
+
+/** Decimals follow the step, so a 0.005 m span still prints three places and a 700 s span none. */
+function formatTick(value: number, step: number): string {
+  if (!Number.isFinite(value)) return '--';
+  const size = Math.abs(step);
+  const decimals = size > 0 && Number.isFinite(size)
+    ? Math.max(0, Math.min(6, Math.ceil(-Math.log10(size))))
+    : 0;
+  let out = value.toFixed(decimals);
+  if (out.includes('.')) out = out.replace(/0+$/, '').replace(/\.$/, '');
+  return out === '-0' ? '0' : out;
+}
+
+function stepOf(values: number[]): number {
+  return values.length > 1 ? values[1] - values[0] : 0;
+}
+
+/**
+ * The x tick labels the original prints: seconds of the GPS week, `463100` when the tick lands on a
+ * whole second and `463097.350` when it does not. The week itself sits once above the axis.
+ */
+function gpsTick(absolute: number): string {
+  const week = Math.floor(absolute / 604_800);
+  const seconds = absolute - week * 604_800;
+  const rounded = Math.round(seconds * 1000) / 1000;
+  return Number.isInteger(rounded) ? String(Math.round(rounded)) : rounded.toFixed(3);
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Chart models — one per CSV, computed from the file alone
+ * ---------------------------------------------------------------------------------------------- */
+
+interface ChartSeries {
+  name: string;
+  colour: string;
+  points: Array<[number, number]>;
+}
+
+interface LineModel {
+  kind: 'line';
+  series: ChartSeries[];
+  xKind: 'time' | 'index';
+  xBase: number;
+  units: string;
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+  /** `min 1.198  max 2.640  mean 1.902`, printed beside the title. */
+  stats: string;
+  note: string;
+}
+
+interface CategoryModel {
+  kind: 'category';
+  samples: Array<{ x: number; colour: string }>;
+  legend: Array<{ label: string; colour: string }>;
+  xKind: 'time' | 'index';
+  xBase: number;
+  xMin: number;
+  xMax: number;
+  note: string;
+}
+
+interface GeomapModel {
+  kind: 'geomap';
+  points: Array<[number, number]>;
+  lonMin: number;
+  lonMax: number;
+  latMin: number;
+  latMax: number;
+  xLabel: string;
+  yLabel: string;
+  note: string;
+}
+
+interface IntervalModel {
+  kind: 'interval';
+  rows: Array<{ name: string; start: number; end: number; value: number; colour: string }>;
+  xMin: number;
+  xMax: number;
+  note: string;
+}
+
+type ChartModel = LineModel | CategoryModel | GeomapModel | IntervalModel;
+
+/** Domain of a set of points, padded when every sample is the same (one row, or a flat line). */
+function domainOf(series: ChartSeries[], axis: 0 | 1): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const item of series) {
+    for (const point of item.points) {
+      const value = point[axis];
+      if (!Number.isFinite(value)) continue;
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  if (max > min) return [min, max];
+  return [min - 1, max + 1];
+}
+
+/** One series per numeric column, on the shared x axis. */
+function lineModel(file: CsvFile, spec: ChartSpec): LineModel {
+  const axis = xAxis(file);
+  const series: ChartSeries[] = [];
+  file.columns.forEach((column, index) => {
+    if (index === file.timeIndex) return;
+    if (!isNumericColumn(file.rows, index)) return;
+    const points: Array<[number, number]> = [];
+    file.rows.forEach((row, at) => {
+      const value = Number(row[index] ?? '');
+      if (!Number.isFinite(value)) return;
+      points.push([axis.values[at] ?? at, value]);
+    });
+    if (!points.length) return;
+    series.push({ name: column, colour: colourOf(series.length), points });
+  });
+
+  if (!series.length) {
+    // No numeric column at all (`Position Type.csv` is drawn as bands; a file with neither numbers
+    // nor labels gets here) — say so instead of drawing an empty frame.
+    return {
+      kind: 'line', series: [], xKind: axis.kind, xBase: axis.base, units: spec.units ?? '',
+      xMin: 0, xMax: 1, yMin: 0, yMax: 1, stats: '',
+      note: 'no numeric column in this CSV - the table is below',
+    };
+  }
+
+  let [yMin, yMax] = domainOf(series, 1);
+  if (spec.minYZero) yMin = Math.min(0, yMin);
+  const [xMin, xMax] = domainOf(series, 0);
+
+  let low = Infinity;
+  let high = -Infinity;
+  let sum = 0;
+  let count = 0;
+  for (const item of series) {
+    for (const [, value] of item.points) {
+      if (value < low) low = value;
+      if (value > high) high = value;
+      sum += value;
+      count += 1;
+    }
+  }
+  const notes: string[] = [];
+  if (file.rows.length === 1) notes.push('one sample in the CSV - each column is a single point');
+  if (series.length > PDF_LEGEND_MAX) {
+    notes.push(`${series.length} numeric columns; the legend names the first ${PDF_LEGEND_MAX}`);
+  }
+
+  return {
+    kind: 'line',
+    series,
+    xKind: axis.kind,
+    xBase: axis.base,
+    units: spec.units ?? '',
+    xMin,
+    xMax,
+    yMin,
+    yMax,
+    stats: `min ${precision(low)}  max ${precision(high)}  mean ${precision(sum / Math.max(1, count))}`,
+    note: notes.join(' - '),
+  };
+}
+
+/** Enum column → one band per sample, y axis hidden (the original's bar-plus-hidden-y reading). */
+function categoryModel(file: CsvFile): CategoryModel {
+  const axis = xAxis(file);
+  const valueIndex = file.columns.findIndex((column, at) => at !== file.timeIndex);
+  const index = valueIndex >= 0 ? valueIndex : 0;
+  const labels = new Map<string, string>();
+  const samples: Array<{ x: number; colour: string }> = [];
+  file.rows.forEach((row, at) => {
+    const label = (row[index] ?? '').trim() || '(empty)';
+    if (!labels.has(label)) labels.set(label, colourOf(labels.size));
+    samples.push({ x: axis.values[at] ?? at, colour: labels.get(label)! });
+  });
+  let min = Infinity;
+  let max = -Infinity;
+  for (const sample of samples) {
+    if (sample.x < min) min = sample.x;
+    if (sample.x > max) max = sample.x;
+  }
+  if (!Number.isFinite(min)) {
+    min = 0;
+    max = 1;
+  } else if (!(max > min)) {
+    min -= 1;
+    max += 1;
+  }
+  return {
+    kind: 'category',
+    samples,
+    legend: [...labels].map(([label, colour]) => ({ label, colour })),
+    xKind: axis.kind,
+    xBase: axis.base,
+    xMin: min,
+    xMax: max,
+    note: `${samples.length} samples - ${labels.size} distinct ${file.columns[index] ?? 'value'} values`,
+  };
+}
+
+/** Longitude on x, latitude on y — `GeoMapChart`'s reading of `2D Trajectory.csv`. */
+function geomapModel(file: CsvFile, spec: ChartSpec): GeomapModel {
+  const lon = file.columns.findIndex((column) => column === (spec.xColumn ?? 'Longitude'));
+  const lat = file.columns.findIndex((column) => column === (spec.yColumn ?? 'Latitude'));
+  const points: Array<[number, number]> = [];
+  if (lon >= 0 && lat >= 0) {
+    for (const row of file.rows) {
+      const x = Number(row[lon] ?? '');
+      const y = Number(row[lat] ?? '');
+      if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y]);
+    }
+  }
+  const pad = (min: number, max: number): [number, number] => (max > min ? [min, max] : [min - 0.0001, max + 0.0001]);
+  let lonMin = Infinity;
+  let lonMax = -Infinity;
+  let latMin = Infinity;
+  let latMax = -Infinity;
+  for (const [x, y] of points) {
+    if (x < lonMin) lonMin = x;
+    if (x > lonMax) lonMax = x;
+    if (y < latMin) latMin = y;
+    if (y > latMax) latMax = y;
+  }
+  if (!points.length) {
+    lonMin = 0; lonMax = 1; latMin = 0; latMax = 1;
+  }
+  const [x0, x1] = pad(lonMin, lonMax);
+  const [y0, y1] = pad(latMin, latMax);
+  const track = points.length > 1 && lonMax > lonMin;
+  return {
+    kind: 'geomap',
+    points,
+    lonMin: x0,
+    lonMax: x1,
+    latMin: y0,
+    latMax: y1,
+    xLabel: 'Longitude (degrees)',
+    yLabel: 'Latitude (degrees)',
+    note: points.length
+      ? `${points.length} fixes${track ? '' : ' - all samples share one position, so this is a dot, not a track'}`
+      : 'no Latitude / Longitude column in this CSV',
+  };
+}
+
+/**
+ * `Receiver Status.csv` is `name,start,end,value` — a list of conditions with an epoch-ms interval,
+ * not a time series. The original draws one band per condition; so does this, on the interval's own
+ * clock (seconds from the earliest start), and the page says the axis is not the GPS week.
+ */
+function intervalModel(file: CsvFile): IntervalModel {
+  const nameIndex = file.columns.findIndex((column) => /^name$/i.test(column));
+  const startIndex = file.columns.findIndex((column) => /^start$/i.test(column));
+  const endIndex = file.columns.findIndex((column) => /^end$/i.test(column));
+  const valueIndex = file.columns.findIndex((column) => /^value$/i.test(column));
+  const rows: IntervalModel['rows'] = [];
+  file.rows.forEach((row, at) => {
+    const start = Number(row[startIndex] ?? '');
+    const end = Number(row[endIndex] ?? '');
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    rows.push({
+      name: (nameIndex >= 0 ? row[nameIndex] : `row ${at + 1}`) || `row ${at + 1}`,
+      start,
+      end,
+      value: Number(row[valueIndex] ?? ''),
+      colour: colourOf(at),
+    });
+  });
+  let min = Infinity;
+  let max = -Infinity;
+  for (const row of rows) {
+    min = Math.min(min, row.start);
+    max = Math.max(max, row.end);
+  }
+  if (!Number.isFinite(min)) {
+    min = 0;
+    max = 1;
+  } else if (!(max > min)) {
+    max = min + 1;
+  }
+  return {
+    kind: 'interval',
+    rows,
+    xMin: min,
+    xMax: max,
+    note: rows.length
+      ? 'each bar is name/start/end from the CSV; x is seconds from the earliest start (epoch ms, not the GPS week)'
+      : 'no name,start,end rows in this CSV',
+  };
+}
+
+function modelOf(file: CsvFile, spec: ChartSpec): ChartModel {
+  if (spec.kind === 'interval') return intervalModel(file);
+  if (spec.kind === 'geomap') return geomapModel(file, spec);
+  if (spec.kind === 'category') return categoryModel(file);
+  return lineModel(file, spec);
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Drawing
+ * ---------------------------------------------------------------------------------------------- */
 
 interface Box {
   left: number;
@@ -394,53 +672,370 @@ interface Box {
   bottom: number;
 }
 
-/** Four gridlines with their values on the left, a frame, and one polyline for the series. */
-function plotFrame(box: Box, series: Series | null): string[] {
+/** The x tick labels for a model: GPS seconds of week, `#row`, or seconds of the interval. */
+function xTickLabels(model: ChartModel, values: number[]): string[] {
+  const step = stepOf(values);
+  if (model.kind === 'geomap') return values.map((value) => formatTick(value, step));
+  if (model.kind === 'interval') return values.map((value) => formatTick((value - model.xMin) / 1000, step / 1000));
+  if (model.xKind === 'time') return values.map((value) => gpsTick(model.xBase + value));
+  return values.map((value) => `#${Math.round(value) + 1}`);
+}
+
+/** The caption under the x axis. */
+function xCaption(model: ChartModel): string {
+  if (model.kind === 'geomap') return 'Longitude (degrees)';
+  if (model.kind === 'interval') return 'seconds from the earliest start';
+  if (model.xKind === 'time') {
+    const week = Math.floor(model.xBase / 604_800);
+    const from = gpsTick(model.xBase);
+    const to = gpsTick(model.xBase + Math.max(model.xMax, model.xMin));
+    return `GPS week ${week} - seconds of week ${from} .. ${to}`;
+  }
+  return 'row';
+}
+
+/** Gridlines, axes, ticks and axis captions; shared by every chart kind. */
+function frame(box: Box, model: ChartModel, options: { showY: boolean }): string[] {
   const out: string[] = [];
   const height = box.bottom - box.top;
-  const flat = series !== null && series.max === series.min;
-  const step = series ? (series.max - series.min) / 4 : 0;
-  const decimals = series && step > 0 ? Math.min(6, Math.max(0, Math.ceil(-Math.log10(step)))) : 0;
-
-  for (let tick = 0; tick <= 4; tick++) {
-    const lineTop = box.top + (height * tick) / 4;
-    out.push(rule(box.left, lineTop, box.right, lineTop, 0.5, GRID));
-    if (series && !flat) {
-      const value = series.max - step * tick;
-      out.push(text(box.left - 30, lineTop + 2.5, 6.5, false, MUTED, value.toFixed(decimals)));
+  if (model.kind === 'geomap') {
+    const yValues = ticks(model.latMin, model.latMax);
+    const step = stepOf(yValues);
+    for (const value of yValues) {
+      const y = box.bottom - ((value - model.latMin) / (model.latMax - model.latMin)) * height;
+      out.push(rule(box.left, y, box.right, y, 0.4, GRID));
+      out.push(textRight(box.left - 6, y + 2.6, 6.8, false, MUTED, formatTick(value, step)));
     }
+    out.push(textUp(box.left - 40, box.bottom - height / 2, 7.5, MUTED, model.yLabel));
+  } else if (options.showY && model.kind === 'line') {
+    const values = ticks(model.yMin, model.yMax);
+    const step = stepOf(values);
+    for (const value of values) {
+      const y = box.bottom - ((value - model.yMin) / (model.yMax - model.yMin)) * height;
+      out.push(rule(box.left, y, box.right, y, 0.4, GRID));
+      out.push(textRight(box.left - 6, y + 2.6, 6.8, false, MUTED, formatTick(value, step)));
+    }
+    if (model.units) out.push(textUp(box.left - 40, box.bottom - height / 2, 7.5, MUTED, model.units));
+  } else {
+    // Bar / band / interval: the y axis carries no scale, exactly like the original's hidden axis.
+    out.push(rule(box.left, box.bottom, box.right, box.bottom, 0.4, GRID));
   }
-  if (series && flat) {
-    out.push(text(box.left + 12, box.top + height / 2 + 3, 7, false, MUTED,
-      `${series.max.toFixed(6)} (constant - every sample is the same)`));
-  }
+
   out.push(rule(box.left, box.top, box.left, box.bottom, 0.8, AXIS));
   out.push(rule(box.left, box.bottom, box.right, box.bottom, 0.8, AXIS));
-  if (!series || series.points.length === 0) {
-    out.push(text(box.left + 12, box.top + height / 2, 9, false, MUTED, 'no numeric series'));
-    return out;
+
+  const xValues = model.kind === 'geomap'
+    ? ticks(model.lonMin, model.lonMax)
+    : ticks(model.xMin, model.xMax);
+  const labels = model.kind === 'geomap'
+    ? xValues.map((value) => formatTick(value, stepOf(xValues)))
+    : xTickLabels(model, xValues);
+  const span = model.kind === 'geomap'
+    ? model.lonMax - model.lonMin
+    : model.xMax - model.xMin;
+  xValues.forEach((value, at) => {
+    const x = box.left + ((value - (model.kind === 'geomap' ? model.lonMin : model.xMin)) / (span || 1)) * (box.right - box.left);
+    out.push(rule(x, box.top, x, box.bottom, 0.3, GRID));
+    const label = labels[at] ?? '';
+    // The first and last label hang inside the frame so they cannot leave the page.
+    const anchor = at === 0 ? x : at === xValues.length - 1 ? x - advance(label, 6.8) : x - advance(label, 6.8) / 2;
+    out.push(text(anchor, box.bottom + 11, 6.8, false, MUTED, label));
+  });
+  out.push(textCentred((box.left + box.right) / 2, box.bottom + 24, 7.5, false, MUTED, xCaption(model)));
+  return out;
+}
+
+/** Polylines, one per series, decimated by a stride the whole page shares. */
+function lines(box: Box, model: LineModel): string[] {
+  const out: string[] = [];
+  const width = box.right - box.left;
+  const height = box.bottom - box.top;
+  let total = 0;
+  for (const item of model.series) total += item.points.length;
+  const stride = Math.max(1, Math.ceil(total / PDF_POINT_BUDGET));
+
+  const px = (value: number) => box.left + ((value - model.xMin) / ((model.xMax - model.xMin) || 1)) * width;
+  const py = (value: number) => box.bottom - ((value - model.yMin) / ((model.yMax - model.yMin) || 1)) * height;
+
+  for (const item of model.series) {
+    if (!item.points.length) continue;
+    const drawn: Array<[number, number]> = item.points.filter((_point, at) => at % stride === 0);
+    const last = item.points[item.points.length - 1];
+    if (drawn[drawn.length - 1][0] !== last[0]) drawn.push(last);
+    if (drawn.length === 1) {
+      // One sample (`HW Monitor Status.csv` answers once): a square marker, because a polyline of
+      // one vertex draws nothing at all.
+      const [x, y] = drawn[0];
+      out.push(rect(px(x) - 1.6, py(y) - 1.6, 3.2, 3.2, item.colour));
+      continue;
+    }
+    const path = drawn
+      .map(([x, y], at) => `${round(px(x))} ${round(top(py(y)))} ${at === 0 ? 'm' : 'l'}`)
+      .join(' ');
+    out.push(`1.1 w ${item.colour} RG ${path} S`);
+  }
+  return out;
+}
+
+/** Enum samples as full-height bands; the gaps between samples set the band width. */
+function bands(box: Box, model: CategoryModel): string[] {
+  const width = box.right - box.left;
+  const height = box.bottom - box.top;
+  const px = (value: number) => box.left + ((value - model.xMin) / ((model.xMax - model.xMin) || 1)) * width;
+  let band = Math.min(width, 40);
+  if (model.samples.length > 1 && model.xMax > model.xMin) {
+    const gaps: number[] = [];
+    for (let at = 1; at < model.samples.length; at += 1) gaps.push(model.samples[at].x - model.samples[at - 1].x);
+    gaps.sort((a, b) => a - b);
+    band = Math.max(2, ((gaps[Math.floor(gaps.length / 2)] || 0) / (model.xMax - model.xMin)) * width * 0.8);
+  }
+  return model.samples.map((sample) => {
+    const centre = px(sample.x);
+    const left = Math.max(box.left, centre - band / 2);
+    const right = Math.min(box.right, centre + band / 2);
+    return rect(left, box.top, Math.max(1, right - left), height, sample.colour);
+  });
+}
+
+/** Longitude / latitude fixes as small dots. */
+function geomap(box: Box, model: GeomapModel): string[] {
+  const width = box.right - box.left;
+  const height = box.bottom - box.top;
+  const px = (value: number) => box.left + ((value - model.lonMin) / ((model.lonMax - model.lonMin) || 1)) * width;
+  const py = (value: number) => box.bottom - ((value - model.latMin) / ((model.latMax - model.latMin) || 1)) * height;
+  const colour = '0.329 0.392 0.973'; // `#5464f8`, the GeoMapChart marker the panel draws
+  return model.points.map(([lon, lat]) => {
+    const size = 3;
+    return rect(px(lon) - size / 2, py(lat) - size / 2, size, size, colour);
+  });
+}
+
+/** One band per condition, labelled at the left edge — the `name,start,end,value` table. */
+function intervals(box: Box, model: IntervalModel): string[] {
+  const out: string[] = [];
+  const width = box.right - box.left;
+  const rows = model.rows.length || 1;
+  const rowHeight = Math.min(56, (box.bottom - box.top) / rows);
+  const px = (value: number) => box.left + ((value - model.xMin) / ((model.xMax - model.xMin) || 1)) * width;
+  model.rows.forEach((row, at) => {
+    const y = box.top + rowHeight * at;
+    // The condition name gets its own 160 pt gutter: `Antenna 1 Gain High` is 19 characters, and the
+    // chart frame starts after it, so the bar never runs under a truncated label.
+    out.push(textRight(box.left - 10, y + rowHeight / 2 + 2.4, 7, false, INK, fit(row.name, box.left - MARGIN - 16, 7)));
+    const left = px(row.start);
+    const right = Math.max(left + 1, px(row.end));
+    out.push(rect(left, y + rowHeight / 2 - 5, right - left, 10, row.colour));
+    out.push(text(Math.min(right + 4, box.right - 30), y + rowHeight / 2 + 2.4, 6.5, false, MUTED,
+      Number.isFinite(row.value) ? String(row.value) : '--'));
+  });
+  return out;
+}
+
+/** Legend chips under the axis: a colour square and the column name, wrapped over at most 3 rows. */
+function legend(entries: Array<{ label: string; colour: string }>, x: number, y: number, width: number, maxRows = 3): string[] {
+  const out: string[] = [];
+  let cursor = x;
+  let row = 0;
+  let drawn = 0;
+  for (const entry of entries) {
+    if (drawn >= PDF_LEGEND_MAX) break;
+    const label = fit(entry.label, width / 2, 7);
+    const span = 12 + advance(label, 7);
+    if (cursor + span > x + width) {
+      row += 1;
+      if (row >= maxRows) break;
+      cursor = x;
+    }
+    out.push(rect(cursor, y + row * 13 - 5, 5, 5, entry.colour));
+    out.push(text(cursor + 9, y + row * 13 - 1, 7, false, INK, label));
+    cursor += span;
+    drawn += 1;
+  }
+  const hidden = entries.length - drawn;
+  if (hidden > 0) {
+    out.push(text(x, y + row * 13 + 10, 6.5, false, MUTED, `+ ${hidden} more`));
+  }
+  return out;
+}
+
+/* ---------------- pages ---------------- */
+
+interface Chrome {
+  project: string;
+  generatedAt: string;
+  range: string;
+  pages: number;
+}
+
+/** Header and footer of every page — the original prints `Graph` and `N/8` the same way. */
+function chrome(context: Chrome, page: number, source: string): string[] {
+  return [
+    text(MARGIN, 26, 8.5, true, INK, 'Graph'),
+    textRight(WIDTH - MARGIN, 26, 7, false, MUTED, fit(`${context.project}  ${context.generatedAt}  GPS ${context.range}`, WIDTH - 2 * MARGIN - 40, 7)),
+    rule(MARGIN, 33, WIDTH - MARGIN, 33, 0.6, GRID),
+    rule(MARGIN, HEIGHT - 30, WIDTH - MARGIN, HEIGHT - 30, 0.6, GRID),
+    text(MARGIN, HEIGHT - 18, 6.5, false, MUTED, fit(source, WIDTH * 0.6, 6.5)),
+    textRight(WIDTH - MARGIN, HEIGHT - 18, 7, false, MUTED, `${page}/${context.pages}`),
+  ];
+}
+
+interface InfoField {
+  label: string;
+  value: string;
+}
+
+/** Page 1: the original's title + Report Information + Project Information + a summary table. */
+function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome): string {
+  const out: string[] = [];
+  out.push(...chrome(context, 1, `${files.length} charts - hand-written PDF 1.4 - base-14 Helvetica, no embedded fonts`));
+
+  out.push(textCentred(WIDTH / 2, 62, 22, true, INK, fit(context.project ? `${context.project} Report` : 'Report', WIDTH - 2 * MARGIN, 22)));
+  out.push(rule(MARGIN, 76, WIDTH - MARGIN, 76, 1.2, RULE));
+
+  let y = 98;
+  out.push(text(MARGIN, y, 11.5, true, RULE, 'Report Information'));
+  y += 18;
+  for (const [label, value] of [
+    ['Generated Date', context.generatedAt],
+    ['Charts', String(files.length)],
+    ['Pages', String(context.pages)],
+  ] as Array<[string, string]>) {
+    out.push(text(MARGIN + 6, y, 9, true, INK, label));
+    out.push(text(MARGIN + 130, y, 9, false, INK, value));
+    y += 14;
   }
 
-  const span = series.points[series.points.length - 1][0] || 1;
-  const x = (value: number) => box.left + ((box.right - box.left) * value) / (span || 1);
-  const y = (value: number) => (flat
-    ? box.top + height / 2
-    : box.bottom - ((box.bottom - box.top) * (value - series.min)) / (series.max - series.min));
+  y += 12;
+  out.push(text(MARGIN, y, 11.5, true, RULE, 'Project Information'));
+  y += 18;
+  for (const field of fields) {
+    out.push(text(MARGIN + 6, y, 9, true, INK, field.label));
+    out.push(text(MARGIN + 130, y, 9, false, INK, fit(field.value || '--', WIDTH - MARGIN - 140, 9)));
+    y += 14;
+  }
 
-  const stride = Math.max(1, Math.ceil(series.points.length / PDF_MAX_POINTS));
-  const drawn = series.points.filter((_, at) => at % stride === 0);
-  const last = series.points[series.points.length - 1];
-  if (drawn[drawn.length - 1][0] !== last[0]) drawn.push(last);
+  y += 12;
+  out.push(text(MARGIN, y, 11.5, true, RULE, 'Chart Summary'));
+  y += 16;
 
-  const path = drawn
-    .map(([px, py], at) => `${round(x(px))} ${round(top(y(py)))} ${at === 0 ? 'm' : 'l'}`)
-    .join(' ');
-  out.push(`0.122 0.467 0.706 RG 1.1 w ${path} S`);
+  const columns: Array<[string, number]> = [
+    ['Chart', MARGIN + 6],
+    ['Section', MARGIN + 170],
+    ['Rows', MARGIN + 330],
+    ['Series', MARGIN + 380],
+    ['Min', MARGIN + 450],
+    ['Max', MARGIN + 530],
+    ['Mean', MARGIN + 610],
+    ['Page', MARGIN + 720],
+  ];
+  for (const [label, x] of columns) out.push(text(x, y, 7.5, true, MUTED, label));
+  y += 10;
+  out.push(rule(MARGIN, y, WIDTH - MARGIN, y, 0.6, GRID));
+  y += 11;
 
-  out.push(text(box.left, box.bottom + 13, 6.5, false, MUTED, series.xFrom));
-  out.push(text(box.right - 42, box.bottom + 13, 6.5, false, MUTED, series.xTo));
-  if (stride > 1) out.push(text(box.left, box.top - 6, 6.5, false, MUTED, `every ${stride}th row drawn`));
-  return out;
+  files.forEach((file, at) => {
+    if (y > HEIGHT - 46) return;
+    const spec = specOf(file.name);
+    const model = modelOf(file, spec);
+    const series = model.kind === 'line'
+      ? model.series.length
+      : model.kind === 'category'
+        ? model.legend.length
+        : model.kind === 'interval'
+          ? model.rows.length
+          : 1;
+    const values: number[] = [];
+    if (model.kind === 'line') {
+      for (const item of model.series) for (const [, value] of item.points) values.push(value);
+    }
+    let low = '--';
+    let high = '--';
+    let mean = '--';
+    if (values.length) {
+      let sum = 0;
+      let min = Infinity;
+      let max = -Infinity;
+      for (const value of values) {
+        if (value < min) min = value;
+        if (value > max) max = value;
+        sum += value;
+      }
+      low = precision(min);
+      high = precision(max);
+      mean = precision(sum / values.length);
+    }
+    out.push(text(MARGIN + 6, y, 8, false, INK, fit(spec.title, 160, 8)));
+    out.push(text(MARGIN + 170, y, 8, false, INK, fit(spec.section || '--', 155, 8)));
+    out.push(text(MARGIN + 330, y, 8, false, INK, String(file.rows.length)));
+    out.push(text(MARGIN + 380, y, 8, false, INK, String(series)));
+    out.push(text(MARGIN + 450, y, 8, false, INK, low));
+    out.push(text(MARGIN + 530, y, 8, false, INK, high));
+    out.push(text(MARGIN + 610, y, 8, false, INK, mean));
+    out.push(text(MARGIN + 720, y, 8, false, INK, String(at + 2)));
+    y += 12;
+  });
+  return out.join('\n');
+}
+
+/** Pages 2..: one chart each, with the section heading the original prints when a tab starts. */
+function chartPage(file: CsvFile, spec: ChartSpec, model: ChartModel, context: Chrome, previousSection: string, page: number): string {
+  const out: string[] = [];
+  out.push(...chrome(context, page, `source: ${file.name}`));
+
+  let y = 50;
+  if (spec.section && spec.section !== previousSection) {
+    out.push(text(MARGIN, y, 8, true, RULE, spec.section));
+    y += 17;
+  }
+  out.push(text(MARGIN, y + 10, 15, true, INK, fit(spec.title, WIDTH - 2 * MARGIN - 220, 15)));
+
+  const facts: string[] = [plural(file.rows.length, 'row')];
+  if (model.kind === 'line') {
+    facts.push(plural(model.series.length, 'series', 'series'));
+    if (model.stats) facts.push(model.stats);
+  } else if (model.kind === 'category') {
+    facts.push(plural(model.legend.length, 'value'));
+  } else if (model.kind === 'geomap') {
+    facts.push(plural(model.points.length, 'fix', 'fixes'));
+  } else {
+    facts.push(plural(model.rows.length, 'condition'));
+  }
+  out.push(textRight(WIDTH - MARGIN, y + 10, 7.5, false, MUTED, facts.join('  -  ')));
+  y += 20;
+  out.push(rule(MARGIN, y + 4, WIDTH - MARGIN, y + 4, 1, RULE));
+
+  const boxArea: Box = {
+    left: MARGIN + (model.kind === 'interval' ? 186 : 46),
+    right: WIDTH - MARGIN - 6,
+    top: y + 22,
+    bottom: HEIGHT - 118,
+  };
+  out.push(...frame(boxArea, model, { showY: true }));
+  if (model.kind === 'line') out.push(...lines(boxArea, model));
+  else if (model.kind === 'category') out.push(...bands(boxArea, model));
+  else if (model.kind === 'geomap') out.push(...geomap(boxArea, model));
+  else out.push(...intervals(boxArea, model));
+
+  let cursor = boxArea.bottom + 40;
+  const entries = model.kind === 'line'
+    ? model.series.map((item) => ({ label: item.name, colour: item.colour }))
+    : model.kind === 'category'
+      ? model.legend
+      : [];
+  if (entries.length) out.push(...legend(entries, MARGIN, cursor, WIDTH - 2 * MARGIN));
+
+  const notes: string[] = [];
+  if (model.note) notes.push(model.note);
+  if (model.kind === 'line' && model.series.length && file.rows.length > 1) {
+    const total = model.series.reduce((sum, item) => sum + item.points.length, 0);
+    const stride = Math.max(1, Math.ceil(total / PDF_POINT_BUDGET));
+    if (stride > 1) notes.push(`every ${stride}th sample drawn`);
+  }
+  if (notes.length) {
+    cursor = Math.min(HEIGHT - 44, cursor + 42);
+    out.push(text(MARGIN, cursor, 6.5, false, MUTED, fit(notes.join('  -  '), WIDTH - 2 * MARGIN, 6.5)));
+  }
+  return out.join('\n');
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -507,13 +1102,15 @@ export interface GraphPdfReport {
   /** 1 information page + one per CSV. */
   pages: number;
   charts: number;
+  /** `<project>.pdf`, the name Graph's own export used (`clean.pdf`). */
   fileName: string;
+  /** The project the document names, or `graph` when the CSVs carry no `#Project Name:`. */
+  project: string;
 }
 
 /** Build the document once and report what it contains (used by the HTTP route's headers). */
 export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptions = {}): GraphPdfReport {
   const generatedAt = options.generatedAt ?? stamp(new Date());
-  const rowCount = options.rows ?? PDF_ROWS;
   const files = sources.map(parseCsvSource);
   const pages = 1 + files.length;
 
@@ -527,23 +1124,31 @@ export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptio
     { label: 'Duration', value: first.Duration ?? '--' },
   ];
   const project = fields[0].value === '--' ? 'graph' : fields[0].value;
-  const title = options.title ?? `${fields[0].value === '--' ? 'Graph' : fields[0].value} Report`;
+  const start = fields[3].value === '--' ? '?' : fields[3].value;
+  const end = fields[4].value === '--' ? '?' : fields[4].value;
+  const title = options.title ?? `${project === 'graph' ? 'Graph' : project} Report`;
+  const context: Chrome = { project, generatedAt, range: `${start} .. ${end}`, pages };
 
-  const streams = [infoPage(files, fields, generatedAt, title, pages)];
+  const streams = [infoPage(files, fields, context)];
+  let previous = '';
   files.forEach((file, index) => {
-    streams.push(chartPage(file, seriesOf(file), rowCount, index + 2, pages));
+    const spec = specOf(file.name);
+    streams.push(chartPage(file, spec, modelOf(file, spec), context, previous, index + 2));
+    previous = spec.section;
   });
+
   return {
     bytes: assemble(title, generatedAt, streams),
     pages,
     charts: files.length,
     fileName: graphPdfFileName(project),
+    project,
   };
 }
 
 /**
- * Build the document. One information page plus one page per CSV, in the order given. Pass
- * `options.generatedAt` to get the same bytes twice.
+ * Build the document. One information page plus one page per CSV, in the order given — pass
+ * {@link graphPdfOrder} to get the catalogue's order (the original's tab order).
  */
 export function buildGraphPdf(sources: GraphPdfSource[], options: GraphPdfOptions = {}): Uint8Array {
   return graphPdfReport(sources, options).bytes;
@@ -553,4 +1158,3 @@ export function buildGraphPdf(sources: GraphPdfSource[], options: GraphPdfOption
 export function graphPdfFileName(projectName: string): string {
   return `${String(projectName || 'graph').replace(/[\\/:*?"<>|]+/g, '_')}.pdf`;
 }
-

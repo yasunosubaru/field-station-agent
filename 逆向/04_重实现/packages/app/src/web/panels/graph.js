@@ -105,7 +105,7 @@ const EXPORTS = [
   { id: 'csv', label: 'CSV', hint: '绘图数据（时间 + 数值列）' },
   { id: 'html', label: 'HTML', hint: '独立报表（折线图 + 前 20 行）' },
   { id: 'kml', label: 'KML', hint: '轨迹（复用 /api/convert 的 KML 导出）' },
-  { id: 'pdf', label: 'PDF', hint: '浏览器打印为 PDF' },
+  { id: 'pdf', label: 'PDF', hint: '服务端生成的 PDF 报告（封面 + 每图一页）' },
 ];
 
 /* ---------------- helpers ---------------- */
@@ -3114,24 +3114,55 @@ ${svgMarkup}
 </body></html>`;
   }
 
-  /** PDF via the browser's print engine — no PDF library in this repo, and this keeps it honest. */
-  function printReport() {
-    const html = htmlReport();
-    if (!html) return;
-    const frame = document.createElement('iframe');
-    frame.setAttribute('title', 'Graph PDF');
-    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-    frame.srcdoc = html;
-    frame.addEventListener('load', () => {
-      try {
-        frame.contentWindow.focus();
-        frame.contentWindow.print();
-      } catch (error) {
-        showNotice(`PDF 打印失败：${error.message}`);
+  /**
+   * PDF: the document the **server** builds (`GET /api/graph/pdf`, see `src/pdf.ts`), not the
+   * browser's print dialog. The old path rendered `htmlReport()` into a hidden iframe and called
+   * `print()`; that leaves the format to whatever printer the machine has and cannot set a file
+   * name. Here the bytes are a real PDF 1.4 written from the CSVs, so the download is the report
+   * Graph's own *Export ▸ PDF* produces: cover page plus one page per chart.
+   *
+   * `?project=` narrows the document to the project the panel is showing (every CSV whose
+   * `#Project Name:` matches), which is what the suite exports. Without a project the whole export
+   * directory goes in.
+   */
+  async function exportPdf() {
+    const project = state.project || (state.data && state.data.comments && state.data.comments.projectName) || '';
+    const url = project ? `/api/graph/pdf?project=${encodeURIComponent(project)}` : '/api/graph/pdf';
+    try {
+      const response = await fetch(url, { headers: { accept: 'application/pdf' } });
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body && body.error) detail = body.error;
+        } catch { /* a non-JSON error body leaves the status code as the message */ }
+        throw new Error(detail);
       }
-    });
-    document.body.appendChild(frame);
-    setTimeout(() => frame.remove(), 60000);
+      const disposition = response.headers.get('content-disposition') || '';
+      const named = /filename="([^"]+)"/.exec(disposition);
+      const fileName = (named && named[1]) || `${project || 'graph'}.pdf`;
+      const type = response.headers.get('content-type') || '';
+      if (type.indexOf('application/pdf') !== 0) {
+        // A download helper (Internet Download Manager and friends) can answer the request itself
+        // and hand the body to its own engine, leaving this page an empty 2xx. The bytes exist —
+        // so give the URL to the browser's download path rather than saving an empty file.
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = fileName;
+        anchor.rel = 'noopener';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        showNotice(`已交给浏览器下载 ${fileName}（服务端 PDF 报告）`);
+        return;
+      }
+      const bytes = await response.blob();
+      downloadBlob(bytes, fileName, 'application/pdf');
+      const pages = response.headers.get('x-pdf-pages');
+      showNotice(pages ? `已导出 ${fileName}（${pages} 页）` : `已导出 ${fileName}`);
+    } catch (error) {
+      showNotice(`导出 PDF 失败：${error.message}`);
+    }
   }
 
   /** KML is the suite's trajectory export; here it is the existing Convert KML endpoint. */
@@ -3166,7 +3197,7 @@ ${svgMarkup}
     const stem = stemOf(state.data.name);
     if (kind === 'csv') downloadBlob(csvReport(), `${stem}.csv`, 'text/csv;charset=utf-8');
     else if (kind === 'html') downloadBlob(htmlReport(), `${stem}.html`, 'text/html;charset=utf-8');
-    else if (kind === 'pdf') printReport();
+    else if (kind === 'pdf') void exportPdf();
     else if (kind === 'kml') void exportKml();
   }
 
