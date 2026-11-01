@@ -130,18 +130,6 @@ function readScalar(dv: DataView, type: string, at: number): number | string {
   }
 }
 
-function readString(dv: DataView, at: number, size: number): string {
-  let out = '';
-  for (let i = 0; i < size; i++) {
-    const byte = at + i;
-    if (byte >= dv.byteLength) break;
-    const value = dv.getUint8(byte);
-    if (value === 0) break;
-    out += String.fromCharCode(value);
-  }
-  return out;
-}
-
 /** `%Z` — the whole fixed-size field as a lowercase hex string (RAWEPHEM subframes). */
 function readHexBytes(dv: DataView, at: number, size: number): string {
   let out = '';
@@ -178,11 +166,34 @@ export function readCountAt(bytes: Uint8Array, at: number, size: number): number
  * Measured through the suite: ICOMCONFIG's 80-byte `endpoint` holding `":3002"` takes 8 bytes,
  * SETNAV's 6-byte `from_point` holding `"FROM"` takes 8, DNSCONFIG's 16-byte address
  * `"192.168.5.1"` takes 12.
+ *
+ * `arrayLength` is **not** enforced: a `SURVEYPOSITION` whose 5-byte `id` holds `abcdefghij\0` is
+ * printed as `"abcdefghij"` and its `latitude` is read at 4 + 12 = 16, i.e. the suite stops at the
+ * NUL and pads from there. Real records NUL-terminate inside the field, so the declared width and
+ * the NUL give the same answer on every capture we have.
  */
 export function stringWireSize(bytes: Uint8Array, at: number, size: number): number {
+  void size;
   let length = 0;
-  while (length < size && (bytes[at + length] ?? 0) !== 0) length += 1;
+  while (at + length < bytes.byteLength && (bytes[at + length] ?? 0) !== 0) length += 1;
   return Math.max(4, Math.ceil((length + 1) / 4) * 4);
+}
+
+/**
+ * Text of one `STRING` field, printed the way the suite prints it: every byte up to the NUL.
+ *
+ * A **fixed** `STRING` stays inside its declared width (`HEADINGEXT`'s four-byte `master_id`); a
+ * **variable** one is not capped at `arrayLength`, for the reason `stringWireSize` records.
+ */
+export function readStringField(bytes: Uint8Array, at: number, segment: EdieString): string {
+  const limit = segment.variable ? bytes.byteLength - at : segment.size;
+  let out = '';
+  for (let i = 0; i < limit; i++) {
+    const byte = bytes[at + i];
+    if (byte === undefined || byte === 0) break;
+    out += String.fromCharCode(byte);
+  }
+  return out;
 }
 
 /** True when the list contains a segment whose width the table cannot know: a variable string or a counted array. */
@@ -200,6 +211,64 @@ export function segmentsVariable(segments: readonly EdieSegment[]): boolean {
 export function denseSegmentSize(segment: EdieSegment): number {
   if (segment.kind !== 'array') return segment.size;
   return (segment.countSize || 0) + (segment.fixedCount ?? 0) * (segment.stride || 1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `pack(4)`
+//
+// The offsets in `edie-layouts.json` are **dense**: the generator summed the declared field widths.
+// The wire is not dense — SBF payloads are C structs compiled with `#pragma pack(4)`, so a member
+// starts on a `min(4, sizeof)` boundary. Two consequences, both measured against the suite's own
+// Convert on synthetic frames (see `06_…`/§9.x.14 of `03_分析/09_EDIE消息字典与ASCII一致性.md`):
+//
+//  - inside a struct, a member moves up to the next 4-byte (2-byte for a `USHORT`) boundary;
+//  - a `STRING`/`%Z` member is a **char array**, so its own alignment is 1 and it never moves —
+//    which is why `RAWEPHEM` stays exactly 102 bytes (`4+4+4+30+30+30`) and the table's dense
+//    offsets are already right for it, while `RAWGPSSUBFRAME`'s `ULONG` behind the same 30-byte
+//    blob does move (42 → 44, payload 46 → 48);
+//  - an array aligns like its first member: its `ULONG` count prefix when it has one, otherwise its
+//    element type. `USERI2CREAD`'s register array therefore starts at 4, not at 1;
+//  - there is **no tail padding**: a struct's size is where its last member ends. `GLOCLOCK`'s
+//    payload is 61 bytes, not the 64 a `sizeof` with tail padding would give.
+// ---------------------------------------------------------------------------------------------
+
+/** `pack(4)` alignment of one member. */
+export function segmentAlignment(segment: EdieSegment): number {
+  if (segment.kind === 'string') return 1;
+  if (segment.kind === 'array') {
+    if (segment.countSize) return 4;
+    const first = segment.elements[0];
+    return first ? segmentAlignment(first) : 1;
+  }
+  const size = segment.size || 1;
+  return size >= 4 ? 4 : size === 2 ? 2 : 1;
+}
+
+/** `value` rounded up to the next multiple of `align`. */
+export function alignUp(value: number, align: number): number {
+  const remainder = value % align;
+  return remainder === 0 ? value : value + align - remainder;
+}
+
+/** Bytes one element of an array occupies, or null when the element list is variable. */
+export function packedStructSize(segments: readonly EdieSegment[]): number | null {
+  let cursor = 0;
+  for (const segment of segments) {
+    cursor = alignUp(cursor, segmentAlignment(segment));
+    const size = packedSegmentSize(segment);
+    if (size === null) return null;
+    cursor += size;
+  }
+  return cursor;
+}
+
+/** Bytes a segment occupies once its element count is known; null when it is variable. */
+export function packedSegmentSize(segment: EdieSegment): number | null {
+  if (segment.kind !== 'array') return segment.size;
+  if (segment.fixedCount === undefined) return null;
+  const inner = packedStructSize(segment.elements);
+  if (inner === null) return null;
+  return (segment.countSize || 0) + segment.fixedCount * inner;
 }
 
 export interface ArrayWalk {
@@ -312,11 +381,11 @@ function decodeSegments(
     const at = base + (segment.dynamicOffset ? cursor : segment.offset + shift);
     if (segment.kind === 'string') {
       const hex = String(segment.format ?? '').endsWith('Z');
-      const text = hex ? readHexBytes(dv, at, segment.size) : readString(dv, at, segment.size);
+      const text = hex ? readHexBytes(dv, at, segment.size) : readStringField(bytes, at, segment);
       out.push({ name: segment.name, path: `${prefix}${segment.name}`, value: text, text });
       const size = segmentWireSize(bytes, segment, at);
       cursor = at + size - base;
-      shift += size - segment.size;
+      if (segment.variable) shift += size - segment.size;
       continue;
     }
     if (segment.kind === 'scalar') {
@@ -332,6 +401,26 @@ function decodeSegments(
     // ASCII writer interprets them; the field decoders keep skipping them.
     if (format === '%R' || format === '%P') {
       cursor = at + segmentWireSize(bytes, segment, at) - base;
+      continue;
+    }
+    // `%Z` — a counted array of bytes printed as **one** lowercase hex token, not one decimal number
+    // per element: `USERI2CREAD`'s registers `de ad be` come out `deadbe`, and a zero count comes out
+    // as an empty token (`…,42,0,,7,…`). Measured with the suite's Convert on synthetic frames.
+    if (format === '%Z') {
+      if (segment.countSize && at + segment.countSize > bytes.byteLength) continue;
+      const declared = segment.countSize
+        ? readCountAt(bytes, at, segment.countSize)
+        : (segment.fixedCount ?? 0);
+      const start = at + (segment.countSize || 0);
+      const count = Math.max(0, Math.min(declared, Math.max(0, bytes.byteLength - start)));
+      let text = '';
+      for (let i = 0; i < count; i++) text += (bytes[start + i] ?? 0).toString(16).padStart(2, '0');
+      if (segment.countSize) {
+        out.push({ name: `${segment.name}.count`, path: `${prefix}${segment.name}.count`, value: declared, text: String(declared), isCount: true });
+      }
+      out.push({ name: segment.name, path: `${prefix}${segment.name}`, value: text, text });
+      cursor = start + count - base;
+      shift += (segment.countSize || 0) + count - denseSegmentSize(segment);
       continue;
     }
     const walk = walkArray(bytes, segment, at);

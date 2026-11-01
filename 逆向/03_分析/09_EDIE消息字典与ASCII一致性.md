@@ -1085,3 +1085,235 @@ PRN 集合也完全一样（1,2,3,4,6,7,9,10,12,16,19,20,23,25,26,28,29,31,32,37
   这一批继续按 id 排除（41/42/43）。
 - 同一个合成 `PASSTHROUGH` 在**视图**里（GRIT/Playback 的报文列表）怎么显示，本轮没测；
   Convert 三路（ASCII / ABBREV / BINARY）都已对上。
+
+## 9.x.14 残余六项：`pack(4)` 计数数组、`%Z` 变长数组、64 位整数、`#` 重打、`$`+`$` 合并、`<` 空体（2026-11-01）
+
+这一节和前面所有节的区别：**没有任何真机样本**，也没有 COM 口可用（COM10 由别人占着）。
+六件事全靠「合成帧 + 本机套件 2.11.0 的 Convert 当 oracle」逐字节反推。
+
+做法固定：用 `packages/protocol/data/edie-layouts.json` 的布局拼 payload → `buildLongHeader` +
+`appendCrcLe` 封成二进制帧 → 写成纯 ASCII 路径的 `.sbf` → 调
+
+```
+NovAtelApplicationSuite.exe -a        -o <纯ASCII目录> <输入>
+NovAtelApplicationSuite.exe --abbrev  -o <纯ASCII目录> <输入>
+```
+
+→ 读它写的 `ASCII/<名>.ASCII`、`ABBREV_ASCII/<名>.ABBREV_ASCII` → 和我们 `convertFrames` 的输出
+逐行比。Convert 对「从未见过的帧」一样照转，这就是 oracle。工具全在 `逆向/tools/`：
+
+| 工具 | 作用 |
+|---|---|
+| `oracle.ts` | 造帧 / 跑套件 / 读输出（公共件） |
+| `oracle-pack4.ts` / `oracle-pack4b.ts` | ①②：`USERI2CREAD` / `USERCANDATA` 的对齐与 `%Z` |
+| `oracle-64bit.ts` | ③：`%llu` / `%lld` |
+| `oracle-text.ts` / `oracle-hash.ts` | ④⑥：`#` 重打与 `<` 空体 |
+| `oracle-nmea.ts` / `oracle-nmea2.ts` | ⑤：`$`+`$` 合并 |
+| `oracle-strlen.ts` | 变长 `%s` 到底截不截断 |
+| `oracle-sweep.ts` | 15 个「dense ≠ packed」的定长布局逐个过 oracle |
+| `oracle-verify.ts` | 六项一次性端到端比对（退出码 0 = 全一致） |
+| `oracle-regress.ts` | 任一份抓包 + 任一格式，套件 vs 我们，字节 + SHA |
+| `golden-check.ts` | 8 份 ASCII + 6 份 ABBREV golden 的字节数与 SHA |
+
+### ① `pack(4)` 不再「自证才启用」
+
+旧规则：只有「布局 dense 尺寸 ≠ packed 尺寸」**且**「这一帧 payload 长度正好等于 packed 尺寸」时才
+按 4 对齐改写偏移。那是拿样本当开关，不是规则——Convert 读字段用的是**固定偏移**，它没法因为
+payload 长短换一套。
+
+新规则（`edie.ts#segmentAlignment` / `packedSegmentSize` / `packedStructSize`，
+`ascii-log.ts#wireFields`）：
+
+| 成员 | 对齐 |
+|---|---|
+| `UCHAR`/`CHAR`/`HEXBYTE`（1 B） | 1 |
+| `USHORT`/`SHORT`（2 B） | 2 |
+| `ULONG`/`LONG`/`UINT`/`FLOAT`/`DOUBLE`/`ULONG64`/`LONGLONG`（≥4 B） | 4 |
+| `STRING`（含 `%Z`） | **1** |
+| 数组 | 有 `ULONG` 计数前缀→4；否则同首元素 |
+
+**没有尾部补齐**：`GLOCLOCK` 的 payload 是 61 B（`sizeof` 若补尾部会是 64），`RAWEPHEM` 是 102 B
+（它三个 `%Z` 是 `char[30]`，对齐 1，所以 dense 本来就对）。这两个长度与 §2 里用真机 payload
+验证过的 61 / 102 一致，只是现在知道了原因。
+
+改写只做「定长前缀」，遇到**宽度不可知**的段（带计数的数组、`variable` 字符串）就停：该段自己
+仍按 4 对齐，它后面的段保持 dense 偏移，交给写者里的 `shift`/`cursor` 续排。原因是实测出来的：
+
+```
+USERI2CREAD：slave_device_address u8@0、寄存器数组（dense 说 count@1）、request_length dense@5
+             套件读 count@4、元素@8、request_length@align4(8+n)、transaction_id 再 +4
+SURVEYPOSITION：option@0、id(变长, 声明 5)@4、latitude dense@9
+             id 里放 "abc\0"（4 B）→ 套件把 latitude 打在 8 = 9 + (4 − 5)
+```
+
+也就是说「对齐后的偏移」和「dense 偏移 + 实测漂移」是两套坐标，混用就会差一字节（我们第一版
+先改成 `9 → 12` 再让 shift 减 1，读出 11，double 读歪）。所以分界线就是「第一个宽度不可知的段」。
+
+**证据数字**（`oracle-verify.ts`，退出码 0）：
+
+| 合成帧 | 套件与我们的同一行 |
+|---|---|
+| `USERI2CREAD`，256 个寄存器 | `…;42,256,<512 字符 hex>,2,287454020*c119ee8e` |
+| `USERI2CREAD`，257 个寄存器（8+257=265→268） | `…;42,257,<514 字符 hex>,7,4660*2d992574` |
+| `USERI2CREAD`，0 个寄存器 | `…;42,0,,7,4660*c47be5b5` |
+| `USERCANDATA`，3 字节（16+3=19→20） | `…;UNKNOWN,UNKNOWN,00000123,3,deadbe,00000055,102*fad65d3b` |
+| 同上，ABBREV | `<     UNKNOWN UNKNOWN 00000123 3 deadbe 00000055 102`（**一条数据行，不拆元素行**） |
+
+**15 个定长布局逐个过 oracle**（`oracle-sweep.ts`：payload 用 `(i*37+11)&0xff` 的确定性图案，
+长度取 packed 尺寸；`variable` 字符串位写 `abc\0` 终止）：
+
+| id | 名字 | dense | packed |
+|---|---|---|---|
+| 25 | RAWGPSSUBFRAME | 46 | 48 |
+| 259 | GPGGARTK | 53 | 56 |
+| 477 | SOFTLOADSREC | 519 | 520 |
+| 719 | GLOCLOCK | 57 | 61 |
+| 973 | RAWSBASFRAME | 45 | 48 |
+| 977 | SBAS1 | 35 | 36 |
+| 981 | SBAS18 | 46 | 48 |
+| 1132 | HEADINGEXT | 100 | 102 |
+| 1330 | QZSSRAWSUBFRAME | 42 | 44 |
+| 1889 | INSPVACMP | 44 | 48 |
+| 1890 | INSPVASDCMP | 35 | 40 |
+| 1952 | SURVEYPOSITION | 41 | 44 |
+| 2093 | WIFIAPSETTINGS | 136 | 138 |
+| 2213 | WIFINETCONFIG | 174 | 176 |
+| 2528 | PROFILERESPONSE | 330 | 333 |
+
+15/15 在 packed 长度上 ASCII 与 ABBREV 都逐字节一致。`live-b3.test.ts` 里原来那条
+「只有 payload 自证时才补」的用例改成了「无论如何都补」，并保留 38 B 那种越界情形读 0 的断言。
+
+### ② `%Z` 变长数组：一个 hex token
+
+`VARIABLE_LENGTH_ARRAY` + `%Z`（`USERI2CREAD.slave_register_address`、`USERCANDATA.received_data`
+一类）**打成一个 token**，不是每个元素一个十进制：
+
+- 计数照打（`%u`），然后一个**小写** hex 串，每元素两字节；
+- **计数为 0 时仍然打一个空 token** —— 于是行里出现 `,,`：`…;42,0,,7,4660*c47be5b5`；
+- ABBREV 里同样是一条数据行：`<     42 0  7 4660`（空 token 留下两个空格）。
+
+`decodeEdie`（视图 / RINEX 那一路）同步成一个 hex 值，不是 N 个字节。
+
+### ③ `ULONG64` / `LONGLONG`：真的 64 位
+
+宽度旧代码是对的（8 B），错的是**格式**：`Number(getBigUint64())` 过一遍 double，
+`9007199254740993`（2^53+1）会打成 `9007199254740992`，`18446744073709551615` 会打成
+`18446744073709552000`。现在 `readScalar` 对 `longlong`/`ulonglong` 直接返回 `bigint`，
+`formatField` 对 `%llu`/`%lld` 走 `BigInt`（文本记录里的 token 也按 `BigInt()` 回读）。
+
+顺带记一个坑：`parseFormat('%llu')` 的 `(l{0,2})` 抓的是 `ll`、`([A-Za-z]{1,2})` 抓的是 `u`，
+所以 `spec` 永远是 `u`/`d`；判长度只能看 `length === 'll'`。老代码 switch 里的
+`case 'llu': case 'lld':` 是**永远走不到**的死分支。
+
+`FILESYSTEMCAPACITY`（真机拒发这条，oracle 照转）与 `INSPVACMP` 的实测：
+
+```
+5,USBSTICK,0,1,RAMDRIVE,1,2,DEFAULT_NO_STORAGE,4294967296,4294967297,
+INTERNAL_FLASH,9007199254740993,9007199254740994,UNKNOWN,18446744073709551615,0     *f33c5611
+…,0,0,0,-9007199254740993,1,-2,…                                                  *7fef7060
+…,0,0,0,-9223372036854775808,1,-2,…                                               *4ff227fc
+```
+
+### ④ `#…*crc` 是**重打**，不是原样拷贝
+
+把一条 `#BESTPOSA` 写成不规范形状（idle time `72.00`、`64.82390`、头里 `007`/`02442`/
+`570228.0`/`3800800`/`CDBA`），套件回来的是**规范行**，CRC 也是新的：
+
+| 输入 | 输出 |
+|---|---|
+| idle `72.00`、`30.539973063660`、`64.82390` | `72.0`、`30.53997306366`、`64.8239`，`*8820f06a` |
+| 头 `007,72.00,02442,570228.0,3800800,CDBA` | `7,72.0,2442,570228.000,03800800,cdba`，`*eb08b1e3` |
+| body 末尾多两个 token（`,99,88`） | 多出来的**不打印**，同一行 `*8820f06a` |
+| body 少两个 token（`,30,03` 少 `0,03`） | **整条丢**，ASCII 与 ABBREV 都不出行 |
+
+所以九个头部 token 也要按类型重打：端口名/时间状态名照抄（本来就是名字），sequence/week/
+swVersion 取整，idle 是 `round(v*2)/2` 一位小数，毫秒是秒 + 三位小数，rxStatus 八位小写 hex，
+msgDefCrc 四位小写 hex。ABBREV 那条 `<BESTPOS USB2 7 72.0 …` 用的是**同一套**重打后的头。
+
+真机写的 `#` 记录本来就规范，重打是恒等：b1 的 13 条、live-nav 的 11 条、live-nav2 的 10 条
+（全是 `#BESTPOSA`）都逐字节不变，三道 golden 全绿。
+
+### ⑤ `$` + `$` 无 CRLF：一条记录，取**最后**一句
+
+`framing.ts` 早就知道 `$…$…\r\n` 是一条文本记录（`textBoundary` 不把 `$` 当边界）。那条记录
+打印哪一句，实测是**最后一个 `$` 起**的那一句，并且校验**它自己**的 `*hh`：
+
+| 抓包里的一条记录 | 套件输出 |
+|---|---|
+| `$A*47$B*7A` | `$B…*7A` |
+| `$A*47$B*00`（B 的校验和坏） | 什么都不出（**不回退**到 A） |
+| `$00-A$B*7A`（A 坏 B 好） | `$B…*7A` |
+| `$A*47$B*7A$R*78` | `$R…*78` |
+| `$A*47$GPGGA,1,2`（末尾没 `*`） | 什么都不出 |
+| `$A*47$B*7a`（小写校验和） | `$B…*7a`，原样回显，不重打 |
+| `$A*47$GNZZZ,1*36`（最后一句不是已知 NMEA） | 什么都不出 |
+
+旧实现用 `^…$` 贪婪匹配整条、校验和算在「第一个 `$` 到最后一个 `*`」上，于是行数比 oracle 少
+一条（合并的那条被当成校验和错丢掉）。现在先 `lastIndexOf('$')` 再匹配，校验和与回显都落在
+最后一句上。
+
+### ⑥ `<` 只有头没有体：不输出
+
+`<BESTPOS COM1 0 72.0 FINESTEERING 2402 577759.000 03800800 cdba 18278\r\n` 后面直接跟下一条
+`<` 头时，套件**一行都不出**（不是出一条空 body 的 `#BESTPOSA,…;*crc`）。现在
+`textLogLines` / `abbrevTextLogLines` 在 `record.tokens.length <= 9`（正好九个头部字段）时直接跳过。
+有体的记录照旧，`<RAWALM …` + `<     2402 91818.000 0` 仍然出一条。
+
+### 顺带测出来的一件（不在六项里，但会影响上面）
+
+变长 `%s` 的 `arrayLength` **不封顶**：
+
+```
+SURVEYPOSITION，id 声明 5 B，payload 里放 "abcdefghij\0"
+→ 套件打 "abcdefghij"（10 个字符），latitude 落在 4 + 12 = 16
+```
+
+所以 `stringWireSize` 改成「数到 NUL 为止」，`readString` 分流成
+`readStringField`（定长字符串仍封顶在声明宽度，变长的不封顶）。真机记录一定在声明宽度内
+NUL 终止，两种读法在八份 golden 上完全同解（`SETNAV` 的 `"FROM"`、`ICOMCONFIG` 的 `":3002"`、
+`DNSCONFIG` 的 `"192.168.5.1"`、`ETHSTATUS` 的 MAC 都没变）。
+
+### 回归（全部真跑，2026-11-01）
+
+`node --test --test-force-exit "packages/*/test/*.test.ts"` → **754 项全绿**
+（本轮新增 12 项，全在 `packages/protocol/test/oracle-residual.test.ts`；基线 721 项，余下的差额来自
+同一仓库另一路并行工作新加的 `packages/app` 侧用例——本轮只碰了 `packages/protocol/src`、
+`packages/protocol/test`、`逆向/tools` 和本文件）。
+
+八份 ASCII golden：字节数与 SHA-256（`golden-check.ts`，全部 `OK`）
+
+| golden | 字节 | sha256 前 16 位 |
+|---|---|---|
+| broad-clean.ASCII | 5 567 000 | `c1196c58cf9f633c` |
+| clean-9600.ASCII | 489 205 | `9794cf614d3f9572` |
+| golden-live-nav.ASCII | 2 798 307 | `ebbaa745e04839c9` |
+| golden-live-nav2.ASCII | 2 657 890 | `1f0526440567fa93` |
+| golden-remote-23types.ASCII | 3 845 232 | `893d135e3e548f92` |
+| golden-b1-20261101.ASCII | 5 088 882 | `2d6f529f8829ed18` |
+| golden-b2-20261101.ASCII | 4 931 973 | `11a27b7a98bc20b2` |
+| golden-b3-20261101.ASCII | 6 137 463 | `c6a678cdf8da5631` |
+
+五份 ABBREV golden：b1 / b2 / b3 在树上（`5 738 549` / `5 723 813` / `7 116 268` B，
+sha `652d04cd…` / `adeb4417…` / `49c9c10b…`），live-nav / live-nav2 **不在树上**，用本机套件现场跑：
+
+```
+OK   live-nav.sbf   ABBREV_ASCII  suite 3248102 B 42f1468ec9883f8c   ours 3248102 B 42f1468ec9883f8c
+OK   live-nav2.sbf  ABBREV_ASCII  suite 3084110 B 9b36c522bb176dd9   ours 3084110 B 9b36c522bb176dd9
+```
+
+（另有 b4 / b5 / clean-9600 三份 ABBREV 也一并复验：`8 725 124` / `7 372 489` / `567 576` B，全 `OK`。）
+
+### 剩余（no sample, no fix —— 以及为什么不硬凑）
+
+- **套件越界读 payload**：payload 比 packed 尺寸短时（例如 46 B 的 `RAWGPSSUBFRAME`），套件照样按
+  packed 偏移读，读到自己的堆上，打出 `3515780199` 这种值。这既不可复现也没意义（真机不会发
+  这个长度），我们读到 payload 外一律给 0。`live-b3.test.ts` 把这个「0」钉成断言。
+- **同一条记录里变长字符串没有 NUL 时**：套件会一路读到 payload 之外（它的 buffer 含 4 B CRC），
+  所以那种合成帧的最后几个字节对不上。真机记录不会这样；我们以 payload 结束为界。
+- **数组元素内部的成员偏移**仍是 dense + `shift`（golden 证明过的那条路，`ETHSTATUS` count=1）。
+  `SBAS17`(30→32)、`ETHSTATUS`(26→28)、`SAVEDSURVEYPOSITIONS`(29→32)、`WIFINETLIST`(63→68)
+  这四个**元素结构体**在 count ≥ 2 时 stride 应该变，但这四条报文在任何抓包里都没出现，
+  count=1 也证明不了 stride，故不动。`oracle-sweep.ts` 只扫定长布局，扫不到这里。
+- **`USERI2CREAD` / `USERCANDATA` / `FILESYSTEMCAPACITY` 是 COMMAND 或固件拒发**，任何真机抓包
+  都不会有这几行；本节给的是「套件对这样一个帧会打什么」，不是「接收机会发什么」。
+- **`%` 短 ASCII** 仍然不实现（§9.x.6 已记：六种形状套件全丢）。

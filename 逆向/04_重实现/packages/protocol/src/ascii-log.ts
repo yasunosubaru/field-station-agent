@@ -16,7 +16,11 @@
 
 import { novatelCrc32 } from './crc.ts';
 import {
+  alignUp,
   denseSegmentSize,
+  packedSegmentSize,
+  readStringField,
+  segmentAlignment,
   segmentWireSize,
   walkArray,
   type EdieArray,
@@ -225,8 +229,28 @@ export function exactFixed(value: number, digits: number): string {
   return `${sign}${whole.toString()}${digits ? `.${fraction}` : ''}`;
 }
 
-function integer(value: number): string {
-  return String(Math.trunc(value));
+function integer(value: number | bigint): string {
+  return typeof value === 'bigint' ? value.toString() : String(Math.trunc(value));
+}
+
+/**
+ * A 64-bit integer from whatever the reader (or a parsed text token) handed us.
+ *
+ * A `bigint` is exact. A decimal **string** is parsed as a bigint so `18446744073709551615` from a
+ * `#` record survives; anything else (a `number`, already lossy, or a form `BigInt` rejects) falls
+ * back through `Number`.
+ */
+export function toBigInt(value: number | string | bigint): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'string') {
+    try {
+      return BigInt(value.trim());
+    } catch {
+      const number = Math.trunc(Number(value));
+      return BigInt(Number.isFinite(number) ? number : 0);
+    }
+  }
+  return BigInt(Math.trunc(Number.isFinite(value) ? value : 0));
 }
 
 /**
@@ -321,12 +345,12 @@ function formatK(number: number, width: number, hasWidth: boolean, digits: numbe
 }
 
 /** Render one scalar the way the suite's ASCII encoder does. */
-export function formatField(segment: EdieScalar, value: number | string, tables: EdieTables): string {
+export function formatField(segment: EdieScalar, value: number | string | bigint, tables: EdieTables): string {
   const format = parseFormat(segment.format);
   if (format?.spec === 'm') return messageName(Number(value), tables);
   if (segment.enum) {
     const table = tables.enums[segment.enum];
-    if (table && typeof value === 'number') {
+    if (table && (typeof value === 'number' || typeof value === 'bigint')) {
       const name = table.values[String(value)];
       if (name !== undefined) return name;
       // A value outside the table always prints `UNKNOWN` — not the number, and not only when the
@@ -338,6 +362,14 @@ export function formatField(segment: EdieScalar, value: number | string, tables:
     }
   }
   if (segment.type === 'bool') return value ? 'TRUE' : 'FALSE';
+  // `%llu` / `%lld` are the only conversions wider than a double's integer range, and the suite
+  // prints them **exactly**: a synthetic `FILESYSTEMCAPACITY` carrying 9007199254740993 (2^53 + 1)
+  // and 18446744073709551615 prints both digit for digit, and `INSPVACMP` prints
+  // `-9223372036854775808` for -2^63. A JS `number` cannot hold either, so these two stay `bigint`
+  // end to end (`readScalar` returns one, `BigInt()` recovers one from a text token).
+  if (format && format.length === 'll' && (format.spec === 'u' || format.spec === 'd')) {
+    return integer(toBigInt(value));
+  }
   const number = Number(value);
   if (!format) return String(value);
   const { width, hasWidth, precision, spec } = format;
@@ -444,93 +476,62 @@ export function escapePassThrough(bytes: Uint8Array, at: number, length: number)
 }
 
 /**
- * Alignment the wire puts in front of a field of this width.
+ * The field list with the offsets the wire actually uses: `pack(4)`.
  *
- * The offsets in `edie-layouts.json` are **dense**: the generator summed the declared field widths
- * (`gen_edie_layouts.js`, lost with the extracted app), and the dictionary lists no padding members.
- * The wire is not dense — SBF packs with `pack(4)`, so a `USHORT` starts on a 2-byte boundary and a
- * `DOUBLE`/`ULONG64` on a 4-byte one. `GLOCLOCK` (id 719) is the first log where the difference is
- * visible: `n4` ends at 22, so `tau_gps` moves 22 → 24, and `na` ends at 34, so `tau_c` moves
- * 32 → 36 … 56 → 60, which makes the payload 61 bytes instead of the layout's 57. Measured on the
- * one GLOCLOCK record of `b3-20261101.sbf`: the suite prints `3.725290298e-09` (2^-28, the bytes at
- * 24..31) where the dense offset reads zero.
+ * The offsets in `edie-layouts.json` are **dense** — the generator summed the declared field widths
+ * — while an SBF payload is a C struct compiled with `#pragma pack(4)`. `edie.ts#segmentAlignment`
+ * owns the geometry (`STRING`/`%Z` is a char array and aligns to 1, an array aligns like its count
+ * prefix or its first element, nothing is tail-padded), and this function applies it to the stored
+ * offsets.
  *
- * Applying the rule everywhere would move twelve other layouts (`PTPDELTATIME`, `HEADINGEXT`,
- * `INSPVACMP`, `SURVEYPOSITION`, `USERI2C*`, `USERCAN*`, `SBAS17/26/27`), none of which we have a
- * record for, and some of which would be read differently for no evidence. So it is applied only
- * when the record itself proves it: see `wireFields`.
+ * It used to apply the correction only when the record's payload length happened to equal the
+ * aligned size, i.e. only for the two layouts (`GLOCLOCK`, `RAWGPSSUBFRAME`) where a capture proved
+ * it. That was a guess dressed as a rule: Convert reads a payload at **fixed** offsets and cannot
+ * vary them by length, and the suite's own Convert reproduces `pack(4)` offsets for every layout we
+ * can synthesise a record for (see §9.x.14 of `03_分析/09_EDIE消息字典与ASCII一致性.md`: all 15
+ * fixed layouts whose dense size differs from the packed one, plus `USERI2CREAD`, `USERCANDATA` and
+ * `FILESYSTEMCAPACITY` for counted arrays). So it is applied unconditionally now.
  *
- * `RAWGPSSUBFRAME` (id 25) is the second measured case and pins the width rule down: its 30-byte
- * `%Z` blob runs 12..41, so the `ULONG` `signal_channel_number` sits at 44, not 42 — the payload is
- * 48 bytes, and reading at 42 gives `1179648` (0x00120000) where the suite prints `18`.
+ * A segment whose width the table cannot know stops the rewrite: that is a counted array (whose
+ * count is on the wire) or a `variable` `STRING` (whose `arrayLength` is only a maximum). The
+ * segment itself still gets its aligned offset — that is what moves `USERI2CREAD`'s register array
+ * from 1 to 4 — but everything behind it keeps the stored dense offset, because there the reader
+ * places fields from the running cursor plus the measured drift (`shift` in the two writers), and
+ * that arithmetic is defined against the dense offsets:
+ *
+ *   SURVEYPOSITION  option@0, id(variable, declared 5)@4, latitude declared@9
+ *   `"abc\0"` takes 4 bytes → the suite prints latitude from 4 + 4 + (9 - 5 - 4) … = **8**
+ *
+ * Mixing an aligned offset with a dense-relative shift is what made this wrong: rewriting `9 → 12`
+ * and then shifting by `-1` reads 11, one byte into the double.
  */
-function alignment(size: number): number {
-  if (size >= 4) return 4;
-  if (size === 2) return 2;
-  return 1;
-}
+const WIRE_FIELDS = new WeakMap<EdieLayout, { raw: readonly EdieSegment[]; fields: EdieSegment[] }>();
 
-/** Fixed payload size of a segment list, dense and `pack(4)`-aligned; null when it is variable. */
-function packedFixedSize(segments: EdieSegment[]): { dense: number; aligned: number } | null {
-  let dense = 0;
-  let aligned = 0;
-  for (const segment of segments) {
-    if (segment.kind === 'array') {
-      const array = segment as EdieArray;
-      if (array.fixedCount === undefined) return null;
-      const inner = packedFixedSize(array.elements);
-      if (!inner) return null;
-      dense += (array.countSize || 0) + array.fixedCount * inner.dense;
-      aligned += (array.countSize || 0) + array.fixedCount * inner.aligned;
-      continue;
-    }
-    const align = alignment(segment.size);
-    if (aligned % align !== 0) aligned += align - (aligned % align);
-    dense += segment.size;
-    aligned += segment.size;
-  }
-  return { dense, aligned };
-}
-
-/**
- * The field list with offsets the wire actually uses.
- *
- * Only top-level offsets are rewritten (that is where the padding was measured), and only when the
- * layout's dense size is not its aligned size **and** the record's payload is exactly the aligned
- * size. A record of any other length keeps the stored offsets, so every log with a payload we have
- * never seen — and every variable-length one, for which `packedFixedSize` returns null — is read
- * exactly as before.
- */
-export function wireFields(layout: EdieLayout, payloadLength: number): EdieSegment[] {
-  const sizes = packedFixedSize(layout.fields);
-  if (!sizes || sizes.aligned === sizes.dense || payloadLength !== sizes.aligned) return layout.fields;
+export function wireFields(layout: EdieLayout): EdieSegment[] {
+  const cached = WIRE_FIELDS.get(layout);
+  if (cached && cached.raw === layout.fields) return cached.fields;
+  const fields: EdieSegment[] = [];
   let cursor = 0;
-  return layout.fields.map((segment) => {
-    const align = segment.kind === 'array' ? 1 : alignment(segment.size);
-    if (cursor % align !== 0) cursor += align - (cursor % align);
-    const offset = cursor;
-    if (segment.kind === 'array') {
-      const array = segment as EdieArray;
-      const inner = packedFixedSize(array.elements);
-      cursor += (array.countSize || 0) + (array.fixedCount ?? 0) * (inner?.aligned ?? array.stride);
-    } else {
-      cursor += segment.size;
+  let changed = false;
+  for (let index = 0; index < layout.fields.length; index++) {
+    const segment = layout.fields[index] as EdieSegment;
+    cursor = alignUp(cursor, segmentAlignment(segment));
+    if (cursor !== segment.offset) changed = true;
+    fields.push(cursor === segment.offset ? segment : { ...segment, offset: cursor });
+    const size = packedSegmentSize(segment);
+    if (size === null || (segment.kind === 'string' && segment.variable)) {
+      for (let rest = index + 1; rest < layout.fields.length; rest++) fields.push(layout.fields[rest] as EdieSegment);
+      break;
     }
-    return { ...segment, offset };
-  });
-}
-
-function decodeString(bytes: Uint8Array, at: number, size: number): string {
-  let out = '';
-  for (let i = 0; i < size; i++) {
-    const byte = bytes[at + i];
-    if (byte === undefined || byte === 0) break;
-    out += String.fromCharCode(byte);
+    cursor += size;
   }
-  return out;
+  const result = changed ? fields : layout.fields;
+  WIRE_FIELDS.set(layout, { raw: layout.fields, fields: result });
+  return result;
 }
 
-function readScalar(bytes: Uint8Array, type: string, at: number, size: number): number {
+
+function readScalar(bytes: Uint8Array, type: string, at: number, size: number): number | bigint {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const available = view.byteLength;
   const need = size > 0 ? size : type === 'f64' ? 8 : type === 'u8' ? 1 : type === 'u16' ? 2 : 4;
@@ -566,9 +567,9 @@ function readScalar(bytes: Uint8Array, type: string, at: number, size: number): 
     case 'f64':
       return view.getFloat64(at, true);
     case 'longlong':
-      return Number(view.getBigInt64(at, true));
+      return view.getBigInt64(at, true);
     case 'ulonglong':
-      return Number(view.getBigUint64(at, true));
+      return view.getBigUint64(at, true);
     default:
       return view.getUint8(at);
   }
@@ -577,8 +578,8 @@ function readScalar(bytes: Uint8Array, type: string, at: number, size: number): 
 /** Element-count prefix: u8/u16/u32, as `arrayLengthFieldSize` declares it. */
 function readCount(bytes: Uint8Array, at: number, size: number): number {
   if (size === 1) return bytes[at] ?? 0;
-  if (size === 2) return readScalar(bytes, 'u16', at, 2);
-  return readScalar(bytes, 'u32', at, 4);
+  if (size === 2) return Number(readScalar(bytes, 'u16', at, 2));
+  return Number(readScalar(bytes, 'u32', at, 4));
 }
 
 /** Per-record bookkeeping for the `%R` rule above. */
@@ -597,14 +598,16 @@ function renderSegments(
   options: AsciiLogOptions,
   state: RenderState,
 ): void {
-  // A segment the table cannot place (`dynamicOffset`) starts where the previous one ended; every
-  // other one starts at its stored offset plus the drift the variable-width segments introduced.
-  // `shift` reproduces the offsets exactly for the layouts the goldens already agree on
-  // (`SETNAV`, `ICOMCONFIG`, `DNSCONFIG`), `cursor` is what IPSTATUS' `dns_server` needs.
+  // A segment the table cannot place (`dynamicOffset`) starts where the previous one ended, rounded
+  // up to its own `pack(4)` alignment; every other one starts at its stored offset plus the drift
+  // the variable-width segments introduced. `shift` reproduces the offsets exactly for the layouts
+  // the goldens already agree on (`SETNAV`, `ICOMCONFIG`, `DNSCONFIG`), `cursor` is what IPSTATUS'
+  // `dns_server` needs — and the rounding is what puts `USERI2CREAD`'s `request_length` at 12 behind
+  // a one-byte register (8 + 1 = 9 → 12, measured against the suite).
   let shift = 0;
   let cursor = 0;
   for (const segment of segments) {
-    const at = base + (segment.dynamicOffset ? cursor : segment.offset + shift);
+    const at = base + (segment.dynamicOffset ? alignUp(cursor, segmentAlignment(segment)) : segment.offset + shift);
     // `%R` — an embedded binary message, printed as its own finished ASCII line (`RXCONFIGA` wraps
     // `#LOGA,…*<embedded crc>` and the outer CRC follows after it). Measured on
     // `golden-remote-23types.ASCII`: the RXCONFIG payload is a complete SBF frame whose payload is
@@ -638,7 +641,7 @@ function renderSegments(
         cursor = at + raw.size - base;
         continue;
       }
-      out.push(`"${decodeString(bytes, at, raw.size)}"`);
+      out.push(`"${readStringField(bytes, at, raw)}"`);
       // A `STRING` field runs to a NUL and is zero-padded to a 4-byte boundary; `arrayLength` is
       // only a maximum, and the padding wins even when it exceeds it: SETNAV declares
       // `from_point` as 6 bytes but the wire spends 8 on `"FROM"`, so `to_point` starts at 48.
@@ -668,6 +671,24 @@ function renderSegments(
       const start = at + array.countSize;
       const available = Math.max(0, bytes.byteLength - start);
       out.push(escapePassThrough(bytes, start, Math.min(Math.max(0, count), available)));
+      continue;
+    }
+    // `%Z` — a counted array of bytes is **one** lowercase hex token, not one decimal number per
+    // element. `USERI2CREAD`'s three registers `de ad be` print as `deadbe`, and a zero count prints
+    // an empty token, i.e. two commas in a row (`…,42,0,,7,4660`). Measured on synthetic
+    // `USERI2CREAD` / `USERCANDATA` frames through the suite's own Convert: 257 registers of
+    // `a0 a1 …` come out as one 514-character token, and `USERCANDATA`'s `de ad be` as `deadbe`.
+    if (String(array.format ?? '') === '%Z') {
+      if (array.countSize && at + array.countSize > bytes.byteLength) continue;
+      const declared = array.countSize
+        ? readCount(bytes, at, array.countSize)
+        : (array.fixedCount ?? 0);
+      if (array.countSize) out.push(String(declared));
+      const start = at + (array.countSize || 0);
+      const count = Math.max(0, Math.min(declared, Math.max(0, bytes.byteLength - start)));
+      out.push(Array.from({ length: count }, (_, i) => (bytes[start + i] ?? 0).toString(16).padStart(2, '0')).join(''));
+      cursor = start + count - base;
+      shift += (array.countSize || 0) + count - denseSegmentSize(segment);
       continue;
     }
     // A count field that is not inside the payload prints nothing at all — GLORAWEPHEM synthesised
@@ -729,7 +750,7 @@ function render(
   const { header, payload } = frame;
   const body: string[] = [];
   const state: RenderState = { unresolvedEmbedded: false };
-  renderSegments(payload, wireFields(layout, payload.length), 0, tables, body, depth, options, state);
+  renderSegments(payload, wireFields(layout), 0, tables, body, depth, options, state);
   // `%R` with nothing to print drops the record (see the note in `renderSegments`).
   if (state.unresolvedEmbedded) return '';
 

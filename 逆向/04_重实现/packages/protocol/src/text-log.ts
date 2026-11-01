@@ -49,7 +49,7 @@
  */
 
 import { novatelCrc32 } from './crc.ts';
-import { formatField, latin1Bytes } from './ascii-log.ts';
+import { formatField, latin1Bytes, toBigInt } from './ascii-log.ts';
 import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
 import type { Frame } from './framing.ts';
 
@@ -98,18 +98,39 @@ function parseToken(segment: EdieScalar | EdieString, token: string, tables: Edi
     const hex = parseInt(token, 16);
     return Number.isNaN(hex) ? token : hex;
   }
+  // `%llu` / `%lld` keep all 64 bits: a decimal string is parsed as a `bigint`, not through a
+  // double (2^53 + 1 would otherwise print as 2^53).
+  if (/%l{2}[ud]$/.test(String(segment.format ?? ''))) return toBigInt(token);
   const value = Number(token);
   if (!Number.isFinite(value)) return token;
   if (spec !== undefined && !INT_SPECS.has(spec) && scalar.type === 'f32') return Math.fround(value);
   return value;
 }
 
-/** Walk the layout in print order, consuming one body token per field. */
-function renderBody(segments: EdieSegment[], tokens: string[], tables: EdieTables, out: string[]): void {
+/**
+ * Walk the layout in print order, consuming one body token per field.
+ *
+ * Returns false when the record ran out of tokens before the layout did — Convert drops such a
+ * record entirely (measured: a `#BESTPOSA` whose body loses its last two tokens prints nothing,
+ * while the same record with two **extra** tokens prints them away). `keepExtra` keeps the old
+ * lenient behaviour for `<` records, where an unexplained token is more useful in the diff than
+ * silently gone.
+ */
+function renderBody(
+  segments: EdieSegment[],
+  tokens: string[],
+  tables: EdieTables,
+  out: string[],
+  keepExtra = false,
+): boolean {
   let at = 0;
+  let complete = true;
   const walk = (list: EdieSegment[]): void => {
     for (const segment of list) {
-      if (at >= tokens.length) return;
+      if (at >= tokens.length) {
+        complete = false;
+        return;
+      }
       if (segment.kind === 'array') {
         const array = segment as EdieArray;
         let count = array.fixedCount ?? 0;
@@ -117,9 +138,16 @@ function renderBody(segments: EdieSegment[], tokens: string[], tables: EdieTable
           count = Number(tokens[at++] ?? '0');
           out.push(String(count));
         }
-        // A `%P` payload is a single escaped token however many elements it holds.
-        if (String(array.format ?? '') === '%P') {
-          if (at < tokens.length) out.push(tokens[at++]);
+        // A `%P` payload and a `%Z` byte array are one token each however many elements they hold.
+        // `%Z` prints as lowercase hex, so it is normalised and cut back to `count` bytes.
+        const format = String(array.format ?? '');
+        if (format === '%P' || format === '%Z') {
+          if (at >= tokens.length) {
+            complete = false;
+            return;
+          }
+          const token = tokens[at++] ?? '';
+          out.push(format === '%Z' ? token.toLowerCase().slice(0, Math.max(0, count) * 2) : token);
           continue;
         }
         for (let i = 0; i < count && at < tokens.length; i++) walk(array.elements);
@@ -135,9 +163,10 @@ function renderBody(segments: EdieSegment[], tokens: string[], tables: EdieTable
     }
   };
   walk(segments);
-  // Tokens the layout does not explain are kept rather than dropped, so a mismatch is visible in
-  // the diff instead of silently shortening the line.
-  while (at < tokens.length) out.push(tokens[at++]);
+  // Tokens the layout does not explain: kept for a `<` record (a mismatch stays visible in the
+  // diff) and dropped for a `#` record, because that is what Convert does with them.
+  if (keepExtra) while (at < tokens.length) out.push(tokens[at++]);
+  return complete;
 }
 
 /** `<NAME tok …>` header? The first token must be a message the dictionary knows. */
@@ -170,10 +199,28 @@ const NMEA_SENTENCES = new Set([
  * no terminator at all are all dropped); nothing may follow the two checksum digits (`*47garbage`
  * is dropped); the payload is not validated at all (`$GPGST,123519.00` and `$GPHDT,` are kept), so
  * the checksum and the sentence id are the only gates.
+ *
+ * A record may hold **more than one** `$`: the de-framer starts a text record at a `$` and a second
+ * `$` inside it does not begin a new one (`framing.ts#textBoundary`), so `$A…*47$B…*7A\r\n` reaches
+ * us as a single record. Convert resolves that record to the **last** sentence and validates *its*
+ * checksum, printing it verbatim — the last sentence's bytes, checksum case included:
+ *
+ * | record                                  | the suite's line                        |
+ * |-----------------------------------------|-----------------------------------------|
+ * | `$A*47$B*7A`                            | `…$B…*7A` (the last one)                |
+ * | `$A*47$B*00` (B's checksum broken)      | nothing — no fallback to `A`            |
+ * | `$A*47$GPGGA,1,2` (B has no checksum)   | nothing                                 |
+ * | `$A*47$B*7A$R*78` (three sentences)     | `…$R…*78`                               |
+ * | `$A*47$B*7a` (lowercase checksum)       | `…$B…*7a` — echoed, not re-rendered     |
+ *
+ * So the sentence starts at the last `$`, not the first. (Reading the record as "first `$` up to
+ * the last `*`, checksum over the first `*`" would print `A` and keep the record above that the
+ * suite drops, which is exactly what this used to do.)
  */
 export function passThroughNmea(text: string): string | undefined {
   if (!text.endsWith('\r\n')) return undefined;
-  const line = text.slice(0, -2);
+  const all = text.slice(0, -2);
+  const line = all.slice(all.lastIndexOf('$'));
   const match = /^\$([A-Z]{5}),(.*)\*([0-9a-fA-F]{2})$/.exec(line);
   if (!match) return undefined;
   if (!NMEA_SENTENCES.has(match[1])) return undefined;
@@ -239,15 +286,11 @@ export function encodeTextLog(
 }
 
 /**
- * A `#NAME,…*crc` text record, ready to copy out; `undefined` when the suite would drop it.
+ * A `#NAME,…*crc` text record, gated; `undefined` when the suite would drop it before parsing.
  *
- * Convert does not merely copy these: it parses the fields and re-renders them (a synthetic
- * `#BESTPOSA` whose idle time reads `72.00` comes back as `72.0`, `64.82390` as `64.8239`). For
- * every record a receiver writes the re-render is identical to the input — same layout, same
- * conversion strings — so copying the line is byte-exact, and that is what the six goldens show.
- * The gates it shares with the re-render are enforced here: the CRC must match and the name must
- * be one the dictionary knows, otherwise the record is dropped (`#FOOBARA` with a correct CRC and
- * `#BESTPOSA` with `*00000000` both produce no line).
+ * The gate is the CRC and the name, both measured: `#FOOBARA` with a perfect CRC and `#BESTPOSA`
+ * with `*00000000` produce no line at all. What the record *says* is decided by `encodeHashLog`,
+ * which re-renders it — this function only answers "would Convert look at it".
  */
 export function passThroughAscii(text: string, names: ReadonlySet<string> = new Set()): string | undefined {
   const line = text.replace(/[\r\n]+$/, '');
@@ -259,15 +302,92 @@ export function passThroughAscii(text: string, names: ReadonlySet<string> = new 
 }
 
 /** One `#NAME,…;…*crc` line as the same token list a `<` record assembles into. */
-function parseHashRecord(index: number, line: string): TextLogRecord | undefined {
+/**
+ * A `#NAME,…;…*crc` line split into its parts, with the nine header tokens **re-rendered**.
+ *
+ * Convert parses these records exactly like binary ones and prints them again, so the head is not a
+ * copy: a synthetic `#BESTPOSA` whose head reads `USB2,007,72.00,COARSESTEERING,02442,570228.0,
+ * 3800800,CDBA,18278` comes back as `USB2,7,72.0,COARSESTEERING,2442,570228.000,03800800,cdba,18278`
+ * — sequence and week as integers, idle time as `raw/2` with one decimal, milliseconds as
+ * seconds with three, receiver status to eight lowercase hex digits, the message-definition CRC to
+ * four. The port name and the time-status name are already names, so they stay as they came.
+ */
+function renderHead(tokens: string[]): string[] {
+  const integerOf = (token: string): string => {
+    const value = Number(token);
+    return Number.isFinite(value) ? String(Math.trunc(value)) : token;
+  };
+  const hexOf = (token: string, width: number): string => {
+    const value = parseInt(token, 16);
+    return Number.isNaN(value) ? token : (value >>> 0).toString(16).padStart(width, '0');
+  };
+  const [port, sequence, idle, timeStatus, week, milliseconds, receiverStatus, msgDefCrc, softwareVersion] = tokens;
+  const idleRaw = Math.round(Number(idle) * 2);
+  const ms = Math.round(Number(milliseconds) * 1000);
+  return [
+    port ?? '',
+    integerOf(sequence ?? ''),
+    Number.isFinite(idleRaw) ? (idleRaw / 2).toFixed(1) : String(idle),
+    timeStatus ?? '',
+    integerOf(week ?? ''),
+    Number.isFinite(ms) ? `${Math.floor(ms / 1000)}.${String(ms % 1000).padStart(3, '0')}` : String(milliseconds),
+    hexOf(receiverStatus ?? '', 8),
+    hexOf(msgDefCrc ?? '', 4),
+    integerOf(softwareVersion ?? ''),
+  ];
+}
+
+interface HashRecord {
+  /** The name token exactly as it arrived (`BESTPOSA`), which is what Convert prints. */
+  rawName: string;
+  /** Dictionary name without the version letter (`BESTPOS`). */
+  name: string;
+  layout: EdieLayout | undefined;
+  /** The nine header tokens, re-rendered. */
+  head: string[];
+  /** The body tokens, as the record carried them. */
+  body: string[];
+}
+
+function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecord | undefined {
   const semicolon = line.indexOf(';');
   const star = line.lastIndexOf('*');
   if (semicolon < 0 || star < semicolon) return undefined;
-  const head = line.slice(1, semicolon).split(',');
-  const name = head.shift() ?? '';
-  // The trailing `*crc` belongs to the record, not to the last field.
-  const tokens = [...head, ...line.slice(semicolon + 1, star).split(',')];
-  return tokens.length >= 9 ? { index, name: name.slice(0, -1), tokens } : undefined;
+  const tokens = line.slice(1, semicolon).split(',');
+  const rawName = tokens.shift() ?? '';
+  if (tokens.length < 9) return undefined;
+  const base = rawName.slice(0, -1);
+  const name = /[A-Z]$/.test(rawName) && byName.has(base) ? base : rawName;
+  return {
+    rawName,
+    name,
+    layout: byName.get(name),
+    head: renderHead(tokens.slice(0, 9)),
+    body: line.slice(semicolon + 1, star).split(','),
+  };
+}
+
+/**
+ * Re-render a gated `#NAME,…;…*crc` record as the ASCII line Convert writes; `undefined` when it
+ * drops the record.
+ *
+ * Two shapes of drop are measured on synthetic records:
+ *
+ *  - the body runs **out** of tokens before the layout does (a `#BESTPOSA` whose body loses its last
+ *    two fields prints nothing at all);
+ *  - extra body tokens are simply not printed (the same record with two tokens appended prints the
+ *    canonical line, unchanged).
+ *
+ * For every record a receiver writes the re-render is the input, byte for byte — that is what the
+ * goldens show (13 such records in `b1`, 11 in `live-nav`, 10 in `live-nav2`, all `#BESTPOSA`).
+ */
+export function encodeHashLog(record: HashRecord, tables: EdieTables): string | undefined {
+  const body: string[] = [];
+  if (record.layout && !renderBody(record.layout.fields, record.body, tables, body)) return undefined;
+  if (!record.layout) body.push(...record.body);
+  const sentence = `${record.rawName},${record.head.join(',')};${body.join(',')}`;
+  const crc = novatelCrc32(latin1Bytes(sentence)).toString(16).padStart(8, '0');
+  return `#${sentence}*${crc}`;
 }
 
 /**
@@ -307,17 +427,29 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
   const lines = new Map<number, string[]>();
 
   for (const [index, record] of collectTextLogs(frames, tables)) {
+    // A `<` record with only its header prints nothing (see `textLogLines`).
+    if (record.tokens.length <= 9) continue;
     const layout = byName.get(record.name);
-    if (layout) lines.set(index, abbrevFromTokens(record, layout, tables));
+    if (layout) {
+      const lines_ = abbrevFromTokens(record, layout, tables);
+      if (lines_) lines.set(index, lines_);
+    }
   }
   frames.forEach((frame, index) => {
     if (frame.kind !== 'text') return;
     if (frame.prefix === '#') {
       const line = passThroughAscii(frame.text, names);
       if (line === undefined) return;
-      const record = parseHashRecord(index, line);
-      const layout = record && byName.get(record.name);
-      if (record && layout) lines.set(index, abbrevFromTokens(record, layout, tables));
+      const record = parseHashLine(line, byName);
+      if (record?.layout) {
+        const blocks = abbrevFromTokens(
+          { index, name: record.name, tokens: [...record.head, ...record.body] },
+          record.layout,
+          tables,
+          true,
+        );
+        if (blocks) lines.set(index, blocks);
+      }
       return;
     }
     if (frame.prefix === '$') {
@@ -328,12 +460,21 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
   return lines;
 }
 
-function abbrevFromTokens(record: TextLogRecord, layout: EdieLayout, tables: EdieTables): string[] {
+function abbrevFromTokens(
+  record: TextLogRecord,
+  layout: EdieLayout,
+  tables: EdieTables,
+  requireComplete = false,
+): string[] | undefined {
   const head = record.tokens.slice(0, 9);
   const body = record.tokens.slice(9);
   const first: string[] = [];
   const blocks: string[][] = [];
-  walkAbbrev(layout.fields, body, tables, first, blocks);
+  const complete = walkAbbrev(layout.fields, body, tables, first, blocks);
+  // A `#` record whose body runs out of tokens is dropped whole, exactly as in ASCII output (the
+  // suite prints nothing for it — see `encodeHashLog`). A `<` record keeps the lenient reading,
+  // because no capture carries a truncated one.
+  if (requireComplete && !complete) return undefined;
   return formatAbbrev(`${record.name} ${head.join(' ')}`, first, blocks);
 }
 
@@ -357,24 +498,49 @@ function walkAbbrev(
   tables: EdieTables,
   first: string[],
   blocks: string[][],
-): void {
+): boolean {
   let at = 0;
+  let complete = true;
   for (const segment of segments) {
     if (segment.kind !== 'array') {
-      if (at >= tokens.length) return;
+      if (at >= tokens.length) {
+        complete = false;
+        return complete;
+      }
       at = walkElement([segment], tokens, at, tables, first);
       continue;
     }
     const array = segment as EdieArray;
     if (array.countSize) {
+      if (at >= tokens.length) {
+        complete = false;
+        return complete;
+      }
       const count = Number(tokens[at++] ?? '0');
       if (!Number.isFinite(count)) continue;
       first.push(String(count));
+      // A `%P` payload or a `%Z` byte array is one token on this line, no element lines — the same
+      // shape the binary writer produces (`USERCANDATA … 3 deadbe …`, and `… 0  7 …` for an empty
+      // one, where the empty token leaves the two spaces around it).
+      const format = String(array.format ?? '');
+      if (format === '%P' || format === '%Z') {
+        if (at < tokens.length) {
+          const token = tokens[at++] ?? '';
+          first.push(format === '%Z' ? token.toLowerCase().slice(0, Math.max(0, count) * 2) : token);
+        } else complete = false;
+        continue;
+      }
       // `max(1, count)`: a zero-element array still prints one (empty) element line.
       for (let i = 0; i < Math.max(1, count); i++) {
         const block: string[] = [];
-        if (at < tokens.length) at = walkElement(array.elements, tokens, at, tables, block);
-        else if (i > 0) break; // truncated record: stop instead of inventing empty lines
+        if (at < tokens.length) {
+          at = walkElement(array.elements, tokens, at, tables, block);
+        } else if (i < count) {
+          // The count promises an element the record does not carry. (For `count === 0` the empty
+          // line is the record's own shape, not a truncation.)
+          complete = false;
+          if (i > 0) break;
+        }
         blocks.push(block);
       }
     } else {
@@ -383,6 +549,7 @@ function walkAbbrev(
       }
     }
   }
+  return complete;
 }
 
 function walkElement(
@@ -403,8 +570,10 @@ function walkElement(
     }
     if (segment.kind === 'array') {
       // A `%P` payload arrives as one escaped token and goes out unchanged: the escaping is
-      // reversible, and a `%P` record in text input has never been observed.
-      out.push(token);
+      // reversible, and a `%P` record in text input has never been observed. A `%Z` byte array is
+      // one token too, printed lowercase like the binary writer's.
+      const format = String(segment.format ?? '');
+      out.push(format === '%Z' ? token.toLowerCase() : token);
       continue;
     }
     out.push(formatField(segment as EdieScalar, parseToken(segment, token, tables), tables));
@@ -414,6 +583,12 @@ function walkElement(
 /**
  * The ASCII lines for a whole capture, in frame order: one entry per frame index that produces
  * output (binary frames are not included — `convert.ts` already handles those).
+ *
+ * A `<` record with nothing but its header prints nothing — no line, not even an empty body.
+ * Measured: `<BESTPOS COM1 0 72.0 FINESTEERING 2402 577759.000 03800800 cdba 18278\r\n` followed by
+ * another `<` header produced no output at all through the suite's Convert, where printing the
+ * record would have written `#BESTPOSA,…;*crc`. (No capture we have carries such a record; the
+ * receiver always follows a header with its data line.)
  */
 export function textLogLines(frames: readonly Frame[], tables: EdieTables): Map<number, string> {
   const byName = new Map<string, EdieLayout>();
@@ -421,13 +596,18 @@ export function textLogLines(frames: readonly Frame[], tables: EdieTables): Map<
   const names = new Set(byName.keys());
   const lines = new Map<number, string>();
   for (const [index, record] of collectTextLogs(frames, tables)) {
+    // Header only (`record.tokens` is exactly the nine header fields): nothing to print.
+    if (record.tokens.length <= 9) continue;
     lines.set(index, encodeTextLog(record, byName.get(record.name), tables));
   }
   frames.forEach((frame, index) => {
     if (frame.kind !== 'text') return;
     if (frame.prefix === '#') {
       const line = passThroughAscii(frame.text, names);
-      if (line !== undefined) lines.set(index, line);
+      if (line === undefined) return;
+      const record = parseHashLine(line, byName);
+      const rendered = record ? encodeHashLog(record, tables) : undefined;
+      if (rendered !== undefined) lines.set(index, rendered);
       return;
     }
     if (frame.prefix === '$') {

@@ -16,8 +16,10 @@
  *    the suite prints `81600`;
  *  - the offsets in `edie-layouts.json` are dense, but SBF packs with `pack(4)`: `GLOCLOCK`'s
  *    `DOUBLE` moves 22 → 24 and 32 → 36 (payload 57 → 61), and `RAWGPSSUBFRAME`'s `ULONG` after the
- *    30-byte `%Z` blob moves 42 → 44 (46 → 48). `wireFields` applies the padding only when the
- *    record's payload is exactly the aligned size, so no layout without evidence moves.
+ *    30-byte `%Z` blob moves 42 → 44 (46 → 48). `wireFields` applies the padding to every layout
+ *    now; it used to apply it only when the record's payload happened to be the aligned size, which
+ *    meant a layout with no measured record was read as if it were dense (§9.x.14 of
+ *    `03_分析/09_EDIE消息字典与ASCII一致性.md` has the synthetic-record evidence for all 15).
  */
 
 import test from 'node:test';
@@ -115,31 +117,37 @@ function bodyOf(layout: EdieLayout, payload: Uint8Array): string {
 
 test('an integer field is read at its declared width, whatever the dictionary calls it', () => {
   // `SHORT`/`UINT`/`INT`/`ULONG64` are the spellings GALINAVEPHEMERIS, BDSCLOCK and INSPVACMP use.
-  // Dense offsets here (dense 18, aligned 20) so the payload length picks the stored layout and the
-  // test is about the reader alone.
+  // Every field sits on a `pack(4)` boundary here, so the test is about the reader alone.
   const layout: EdieLayout = {
     name: 'WIDTHS',
     style: 'OEM4_MESSAGE_STYLE',
     type: 'LOG',
     fields: [
       { name: 's16', kind: 'scalar', offset: 0, size: 2, type: 'short', format: '%hd' },
-      { name: 'u32v', kind: 'scalar', offset: 2, size: 4, type: 'uint', format: '%u' },
-      { name: 'i32v', kind: 'scalar', offset: 6, size: 4, type: 'int', format: '%d' },
-      { name: 'u64v', kind: 'scalar', offset: 10, size: 8, type: 'ulonglong', format: '%llu' },
+      { name: 'u32v', kind: 'scalar', offset: 4, size: 4, type: 'uint', format: '%u' },
+      { name: 'i32v', kind: 'scalar', offset: 8, size: 4, type: 'int', format: '%d' },
+      { name: 'u64v', kind: 'scalar', offset: 12, size: 8, type: 'ulonglong', format: '%llu' },
     ],
   } as EdieLayout;
-  const payload = new Uint8Array(18);
+  const payload = new Uint8Array(20);
   const view = new DataView(payload.buffer);
   view.setInt16(0, -2, true);
-  view.setUint32(2, 0x12345678, true);
-  view.setInt32(6, -100000, true);
-  view.setBigUint64(10, 0x0000000100000002n, true);
+  view.setUint32(4, 0x12345678, true);
+  view.setInt32(8, -100000, true);
+  view.setBigUint64(12, 0x0000000100000002n, true);
   assert.equal(bodyOf(layout, payload), '-2,305419896,-100000,4294967298');
 });
 
-test('pack(4) padding is used only when the payload length proves it', () => {
+test('pack(4) padding is applied whatever the payload length is', () => {
   // RAWGPSSUBFRAME's shape: a 30-byte `%Z` blob ends at 34, so the ULONG below it sits at 36 on the
-  // wire (payload 40) but at 34 in the dense layout (payload 38).
+  // wire (payload 40) rather than at 34 in the dense layout (which would make the payload 38).
+  //
+  // Convert reads a payload at fixed offsets — it cannot move them because the length looks wrong —
+  // and the suite reproduces the packed offsets for every one of the 15 fixed layouts whose dense
+  // size differs from the packed one (§9.x.14). So `n` is read at 36 for a 40-byte payload **and**
+  // for a 38-byte one, where it lands past the end and prints 0. The old rule ("keep the stored
+  // offsets unless the payload proves the packing") printed 9 for the 38-byte case, which no oracle
+  // ever showed.
   const layout: EdieLayout = {
     name: 'PADDED',
     style: 'OEM4_MESSAGE_STYLE',
@@ -162,7 +170,7 @@ test('pack(4) padding is used only when the payload length proves it', () => {
   const dense = new Uint8Array(38);
   new DataView(dense.buffer).setUint32(0, 1, true);
   new DataView(dense.buffer).setUint32(34, 9, true);
-  assert.ok(bodyOf(layout, dense).endsWith(',9'), 'a payload that is not the aligned size keeps the stored offsets');
+  assert.equal(bodyOf(layout, dense), `1,${'00'.repeat(30)},0`, 'still read at 36, past the end');
 });
 
 test('the two alignment cases the capture proves: GLOCLOCK 61 bytes, RAWGPSSUBFRAME 48', () => {

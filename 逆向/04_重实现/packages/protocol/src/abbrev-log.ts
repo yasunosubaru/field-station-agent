@@ -45,8 +45,11 @@
 import { novatelCrc32 } from './crc.ts';
 import { escapePassThrough, formatField, portName, wireFields } from './ascii-log.ts';
 import {
+  alignUp,
   denseSegmentSize,
   readCountAt,
+  readStringField,
+  segmentAlignment,
   segmentWireSize,
   walkArray,
   type EdieArray,
@@ -73,7 +76,7 @@ const ELEMENT_INDENT = 9;
  */
 const NESTED_INDENT = 5;
 
-function readScalar(bytes: Uint8Array, type: string, at: number): number {
+function readScalar(bytes: Uint8Array, type: string, at: number): number | bigint {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   // The dictionary spells integers eight ways (a generated C struct), not four: the width decides
   // the read, not the spelling. Reading a `ULONG`/`USHORT` as one byte still lands on the right
@@ -103,9 +106,9 @@ function readScalar(bytes: Uint8Array, type: string, at: number): number {
     case 'long':
       return view.getInt32(at, true);
     case 'longlong':
-      return Number(view.getBigInt64(at, true));
+      return view.getBigInt64(at, true);
     case 'ulonglong':
-      return Number(view.getBigUint64(at, true));
+      return view.getBigUint64(at, true);
     case 'f32':
       return view.getFloat32(at, true);
     case 'f64':
@@ -121,13 +124,7 @@ function readStringValue(bytes: Uint8Array, segment: EdieString, at: number): st
   if (String(segment.format ?? '').endsWith('Z')) {
     return Array.from({ length: segment.size }, (_, i) => (bytes[at + i] ?? 0).toString(16).padStart(2, '0')).join('');
   }
-  let out = '';
-  for (let i = 0; i < segment.size; i++) {
-    const byte = bytes[at + i];
-    if (byte === undefined || byte === 0) break;
-    out += String.fromCharCode(byte);
-  }
-  return out;
+  return readStringField(bytes, at, segment);
 }
 
 /** One printed line, before the indents and the trailing-space rule are applied. */
@@ -196,7 +193,7 @@ export function encodeAbbrevRecord(
   const state: RenderState = { unresolvedEmbedded: false };
   // The same `pack(4)` correction the ASCII writer applies: a record whose payload is exactly the
   // aligned size of a dense layout is read with aligned offsets (GLOCLOCK, RAWGPSSUBFRAME).
-  renderSegments(payload, wireFields(layout, payload.length), 0, tables, body, depth, state);
+  renderSegments(payload, wireFields(layout), 0, tables, body, depth, state);
   if (state.unresolvedEmbedded) return undefined;
   return { header: head, lines: body.lines };
 }
@@ -236,13 +233,14 @@ function renderSegments(
   arrayDepth = 0,
 ): void {
   // Same placement rule as the ASCII writer: a segment the table cannot place (`dynamicOffset`,
-  // i.e. anything behind a counted array) starts where the previous one ended; the rest start at
-  // their stored offset plus the drift a variable-width segment introduced.
+  // i.e. anything behind a counted array) starts where the previous one ended, rounded up to its
+  // own `pack(4)` alignment; the rest start at their stored offset plus the drift a variable-width
+  // segment introduced.
   let shift = 0;
   let cursor = 0;
   for (let index = 0; index < segments.length; index++) {
     const segment = segments[index] as EdieSegment;
-    const at = base + (segment.dynamicOffset ? cursor : segment.offset + shift);
+    const at = base + (segment.dynamicOffset ? alignUp(cursor, segmentAlignment(segment)) : segment.offset + shift);
     if (segment.kind === 'string') {
       const text = readStringValue(bytes, segment, at);
       body.value(String(segment.format ?? '').endsWith('Z') ? text : `"${text}"`);
@@ -294,6 +292,28 @@ function renderSegments(
         body.value(escapePassThrough(bytes, start, Math.min(Math.max(0, count), available)));
       }
       cursor = bytes.byteLength - base;
+      continue;
+    }
+
+    // `%Z` — a counted array of bytes prints its element count and then **one** lowercase hex
+    // token, on the line it started on (no element lines): `USERCANDATA`'s three bytes come out
+    // `<     UNKNOWN UNKNOWN 00000123 3 deadbe 00000055 102` and `USERI2CREAD`'s zero count reads
+    // `<     42 0  7 4660` — the empty token leaves the two spaces around it. Measured on synthetic
+    // frames through the installed suite.
+    if (format === '%Z') {
+      if (!(array.countSize && at + array.countSize > bytes.byteLength)) {
+        const declared = array.countSize
+          ? readCountAt(bytes, at, array.countSize)
+          : (array.fixedCount ?? 0);
+        if (array.countSize) body.value(String(declared));
+        const start = at + (array.countSize || 0);
+        const count = Math.max(0, Math.min(declared, Math.max(0, bytes.byteLength - start)));
+        body.value(Array.from({ length: count }, (_, i) => (bytes[start + i] ?? 0).toString(16).padStart(2, '0')).join(''));
+        cursor = start + count - base;
+        shift += (array.countSize || 0) + count - denseSegmentSize(segment);
+        continue;
+      }
+      cursor = at + (array.countSize || 0) - base;
       continue;
     }
 
