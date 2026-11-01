@@ -123,13 +123,24 @@ const TERMINAL_BACKFILL = 150;
 
 /**
  * The black bar under the app bar. `Status` and `Configuration` are real pages in this build;
- * `Settings` stays disabled with its reason in `title`. `Tools` carries the Terminal, the Events
- * drawer and the Device `.cfg` pair — the same three doors the original has.
+ * `Settings` carries the two shipped settings pages it has (General, Networking) and opens them in
+ * the same drawer the Configuration pages use. `Tools` carries the Terminal, the Events drawer and
+ * the Device `.cfg` pair — the same doors the original has.
  */
 const MENU = [
   { key: 'status', label: 'Status', icon: 'status', caret: false, wired: true },
   { key: 'configuration', label: 'Configuration', icon: 'configuration', caret: false, wired: true },
-  { key: 'settings', label: 'Settings', icon: 'settings', caret: true, wired: false },
+  {
+    key: 'settings',
+    label: 'Settings',
+    icon: 'settings',
+    caret: true,
+    wired: true,
+    items: [
+      { key: 'generalSettings', label: 'General…', wired: true },
+      { key: 'networkingSettings', label: 'Networking…', wired: true },
+    ],
+  },
   {
     key: 'tools',
     label: 'Tools',
@@ -156,6 +167,9 @@ const MENU = [
 const UNWIRED_NOTE =
   'Not wired in this build: the local API only serves Status (this page) from a capture — ' +
   'the other pages need a live receiver.';
+
+/** `Settings ▸ …` entries: each opens the drawer on the shipped page it names. */
+const SETTINGS_PAGES = new Set(['generalSettings', 'networkingSettings']);
 
 /* Material-style glyphs, 24×24 viewBox, drawn with `currentColor` so the bar can dim the
  * unwired items. The gear is the same path the shell's app-bar settings icon uses
@@ -600,7 +614,7 @@ function template() {
 
 <div class="mg-config" data-el="config" role="dialog" aria-label="Configuration" hidden>
   <div class="mg-config-head">
-    <span class="mg-config-title">Configuration</span>
+    <span class="mg-config-title" data-config="title">Configuration</span>
     <label class="mg-config-pick">
       <span class="mg-config-pick-label">Page</span>
       <select class="mg-config-select" data-config="page"></select>
@@ -693,8 +707,22 @@ export function mount(root, ctx = {}) {
       if (configEls.note) configEls.note.textContent = `Page list failed: ${error.message}`;
     }
     if (configEls.page) {
-      configEls.page.innerHTML = drawer.pages
-        .map((page) => `<option value="${esc(page.name)}">${esc(page.label)}</option>`)
+      // Grouped by the menu the page belongs to, so the same one select covers Configuration and
+      // Settings without pretending they are the same page family.
+      const groups = [
+        { label: 'Configuration', pages: drawer.pages.filter((page) => !page.settings && !page.operational) },
+        { label: 'Settings', pages: drawer.pages.filter((page) => page.settings) },
+        { label: 'Operational', pages: drawer.pages.filter((page) => page.operational) },
+      ].filter((group) => group.pages.length);
+      configEls.page.innerHTML = groups
+        .map(
+          (group) =>
+            `<optgroup label="${esc(group.label)}">` +
+            group.pages
+              .map((page) => `<option value="${esc(page.name)}">${esc(page.label)}</option>`)
+              .join('') +
+            '</optgroup>',
+        )
         .join('');
       if (drawer.page) configEls.page.value = drawer.page;
     }
@@ -706,10 +734,12 @@ export function mount(root, ctx = {}) {
     drawer.page = page;
     if (configEls.page) configEls.page.value = page;
     if (configEls.frame) configEls.frame.src = `/config/${encodeURIComponent(page)}`;
+    const settings = SETTINGS_PAGES.has(page);
+    if (configEls.title) configEls.title.textContent = settings ? 'Settings' : 'Configuration';
     if (configEls.note) {
       const entry = (drawer.pages ?? []).find((item) => item.name === page);
       configEls.note.textContent = entry
-        ? `${entry.label} — the suite’s shipped markup and controller (${page})`
+        ? `${entry.label}${settings ? ' (Settings page)' : ''} — the suite’s shipped markup and controller (${page})`
         : page;
     }
   }
@@ -851,6 +881,16 @@ export function mount(root, ctx = {}) {
 
   async function importCfg() {
     const text = fileEls.text ? fileEls.text.value : '';
+    // One line goes out at a time and each waits for the receiver's own `<OK`/`<ERR…`; the button
+    // stays disabled until the file is parsed again, so a second click cannot re-send a file whose
+    // first line was already refused.
+    setCfgDisabled(fileEls.import, true);
+    if (fileEls.importReason) fileEls.importReason.textContent = '';
+    if (fileEls.importState) {
+      fileEls.importState.textContent =
+        'Sending one line at a time — each line waits for the receiver’s <OK before the next one goes out.';
+    }
+    showReport('');
     try {
       const response = await fetch('/api/config/device/import', {
         method: 'POST',
@@ -858,13 +898,64 @@ export function mount(root, ctx = {}) {
         body: JSON.stringify({ text }),
       });
       const result = await response.json();
-      showReport(
-        `Import refused (HTTP ${response.status}): ${result.reason}\n` +
-          `parsed ${result.preview?.commands?.length ?? 0} command(s); 0 sent; verified: no`,
-      );
+      applyImportOutcome(result, response.status);
+      // A finished import must be re-parsed before it can run again (its text may have changed).
+      device.parsed = null;
     } catch (error) {
+      if (fileEls.importState) fileEls.importState.textContent = 'Import failed — nothing is claimed.';
+      if (fileEls.importReason) fileEls.importReason.textContent = `Import failed: ${error.message}`;
       showReport(`Import failed: ${error.message}`);
     }
+  }
+
+  /**
+   * Render one import answer. The reason under the button, the state line and the button's
+   * disabled flag all come from this one object, so a failure cannot show one thing in the report
+   * and another under the button.
+   */
+  function applyImportOutcome(result, httpStatus) {
+    const answer = result ?? {};
+    const steps = Array.isArray(answer.steps) ? answer.steps : [];
+    const verification = answer.verification ?? null;
+    const matched = verification ? Number(verification.matched) || 0 : 0;
+    const absent = verification && Array.isArray(verification.absent) ? verification.absent : [];
+    const report = [];
+    if (answer.ok) {
+      report.push(
+        `Imported ${answer.sent} command(s): the receiver answered every line.`,
+        `Read-back ${answer.verified ? 'confirmed' : 'did not confirm'} ${matched} of ${answer.sent}` +
+          (absent.length ? ` · ${absent.length} line(s) are not reported by LOG RXCONFIG` : '') +
+          '.',
+      );
+    } else {
+      const status = httpStatus === 200 ? '' : ` (HTTP ${httpStatus})`;
+      report.push(`Import stopped${status}: ${answer.reason ?? 'no reason given'}`);
+    }
+    for (const step of steps) {
+      const verdict = step.verified ? ` · read-back ${step.verified}` : '';
+      const reply = step.reply ?? `(no reply: ${step.status})`;
+      report.push(`${step.ok ? 'OK  ' : 'FAIL'} ${step.index}. ${step.line} → ${reply} (${step.elapsedMs} ms)${verdict}`);
+      if (step.verified === 'mismatch' && Array.isArray(step.readback)) {
+        for (const line of step.readback) report.push(`      receiver: ${line}`);
+      }
+    }
+    if (verification && verification.request) {
+      report.push(`Read-back: ${verification.request} → ${verification.lines} configuration line(s).`);
+    }
+    showReport(report.join('\n'));
+    if (fileEls.importReason) fileEls.importReason.textContent = answer.reason ?? '';
+    if (fileEls.importState) {
+      if (answer.ok) {
+        fileEls.importState.textContent = answer.verified
+          ? `Written: ${answer.sent} command(s) applied and read back.`
+          : `Written: ${answer.sent} command(s) applied; the read-back did not confirm every line.`;
+      } else if (answer.failedLine) {
+        fileEls.importState.textContent = `Stopped at “${answer.failedLine}” — nothing after it was sent.`;
+      } else {
+        fileEls.importState.textContent = 'Import refused — nothing was written.';
+      }
+    }
+    setCfgDisabled(fileEls.import, true);
   }
 
   /**
@@ -2171,6 +2262,7 @@ export function mount(root, ctx = {}) {
     closeDrops();
     if (key === 'terminal') termOpen();
     else if (key === 'events') void openConfigDrawer('events');
+    else if (SETTINGS_PAGES.has(key)) void openConfigDrawer(key);
     else if (key === 'exportCfg') openDeviceModal('export');
     else if (key === 'importCfg') openDeviceModal('import');
   };

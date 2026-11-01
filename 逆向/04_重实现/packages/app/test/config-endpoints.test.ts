@@ -223,6 +223,83 @@ test('export and import answer 409 with the reason while no receiver records exi
   assert.match(String(applied.body.reason), /receiver/i);
 });
 
+/* ------------------------------------------------- Settings ▸ General / Networking */
+
+test('the page list marks the Settings pages apart from the Configuration pills', async () => {
+  const { text } = await getText('/api/config/pages');
+  const body = JSON.parse(text) as {
+    pages: Array<{ name: string; label: string; operational: boolean; settings: boolean }>;
+  };
+  const settings = body.pages.filter((page) => page.settings).map((page) => page.name);
+  assert.ok(settings.includes('generalSettings'), 'General is listed as a Settings page');
+  assert.ok(settings.includes('networkingSettings'), 'so is Networking');
+  assert.equal(settings.includes('portConfig'), false, 'the pill pages are not');
+  const general = body.pages.find((page) => page.name === 'generalSettings');
+  assert.equal(general?.label, 'General');
+  const networking = body.pages.find((page) => page.name === 'networkingSettings');
+  assert.equal(networking?.label, 'Networking');
+  assert.equal(networking?.settings, true);
+  assert.equal(body.pages.filter((page) => !page.operational).length, 14, 'still 14 pill pages');
+});
+
+test('/config/generalSettings serves the shipped General page alone, and says there is no session', async () => {
+  const { response, text } = await getText('/config/generalSettings');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /text\/html/);
+  assert.match(text, /data-config-page="generalSettings"/);
+  // The menu layout `createMenuComponents` builds, shown (`.menu-layouts` ships `display:none`).
+  assert.match(text, /<div id="generalSettings-layout_tabs-2" class="menu-layouts" style="display: block">/);
+  assert.match(text, /id="general-settings"/);
+  assert.match(text, /class="height-selection-list selector-positioning"/);
+  assert.match(text, /id="Ellipsoidal"/);
+  assert.match(text, /class="btn btn-default darkBtn general-settings-apply"/);
+  // The words the reader sees (the fragment itself is only `data-lang-*` markers).
+  assert.match(text, />General</);
+  assert.match(text, />Height</);
+  assert.match(text, />Ellipsoidal</);
+  // Not the whole Manage tab: the Configuration panes stay out of this document.
+  assert.doesNotMatch(text, /id="config-ports-tabs-2"/);
+  assert.match(text, /id="config-session-note"/, 'the missing session is stated in the page');
+});
+
+test('/config/networkingSettings serves the shipped Networking controls', async () => {
+  const { response, text } = await getText('/config/networkingSettings');
+  assert.equal(response.status, 200);
+  assert.match(text, /<div id="networkingSettings-layout_tabs-2" class="menu-layouts" style="display: block">/);
+  assert.match(text, /id="networking-details"/);
+  assert.match(text, /id="networking-accordion"/);
+  assert.match(text, /class="input-text-box ipaddress ethernet-input"/);
+  assert.match(text, /id="dhcp-on-off"/);
+  assert.match(text, /class="btn btn-default darkBtn ethernet-applyBtn"/);
+  assert.match(text, /id="hotspot-applyBtn"/);
+  assert.match(text, />Networking</);
+  assert.match(text, />IP Address</);
+  assert.doesNotMatch(text, /id="config-pos-tabs-2"/);
+});
+
+test('a change in a Settings page reaches the controller, and the dropped command is named', async () => {
+  // Typing into the address field records a pending value on the page…
+  const typed = await postJson('/api/config/networkingSettings/event', {
+    selector: '#networkingSettings-layout_tabs-2 .ipaddress',
+    value: '10.0.0.5',
+  });
+  assert.equal(typed.response.status, 200);
+  assert.equal(typed.body.applied, true);
+  assert.equal(typed.body.commands, 0, 'typing frames nothing yet');
+  // …and Apply frames the shipped IPCONFIG + SAVEETHERNETDATA pair. No session is open, so the
+  // two commands are dropped — and the answer says so in words the page can print.
+  const applied = await postJson('/api/config/networkingSettings/event', {
+    selector: '#networkingSettings-layout_tabs-2 .ethernet-applyBtn',
+    click: true,
+  });
+  assert.equal(applied.response.status, 200);
+  assert.equal(applied.body.applied, true);
+  assert.equal(applied.body.commands, 2);
+  assert.equal(applied.body.sent, 0);
+  assert.match(String(applied.body.note), /no live receiver session/i);
+  assert.match(String(applied.body.note), /2 command\(s\)/);
+});
+
 /* ------------------------------------------------------------------ the menu wiring */
 
 test('the panel script ships the Configuration drawer and the Device submenu', async () => {
@@ -233,4 +310,9 @@ test('the panel script ships the Configuration drawer and the Device submenu', a
   assert.match(text, /key: 'configuration'[\s\S]{0,80}wired: true/, 'Configuration is wired');
   assert.match(text, /\/api\/config\/pages/, 'the page list comes from the API');
   assert.match(text, /\/api\/config\/device\/status/, 'the .cfg buttons read the server reason');
+  // Settings is wired now: its two entries open the drawer on the shipped page they name.
+  assert.match(text, /key: 'settings'[\s\S]{0,120}wired: true/, 'Settings is wired');
+  assert.match(text, /label: 'General…'/, 'Settings ▸ General… exists');
+  assert.match(text, /label: 'Networking…'/, 'Settings ▸ Networking… exists');
+  assert.match(text, /SETTINGS_PAGES\.has\(key\)/, 'the two entries open the drawer');
 });

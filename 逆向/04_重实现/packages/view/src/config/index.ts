@@ -214,6 +214,27 @@ export const CONFIG_PAGE_NAMES = [
   'lghnLoggingConfig',
 ] as const;
 
+/**
+ * Pages that live in the tab's **menu layouts**, not in the Configuration template.
+ *
+ * `createMenuComponents` (`jarvisInterface.js:1237-1285`) builds one `<div class="menu-layouts"
+ * id="<page>-layout_<tab>">` per Settings/Device page inside `#main-panel-<tab>`; `menuBar.js` then
+ * hides them all and shows the one whose menu entry was clicked (`hideAllMenuBarPages`, line 934).
+ * A host that never ran that build has no container, which is why `mountNamedPage` creates them.
+ */
+export const MENU_PAGE_NAMES = [
+  'generalSettings',
+  'networkingSettings',
+  'languageSettings',
+  'spanInstallation',
+  'displaysSettings',
+  'deviceDetails',
+  'deviceExport',
+  'deviceUpdate',
+  'deviceRestart',
+  'terminalConsole',
+] as const;
+
 export class ConfigBundle {
   readonly positions: PositionConfigPage;
   readonly ports: PortConfigPage;
@@ -382,9 +403,72 @@ export class ConfigBundle {
   mountNamedPage(tab: TabId, name: string): boolean {
     const page = this.page(name);
     if (!page) return false;
+    // A Settings page has no container until the menu build makes one; do what
+    // `createMenuComponents` does for it, then show that one layout and only that one.
+    if (this.isMenuPage(name)) {
+      const containerId = this.containerIdOf(tab, name);
+      if (containerId && !this.showMenuLayout(tab, containerId)) return false;
+    }
     const mounted = page.mount(tab);
     if (mounted) this.storeMounted(tab, [page.name]);
     return mounted;
+  }
+
+  /** True for the pages `createMenuComponents` builds a container for (see `MENU_PAGE_NAMES`). */
+  isMenuPage(name: string): boolean {
+    return (MENU_PAGE_NAMES as readonly string[]).includes(name);
+  }
+
+  /**
+   * The DOM id a page mounts into (`generalSettings-layout_<tab>`, `config-ports-<tab>`, …), taken
+   * from the page's own definition — the same id `ConfigHost` serves a focused document from.
+   */
+  containerIdOf(tab: TabId, name: string): string | null {
+    const page = this.page(name) as unknown as {
+      definition?: { containerId?: (tab: TabId) => string };
+    } | null;
+    const containerId = page?.definition?.containerId;
+    return typeof containerId === 'function' ? containerId(tab) : null;
+  }
+
+  /**
+   * Make `containerId` the visible menu layout: create it when the tab shell never did, hide every
+   * other `.menu-layouts` of this tab, then show this one. Returns false when there is no
+   * `#main-panel-<tab>` to put it in.
+   */
+  private showMenuLayout(tab: TabId, containerId: string): boolean {
+    const document = this.context.document;
+    const container = this.ensureMenuContainer(tab, containerId);
+    if (!container) return false;
+    for (const other of document.querySelectorAll(`#${tab} .menu-layouts`)) {
+      const styled = other as Element & { style?: CSSStyleDeclaration };
+      if (styled.style) styled.style.display = other === container ? 'block' : 'none';
+    }
+    return true;
+  }
+
+  /** `createMenuComponents`: a `.menuBar-layouts` wrapper in `#main-panel-<tab>`, one child per page. */
+  private ensureMenuContainer(tab: TabId, containerId: string): Element | null {
+    const document = this.context.document;
+    const existing = document.getElementById(containerId);
+    if (existing) return existing;
+    const mainPanel = document.getElementById(`main-panel-${tab}`) ?? document.getElementById(tab);
+    if (!mainPanel) return null;
+    let layouts = mainPanel.querySelector('.menuBar-layouts');
+    if (!layouts) {
+      layouts = document.createElement('div');
+      layouts.className = 'menuBar-layouts';
+      mainPanel.appendChild(layouts);
+    }
+    // The shipped stylesheet keeps `.menu-layouts { display: none }` until its menu entry is
+    // clicked, so the style is set here rather than left to the CSS.
+    const container = document.createElement('div');
+    container.id = containerId;
+    container.className = 'menu-layouts';
+    const styled = container as Element & { style?: CSSStyleDeclaration };
+    if (styled.style) styled.style.display = 'none';
+    layouts.appendChild(container);
+    return container;
   }
 
   requiredLogs(features: FeatureFlags, target?: string): ConfigLogRequest[] {

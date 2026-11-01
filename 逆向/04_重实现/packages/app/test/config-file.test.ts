@@ -5,9 +5,9 @@
  *  - **generate** works whenever the link holds the receiver's own configuration records: the file
  *    is built with `configurationFile.ts#transformSavedConfigLines`, the same function the desktop
  *    save flow calls;
- *  - **load** parses any `.cfg` (`filterLoadCommands` + `versionMismatch`) but refuses to write,
- *    because the read-back verification needs command responses this app's live link does not
- *    surface. A refused write is asserted, not a silent one.
+ *  - **load** parses any `.cfg` (`filterLoadCommands` + `versionMismatch`) and then writes it only
+ *    over a real command-response channel, one line at a time, with a read-back. Called without
+ *    one — as below — it still refuses; the full flow is `cfg-import.test.ts`.
  */
 
 import test from 'node:test';
@@ -94,7 +94,7 @@ test('the export gate opens only when the link holds configuration records', () 
   assert.match(withRecords.export.reason, /3 receiver configuration record/);
 });
 
-test('import parses but refuses to write without a verifiable read-back', () => {
+test('import parses but refuses to write without a verifiable read-back', async () => {
   const cfg = [
     '/* VERSION 1 OEM729 R4.10 */',
     'SERIALCONFIG COM2 9600 N 8 1 N ON',
@@ -109,17 +109,19 @@ test('import parses but refuses to write without a verifiable read-back', () => 
   assert.equal(preview.ok, true);
   assert.deepEqual(preview.commands, ['SERIALCONFIG COM2 9600 N 8 1 N ON']);
 
-  const offline = deviceImportApply(cfg, false);
+  const offline = await deviceImportApply(cfg, false);
   assert.equal(offline.ok, false);
   assert.equal(offline.sent, 0);
   assert.match(offline.reason, /receiver/i);
 
-  const online = deviceImportApply(cfg, true);
+  // No command-response channel on the call: the write is refused, not half-applied.
+  const online = await deviceImportApply(cfg, true);
   assert.equal(online.ok, false, 'the write is refused, not half-applied');
   assert.equal(online.sent, 0);
   assert.equal(online.verified, false);
   assert.match(online.reason, /read-back|verif/i);
   assert.equal(online.preview.commands.length, 1, 'the parse is still reported');
+  assert.deepEqual(online.steps, [], 'nothing was sent');
 });
 
 test('a generated .cfg parses back to the commands it was built from', () => {

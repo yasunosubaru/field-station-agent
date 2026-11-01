@@ -120,10 +120,11 @@ export class NetworkingSettingsPage extends BaseConfigPage {
       }
       const dns = changed[String(NETWORK_MSG.DNS_CONFIG)];
       if (dns) {
-        const address =
-          dns.ipAddress ??
-          current[String(NETWORK_MSG.DNS_CONFIG)]?.ipAddress ??
+        // Both spellings exist in the shipped tree; `.dnsipaddress` is the OEM fragment's class.
+        const field =
+          elementValue(this.context, tab, '.dnsipaddress') ||
           elementValue(this.context, tab, '.dns-ip-address');
+        const address = dns.ipAddress ?? current[String(NETWORK_MSG.DNS_CONFIG)]?.ipAddress ?? field;
         this.commands.place(
           this.name,
           'dnsConfig',
@@ -198,6 +199,50 @@ export class NetworkingSettingsPage extends BaseConfigPage {
       if (data === 1) this.commit(tab);
       this.render(tab);
     }, 1000);
+  }
+
+  /**
+   * The shipped fragment's own controls. `networkingSettings.js` binds them with delegated
+   * handlers; the pages here are driven from the server, so each control gets a listener that
+   * records the pending value — without them a field typed into the page would never reach
+   * `/api/live`, which is exactly the "changes must travel" half of this page.
+   */
+  protected override bindActions(tab: TabId, container: Element): void {
+    super.bindActions(tab, container);
+    const text = (node: Element): string =>
+      String((node as unknown as { value?: string }).value ?? '').trim();
+    const on = (node: Element): boolean => Boolean((node as unknown as { checked?: boolean }).checked);
+    const change = (selector: string, apply: (node: Element) => void): void => {
+      for (const node of container.querySelectorAll(selector)) {
+        node.addEventListener('change', () => apply(node));
+      }
+    };
+
+    change('.ipaddress', (node) => this.setEthernet(tab, 'ipAddress', text(node)));
+    change('.subnetMask', (node) => this.setEthernet(tab, 'netmask', text(node)));
+    change('.ethernetGateway', (node) => this.setEthernet(tab, 'gateway', text(node)));
+    change('#dhcp-on-off', (node) => this.setEthernet(tab, 'mode', on(node) ? 'DHCP' : 'STATIC'));
+    // Both spellings exist in the shipped tree: `.dnsipaddress` in the OEM fragment, and the
+    // dotted class the original's handler used.
+    change('.dnsipaddress, .dns-ip-address', (node) => this.setDns(tab, text(node)));
+    change('#wifi-hotspot-on-off', (node) => this.setHotspot(tab, 'mode', on(node) ? 'ON' : 'OFF'));
+
+    for (const node of container.querySelectorAll('.wifi-channel-item')) {
+      node.addEventListener('click', () => {
+        const channel = Number((node.textContent ?? '').trim());
+        if (!Number.isFinite(channel) || channel <= 0) return;
+        this.setHotspot(tab, 'channel', channel);
+        // `networkingSettings.js` mirrors the choice into `#selectedChannelVal` and the button.
+        const label = container.querySelector('#selectedChannelVal');
+        if (label) label.textContent = String(channel);
+        const button = container.querySelector('#network-channel');
+        if (button) {
+          const first = button.childNodes[0];
+          if (first) first.textContent = String(channel);
+          else button.textContent = String(channel);
+        }
+      });
+    }
   }
 
   resetNetworkSettingsUI(tab: TabId): void {

@@ -19,6 +19,11 @@
  * Polling rather than a WebSocket: the app server is a dependency-free `node:http` server and the
  * panels already poll `/api/...`; a cursor (`GET /api/live/logs?after=<n>`) keeps that style and is
  * testable without a browser.
+ *
+ * The link also carries the **command-response channel** the `.cfg` import needs: `command()` sends
+ * one line and resolves with the receiver's own `<OK` / `<ERR…` (or says it timed out), and
+ * `collect()` reads the data lines a log request answers with. Replies carry no command name, so
+ * they are matched in the order the receiver emits them — the only evidence the wire offers.
  */
 
 import { readFileSync } from 'node:fs';
@@ -190,6 +195,49 @@ export interface LiveEntry {
   crcOk: boolean;
 }
 
+/**
+ * How a command line ended. `ok` / `err` are the receiver's own two answers (`<OK`, `<ERR…`);
+ * the rest are this link's, and they are never reported as success.
+ */
+export type LiveCommandStatus =
+  | 'ok'
+  | 'err'
+  | 'pending'
+  | 'timeout'
+  | 'not-connected'
+  | 'send-failed'
+  | 'closed';
+
+/**
+ * One command line and the receiver's answer to it — the channel the `.cfg` import needs and the
+ * Terminal never had.
+ *
+ * A receiver answers abbreviated-ASCII commands **in order**, one `<OK`/`<ERR…` per line, and the
+ * reply carries no command name (`<OK` is all it says). So a line is matched to the reply the
+ * receiver emits next: that is the only ordering evidence the wire offers, and a reply that arrives
+ * with nothing outstanding is counted as unsolicited rather than used to mark a command OK.
+ */
+export interface LiveCommandReply {
+  /** Monotonic inside this session; the first command sent is `0`. */
+  id: number;
+  /** When the line went out (ISO 8601). */
+  at: string;
+  line: string;
+  ok: boolean;
+  status: LiveCommandStatus;
+  /** The receiver's own words, verbatim (`<OK`, `<ERR,Invalid port`), `null` when none arrived. */
+  reply: string | null;
+  /** Milliseconds between the write and the answer (or the timeout). */
+  elapsedMs: number;
+}
+
+/** What one read-back request produced: the receiver's data lines, in arrival order. */
+export interface LiveCollectResult {
+  ok: boolean;
+  lines: string[];
+  reason: string;
+}
+
 export interface LiveStatus {
   connected: boolean;
   target: string | null;
@@ -202,12 +250,35 @@ export interface LiveStatus {
   lastError: string | null;
   /** UTC of the newest decoded record, `null` before the first one. */
   lastRecordAt: string | null;
-  /** Commands sent from the Terminal page, newest last. */
-  commands: Array<{ at: string; line: string; ok: boolean }>;
+  /**
+   * Commands sent from the Terminal page, newest last. A line sent through `command()` carries the
+   * receiver's own answer (`reply`), how it ended (`status`) and how long it took.
+   */
+  commands: Array<{
+    at: string;
+    line: string;
+    ok: boolean;
+    id?: number;
+    reply?: string | null;
+    status?: LiveCommandStatus;
+    elapsedMs?: number;
+  }>;
+  /** `<OK`/`<ERR…` lines that arrived with no command outstanding (never used as success). */
+  unsolicitedReplies: number;
 }
 
 const BUFFER = 400;
 const COMMAND_LOG = 50;
+/** A receiver answers a configuration line in milliseconds; a minute of silence means it is gone. */
+const COMMAND_TIMEOUT_MS = 15_000;
+/** Read-back is a log request: the answer arrives as a burst, then the line goes quiet. */
+const COLLECT_TIMEOUT_MS = 8_000;
+const COLLECT_QUIET_MS = 1_200;
+/** Text lines kept for later inspection (`<RXCONFIGA,…` and friends). */
+const INBOUND_LINES = 200;
+
+/** `<OK`, `<ERR…`, `<ERROR:…` — the receiver's own command responses, not data records. */
+const REPLY_PATTERN = /^<(OK|ERR|ERROR)([,\s:;]|$)/i;
 const SERIAL_OPEN_DELAY_MS = 200;
 /** A RANGE with 84 observations in a capture; 256 leaves room for a bigger constellation set. */
 const OBSERVATION_LIMIT = 256;
@@ -217,6 +288,20 @@ const SAMPLE_LIMIT = 65536;
 
 /** Message ids whose payload `decodeEdie` turns into a `LiveData` projection. */
 const TELEMETRY_IDS = new Set([37, 42, 43, 963, 1043, 1968, 2063, 2065]);
+
+/** A command line waiting for the receiver's next `<OK`/`<ERR…`. */
+interface PendingCommand {
+  id: number;
+  line: string;
+  /** The entry already in `LiveStatus.commands`; updated in place when the reply lands. */
+  entry: LiveStatus['commands'][number];
+  sentAt: number;
+  timeoutMs: number;
+  /** A Terminal line: kept in the queue for order, but its `ok` means "the write went out". */
+  placeholder?: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  resolve: (reply: LiveCommandReply) => void;
+}
 
 export class LiveLink {
   private session?: ReceiverSession;
@@ -232,6 +317,14 @@ export class LiveLink {
   private droppedBytes = 0;
   private lastError: string | null = null;
   private commands: LiveStatus['commands'] = [];
+  /** Commands waiting for the next `<OK`/`<ERR…`, oldest first (the receiver answers in order). */
+  private outstanding: PendingCommand[] = [];
+  private commandSeq = 0;
+  private unsolicitedReplies = 0;
+  /** Text lines the receiver emitted that are not command responses (read-back answers, NMEA…). */
+  private inbound: Array<{ at: number; text: string }> = [];
+  /** Read-back requests currently waiting for their data lines. */
+  private collectors: Array<{ lines: string[] }> = [];
   private tables?: EdieTables;
   private tablesFailed = false;
   private readonly dataDir: string;
@@ -251,7 +344,8 @@ export class LiveLink {
       droppedBytes: this.droppedBytes,
       lastError: this.lastError,
       lastRecordAt: this.lastRecordAt ? this.lastRecordAt.toISOString() : null,
-      commands: this.commands.slice(-COMMAND_LOG),
+      commands: this.commands.slice(-COMMAND_LOG).map((command) => ({ ...command })),
+      unsolicitedReplies: this.unsolicitedReplies,
     };
   }
 
@@ -279,6 +373,11 @@ export class LiveLink {
     this.droppedBytes = 0;
     this.buffer = [];
     this.commands = [];
+    this.outstanding = [];
+    this.commandSeq = 0;
+    this.unsolicitedReplies = 0;
+    this.inbound = [];
+    this.collectors = [];
 
     const handlers = {
       onData: (bytes: Uint8Array) => this.session?.feed(bytes),
@@ -333,6 +432,9 @@ export class LiveLink {
     this.transport = undefined;
     this.connectedAt = undefined;
     this.target = undefined;
+    // Anything still waiting for a `<OK` must end now: a caller awaiting a reply would otherwise
+    // hang until its own timeout and report a mystery.
+    this.failPending('closed');
     if (session) {
       try {
         session.stop();
@@ -345,22 +447,37 @@ export class LiveLink {
    * Send one command line from the Terminal page. The bytes are exactly what was typed plus CRLF —
    * that is what the original Terminal writes, and what a receiver's command parser expects.
    * (`sendAscii` would convert it into the `#LOG,…*crc` full-ASCII form instead.)
+   *
+   * The line takes a place in the reply queue even though nothing here awaits it: a receiver
+   * answers in order, so without that place the `<OK` meant for this line could be credited to the
+   * next awaited command.
    */
   send(line: string): LiveStatus {
     const text = line.replace(/[\r\n]+$/, '');
     if (!text) return this.status();
+    const entry: LiveStatus['commands'][number] = {
+      at: new Date().toISOString(),
+      line: text,
+      ok: false,
+      id: this.commandSeq++,
+      reply: null,
+      status: 'pending',
+      elapsedMs: 0,
+    };
+    this.pushCommand(entry);
     if (!this.isOpen()) {
       this.lastError = 'not connected';
-      this.commands.push({ at: new Date().toISOString(), line: text, ok: false });
+      entry.status = 'not-connected';
       return this.status();
     }
     try {
       this.session!.sendRaw(`${text}\r`);
-      this.commands.push({ at: new Date().toISOString(), line: text, ok: true });
+      entry.ok = true;
       this.lastError = null;
+      this.armPlaceholder(entry);
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
-      this.commands.push({ at: new Date().toISOString(), line: text, ok: false });
+      entry.status = 'send-failed';
     }
     return this.status();
   }
@@ -389,6 +506,7 @@ export class LiveLink {
   private markClosed(): void {
     this.connectedAt = undefined;
     if (!this.disconnectedAt) this.disconnectedAt = new Date();
+    this.failPending('closed');
   }
 
   private attach(transport: Transport): void {
@@ -400,6 +518,10 @@ export class LiveLink {
     this.session = session;
     this.transport = transport;
     session.on('log', (log: DecodedLog) => this.record(log));
+    // The receiver's own words: `<OK` / `<ERR…` answer a command, everything else is data (a
+    // read-back `RXCONFIG` line, an NMEA sentence). This is the channel the decoded-log stream
+    // cannot carry, and the reason a `.cfg` can now be verified.
+    session.on('text', (_prefix: string, text: string) => this.onText(text));
     session.on('drop', (count: number) => {
       this.droppedBytes += count;
     });
@@ -408,6 +530,191 @@ export class LiveLink {
     });
     session.start();
     this.connectedAt = new Date();
+  }
+
+  /* ------------------------------------------------------------- command / reply channel */
+
+  /**
+   * Send one command line and wait for the receiver's answer to **that** line.
+   *
+   * The bytes are the ones the Terminal writes (`line` + CRLF, no CRC framing): abbreviated ASCII
+   * is what a receiver's parser accepts on a terminal port, and it is what the shipped Terminal
+   * sends. `ok` is true only for `<OK`; `<ERR…`, a timeout and a closed session are all failures,
+   * and each of them says which it was.
+   */
+  async command(line: string, options: { timeoutMs?: number } = {}): Promise<LiveCommandReply> {
+    const text = line.replace(/[\r\n]+$/, '');
+    const at = new Date();
+    const id = this.commandSeq++;
+    const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
+    const entry: LiveStatus['commands'][number] = {
+      at: at.toISOString(),
+      line: text,
+      ok: false,
+      id,
+      reply: null,
+      status: 'pending',
+      elapsedMs: 0,
+    };
+    this.pushCommand(entry);
+    const settled = (over: Partial<LiveCommandReply>): LiveCommandReply => {
+      Object.assign(entry, over);
+      return { id, at: at.toISOString(), line: text, ok: false, status: 'pending', reply: null, elapsedMs: 0, ...over };
+    };
+    if (!text) return settled({ status: 'send-failed', elapsedMs: 0 });
+    if (!this.isOpen() || !this.session) {
+      this.lastError = 'not connected';
+      return settled({ status: 'not-connected' });
+    }
+    try {
+      this.session.sendRaw(`${text}\r`);
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      return settled({ status: 'send-failed' });
+    }
+    this.lastError = null;
+    return new Promise<LiveCommandReply>((resolve) => {
+      const waiter: PendingCommand = {
+        id,
+        line: text,
+        entry,
+        sentAt: Date.now(),
+        timeoutMs,
+        resolve: (reply) => resolve(reply),
+        timer: undefined,
+      };
+      waiter.timer = setTimeout(() => this.settleWaiter(waiter, null, 'timeout'), timeoutMs);
+      (waiter.timer as unknown as { unref?: () => void }).unref?.();
+      this.outstanding.push(waiter);
+    });
+  }
+
+  /**
+   * Send a request whose answer is **data**, not `<OK` — `LOG RXCONFIG ONCE` and its kind.
+   * Collects the receiver's text lines until it has been quiet for `quietMs`, `until` is satisfied,
+   * or `timeoutMs` elapses; the lines are returned verbatim so the caller can quote them.
+   */
+  async collect(
+    line: string,
+    options: { timeoutMs?: number; quietMs?: number; until?: (lines: string[]) => boolean } = {},
+  ): Promise<LiveCollectResult> {
+    const text = line.replace(/[\r\n]+$/, '');
+    if (!text) return { ok: false, lines: [], reason: 'empty request' };
+    if (!this.isOpen() || !this.session) return { ok: false, lines: [], reason: 'not connected' };
+    const timeoutMs = options.timeoutMs ?? COLLECT_TIMEOUT_MS;
+    const quietMs = options.quietMs ?? COLLECT_QUIET_MS;
+    const collector = { lines: [] as string[] };
+    this.collectors.push(collector);
+    try {
+      this.session.sendRaw(`${text}\r`);
+      const deadline = Date.now() + timeoutMs;
+      let lastCount = 0;
+      let quietSince = Date.now();
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        if (collector.lines.length !== lastCount) {
+          lastCount = collector.lines.length;
+          quietSince = Date.now();
+        }
+        if (options.until?.(collector.lines)) break;
+        if (collector.lines.length > 0 && Date.now() - quietSince >= quietMs) break;
+        if (Date.now() >= deadline) break;
+      }
+      const lines = [...collector.lines];
+      return {
+        ok: lines.length > 0,
+        lines,
+        reason: lines.length
+          ? `${lines.length} line(s) answered “${text}”`
+          : `no line answered “${text}” within ${timeoutMs} ms (the receiver stayed silent)`,
+      };
+    } finally {
+      const index = this.collectors.indexOf(collector);
+      if (index >= 0) this.collectors.splice(index, 1);
+    }
+  }
+
+  /** Text the receiver emitted that is not a command response, newest last. */
+  inboundLines(): string[] {
+    return this.inbound.map((line) => line.text);
+  }
+
+  private pushCommand(entry: LiveStatus['commands'][number]): void {
+    this.commands.push(entry);
+    if (this.commands.length > COMMAND_LOG) this.commands.splice(0, this.commands.length - COMMAND_LOG);
+  }
+
+  /** One text record from the receiver: a command response, or data. */
+  private onText(text: string): void {
+    const line = text.replace(/[\r\n]+$/, '');
+    if (!line.trim()) return;
+    if (REPLY_PATTERN.test(line.trim())) {
+      this.settleNext(line.trim());
+      return;
+    }
+    this.inbound.push({ at: Date.now(), text: line });
+    if (this.inbound.length > INBOUND_LINES) this.inbound.splice(0, this.inbound.length - INBOUND_LINES);
+    for (const collector of this.collectors) collector.lines.push(line);
+  }
+
+  /**
+   * Match a reply to the oldest outstanding command — the order the receiver answers in. With
+   * nothing outstanding the reply is *counted*, never used to turn a command into a success.
+   */
+  private settleNext(line: string): void {
+    const waiter = this.outstanding.shift();
+    if (!waiter) {
+      this.unsolicitedReplies += 1;
+      return;
+    }
+    this.settleWaiter(waiter, line, /^<OK/i.test(line) ? 'ok' : 'err');
+  }
+
+  private settleWaiter(waiter: PendingCommand, reply: string | null, status: LiveCommandStatus): void {
+    const index = this.outstanding.indexOf(waiter);
+    if (index >= 0) this.outstanding.splice(index, 1);
+    if (waiter.timer !== undefined) clearTimeout(waiter.timer);
+    const elapsedMs = Date.now() - waiter.sentAt;
+    // A placeholder's `ok` is "the write went out"; an awaited command's `ok` is the receiver's
+    // `<OK` and nothing else.
+    const ok = waiter.placeholder ? waiter.entry.ok : status === 'ok';
+    Object.assign(waiter.entry, { reply, status, elapsedMs });
+    if (!waiter.placeholder) waiter.entry.ok = ok;
+    if (!ok && status === 'timeout') {
+      this.lastError = `no reply to “${waiter.line}” within ${waiter.timeoutMs} ms`;
+    }
+    waiter.resolve({ id: waiter.id, at: waiter.entry.at, line: waiter.line, ok, status, reply, elapsedMs });
+  }
+
+  /** Give a Terminal line its place in the reply queue (see `send`). */
+  private armPlaceholder(entry: LiveStatus['commands'][number]): void {
+    const placeholder: PendingCommand = {
+      id: Number(entry.id ?? 0),
+      line: entry.line,
+      entry,
+      sentAt: Date.now(),
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      placeholder: true,
+      resolve: () => {},
+      timer: undefined,
+    };
+    placeholder.timer = setTimeout(() => this.settleWaiter(placeholder, null, 'timeout'), COMMAND_TIMEOUT_MS);
+    (placeholder.timer as unknown as { unref?: () => void }).unref?.();
+    this.outstanding.push(placeholder);
+  }
+
+  /** End every outstanding command (the session closed under it). */
+  private failPending(status: LiveCommandStatus): void {
+    const outstanding = this.outstanding;
+    this.outstanding = [];
+    for (const waiter of outstanding) {
+      if (waiter.timer !== undefined) clearTimeout(waiter.timer);
+      const elapsedMs = Date.now() - waiter.sentAt;
+      const ok = waiter.placeholder ? waiter.entry.ok : false;
+      Object.assign(waiter.entry, { reply: null, status, elapsedMs });
+      if (!waiter.placeholder) waiter.entry.ok = false;
+      waiter.resolve({ id: waiter.id, at: waiter.entry.at, line: waiter.line, ok, status, reply: null, elapsedMs });
+    }
   }
 
   private record(log: DecodedLog): void {

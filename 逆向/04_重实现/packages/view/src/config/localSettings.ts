@@ -23,6 +23,24 @@ export class GeneralSettingsPage extends BaseConfigPage {
     this.state.setPending(tab, 'settings', 'heightUnits', unit);
   }
 
+  /**
+   * The height-unit list is the page's only control (`generalSettings.js` toggles the `active`
+   * class when one is clicked). Bound here so a click in the drawer records the pending unit; the
+   * Apply button is what writes it to the user store.
+   */
+  protected override bindActions(tab: TabId, container: Element): void {
+    super.bindActions(tab, container);
+    for (const item of container.querySelectorAll('.height-selection-list li')) {
+      item.addEventListener('click', () => {
+        const unit = item.id === 'Ellipsoidal' ? 'Ellipsoidal' : 'MSL';
+        this.setHeightUnit(tab, unit);
+        for (const other of container.querySelectorAll('.height-selection-list li')) {
+          other.classList.toggle('active', other === item);
+        }
+      });
+    }
+  }
+
   setUserStoreData(tab: TabId): void {
     const unit =
       this.context.localSettings?.heightUnit?.(tab) ??

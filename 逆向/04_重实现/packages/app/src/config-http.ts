@@ -27,7 +27,8 @@ import {
   ConfigHost,
   type ConfigCommand,
 } from './config-host.ts';
-import type { ConfigOperationsHost } from '../../view/src/config/index.ts';
+import { MENU_PAGE_NAMES, type ConfigOperationsHost } from '../../view/src/config/index.ts';
+import type { LiveCommandReply } from './live.ts';
 import {
   CONFIG_MESSAGE_IDS,
   configSliceOf,
@@ -156,11 +157,17 @@ export function isConfigPage(name: string): boolean {
   return (ALL_PAGE_NAMES as readonly string[]).includes(name);
 }
 
-export function configPageList(): Array<{ name: string; label: string; operational: boolean }> {
+/**
+ * Every page `/config/<name>` serves, in drawer order. `settings` marks the pages that live in the
+ * tab's menu layouts (`Settings ▸ …`) rather than in the Configuration pill strip — the drawer
+ * groups them apart so a reader can tell which menu a page belongs to.
+ */
+export function configPageList(): Array<{ name: string; label: string; operational: boolean; settings: boolean }> {
   return ALL_PAGE_NAMES.map((name) => ({
     name,
     label: CONFIG_LABELS[name] ?? name,
     operational: (OPERATIONAL_PAGE_NAMES as readonly string[]).includes(name),
+    settings: (MENU_PAGE_NAMES as readonly string[]).includes(name),
   }));
 }
 
@@ -175,6 +182,26 @@ function shellOf(name: string): string {
 function eventsPanelOf(name: string): string {
   const instance = host(name);
   return instance.elementHtml(`#events-panel-${instance.tabId}`) ?? '';
+}
+
+/**
+ * A Settings page is one `.menu-layouts` container inside the Manage tab (`Settings ▸ General…`),
+ * so that container is what the drawer's document holds — wrapped in the `#shell` element the
+ * client script swaps, so a form event can replace it in place. `null` for the pill pages, which
+ * are served as the whole shell.
+ */
+function menuPanelOf(name: string): string | null {
+  const instance = host(name);
+  const id = instance.menuPanelId(name);
+  if (!id) return null;
+  const panel = instance.elementHtml(`#${id}`);
+  return panel === null ? null : `<div id="shell">${panel}</div>`;
+}
+
+/** Whatever the drawer shows for `name`: the Events panel, a Settings layout, or the whole shell. */
+function bodyOf(name: string): string {
+  if ((OPERATIONAL_PAGE_NAMES as readonly string[]).includes(name)) return eventsPanelOf(name);
+  return menuPanelOf(name) ?? shellOf(name);
 }
 
 const CLIENT_SCRIPT = `
@@ -204,9 +231,21 @@ const CLIENT_SCRIPT = `
         var shell = document.getElementById('shell');
         if (shell) shell.outerHTML = body.shell;
       }
+      if (body && typeof body.note === 'string') setSessionNote(body.note);
       if (body && body.error) console.warn('config:', body.error);
       if (done) done(body);
     }).catch(function (error) { console.warn('config:', error); });
+  }
+  function setSessionNote(text) {
+    var note = document.getElementById('config-session-note');
+    if (!note) {
+      note = document.createElement('p');
+      note.id = 'config-session-note';
+      note.className = 'config-session-note';
+      document.body.insertBefore(note, document.body.firstChild);
+    }
+    note.textContent = text;
+    note.hidden = !text;
   }
   document.addEventListener('click', function (event) {
     var el = event.target.closest('button, a, input[type=checkbox], input[type=radio], label, li');
@@ -238,12 +277,15 @@ const CLIENT_SCRIPT = `
 `;
 
 /** The standalone page the Configuration drawer embeds in an iframe. */
-export function configPageDocument(name: string): string {
+export function configPageDocument(name: string, options: { connected?: boolean } = {}): string {
   const links = STYLES.map((href) => `<link rel="stylesheet" href="/view/${href}">`).join('\n');
   const title = CONFIG_LABELS[name] ?? name;
   const operational = (OPERATIONAL_PAGE_NAMES as readonly string[]).includes(name);
-  const body = operational ? eventsPanelOf(name) : shellOf(name);
+  const body = bodyOf(name);
   const eventCount = operational ? eventsSummary().count : 0;
+  // A page can be read without a receiver; it cannot send anything without one. The note says so
+  // in the page rather than leaving an Apply button that would silently do nothing.
+  const sessionNote = options.connected === false ? NO_SESSION_NOTE : '';
   const extra = operational
     ? '  body { margin: 0; background: #ffffff; }\n  .events-panel { display: block !important; }'
     : [
@@ -257,6 +299,11 @@ export function configPageDocument(name: string): string {
          * this document has no status band, so the reserve would print as a 223 px hole. */
         '  .main-panel { margin-top: 0 !important; }',
         '  .events-panel:empty, .menuBar-panel:empty, .status-panel:empty { margin: 0 !important; }',
+        /* `.menu-layouts` ships as `display:none` until its menu entry is clicked; this document
+         * *is* the page, so the layout it holds is the visible one. */
+        '  .menu-layouts { display: block !important; }',
+        '  .config-session-note { margin: 0 0 8px; padding: 8px 12px; background: #fff4e5;',
+        '    border-left: 3px solid #d98500; font: 13px/1.4 sans-serif; color: #4a3200; }',
       ].join('\n');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
@@ -264,16 +311,27 @@ ${links}
 <style>
 ${extra}
 </style></head>
-<body data-config-page="${name}" data-event-count="${eventCount}">
-${body}
+<body data-config-page="${name}" data-event-count="${eventCount}" data-session="${options.connected === false ? 'none' : 'live'}">
+${sessionNote}${body}
 <script>${CLIENT_SCRIPT}</script>
 </body></html>`;
 }
+
+/** Shown inside a page served without a receiver session. */
+export const NO_SESSION_NOTE =
+  '<p id="config-session-note" class="config-session-note">No live receiver session: this page ' +
+  'reads what the receiver last reported, and nothing you change here can be sent until a session ' +
+  'is open (Manage ▸ Connect live…).</p>';
+
+const NO_SESSION_NOTE_TEXT =
+  'there is no live receiver session, so nothing was written and nothing is claimed to be.';
 
 export interface ConfigEventResult {
   shell: string;
   applied: boolean;
   commands: ConfigCommand[];
+  /** A sentence for the page when what was clicked cannot reach a receiver (`null` when it can). */
+  note: string | null;
 }
 
 /** Apply one browser event; the shell comes back so the client can swap it in. */
@@ -281,15 +339,20 @@ export function applyConfigEvent(
   name: string,
   selector: string,
   event: { value?: unknown; checked?: boolean; click?: boolean },
+  options: { connected?: boolean; sent?: number } = {},
 ): ConfigEventResult {
   const target = host(name);
   const applied = target.applyEvent(selector, event);
+  const commands = target.takeCommands();
+  const note =
+    options.sent === 0 && commands.length > 0
+      ? `${commands.length} command(s) were framed by this page but not sent: ${NO_SESSION_NOTE_TEXT}`
+      : null;
   return {
-    shell: (OPERATIONAL_PAGE_NAMES as readonly string[]).includes(name)
-      ? eventsPanelOf(name)
-      : shellOf(name),
+    shell: bodyOf(name),
     applied,
-    commands: target.takeCommands(),
+    commands,
+    note,
   };
 }
 
@@ -455,12 +518,10 @@ export function countConfigurationRecords(
  * **Export** is a download whenever the link holds the receiver's own configuration records — the
  * file is generated with the same `transformSavedConfigLines` the desktop save flow uses.
  *
- * **Import** is refused, and the page says so. The task's order is "disconnect first, write, then
- * read back and verify": this app can frame the write, but the verification needs the receiver's
- * `<OK` / `<ERR` command responses, which the live link does not surface (`LiveEntry` carries
- * decoded logs only). Writing receiver settings that can never be checked is exactly the kind of
- * silent state change the rest of this build refuses to make, so the button stays disabled with
- * the reason instead of pretending.
+ * **Import** needs the receiver's own `<OK` / `<ERR…` answers to every line, then a read-back:
+ * `LiveLink` now carries that channel (`live.ts#command`, `live.ts#collect`), so the write is
+ * offered exactly while a session is open. Without one there is nowhere to write to, and the page
+ * says so instead of pretending.
  */
 export function deviceStatus(
   connected: boolean,
@@ -487,16 +548,17 @@ export function deviceStatus(
   }
 
   const importReason = !connected
-    ? 'No live receiver session: the configuration would have nowhere to go.'
-    : 'Refused on this link: the write could be framed, but the read-back verification cannot be ' +
-      'performed — the live link exposes decoded logs only (packages/app/src/live.ts), not the ' +
-      'receiver’s <OK/<ERR command responses. A configuration that cannot be verified is not written.';
+    ? 'No live receiver session: the configuration would have nowhere to go. Nothing is written ' +
+      'until a receiver is connected — the write and the read-back both need it.'
+    : 'Ready: each line is sent on its own and must be answered <OK by the receiver; only when every ' +
+      'line is acknowledged is LOG RXCONFIG read back to confirm what the receiver now holds. A line ' +
+      'that is refused, or not answered at all, stops the import at that line.';
 
   return {
     ok: true,
     connected,
     export: { available: assembled || records > 0, reason: exportReason, records },
-    import: { available: false, reason: importReason, previewAvailable: true },
+    import: { available: connected, reason: importReason, previewAvailable: true },
     suggestedFileName,
   };
 }
@@ -567,49 +629,295 @@ export function deviceImportPreview(
   };
 }
 
+/**
+ * The command-response channel a real import needs. `LiveLink` is one (`live.ts`); a test can pass
+ * any object with these two methods, which keeps the flow verifiable without a receiver.
+ */
+export interface ImportChannel {
+  /** Send one line and wait for the receiver's own `<OK` / `<ERR…`. */
+  command(line: string, options?: { timeoutMs?: number }): Promise<LiveCommandReply>;
+  /** Send a read-back request and collect the receiver's data lines. */
+  collect(
+    line: string,
+    options?: { timeoutMs?: number; quietMs?: number; until?: (lines: string[]) => boolean },
+  ): Promise<{ ok: boolean; lines: string[]; reason: string }>;
+}
+
+/** What the read-back said about one applied line. */
+export type CfgStepVerification = 'matched' | 'mismatch' | 'absent';
+
+export interface CfgApplyStep {
+  /** 1-based position in the file's loadable command list. */
+  index: number;
+  line: string;
+  ok: boolean;
+  /** `ok` · `err` · `timeout` · `not-connected` · `send-failed` · `closed`. */
+  status: string;
+  /** The receiver's own words for this line, `null` when it never answered. */
+  reply: string | null;
+  elapsedMs: number;
+  /** The read-back verdict, `null` when no read-back was attempted. */
+  verified: CfgStepVerification | null;
+  /** The receiver's read-back line(s) for this command, verbatim. */
+  readback: string[];
+}
+
+export interface CfgApplyVerification {
+  attempted: boolean;
+  ok: boolean;
+  /** The request that produced the read-back (`LOG RXCONFIG ONCE`). */
+  request: string;
+  reason: string;
+  /** Configuration lines the receiver answered with. */
+  lines: number;
+  matched: number;
+  /** Commands the read-back echoed with a different value (a real failure). */
+  mismatched: string[];
+  /**
+   * Commands `LOG RXCONFIG` does not report at all (a `LOG …` line, for instance). They were
+   * acknowledged by the receiver but cannot be confirmed from the read-back — reported, never
+   * counted as verified.
+   */
+  absent: string[];
+}
+
 export interface CfgApplyResult {
   ok: boolean;
   reason: string;
+  /** Lines actually written to the receiver (the failing one included). */
   sent: number;
+  /** Every line acknowledged by the receiver **and** confirmed by the read-back. */
   verified: boolean;
   preview: CfgParseResult;
+  steps: CfgApplyStep[];
+  verification: CfgApplyVerification | null;
+  /** 1-based index of the line the import stopped at. */
+  failedAt?: number;
+  failedLine?: string;
+}
+
+/** The read-back request: the receiver's own configuration dump, asked for once. */
+export const READBACK_REQUEST = 'LOG RXCONFIG ONCE';
+/** One configuration line takes milliseconds on a receiver; a minute of silence means it is gone. */
+const DEFAULT_COMMAND_TIMEOUT_MS = 15_000;
+const DEFAULT_READBACK_TIMEOUT_MS = 8_000;
+
+/** Upper-case, whitespace-collapsed tokens of a command or read-back line (CRC suffix removed). */
+function tokensOf(line: string): string[] {
+  return line
+    .replace(/\*[0-9a-fA-F]+\s*$/, '')
+    .replace(/^\s*[<#]/, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => token.toUpperCase());
+}
+
+interface ReadbackLine {
+  /** The line as the receiver sent it, for the report. */
+  raw: string;
+  name: string;
+  tokens: string[];
 }
 
 /**
- * Apply a `.cfg`. The task's order is "disconnect first, write, then read back and verify" — the
- * last step is the one this build cannot do (see `deviceStatus`), and writing receiver settings
- * that can never be verified is exactly what an unverifiable operation must not do. So the call
- * refuses with the same reason the page shows, and never emits a half-applied configuration.
+ * Turn the receiver's read-back text into one entry per configuration statement. `RXCONFIG`
+ * answers either abbreviated (`<SERIALCONFIG COM2 …*crc`) or full ASCII
+ * (`<RXCONFIGA,…,1682;SERIALCONFIG COM2 …*crc`); `configurationLineOf` is the same unwrapping the
+ * `.cfg` generator uses, so the two halves agree about what a configuration line is.
  */
-export function deviceImportApply(
+function parseReadback(lines: string[]): ReadbackLine[] {
+  const out: ReadbackLine[] = [];
+  for (const line of lines) {
+    const body = configurationLineOf(line);
+    if (!body) continue;
+    const tokens = tokensOf(body);
+    if (!tokens.length) continue;
+    out.push({ raw: line.trim(), name: tokens[0], tokens });
+  }
+  return out;
+}
+
+/** Which read-back verdict a command gets: echoed unchanged, echoed differently, or not at all. */
+function classifyStep(line: string, readback: ReadbackLine[]): { state: CfgStepVerification; lines: string[] } {
+  const wanted = tokensOf(line);
+  const name = wanted[0] ?? '';
+  const candidates = readback.filter((entry) => entry.name === name);
+  if (candidates.length === 0) return { state: 'absent', lines: [] };
+  const match = candidates.find((entry) => wanted.every((token) => entry.tokens.includes(token)));
+  if (match) return { state: 'matched', lines: [match.raw] };
+  return { state: 'mismatch', lines: candidates.map((entry) => entry.raw) };
+}
+
+function refusalReason(
+  step: number,
+  total: number,
+  line: string,
+  reply: LiveCommandReply,
+  timeoutMs: number,
+): string {
+  const where = `Stopped at command ${step} of ${total} (“${line}”)`;
+  switch (reply.status) {
+    case 'timeout':
+      return (
+        `${where}: the receiver did not answer within ${timeoutMs} ms. Nothing after this line was ` +
+        'sent, no read-back was attempted, and no reply is invented for it.'
+      );
+    case 'not-connected':
+    case 'closed':
+      return `${where}: the session closed before the receiver answered, so the rest of the file was not sent.`;
+    case 'send-failed':
+      return `${where}: the line could not be written to the link.`;
+    default:
+      return `${where}: the receiver answered ${reply.reply ?? '<ERR'} — its own words. The lines before it were ` +
+        'acknowledged; the ones after it were not sent, and no read-back was attempted.';
+  }
+}
+
+/**
+ * Apply a `.cfg` — the flow the task's order describes, over the channel `LiveLink` now carries:
+ *
+ *   1. parse with the shipped loader (`deviceImportPreview`, nothing is sent);
+ *   2. send **one line at a time** and wait for the receiver's own answer to that line;
+ *   3. stop at the first line that is refused or not answered, naming it and quoting the receiver;
+ *   4. only when every line was acknowledged, read the configuration back (`LOG RXCONFIG ONCE`)
+ *      and report, per line, whether the receiver now echoes it unchanged.
+ *
+ * Nothing here sends `SAVECONFIG` or `RESET` — a configuration is written and read back, not made
+ * permanent behind the user's back (`filterLoadCommands` drops both from the file). Without a
+ * channel, or without a session, the call still refuses: a write that cannot be checked is not made.
+ */
+export async function deviceImportApply(
   text: string,
   connected: boolean,
   versions?: ConfigLoadOptions['versions'],
-): CfgApplyResult {
+  channel?: ImportChannel,
+  options: { commandTimeoutMs?: number; readbackTimeoutMs?: number } = {},
+): Promise<CfgApplyResult> {
   const preview = deviceImportPreview(text, versions);
-  if (!preview.ok) {
-    return { ok: false, reason: preview.error ?? 'nothing to load', sent: 0, verified: false, preview };
-  }
-  if (!connected) {
-    return {
-      ok: false,
-      reason:
-        'No live receiver session: the configuration would have nowhere to go. Import is disabled ' +
-        'until a receiver is connected.',
-      sent: 0,
-      verified: false,
-      preview,
-    };
-  }
-  return {
+  const refuse = (reason: string): CfgApplyResult => ({
     ok: false,
-    reason:
-      'Refused: the write can be framed, but the read-back verification cannot — the live link ' +
-      'exposes decoded logs only (packages/app/src/live.ts), not the receiver’s command responses. ' +
-      'A configuration that cannot be verified is not written.',
+    reason,
     sent: 0,
     verified: false,
     preview,
+    steps: [],
+    verification: null,
+  });
+  if (!preview.ok) return refuse(preview.error ?? 'nothing to load');
+  if (!connected) {
+    return refuse(
+      'No live receiver session: the configuration would have nowhere to go. Import is disabled ' +
+        'until a receiver is connected.',
+    );
+  }
+  if (!channel) {
+    return refuse(
+      'Refused: this link exposes no command-response channel, so neither the receiver’s <OK/<ERR ' +
+        'answers nor the read-back could be observed. A configuration that cannot be verified is not written.',
+    );
+  }
+
+  const commands = preview.commands;
+  const timeoutMs = options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+  const steps: CfgApplyStep[] = [];
+  for (let index = 0; index < commands.length; index += 1) {
+    const line = commands[index];
+    const reply = await channel.command(line, { timeoutMs });
+    steps.push({
+      index: index + 1,
+      line,
+      ok: reply.ok,
+      status: reply.status,
+      reply: reply.reply,
+      elapsedMs: reply.elapsedMs,
+      verified: null,
+      readback: [],
+    });
+    if (!reply.ok) {
+      return {
+        ok: false,
+        reason: refusalReason(index + 1, commands.length, line, reply, timeoutMs),
+        sent: index + 1,
+        verified: false,
+        preview,
+        steps,
+        verification: null,
+        failedAt: index + 1,
+        failedLine: line,
+      };
+    }
+  }
+
+  const readback = await channel.collect(READBACK_REQUEST, {
+    timeoutMs: options.readbackTimeoutMs ?? DEFAULT_READBACK_TIMEOUT_MS,
+  });
+  const parsed = parseReadback(readback.lines);
+  const verification: CfgApplyVerification = {
+    attempted: true,
+    ok: false,
+    request: READBACK_REQUEST,
+    reason: '',
+    lines: parsed.length,
+    matched: 0,
+    mismatched: [],
+    absent: [],
+  };
+  for (const step of steps) {
+    const verdict = classifyStep(step.line, parsed);
+    step.verified = verdict.state;
+    step.readback = verdict.lines;
+    if (verdict.state === 'matched') verification.matched += 1;
+    else if (verdict.state === 'mismatch') verification.mismatched.push(step.line);
+    else verification.absent.push(step.line);
+  }
+
+  const acknowledged = `${steps.length} command(s) acknowledged by the receiver`;
+  if (!readback.ok) {
+    verification.reason = readback.reason;
+    return {
+      ok: false,
+      reason:
+        `${acknowledged}, but ${READBACK_REQUEST} produced no line (${readback.reason}), so nothing is ` +
+        'verified: the settings may or may not be in force. Re-open the link and read the configuration again.',
+      sent: steps.length,
+      verified: false,
+      preview,
+      steps,
+      verification,
+    };
+  }
+  if (verification.mismatched.length) {
+    verification.reason = `${verification.matched} of ${steps.length} read back unchanged`;
+    return {
+      ok: false,
+      reason:
+        `${acknowledged}, but the read-back disagrees with ${verification.mismatched.length} of them ` +
+        `(${verification.mismatched.join('; ')}). The receiver’s own RXCONFIG lines are in each step’s ` +
+        '`readback`.',
+      sent: steps.length,
+      verified: false,
+      preview,
+      steps,
+      verification,
+    };
+  }
+
+  verification.ok = verification.absent.length === 0;
+  verification.reason =
+    `${verification.matched} of ${steps.length} read back unchanged` +
+    (verification.absent.length
+      ? `; ${verification.absent.length} not reported by LOG RXCONFIG (${verification.absent.join('; ')}), ` +
+        'so they rest on the receiver’s <OK alone'
+      : '');
+  return {
+    ok: true,
+    reason:
+      `${acknowledged}; ${verification.reason}. Nothing was made permanent (no SAVECONFIG, no RESET).`,
+    sent: steps.length,
+    verified: verification.ok,
+    preview,
+    steps,
+    verification,
   };
 }
 

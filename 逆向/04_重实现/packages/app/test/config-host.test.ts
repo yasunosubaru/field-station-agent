@@ -163,3 +163,74 @@ test('a real RXSTATUSEVENT line becomes one event entry', () => {
   assert.deepEqual(host.feedAscii(93, ascii), [], 'RXSTATUS is not an event record');
   assert.equal(host.eventCount(), 1, 'nothing was invented');
 });
+
+/* -------------------------------------------------- 5/12 Settings ▸ General / Networking */
+
+test('Settings ▸ General mounts the shipped fragment into the menu layout the original builds', () => {
+  const host = new ConfigHost(options());
+  const shown = host.show('generalSettings');
+  assert.equal(shown.mounted, true, 'the page mounts on first use');
+  assert.equal(host.menuPanelId('generalSettings'), 'generalSettings-layout_tabs-2');
+  // The original creates that container in `createMenuComponents` (jarvisInterface.js:1267); the
+  // headless host has to build it too, otherwise `page.mount()` has nowhere to go.
+  const panel = host.elementHtml('#generalSettings-layout_tabs-2') ?? '';
+  assert.ok(panel.includes('id="general-settings"'), 'the shipped General fragment is inside');
+  assert.ok(panel.includes('class="height-selection-list selector-positioning"'));
+  assert.ok(panel.includes('id="MSL"') && panel.includes('id="Ellipsoidal"'), 'both units are offered');
+  assert.ok(panel.includes('general-settings-apply'), 'the shipped Apply button is there');
+  // The fragment is a `data-lang-*` skeleton with no literal text: without the language pass the
+  // page would print blank labels, so the words are part of "really shows the page".
+  assert.match(panel, />Settings</);
+  assert.match(panel, />General</);
+  assert.match(panel, />Height</);
+  assert.match(panel, />Ellipsoidal</);
+
+  // A Settings page has no Configuration pill: selecting it is what `mountNamedPage` already did.
+  const detail = host.selectDetail('generalSettings');
+  assert.equal(detail.selected, true);
+  assert.equal(detail.paneId, null, 'no pill pane to switch');
+});
+
+test('Settings ▸ Networking mounts, marks its controls, and a change reaches the controller', () => {
+  const host = new ConfigHost(options());
+  host.show('networkingSettings');
+  const panel = host.elementHtml('#networkingSettings-layout_tabs-2') ?? '';
+  assert.ok(panel.includes('id="networking-details"'));
+  assert.ok(panel.includes('id="networking-accordion"'));
+  assert.ok(panel.includes('class="input-text-box ipaddress ethernet-input"'));
+  assert.ok(panel.includes('class="btn btn-default darkBtn ethernet-applyBtn"'));
+  assert.ok(panel.includes('id="hotspot-applyBtn"'));
+  // Labels, not just markup: the fragment carries no literal text, only `data-lang-*` markers.
+  assert.match(panel, />Networking</);
+  assert.match(panel, />Ethernet</);
+  assert.match(panel, />IP Address</);
+  assert.match(panel, />Subnet Mask</);
+  host.takeCommands(); // nothing queued by the mount itself
+
+  const base = '#networkingSettings-layout_tabs-2';
+  assert.equal(host.applyEvent(`${base} .ipaddress`, { value: '10.0.0.5' }), true);
+  assert.equal(host.applyEvent(`${base} .ethernet-applyBtn`, { click: true }), true);
+  const commands = host.takeCommands();
+  assert.ok(commands.length >= 1, 'Apply framed the typed address');
+  assert.equal(commands[0].kind, 'binary', 'the page frames the binary IPCONFIG command');
+});
+
+test('clicking a height unit records it, and General frames nothing for the receiver', () => {
+  const host = new ConfigHost(options());
+  host.show('generalSettings');
+  host.takeCommands();
+  const base = '#generalSettings-layout_tabs-2';
+  assert.equal(host.applyEvent(`${base} #Ellipsoidal`, { click: true }), true);
+  // The page marks the choice itself (`setActive`), then Apply writes the local setting.
+  assert.match(host.elementHtml(`${base} #Ellipsoidal`) ?? '', /class="height-unit-list-item[^"]*active"/);
+  assert.equal(host.applyEvent(`${base} .general-settings-apply`, { click: true }), true);
+  assert.deepEqual(host.takeCommands(), [], 'a local setting has no receiver command behind it');
+});
+
+test('a Configuration pill page is not a menu page: its document stays the whole shell', () => {
+  const host = new ConfigHost(options());
+  host.show('portConfig');
+  assert.equal(host.menuPanelId('portConfig'), null);
+  assert.equal(host.menuPanelId('events'), null);
+  assert.notEqual(host.menuPanelId('networkingSettings'), null);
+});

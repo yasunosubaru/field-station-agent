@@ -240,6 +240,12 @@ export class ConfigHost {
     const already = this.manage.configs.mountedPages(this.tab).includes(name);
     const mounted = already ? false : this.manage.configs.mountNamedPage(this.tab, name);
     this.resetPages();
+    if (this.menuPanelId(name)) {
+      // The Settings fragments are `data-lang-*` skeletons with no literal text, so without the
+      // language pass the page would print blank labels. `mountOperationalPage` does the same for
+      // the Device/Events pages (manage.ts#mountOperationalPage).
+      this.manage.applyLanguage(this.tab as never);
+    }
     return { html: this.html(), mounted };
   }
 
@@ -286,10 +292,13 @@ export class ConfigHost {
   /**
    * Activate the page's tab pane, the way clicking the tab does (`ConfigBundle.selectPage`).
    * Without this the panes stay `hidden` and the browser shows an empty tab.
+   *
+   * A Settings page has no pill: it lives in the tab's menu layouts, which `mountNamedPage` already
+   * made visible, so there is nothing to switch — and `true` is the honest answer.
    */
   select(name: string): boolean {
     const target = CONFIG_TAB_OF[name as ConfigPageName];
-    if (!target) return false;
+    if (!target) return this.menuPanelId(name) !== null;
     // Same two calls the menu performs: switch the tab from Status to Configuration, then pick
     // the page inside it. `statusConfigClick` refuses when `containers.build(tab)` has no build
     // for this tab — i.e. when `buildPanels` never ran — so the build is repaired and retried
@@ -299,6 +308,15 @@ export class ConfigHost {
       if (!this.manage.statusConfigClick('menuConfig', this.tab as never)) return false;
     }
     return this.manage.selectConfigPage(this.tab as never, target);
+  }
+
+  /**
+   * The menu-layout container a Settings page mounted into (`generalSettings-layout_tabs-2`), or
+   * `null` for a Configuration pill page (those live in the tab's panes, not in the menu layouts).
+   */
+  menuPanelId(name: string): string | null {
+    if (!this.manage.configs.isMenuPage(name)) return null;
+    return this.manage.configs.containerIdOf(this.tab as never, name);
   }
 
   /** `select()` plus what actually ended up visible — used by the endpoint tests. */

@@ -839,9 +839,18 @@ const server = createServer((req, res) => {
         if (method !== 'POST') throw new HttpError(405, '/api/config/device/import 只接受 POST');
         const body = await readJsonBody(req);
         const text = typeof body.text === 'string' ? body.text : '';
-        const connected = liveLink().status().connected;
-        const result = deviceImportApply(text, connected);
-        sendJson(res, result.ok ? 200 : 409, result, method);
+        const link = liveLink();
+        // One line at a time, each waiting for the receiver's own <OK/<ERR…, then LOG RXCONFIG as
+        // the read-back. The channel is the live link itself: it is the only thing holding the
+        // socket. Nothing is claimed as applied unless the receiver said so *and* the read-back
+        // agrees.
+        const result = await deviceImportApply(text, link.status().connected, undefined, link);
+        // 409 is kept for "nothing could even be attempted" (no session, no command channel, no
+        // loadable line). Once the write starts, the receiver's own answer *is* the result of a
+        // well-formed request, so it comes back 200 with `ok:false` — the page prints the reason
+        // and the browser's console stays free of a spurious "409" entry.
+        const blocked = !result.ok && result.steps.length === 0;
+        sendJson(res, blocked ? 409 : 200, result, method);
         return;
       }
       if (path.startsWith('/config/')) {
@@ -855,7 +864,12 @@ const server = createServer((req, res) => {
         // serialise: the headless host has no polling timer, so the data has to be in before the
         // document is built. Offline the lines are simply not sent and the page says so.
         await primeConfigurationPage(name);
-        sendText(res, 200, configPageDocument(name), 'text/html; charset=utf-8');
+        sendText(
+          res,
+          200,
+          configPageDocument(name, { connected: liveLink().status().connected }),
+          'text/html; charset=utf-8',
+        );
         return;
       }
       if (path.startsWith('/view/')) {
@@ -885,28 +899,37 @@ const server = createServer((req, res) => {
         const body = await readJsonBody(req);
         const selector = typeof body.selector === 'string' ? body.selector : '';
         if (!selector) throw new HttpError(400, 'selector 不能为空');
-        const result = applyConfigEvent(name, selector, {
-          value: body.value,
-          checked: typeof body.checked === 'boolean' ? body.checked : undefined,
-          click: body.click === true ? true : undefined,
-        });
         // Anything the controller framed goes out over the live session, exactly as a menu click
-        // would; without a session the commands are dropped and the response says so.
-        const queued = result.commands;
+        // would; without a session the commands are dropped and the page says so.
         const status = liveLink().status();
-        if (status.connected) {
-          for (const command of queued) {
-            if (command.kind === 'raw' && command.text) liveLink().send(command.text);
-            else if (command.kind === 'ascii' && command.text) liveLink().send(command.text);
-            else if (command.kind === 'binary' && command.bytes) liveLink().sendBinary(command.bytes);
-          }
+        const result = applyConfigEvent(
+          name,
+          selector,
+          {
+            value: body.value,
+            checked: typeof body.checked === 'boolean' ? body.checked : undefined,
+            click: body.click === true ? true : undefined,
+          },
+          {
+            connected: status.connected,
+            // The note and the `sent` count come from the same answer, so the page cannot show
+            // "applied" next to a dropped command.
+            sent: status.connected ? undefined : 0,
+          },
+        );
+        for (const command of result.commands) {
+          if (!status.connected) break;
+          if (command.kind === 'raw' && command.text) liveLink().send(command.text);
+          else if (command.kind === 'ascii' && command.text) liveLink().send(command.text);
+          else if (command.kind === 'binary' && command.bytes) liveLink().sendBinary(command.bytes);
         }
         sendJson(res, 200, {
           ok: true,
           shell: result.shell,
           applied: result.applied,
-          commands: queued.length,
-          sent: status.connected ? queued.length : 0,
+          commands: result.commands.length,
+          sent: status.connected ? result.commands.length : 0,
+          note: result.note,
         }, method);
         return;
       }
