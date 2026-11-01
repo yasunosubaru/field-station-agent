@@ -126,6 +126,7 @@ interface ChartSpec {
 }
 
 const PVT = 'PVT';
+const HEADING = 'Heading & Attitude';
 const TRACKING = 'Tracking & Measurements';
 const RECEIVER = 'Receiver Status';
 
@@ -140,6 +141,9 @@ export const CHART_SPECS: readonly ChartSpec[] = [
   },
   { file: 'Height.csv', title: 'Height', section: PVT, kind: 'line', units: '(m)' },
 { file: 'Velocity.csv', title: 'Velocity', section: PVT, kind: 'line', units: '(m/s)' },
+{ file: 'Azimuth.csv', title: 'Azimuth', section: HEADING, kind: 'line', units: '(degrees)' },
+{ file: 'Roll and Pitch.csv', title: 'Roll and Pitch', section: HEADING, kind: 'line', units: '(degrees)' },
+{ file: 'SPAN Filter Updates.csv', title: 'SPAN Filter Updates', section: HEADING, kind: 'interval' },
   {
     file: 'GNSS Signal Strength.csv', title: 'GNSS Signal Strength', section: TRACKING, kind: 'line',
     units: 'C/No (dB-Hz)',
