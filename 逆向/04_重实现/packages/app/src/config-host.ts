@@ -59,11 +59,14 @@ import {
  *   `vehicleSetup`   **Settings ▸ Vehicle Setup** (§2.2.7) — the `spanInstallation` fragment in a
  *                    container of its own (§2.2.7's screen *is* that template; the suite has no
  *                    separate `vehicleSetup` component).
- *   `interferenceToolkit` **Tools ▸ Interference Toolkit** (§2.2.9) — the shipped ITK component,
- *                    served read-only: its detection list comes from a capture's
- *                    `ITDETECTSTATUS` text records (`feedItk`), its settings from the receiver's
- *                    own `ITDETECTCONFIG` / `ITWARNINGCONFIG` / `ITSPECTRALANALYSIS` records. The
- *                    spectrum plot needs the live `ITPSDFINAL` stream and is not drawn.
+ *   `interferenceToolkit` **Tools ▸ Interference Toolkit** (§2.2.9) — the shipped ITK component:
+ *                    its detection list comes from a capture's `ITDETECTSTATUS` text records
+ *                    (`feedItk`), its six settings are read from the receiver's own
+ *                    `ITDETECTCONFIG` / `ITWARNINGCONFIG` / `ITSPECTRALANALYSIS` /
+ *                    `ITFRONTENDMODE` / `ITBANDPASSCONFIG` / `ITPROGFILTCONFIG` records
+ *                    (`feedItkRecord`, the read-back a write asks for) and written back through the
+ *                    page's six Apply buttons. The spectrum plot needs the live `ITPSDFINAL`
+ *                    stream and is not drawn.
  */
 const CONFIG_PAGE_NAMES = [
   'positionConfig',
@@ -616,6 +619,28 @@ export class ConfigHost {
     return this.manage.configs.setItkCapture(this.tab as never, summary)
       ? ['interferenceToolkit']
       : [];
+  }
+
+  /**
+   * Hand the Interference Toolkit page one configuration record the link read back
+   * (`<ITWARNINGCONFIGA,…,;3,0*…`), so its controls and its table show what the receiver now holds.
+   *
+   * The record arrives as the **rendered line** rather than as decoded fields: the entry the live
+   * link keeps carries exactly that string (`live.ts#renderAscii`), and the page parses it here
+   * (`interferenceToolkit.ts#itkRecordOf`) instead of through `config-feed.ts#configSliceOf`, whose
+   * branches are other pages' field names. `false` when the page is not mounted or the line is not
+   * one of the six records — never a silent no-op for a record that was asked for.
+   */
+  feedItkRecord(messageId: number, ascii: string): boolean {
+    if (!this.manage.configs.mountedPages(this.tab).includes('interferenceToolkit')) return false;
+    return this.manage.configs.interferenceToolkit.feedRecord(this.tab as never, messageId, ascii);
+  }
+
+  /** The receiver's own answer to the last line the page framed (`<OK`, `<ERROR:…`), verbatim. */
+  feedItkReply(reply: string): boolean {
+    if (!this.manage.configs.mountedPages(this.tab).includes('interferenceToolkit')) return false;
+    this.manage.configs.interferenceToolkit.noteReply(this.tab as never, reply);
+    return true;
   }
 
   /**

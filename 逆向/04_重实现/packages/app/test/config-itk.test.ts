@@ -23,6 +23,7 @@ import { loadCapture, tables } from '../src/capture.ts';
 import { resolveCapture } from '../src/paths.ts';
 import { readRecords, readTextRecords } from '../src/logs.ts';
 import {
+  CONFIG_SUBSCRIPTIONS,
   ITK_MSG,
   itkRowsOf,
   wifiSupportedFromVersion,
@@ -277,12 +278,20 @@ test('the feature flag alone decides the panels (no record needed)', () => {
   assert.equal((shown.match(/id="config-wifi-note"/g) ?? []).length, 0);
 });
 
-test('the ITK page reads no live message ids: its records are a capture’s text records', () => {
-  // The page's contract with the link is empty on purpose (see CONFIG_SUBSCRIPTIONS), and the ids
-  // it *does* name are the configuration records the host reads from the capture.
+test('the ITK page’s live ids are its six writable records, not the detection list', () => {
+  // The page's contract with the link is the six `IT*CONFIG` records it reads back after a write
+  // (`CONFIG_SUBSCRIPTIONS`); its **detections** are a different channel — `ITDETECTSTATUS` is a
+  // text record this receiver never hands to the live decoder, so they come from a capture.
   assert.equal(ITK_MSG.ITDETECTSTATUS, 2065);
   assert.equal(ITK_MSG.ITDETECTCONFIG, 2143);
   assert.equal(ITK_MSG.ITWARNINGCONFIG, 2289);
-  const source = readFileSync(join(here, '..', '..', 'view', 'src', 'config', 'index.ts'), 'utf8');
-  assert.match(source, /interferenceToolkit: \[\],/);
+  assert.equal(ITK_MSG.ITSPECTRALANALYSIS, 1967);
+  assert.equal(ITK_MSG.ITFRONTENDMODE, 2039);
+  assert.equal(CONFIG_SUBSCRIPTIONS.interferenceToolkit.length, 6);
+  assert.deepEqual(CONFIG_SUBSCRIPTIONS.interferenceToolkit, [1967, 1999, 2000, 2039, 2143, 2289]);
+  assert.equal(
+    CONFIG_SUBSCRIPTIONS.interferenceToolkit.includes(2065),
+    false,
+    'ITDETECTSTATUS is not a live id: it is read from a capture',
+  );
 });

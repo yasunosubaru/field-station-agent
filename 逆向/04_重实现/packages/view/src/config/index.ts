@@ -144,6 +144,32 @@ const CONFIG_LOG_REQUESTS: Record<string, ConfigLogRequest[]> = {
    */
   vehicleSetup: [],
   /**
+   * Tools ▸ Interference Toolkit asks for the records this receiver will answer, one `ONCE` each —
+   * the same lines its Apply buttons frame after a write, so the page opens on the receiver's
+   * current settings rather than on a default.
+   *
+   * Measured on the desk OEM729 (2026-11-02, USB2/COM10):
+   *
+   * ```
+   * LOG ITWARNINGCONFIGB    ONCE -> <OK, one record (;3,0)
+   * LOG ITDETECTCONFIGB     ONCE -> <OK, one record (;ALL,0,0,0)
+   * LOG ITSPECTRALANALYSISB ONCE -> <OK, one record (;PREDECIMATION,GPSL1,200,2K,1,1)
+   * LOG ITFRONTENDMODEB     ONCE -> <ERROR:Message is invalid for this model
+   * LOG ITBANDPASSCONFIGB   ONCE -> <ERROR:Message is invalid for this model
+   * LOG ITPROGFILTCONFIGB   ONCE -> <ERROR:Message is invalid for this model
+   * ```
+   *
+   * So the three this model refuses are **not** requested on open (the same rule the Wi-Fi records
+   * follow). A write still asks for its own record afterwards (`itkReadbackRequest`): on a receiver
+   * that does answer it the page fills from it, and on this one the page shows the `<ERROR` verbatim
+   * instead of pretending the setting landed.
+   */
+  interferenceToolkit: [
+    { name: 'ITDETECTCONFIG', spec: 'once,0' },
+    { name: 'ITWARNINGCONFIG', spec: 'once,0' },
+    { name: 'ITSPECTRALANALYSIS', spec: 'once,0' },
+  ],
+  /**
    * The Networking page's records. The page reads `IPCONFIG` (address/mask/gateway/DHCP) and
    * `DNSCONFIG` (the DNS box); `IPSTATUS`/`ETHCONFIG`/`IPSERVICE` are asked for because they are
    * the receiver's own statement about the same interface and cost one line each.
@@ -220,13 +246,18 @@ export const CONFIG_SUBSCRIPTIONS: Record<string, number[]> = {
   gnssConfig: [1735, 613],
   spoofingConfiguration: [2358, 2366, 2367],
   /**
-   * Tools ▸ Interference Toolkit (§2.2.9) takes **nothing** from the live link: `ITDETECTSTATUS`
-   * is a text record on this receiver (`#ITDETECTSTATUSA`), so the live decoder never sees it and
-   * the page is handed a capture's records by the host (`config-http.ts#feedItkCapture`). An empty
-   * list is the page's contract, kept explicit so a later reader does not think a request went
-   * missing — the same reason `vehicleSetup` has one.
+   * The Interference Toolkit page (§2.2.9) reads six configuration records — the six commands it
+   * can also write: `ITDETECTCONFIG` (#2143), `ITWARNINGCONFIG` (#2289), `ITSPECTRALANALYSIS`
+   * (#1967), `ITFRONTENDMODE` (#2039), `ITBANDPASSCONFIG` (#1999) and `ITPROGFILTCONFIG` (#2000).
+   *
+   * Its **detections** are a different channel: `ITDETECTSTATUS` is a *text* record on this
+   * receiver (`#ITDETECTSTATUSA`), so the live decoder never sees it and the page is handed a
+   * capture's records by the host (`config-http.ts#feedItkCapture`). The six ids above *are*
+   * decodable — the live link renders them (`<ITWARNINGCONFIGA,…,;3,0*…`) — but
+   * `config-feed.ts#configSliceOf` speaks each page's own field names, so the rendered line is
+   * handed to `interferenceToolkit.ts#feedRecord` directly instead of through a slice.
    */
-  interferenceToolkit: [],
+  interferenceToolkit: [1967, 1999, 2000, 2039, 2143, 2289],
   networkingSettings: [2091, 2093, 1243, 1289, 2210, 2207, 1244],
   lghnPositionConfig: [],
   lghnLoggingConfig: [],

@@ -30,7 +30,12 @@ import {
   type ConfigCommand,
 } from './config-host.ts';
 import { MENU_PAGE_NAMES, type ConfigOperationsHost } from '../../view/src/config/index.ts';
-import { itkRowsOf, type ItkCaptureSummary, type ItkRow } from '../../view/src/config/index.ts';
+import {
+  ITK_RECORDS,
+  itkRowsOf,
+  type ItkCaptureSummary,
+  type ItkRow,
+} from '../../view/src/config/index.ts';
 import { loadCapture, tables } from './capture.ts';
 import { resolveCapture } from './paths.ts';
 import { readRecords, readTextRecords } from './logs.ts';
@@ -82,7 +87,7 @@ export const CONFIG_LABELS: Record<string, string> = {
   deviceUpdate: 'Update',
   /** §2.2.7: the `spanInstallation` fragment under its own menu entry. */
   vehicleSetup: 'Vehicle Setup',
-  /** §2.2.9: `View ▸ Tools ▸ Interference Toolkit`, served read-only from a capture's records. */
+  /** §2.2.9: `View ▸ Tools ▸ Interference Toolkit` — detections from a capture, settings read and written over the link. */
   interferenceToolkit: 'Interference Toolkit',
   events: 'Events',
 };
@@ -136,6 +141,18 @@ export class ConfigFiles {
 export const configFiles = new ConfigFiles();
 
 const CONFIG_OPERATIONS: ConfigOperationsHost = { files: configFiles };
+
+/**
+ * The six records Tools ▸ Interference Toolkit reads back (`ITDETECTCONFIG`, `ITWARNINGCONFIG`,
+ * `ITSPECTRALANALYSIS`, `ITFRONTENDMODE`, `ITBANDPASSCONFIG`, `ITPROGFILTCONFIG`).
+ *
+ * Derived from the page's own table (`interferenceToolkit.ts#ITK_RECORDS`), not listed again here:
+ * a record the page can write and read is the one it names, and this file must not be able to fall
+ * behind it.
+ */
+const ITK_CONFIG_MESSAGE_IDS: ReadonlySet<number> = new Set(
+  ITK_RECORDS.map((record) => record.messageId),
+);
 
 /* ------------------------------------------------------------------------- page registry */
 
@@ -313,6 +330,54 @@ const CLIENT_SCRIPT = `
     var read = document.querySelector('#itk-detections[data-itk-capture]');
     var current = read ? read.getAttribute('data-itk-capture') : '';
     if (wanted !== current) post({ selector: '#itk-capture', value: wanted });
+
+    /* The read-back and the receiver's answer, both from the live link's own endpoints:
+     *  - /api/live/logs carries the rendered IT*CONFIG records the page asks for after a write
+     *    (feeding them server-side is what re-renders the page; this poll only asks for the fresh
+     *    panel);
+     *  - /api/live/status carries the <OK / <ERROR:... each framed line was answered with, because
+     *    LiveLink credits a reply to the line waiting for it. A line that starts with LOG is the
+     *    read-back request, so it never masks the write's own answer. */
+    var itkIds = ${JSON.stringify(ITK_RECORDS.map((record) => record.messageId))};
+    var cursor = 0;
+    var shownCommandId = -1;
+    var shownReadback = '';
+    setInterval(function () {
+      fetch('/api/live/logs?after=' + cursor)
+        .then(function (r) { return r.json(); })
+        .then(function (body) {
+          if (!body || !Array.isArray(body.entries)) return;
+          if (body.cursor) cursor = Number(body.cursor);
+          var fresh = body.entries.filter(function (entry) {
+            return itkIds.indexOf(Number(entry.messageId)) >= 0;
+          });
+          if (!fresh.length) return;
+          var stamp = fresh.map(function (entry) { return entry.seq + ':' + (entry.ascii || ''); }).join('|');
+          if (stamp === shownReadback) return;
+          shownReadback = stamp;
+          post({ selector: '#itk-refresh' });
+        })
+        .catch(function () {});
+      fetch('/api/live/status')
+        .then(function (r) { return r.json(); })
+        .then(function (body) {
+          var commands = (body && body.commands) || [];
+          for (var i = commands.length - 1; i >= 0; i--) {
+            var entry = commands[i];
+            var line = String((entry && entry.line) || '');
+            if (!/^IT[A-Z]/i.test(line)) continue;
+            var reply = entry && entry.reply;
+            var id = Number((entry && entry.id) || 0);
+            /* One post per answered line: the receiver says the same <OK to every command, so the
+               command's own id — not its text — is what tells the page it is a new answer. */
+            if (!reply || id <= shownCommandId) return;
+            shownCommandId = id;
+            post({ selector: '#itk-command-reply', value: reply });
+            return;
+          }
+        })
+        .catch(function () {});
+    }, 1500);
   }
 })();
 `;
@@ -387,6 +452,31 @@ export function configPageDocument(name: string, options: { connected?: boolean 
         '  .itk-no-detections { margin: 6px 0 0; font: 13px/1.4 sans-serif; color: #666;',
         '    font-style: italic; }',
         '  #itk-capture { display: none; }',
+        /* The six write groups. The shipped stylesheet has no rule for them (the original drew a
+         * Settings sidenav over the plot), so the grid is laid out here: two columns on the
+         * drawer's ~1000 px width, one on a narrow window. */
+        '  .itk-write-grid { display: flex; flex-wrap: wrap; gap: 10px 14px; }',
+        '  .itk-write-group { flex: 1 1 300px; min-width: 260px; margin: 0; padding: 8px 10px 10px;',
+        '    border: 1px solid #d7e3ea; border-radius: 4px; background: #fbfdfe; }',
+        '  .itk-write-group legend { padding: 0 4px; font: 600 13px/1.3 sans-serif; color: #115c7c; }',
+        '  .itk-write-field { display: flex; align-items: center; justify-content: space-between;',
+        '    gap: 8px; margin: 4px 0; font: 12px/1.4 sans-serif; color: #333; }',
+        '  .itk-write-field > input, .itk-write-field > select { flex: 0 0 52%; min-width: 0;',
+        '    height: 24px; padding: 0 4px; border: 1px solid #b9c9d3; border-radius: 3px;',
+        '    background: #fff; font: 12px/1.2 sans-serif; }',
+        '  .itk-write-group .itk-apply { margin-top: 6px; padding: 4px 14px; border: 0;',
+        '    border-radius: 3px; background: #115c7c; color: #fff; font: 600 12px/1.4 sans-serif;',
+        '    cursor: pointer; }',
+        '  .itk-write-group .itk-apply:hover { background: #0d4a63; }',
+        '  .itk-write-help { margin: 2px 0 6px; font: 11px/1.4 sans-serif; color: #5b6b75; }',
+        '  .itk-last-command { margin: 10px 0 0; font: 12px/1.5 ui-monospace, Consolas, monospace;',
+        '    color: #123; word-break: break-all; }',
+        '  .itk-command-reply { margin: 4px 0 0; padding: 6px 10px; border-left: 3px solid #115c7c;',
+        '    background: #eef6fa; font: 12px/1.5 ui-monospace, Consolas, monospace; color: #123;',
+        '    word-break: break-all; }',
+        '  .itk-command-reply[data-itk-reply-error] { border-left-color: #a00214;',
+        '    background: #fdeef0; color: #6b0010; }',
+        '  .itk-write-refused { border-left-color: #d98500; background: #fff4e5; color: #4a3200; }',
       ].join('\n');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
@@ -432,8 +522,15 @@ export function applyConfigEvent(
    * `readTextRecords` the `/api/records` endpoint serves, and the re-rendered panel comes back in
    * `shell` like every other form event.
    */
-  if (name === 'interferenceToolkit' && selector === '#itk-capture' && typeof event.value === 'string') {
-    feedItkCapture(event.value);
+  if (name === 'interferenceToolkit' && typeof event.value === 'string') {
+    if (selector === '#itk-capture') feedItkCapture(event.value);
+    /* The receiver's own `<OK` / `<ERROR:…`. The page cannot hear it: `LiveLink` credits a reply to
+     * the command that is waiting for it, and a configuration page's Apply is fire-and-forget
+     * (`server.ts` writes the framed lines and returns). So the page's own script reads the answer
+     * off `/api/live/status` and posts it here, and this is where it becomes the page's text. */
+    else if (selector === '#itk-command-reply') host(name).feedItkReply(event.value);
+    /* A refresh ping: the poll saw new `IT*CONFIG` records, `feedConfigFromEntries` already fed
+     * them, and the answer to this event carries the re-rendered panel. */
   }
   const applied = target.applyEvent(selector, event);
   const commands = target.takeCommands();
@@ -538,6 +635,15 @@ export function feedConfigFromEntries(
     const seq = Number(entry.seq ?? 0);
     if (seq > 0 && seq <= lastConfigSeq) continue;
     if (seq > highest) highest = seq;
+    /**
+     * Tools ▸ Interference Toolkit reads its six `IT*CONFIG` records off their **rendered line**:
+     * they are commands, not logs any page's slice describes, so `configSliceOf` below has no
+     * branch for them. The page parses the record itself (`itkRecordOf`) and re-renders.
+     */
+    if (ITK_CONFIG_MESSAGE_IDS.has(entry.messageId) && entry.ascii) {
+      const itk = hosts.get('interferenceToolkit');
+      if (itk?.feedItkRecord(entry.messageId, entry.ascii)) fed += 1;
+    }
     if (!CONFIG_MESSAGE_ID_SET.has(entry.messageId)) continue;
     if (!entry.ascii) continue;
     for (const [page, instance] of hosts) {

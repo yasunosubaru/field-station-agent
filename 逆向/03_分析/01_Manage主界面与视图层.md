@@ -1394,3 +1394,172 @@ PSN 前缀命中的 `VERSION` 时（`ConfigHost#feed(37, …)`，判据在
   本轮完全没做。
 - **频段页签只做过滤，不切图**：点击 L2 把列表过滤成 L2 行（再点一次恢复全部），因为页签原本
   切换的是那张没画的图。实测抓包里 38 条检测全在 L2，所以 L1/L5/L6/L-Band 页签会给出空态。
+
+---
+
+## 15. Tools ▸ Interference Toolkit 的写入半（B 类第 4 项，2026-11-02 真机）
+
+上一节把 ITK 做成只读页。本节把手册 §2.2.9 的六个设置**接回可写**：Detection、Warning level、
+Spectral analysis、HDR、Bandpass、Programmable filter。判据是"页面上按 Apply 真的把同一份数据表
+发给接收机、接收机回 `<OK`、回读记录改变页面、再改回原值"。
+
+### 15.1 原版到底发什么：map 是原版的，拼串是本实现的
+
+必须先说清一件容易搞错的事：**shipped 的 WebUI 不会拼出一行 ASCII**。
+
+- `genericConfig.js:220` 把数据表交给 `frameCommand.binaryCommand(commandMap.messageId, params)`，
+  也就是**二进制命令帧**（28 B 头 + 4/8 B 字段 + CRC32），不是本文后面那些字符串；
+- 原版唯一把参数列表变成文本的地方是 `frameCommand.frameasciirequest`（`controller/frameCommand.js:186`），
+  它先 `req.replace(/ /g, ',')` 把空格全换成逗号，再套成
+  `\r\n#CMD,THISPORT_30,0,0,UNKNOWN,0,0,0,0,0;<参数,逗号分隔>*CRC\r\n` 的 full-ASCII 帧。
+
+本实现走 **abbreviated ASCII**（`live.ts#send`：行 + CR，就是 Terminal 页发的那种），所以字段顺序
+照抄原版 map，分隔符用**单空格**、枚举 token 用**大写**——这正是实测被接受的形式：
+`03_分析` §13.1 记录的 `ITWARNINGCONFIG 1`、`ITDETECTCONFIG ALL`、
+`ITSPECTRALANALYSIS PREDECIMATION GPSL2 1000 1K 1 1` 都回 `<OK`，`b7-restore.ps1` 的
+`ITSPECTRALANALYSIS PREDECIMATION GPSL1 200 2K 1 1` 也回 `<OK` 并在 `LOG RXCONFIGA ONCE` 里读回。
+
+### 15.2 六条命令：来源行号、map、最终串
+
+| 命令 | 原版来源 | map（字段顺序 / 类型） | 最终串（本实现发出的那一行） |
+|---|---|---|---|
+| `ITDETECTCONFIG` | `frameitDetectConfigCommand` `:5960`，调用点 `:5955`（开关的 `ALL`/`NONE`） | `rfpath`(enum) `r1,r2,r3`(ulong) | `ITDETECTCONFIG ALL 0 0 0` |
+| `ITWARNINGCONFIG` | 原版**没有控件**，id 只在 `MessageIdConstants.js:603`；语法取手册 §2.78 | `level`(ulong) | `ITWARNINGCONFIG 1` |
+| `ITSPECTRALANALYSIS` | `frameItSpectralAnalysisDataMap` `:3211`，调用点 `:3182` | `mode`(enum) `frequency`(enum) `updatePeriod`(ulong) `fftSize`(enum) `timeAvg`(ulong) `subCarrierAvg`(ulong) | `ITSPECTRALANALYSIS PREDECIMATION GPSL1 500 2K 1 1` |
+| 〃（停） | `:3254` / `:3287` 里的 `itspectralanalysis off` | — | `ITSPECTRALANALYSIS OFF` |
+| `ITFRONTENDMODE` | `frameItFrontEndModeDataMap` `:3361`，调用点 `:3327` | `frequencyBand`(enum) `mode`(enum) | `ITFRONTENDMODE L1 CIC3` |
+| `ITBANDPASSCONFIG` | `frameItBandPassConfigDataMap` `:3312`，调用点 `:3285` | `frequency`(enum) `filterSwitch`(enum) `cutOffFrequency`(float) | `ITBANDPASSCONFIG GPSL5 ENABLE 1165.975` |
+| `ITPROGFILTCONFIG` | `frameItProgFiltConfigDataMap` `:3260`，调用点 `:3252` | `frequency`(enum) `filterId`(enum) `filterSwitch`(enum) `filterMode`(enum) `cutOffFrequency`(float) `notchWidth`(float) | `ITPROGFILTCONFIG GPSL1 PF0 ENABLE NOTCHFILTER 1580 1` |
+
+枚举 token 全部来自 `NovatelIdConstants.commandsAndEnums`（原版 `genericConfig.js:176` 索引的就是这几张表）：
+`itdetectconfig.rfpath`（NONE/ALL/L1/L2/L5）、`itspectralanalysis.mode|frequency|fftSize`、
+`itfrontendmode.frequencyBand|mode`（注意 `LBand` → ASCII 印作 `LBAND`）、
+`itbandpassconfig.frequency|filterSwitch`、`itprogfiltconfig.filterId|filterMode`。
+数字格式见 `itkFloatToken`：`1580` → `1580`、`1165.975` → `1165.975`、`1.000000` → `1`、
+`-0` → `0`、`1e-7` → `0`（不印指数）。
+
+每条写之后**紧跟一条回读**（`itkReadbackRequest`）：`LOG <NAME>B ONCE`。用 `B`（二进制）是因为
+live 解码器只认二进制记录，`A` 文本记录不会进 `logs()`。
+
+### 15.3 数据流（谁在什么时候发、页面怎么被刷新）
+
+```
+页面 Apply（真实点击）
+  → view/interferenceToolkit.ts#applySection  读控件 → 校验 → itkCommandsFor(section)
+  → commands.place(name,'send',[{command:[line,'string']}])   ×2（写 + 回读）
+  → config-host.ts#takeCommands()  → server.ts 逐条 liveLink().send(line)（ASCII + CR）
+接收机 <OK / <ERROR:…>
+  → live.ts 把应答记到 status().commands[].reply
+  → 页内脚本 1.5 s 轮询 /api/live/status → POST {selector:'#itk-command-reply', value: reply}
+  → config-http.ts#applyConfigEvent → ConfigHost#feedItkReply → 页面红/蓝框显示原话
+接收机 LOG …B ONCE 的二进制记录
+  → live.ts 解码并渲染成 '#ITWARNINGCONFIGA,…,;3,0*crc'
+  → /api/live/logs → config-http.ts#feedConfigFromEntries（新增 ITK 分支，按 messageId 六选一）
+  → ConfigHost#feedItkRecord → interferenceToolkit.ts#feedRecord → itkRecordOf 解析 body
+  → 表格 + 六个控件按接收机的值重画（"· live read-back"）
+```
+
+三个设计点值得记下来：
+
+1. **没有 `CONFIG_SUBSCRIPTIONS` 也活不了**：`config-feed.ts#configSliceOf` 的每个分支都是**别的页
+   的字段名**，六条 `IT*CONFIG` 没有分支会返回 `null`。所以分派放在 `config-http.ts`（同一文件里的
+   `feedConfigFromEntries`），解析放在视图层（`itkRecordOf`），`config-feed.ts` 一行没动。
+2. **`<ERROR` 是借页面自己的脚本看见的**：`server.ts` 发完就返回，不给配置页应答回执；而 `live.ts`
+   会把 `<OK`/`<ERR…` 记到发出它的那条命令上。页内脚本按**命令 id**（不是文本）判定"这是新应答"，
+   否则连续两次 `<OK` 只会显示一次（第一次实测就踩了，见 15.5）。
+3. **打开页面只要三条回读**：`CONFIG_LOG_REQUESTS.interferenceToolkit` 只列
+   `ITDETECTCONFIG`/`ITWARNINGCONFIG`/`ITSPECTRALANALYSIS`——另外三条本机回落 `<ERROR`（15.4），
+   打开页面就刷三条错误没有意义。写的时候仍然会请求自己那条记录，支持的机型照样回读。
+
+### 15.4 真机：每条命令的 `<OK`、回读与恢复（OEM729，COM10/USB2）
+
+存档（`LOG RXCONFIGA ONCE`，本机六条 IT 语句只有三条存在）：
+
+```
+#ITDETECTCONFIGA,…;ALL,0,0,0
+#ITWARNINGCONFIGA,…;3,0
+#ITSPECTRALANALYSISA,…;PREDECIMATION,GPSL1,200,2K,1,1
+```
+
+`ITFRONTENDMODE` / `ITBANDPASSCONFIG` / `ITPROGFILTCONFIG` **不在配置里**，且它们的日志形式本机直接拒：
+
+| 探测 | 接收机原话 |
+|---|---|
+| `LOG ITFRONTENDMODEB ONCE` | `<ERROR:Message is invalid for this model` |
+| `LOG ITBANDPASSCONFIGB ONCE` | `<ERROR:Message is invalid for this model` |
+| `LOG ITPROGFILTCONFIGB ONCE` | `<ERROR:Message is invalid for this model` |
+
+写入实测（页面逐个 Apply，间隔 ≥1.5 s，一次一条；`<OK` 取自 `/api/live/status` 里该行的应答，
+回读取自页面表格；截图见文末）：
+
+| # | 发出的行 | 应答 | 回读（页面表格） | 恢复的行 | 应答 | 恢复后回读 |
+|---|---|---|---|---|---|---|
+| 1 | `ITWARNINGCONFIG 1` | `<OK` | Warning level = **1** | `ITWARNINGCONFIG 3` | `<OK` | **3** |
+| 2 | `ITDETECTCONFIG NONE 0 0 0` | `<OK` | switch = **NONE** | `ITDETECTCONFIG ALL 0 0 0` | `<OK` | **ALL** |
+| 3 | `ITSPECTRALANALYSIS PREDECIMATION GPSL1 500 2K 1 1` | `<OK` | Update Rate = **500** | `ITSPECTRALANALYSIS PREDECIMATION GPSL1 200 2K 1 1` | `<OK` | **200** |
+| 4 | `ITFRONTENDMODE L1 CIC3` | **`<ERROR:Message is invalid for this model`** | Enable HDR Mode 仍 `--` | —（无状态变化） | — | — |
+| 5 | `ITBANDPASSCONFIG GPSL5 ENABLE 0` | **`<ERROR:Message is invalid for this model`** | Filters 仍 `--` | — | — | — |
+| 6 | `ITPROGFILTCONFIG GPSL1 PF0 DISABLE NOTCHFILTER 0 0` | **`<ERROR:Message is invalid for this model`** | Filters 仍 `--` | — | — | — |
+
+收尾用**独立进程**（桥已停、COM10 独占）再取一次 `LOG RXCONFIGA ONCE` 与三条 `LOG …B ONCE`，
+把二进制记录解码后与存档逐字段比对：
+
+```
+             before                    after
+2143   ALL,0,0,0                 ALL,0,0,0
+2289   3,0                       3,0
+1967   PREDECIMATION,GPSL1,200,2K,1,1    PREDECIMATION,GPSL1,200,2K,1,1
+```
+
+即**三条全部回到原值**，第四~六条因为被拒也什么都没改。原始字节与转录留档：
+`%TEMP%\opencode\agent-itkwrite\{before,after}-raw.{bin,txt}`、`before-RXCONFIG.txt`、
+`after-RXCONFIG.txt`、`e2e-transcript.json`。
+
+一个如实记下的现象：收尾的 `LOG RXCONFIGA ONCE` 里 `ITDETECTCONFIG` 出现了**两条**
+（`NONE,0,0,0` 与 `ALL,0,0,0`，序列号 2 与 1），像是接收机把刚发生的改动也回显出来；同期
+`LOG ITDETECTCONFIGB ONCE` 只回**一条**、字段是 `ALL,0,0,0`，且与 before 一致。所以判定以二进制
+记录为准，`RXCONFIGA` 的重复行按"改动回显"记录在此，不当作两个值。
+
+### 15.5 踩到的坑
+
+1. **live 的记录行带 `#`**：`live.ts#renderAscii` 输出的是 `#ITWARNINGCONFIGA,…`，而解析器最初只
+   剥了 `<`，于是六条记录一条也认不出、页面空空。视图层的 `itkRecordOf` 现在同时接受
+   `<`、`#` 与 abbreviated ASCII 三种开头，测试各钉一条。
+2. **应答去重不能用文本**：接收机对每条命令都回 `<OK`，第一次实测里页内脚本按"文本变了才回传"，
+   结果只有第一条 Apply 的 `<OK` 显示出来，后面几步的框是空的。改成按命令 id 去重后，9 步全部可见。
+3. **回读会覆盖正在输入的值**：`renderControls` 在每条回读记录到达时把控件指到接收机的值。对
+   "写完看一眼"是想要的，但人工输入恰好撞上回读就会被改回去——目前只在写之后和开页时会有记录，
+   实测未撞上；记在这里。
+4. **`server.ts` 不能改**：配置页 Apply 没有应答回执，`<OK`/`<ERROR` 只能从 `/api/live/status` 由
+   页面自己去取（见 15.3 第 2 点）。这是既有边界的后果，不是偷懒。
+
+### 15.6 改动与判据
+
+- `packages/view/src/config/interferenceToolkit.ts`：六条 map（原函数名保留）+ `itkCommandLine` /
+  `itkToken` / `itkFloatToken`、`itkCommandsFor`、`itkRecordOf` / `itkReportApply`、六个写组与
+  `applySection` / `feedRecord` / `noteReply`、`configLines(config, reported)`（回读值优先并标
+  `· live read-back`）、数值范围校验（`updateperiod 50..100000`、`timeavg 0..50`、
+  integration window `1..1024`，手册 §2.77）。
+- `packages/view/src/config/index.ts`：`CONFIG_SUBSCRIPTIONS.interferenceToolkit`（六个 id）+
+  `CONFIG_LOG_REQUESTS.interferenceToolkit`（三条本机可答的）。
+- `packages/app/src/config-host.ts`：`feedItkRecord` / `feedItkReply`。
+- `packages/app/src/config-http.ts`：`feedConfigFromEntries` 的 ITK 分支、`#itk-command-reply`
+  事件、页内 1.5 s 轮询（`/api/live/logs` + `/api/live/status`）、写组的样式。
+- `packages/app/test/config-itk-write.test.ts`（新，21 项）：六条 map 逐字段 + 最终串、
+  数字格式、六个 Apply 的字符串、无 live link 的 note、超范围拒绝、`<ERROR` 原话、
+  回读填充与控件跟随、三种行首、`LOG …B ONCE` 请求清单、以及"检测列表/空态/谱图仍只读"。
+  另把 `config-itk.test.ts` 里"页面不订阅任何 live id"的断言改成"订阅的是六条可写记录"。
+
+```powershell
+cd 逆向\04_重实现
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 1014 项 / 1014 pass / 0 fail
+```
+
+（本轮开工前是 986/985，其中 1 项是 `session` 心跳的偶发失败；它单独跑 11/11 全过。）
+
+真机 E2E：`/api/live/connect`（tcp 100.120.149.8:4002 → COM10）+ 页面 Apply ×9，
+**0 console / 0 pageerror**，截图 `%TEMP%\opencode\agent-itkwrite\`：
+`00-itk-open.png`（开页即显示接收机的 ALL / 3 / PREDECIMATION…）、
+`01-warning-1.png`、`02-warning-restored-3.png`、`03-detect-none.png`、
+`04-detect-restored-all.png`、`05-spectral-period-500.png`、`06-spectral-restored-200.png`、
+`07-hdr-l1-cic3-rejected.png`、`08-bandpass-rejected.png`、`09-progfilter-rejected.png`。
