@@ -200,24 +200,47 @@ const SYSTEM_BDS = 4;
 const SYSTEM_QZSS = 5;
 
 /**
- * `sv_freq` → band. NovAtel numbers this per constellation and 0 is always the constellation's
- * primary band (L1 / B1 / E1); 5 and 9 are the GPS/QZSS L2/L5 channel numbers, 205 marks the
- * L-band correction channel (`sv_freq` 205 shows up on this receiver's LBAND channel).
- * Anything outside this table falls back to L1 — the capture itself is the authority and it
- * is reported as-is rather than spread over bands it never named.
+ * Signal type → band. `c_status` bits 21..25 carry the signal type (OEM7 Commands & Logs, Table 182),
+ * and bits 16..18 the constellation. `sv_freq` cannot be used for this: the manual says that field is
+ * zero "for all signals except for GLONASS signals and QZSS L1C/B", which is exactly what b7 shows
+ * (3 243 observations with `sv_freq` 0 and 47 with 203 — QZSS L1C/B).
+ *
+ * Only types listed here get a cell; an unknown type is left out rather than guessed into L1.
  */
-const FREQ_BAND = { 0: 'L1', 5: 'L2', 9: 'L5', 205: 'LBAND' };
+const SIGNAL_BANDS = {
+  0: { 0: 'L1', 5: 'L2', 9: 'L2', 14: 'L5', 16: 'L1', 17: 'L2' }, // GPS
+  1: { 0: 'L1', 1: 'L2', 5: 'L2', 6: 'L3' }, // GLONASS
+  2: { 0: 'L1', 6: 'L5' }, // SBAS
+  3: { 2: 'L1', 6: 'L6', 7: 'L6', 12: 'L5', 17: 'L2', 20: 'L5' }, // Galileo
+  4: { 0: 'L1', 1: 'L2', 2: 'L3', 4: 'L1', 5: 'L2', 6: 'L3', 7: 'L1', 9: 'L5', 11: 'L2' }, // BeiDou
+  5: { 0: 'L1', 14: 'L5', 16: 'L1', 17: 'L2', 24: 'L1', 27: 'L6', 28: 'L6' }, // QZSS
+  6: { 0: 'L5' }, // NavIC
+  7: { 19: 'LBAND' }, // Other (L-band)
+};
 
-/** Signal Matrix rows, in the original's DOM order. `system` null = not a RANGE constellation. */
+/** Signal Matrix rows, in the original's DOM order (`signalMatrix.js:4`). */
 const MATRIX_ROWS = [
-  { key: 'gps', label: 'GPS', system: SYSTEM_GPS },
-  { key: 'bds', label: 'BDS', system: SYSTEM_BDS },
-  { key: 'qzss', label: 'QZSS', system: SYSTEM_QZSS },
-  { key: 'lband', label: 'LBAND', system: null },
-  { key: 'sbas', label: 'SBAS', system: SYSTEM_SBAS },
+  { key: 'gps', label: 'GPS', system: 0 },
+  { key: 'glo', label: 'GLO', system: 1 },
+  { key: 'gal', label: 'GAL', system: 3 },
+  { key: 'bds', label: 'BDS', system: 4 },
+  { key: 'qzss', label: 'QZSS', system: 5 },
+  { key: 'navic', label: 'NAVIC', system: 6 },
+  { key: 'lband', label: 'LBAND', system: 7 },
 ];
 
-const MATRIX_BANDS = ['L5', 'L2', 'L1'];
+/** Band columns in the original's order (`signalMatrix.js:4`). Only the ones present are drawn. */
+const MATRIX_BAND_ORDER = ['L5', 'L2', 'L3', 'L6', 'L1', 'LBAND'];
+
+/** Constellation bits → the row that owns them (SBAS has no row of its own in the original). */
+const SYSTEM_ROW = { 0: 'gps', 1: 'glo', 3: 'gal', 4: 'bds', 5: 'qzss', 6: 'navic', 7: 'lband' };
+
+/** The band a RANGE observation belongs to, or `undefined` when its signal type is not in the table. */
+function observationBand(status) {
+  const system = (Number(status) >>> 16) & 7;
+  const type = (Number(status) >>> 21) & 0x1f;
+  return { system, band: SIGNAL_BANDS[system]?.[type] };
+}
 
 /* ---------------- helpers ---------------- */
 
@@ -377,8 +400,8 @@ function bandRow(label, target, extra) {
   );
 }
 
-function matrixCells() {
-  return MATRIX_BANDS.map(
+function matrixCells(bands) {
+  return bands.map(
     (band) => `<span class="grit-cell" data-cell="${band}"></span>`,
   ).join('');
 }
@@ -388,9 +411,22 @@ function matrixTiles() {
     (row) =>
       `<div class="grit-matrix-row" data-row="${row.key}">` +
       `<span class="grit-matrix-name">${esc(row.label)}</span>` +
-      `<span class="grit-matrix-cells">${matrixCells()}</span>` +
+      `<span class="grit-matrix-cells">${matrixCells(['L5', 'L2', 'L1'])}</span>` +
       '</div>',
   ).join('');
+}
+
+/** Bands that carry at least one signal in this capture, in the original's column order. */
+function visibleBands(state) {
+  const counts = state.matrix?.counts;
+  if (!counts) return [];
+  const present = new Set();
+  for (const row of counts.values()) {
+    for (const [band, signals] of Object.entries(row)) {
+      if (signals.size) present.add(band);
+    }
+  }
+  return MATRIX_BAND_ORDER.filter((band) => present.has(band));
 }
 
 /**
@@ -1304,30 +1340,29 @@ async function readStatus(ctx, capture) {
       const observations = readObservations(record);
       const prns = new Set();
       /* Per cell: the set of PRNs seen on that band, because the original's matrix counts
-         *signals* — one square per satellite per band, not one per observation (a PRN repeats
-         once per signal the receiver tracks). */
+         *signals* — one square per satellite per band, not one per observation. The band comes from
+         the **signal type** in `c_status` (bits 21..25), not from `sv_freq`: that field is zero for
+         every signal except GLONASS and QZSS L1C/B (measured on b7: 3 243 zeros, 47 × 203). */
       const matrix = new Map();
-      for (const row of MATRIX_ROWS) matrix.set(row.key, { L5: new Set(), L2: new Set(), L1: new Set() });
+      for (const row of MATRIX_ROWS) {
+        const cells = {};
+        for (const band of MATRIX_BAND_ORDER) cells[band] = new Set();
+        matrix.set(row.key, cells);
+      }
       let lband = 0;
       for (const observation of observations) {
-        const system = (Number(observation.c_status) >>> 16) & 7;
+        const status = Number(observation.c_status);
+        const { system, band } = observationBand(status);
         const prn = Number(observation.sv_prn);
-        const freq = Number(observation.sv_freq);
-        const band = FREQ_BAND[freq] ?? 'L1';
-        if (band === 'LBAND' || freq === 205) {
+        if (!band || !Number.isFinite(prn)) continue;
+        const key = SYSTEM_ROW[system];
+        if (!key) continue;
+        if (band === 'LBAND') {
           lband += 1;
-          continue;
+        } else {
+          prns.add(`${system}:${prn}`);
         }
-        const row =
-          system === SYSTEM_GPS ? 'gps'
-            : system === SYSTEM_BDS ? 'bds'
-              : system === SYSTEM_QZSS ? 'qzss'
-                : system === SYSTEM_SBAS ? 'sbas'
-                  : null;
-        if (!row) continue;
-        if (Number.isFinite(prn)) prns.add(`${system}:${prn}`);
-        const cell = matrix.get(row);
-        if (cell && band in cell) cell[band].add(`${system}:${prn}`);
+        matrix.get(key)?.[band]?.add(`${system}:${prn}`);
       }
       out.tracked = prns.size;
       out.matrix = { counts: matrix, lband, observations: observations.length };
@@ -1845,14 +1880,25 @@ function setText(root, name, text) {
 
 function renderMatrix(root, state) {
   const counts = state.matrix?.counts;
+  const bands = visibleBands(state);
+  const columns = bands.length ? bands : ['L5', 'L2', 'L1'];
+  // The head and every row are rebuilt from the bands this capture actually carries: the original
+  // draws only the bands the receiver is configured for (`allfrequency_values` filtered by
+  // CHANCONFIGLIST), not a fixed six.
+  const head = root.querySelector('.grit-matrix-head .grit-matrix-cells');
+  if (head) {
+    head.innerHTML = columns.map((band) => `<span class="grit-matrix-band">${band} Band</span>`).join('');
+  }
   for (const row of MATRIX_ROWS) {
     const rowEl = root.querySelector(`.grit-matrix-row[data-row="${row.key}"]`);
     if (!rowEl) continue;
+    const host = rowEl.querySelector('.grit-matrix-cells');
+    if (host) host.innerHTML = matrixCells(columns);
     const rowCounts = counts?.get(row.key);
-    for (const band of MATRIX_BANDS) {
+    for (const band of columns) {
       const cell = rowEl.querySelector(`[data-cell="${band}"]`);
       if (!cell) continue;
-      const count = rowCounts ? rowCounts[band].size : 0;
+      const count = rowCounts?.[band]?.size ?? 0;
       /* No signal in that band → the light grey placeholder box the original draws
          (`#signal-components .frequencieBand-box`, rgba(0,0,0,0.04)); otherwise 7×7 squares on
          an 8 px pitch, five per row inside the 43 px box. */

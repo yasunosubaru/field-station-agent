@@ -85,6 +85,46 @@ interface EventState {
 }
 
 /** `events.js` reducers, history and `.esl` export. */
+/**
+ * The interference frequencies `ITDETECTSTATUS` (#2065) reports, as the Events page counts them.
+ *
+ * Two shapes reach this code: the live link's projection puts the rows in `data.data`, and a
+ * capture's decoded records arrive as flat `interference_statuses[i].field` paths. Both are read by
+ * the **layout's** field names (`frequency`, `int_detect_method`) — the earlier transcription used
+ * `centerFrequency`/`detectionType`, which never match (measured against `data/edie-layouts.json`
+ * and the b7 capture, 2026-11-01).
+ *
+ * `NONE`/empty means nothing detected; `STATISTICANALYSIS` is the statistical detector, which does
+ * not raise events here either (only the spectrum detector does), matching the original.
+ */
+export function itkDetections(data: Record<string, unknown>): Set<number> {
+  const rows: Array<Record<string, unknown>> = [];
+  if (Array.isArray(data.data)) {
+    for (const raw of data.data) {
+      if (raw && typeof raw === 'object') rows.push(raw as Record<string, unknown>);
+    }
+  } else {
+    const grouped = new Map<number, Record<string, unknown>>();
+    for (const [key, value] of Object.entries(data)) {
+      const match = /^interference_statuses\[(\d+)\]\.(\w+)$/.exec(key);
+      if (!match) continue;
+      const index = Number(match[1]);
+      const row = grouped.get(index) ?? {};
+      row[match[2]] = value;
+      grouped.set(index, row);
+    }
+    rows.push(...grouped.values());
+  }
+  const current = new Set<number>();
+  for (const row of rows) {
+    const method = String(row.int_detect_method ?? row.detectionType ?? '').toUpperCase();
+    if (!method || method === 'NONE' || method === 'STATISTICANALYSIS') continue;
+    const frequency = Math.round(Number(row.frequency ?? row.centerFrequency ?? 0));
+    if (frequency) current.add(frequency);
+  }
+  return current;
+}
+
 export class EventsPage extends BaseConfigPage {
   private readonly states = new Map<TabId, EventState>();
   private readonly itkFrequencies = new Map<TabId, Set<number>>();
@@ -745,16 +785,7 @@ export class EventsPage extends BaseConfigPage {
   }
 
   private itk(state: EventState, data: Record<string, unknown>): void {
-    const entries = Array.isArray(data.data) ? data.data : [];
-    const current = new Set<number>();
-    for (const raw of entries) {
-      if (!raw || typeof raw !== 'object') continue;
-      const row = raw as Record<string, unknown>;
-      if (row.detectionType === 'STATISTICALANALYSIS') continue;
-      if (row.detectionType && row.detectionType !== 'NONE') {
-        current.add(Math.round(Number(row.centerFrequency ?? 0)));
-      }
-    }
+    const current = itkDetections(data);
     const old = this.itkFrequencies.get(stateTab(this.states, state)) ?? new Set<number>();
     for (const frequency of current) {
       if (!old.has(frequency)) {
