@@ -156,3 +156,55 @@ COM1   NOVATEL / NOVATEL      NCOM1  RTCMV3 / NONE
 ```
 
 `UNKNOWN` 那一行是接收机自己报的端口名，原样显示；不猜、不改写。
+
+### 17.6.1 两条取数路径都试过了（2026-11-01 复验）
+
+`INTERFACEMODE` 是**命令**，裸查询不是取数的路：
+
+```
+Send-Line 'INTERFACEMODE'        -> 1 条文本回答：<ERROR:Message missing field
+Send-Line 'LOG INTERFACEMODEB ONCE' -> 27 条 id=3 记录（0.38 MB 里，其余是历史日志）
+```
+
+27 条记录的端口枚举（用 `decodeEdie` 读 level-0 的 `port`）：
+
+```
+enum   1, 2, 3                -> COM1, COM2, COM3
+enum  13,14,15                -> USB1, USB2, USB3
+enum  23,24,25,29,46,47,48    -> ICOM1..ICOM7
+enum  26,27,28                -> NCOM1..NCOM3
+enum  30                      -> WCOM1
+enum  38..43                  -> CCOM1..CCOM6
+enum  65,66,67,68             -> UNKNOWN
+```
+
+**`UNKNOWN` 不是我们没映射**：把其中一条记录的 `port` 改成 65/66/67/68/64/69 重新封帧、喂给本机套件
+（`-a`），六条全部输出 `;UNKNOWN,NOVATEL,NOVATEL,ON*6a9cc0de` —— 套件也没有这几个名字。
+所以配置页把它们并成一个 `UNKNOWN` 行，与套件行为一致。
+
+配置页（`GET /config/portConfig` 的序列化文档，页面自己触发取数）：
+
+```
+li = 24            data-portconfig-note 不存在（诚实空态消失）
+CCOM1..6   NOVATELMINBINARY / NOVATELMINBINARY（CCOM3..6 是 AUTO / NOVATEL）
+COM1..3    NOVATEL / NOVATEL
+ICOM1..7   NOVATEL / NOVATEL
+NCOM1..3   RTCMV3 / NONE
+UNKNOWN    NOVATEL / NOVATEL
+USB1..3    NOVATEL / NOVATEL
+WCOM1      NOVATEL / NOVATEL
+0 console / 0 pageerror；截图 port-verify/port-rows.png
+```
+
+### 17.6.2 GLO `Missing` 在这台机器上不可验（证据）
+
+`LOG SATVIS2B ONTIME 5` 抓 20 s → 16 条 SATVIS2 记录，系统只有三类：
+
+```
+GPS 32 颗 / QZSS 5 颗 / BEIDOU 53 颗（SBAS 记录 0 颗）
+RANGE 612 条里没有 GLONASS 的 prn（38..61）
+```
+
+即这台接收机**没有在跟 GLONASS**，没有 GLO 样本可比 `Missing` 的 37 偏移。要验得换一台有 GLO 的
+接收机，或喂外部 GLO 信号；在那之前不猜、不改 join 规则。`LOG SATVIS2B ONTIME 2` 反而不出记录
+（ONTIME 5 才有），也记在这里。
