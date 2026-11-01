@@ -1868,3 +1868,233 @@ body[data-page="manage"] #tabs-list li.mg-filetabs:not([hidden]) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* =============================================================================
+ * 10. §2.3.4 … §2.3.12 tiles — Ports, Logging, PPP Corrections, Radio, ALIGN, SPAN and
+ *     Satellite Tracking.
+ *
+ * Same tile surface as the four above (S:379 #FCFCFC + 1 px #005170). The row colours are the
+ * manual's own four states, drawn with the badge palette so a reader can compare a row with the
+ * band: green #417605 (configured and active) · amber #F5A623 (configured, not active) ·
+ * red #A00214 (the receiver's error counters moved) · grey #C4C4C4 (not configured).
+ * The tracking bar thresholds are the shipped ones (`satelliteTracking.js:71-72`):
+ * C/No poor < 20, warning < 35, good ≥ 35 dB-Hz on a 0…60 axis; lock time 1800 s / 3600 s on a
+ * 0…3600 s axis.
+ * ========================================================================== */
+
+/* ---- PPP Corrections / SPAN ---- */
+
+/* Both carry the manual's whole field list (9 and 13 rows). They stay one column: at the tile's
+   392 px a second column squeezes `Unsubscribed · UNASSIGNED · 0x00000000` into unreadable
+   fragments, so the neighbouring Radio/ALIGN cards simply share the row height instead. */
+
+/* ---- Ports ---- */
+
+.manage-panel .mg-port-head,
+.manage-panel .mg-port-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px 40px 96px;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.manage-panel .mg-port-head {
+  margin-top: 8px;
+  padding: 0 0 5px 11px;
+  border-bottom: 1px solid var(--mg-rule);
+  color: var(--mg-ink-60);
+  font-family: var(--mg-semi);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.manage-panel .mg-port-list {
+  max-height: 172px;
+  overflow: auto;
+}
+
+.manage-panel .mg-port-row {
+  padding: 6px 0 6px 8px;
+  border-bottom: 1px solid #ececec;
+  border-left: 3px solid transparent;
+  font-size: 12.5px;
+  line-height: 17px;
+}
+
+.manage-panel .mg-port-row[data-tone="good"] { border-left-color: var(--mg-chip-good); }
+.manage-panel .mg-port-row[data-tone="warn"] { border-left-color: var(--mg-warn); }
+.manage-panel .mg-port-row[data-tone="bad"] { border-left-color: var(--mg-bad); }
+.manage-panel .mg-port-row[data-tone="off"] { border-left-color: #c4c4c4; }
+
+.manage-panel .mg-port-name {
+  overflow: hidden;
+  font-family: var(--mg-semi);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manage-panel .mg-port-rate,
+.manage-panel .mg-port-logs {
+  color: var(--mg-ink-60);
+  font-variant-numeric: tabular-nums;
+}
+
+.manage-panel .mg-port-state {
+  font-family: var(--mg-semi);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.manage-panel .mg-port-state[data-tone="good"] { color: var(--mg-good); }
+.manage-panel .mg-port-state[data-tone="warn"] { color: #8a4b00; }
+.manage-panel .mg-port-state[data-tone="bad"] { color: var(--mg-bad); }
+.manage-panel .mg-port-state[data-tone="off"] { color: var(--mg-ink-38); }
+
+.manage-panel .mg-port-empty,
+.manage-panel .mg-track-empty {
+  margin: 10px 0 0;
+  color: var(--mg-ink-60);
+  font-size: 12.5px;
+  line-height: 17px;
+}
+
+/* ---- Satellite Tracking ---- */
+
+.manage-panel .mg-track-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.manage-panel .mg-track-consts,
+.manage-panel .mg-track-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.manage-panel .mg-track-const,
+.manage-panel .mg-track-metric {
+  padding: 3px 9px;
+  border: 1px solid #c4c4c4;
+  background: #ffffff;
+  color: var(--mg-ink-60);
+  font-family: var(--mg-semi);
+  font-size: 11.5px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.manage-panel .mg-track-const:hover,
+.manage-panel .mg-track-metric:hover {
+  border-color: var(--mg-teal);
+  color: var(--mg-teal);
+}
+
+.manage-panel .mg-track-const[aria-pressed="true"],
+.manage-panel .mg-track-metric.is-active {
+  border-color: var(--mg-teal);
+  background: var(--mg-teal);
+  color: #ffffff;
+}
+
+.manage-panel .mg-track-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 0;
+  color: var(--mg-ink-60);
+  font-size: 11.5px;
+}
+
+.manage-panel .mg-track-key::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  background: #c4c4c4;
+  vertical-align: -1px;
+}
+
+.manage-panel .mg-track-key[data-tone="good"]::before { background: var(--mg-chip-good); }
+.manage-panel .mg-track-key[data-tone="warn"]::before { background: var(--mg-warn); }
+.manage-panel .mg-track-key[data-tone="poor"]::before { background: var(--mg-miss); }
+
+.manage-panel .mg-track-body {
+  margin-top: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.manage-panel .mg-track-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 120px;
+  gap: 14px;
+  align-items: start;
+  padding: 7px 0;
+  border-top: 1px solid #ececec;
+}
+
+.manage-panel .mg-track-prn {
+  font-family: var(--mg-semi);
+  font-size: 12.5px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.manage-panel .mg-track-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.manage-panel .mg-track-bar {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) 84px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.manage-panel .mg-track-name {
+  overflow: hidden;
+  color: var(--mg-ink-60);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manage-panel .mg-track-track {
+  height: 8px;
+  background: #ececec;
+}
+
+.manage-panel .mg-track-track > i {
+  display: block;
+  height: 100%;
+  background: #c4c4c4;
+}
+
+.manage-panel .mg-track-bar[data-tone="good"] .mg-track-track > i { background: var(--mg-chip-good); }
+.manage-panel .mg-track-bar[data-tone="warn"] .mg-track-track > i { background: var(--mg-warn); }
+.manage-panel .mg-track-bar[data-tone="poor"] .mg-track-track > i { background: var(--mg-miss); }
+
+.manage-panel .mg-track-value {
+  color: var(--mg-ink-60);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.manage-panel .mg-track-sky {
+  color: var(--mg-ink-60);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 17px;
+  text-align: right;
+  white-space: nowrap;
+}

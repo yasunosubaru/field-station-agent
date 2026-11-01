@@ -29,6 +29,7 @@ import { PositionConfigPage } from './positionConfig.ts';
 import { RadioConfigPage } from './radioConfig.ts';
 import { SpanConfigPage } from './spanConfig.ts';
 import { SpoofingConfigurationPage } from './spoofingConfiguration.ts';
+import { VehicleSetupPage } from './vehicleSetup.ts';
 import { DeviceDetailsPage } from './deviceDetails.ts';
 import { DeviceExportPage } from './deviceExport.ts';
 import { DeviceUpdatePage } from './deviceUpdate.ts';
@@ -134,6 +135,13 @@ const CONFIG_LOG_REQUESTS: Record<string, ConfigLogRequest[]> = {
     { name: 'ELEVATIONCUTOFF', spec: 'onchanged,0' },
     { name: 'PPSCONTROL', spec: 'onchanged,0' },
   ],
+  /**
+   * Vehicle Setup (manual §2.2.7) asks the receiver for **nothing**: the manual states the
+   * dimensions only scale the drawing and the reference point only shows where the IMU sits, so
+   * the page writes to the user store. An empty list here is the page's contract, kept explicit so
+   * a later reader does not think a request went missing.
+   */
+  vehicleSetup: [],
   /**
    * The Networking page's records. The page reads `IPCONFIG` (address/mask/gateway/DHCP) and
    * `DNSCONFIG` (the DNS box); `IPSTATUS`/`ETHCONFIG`/`IPSERVICE` are asked for because they are
@@ -257,12 +265,16 @@ export const CONFIG_PAGE_NAMES = [
  * id="<page>-layout_<tab>">` per Settings/Device page inside `#main-panel-<tab>`; `menuBar.js` then
  * hides them all and shows the one whose menu entry was clicked (`hideAllMenuBarPages`, line 934).
  * A host that never ran that build has no container, which is why `mountNamedPage` creates them.
+ *
+ * `vehicleSetup` is the same fragment as `spanInstallation` under the §2.2.7 menu entry; it needs
+ * its own container id for exactly that reason (`VehicleSetupPage`).
  */
 export const MENU_PAGE_NAMES = [
   'generalSettings',
   'networkingSettings',
   'languageSettings',
   'spanInstallation',
+  'vehicleSetup',
   'displaysSettings',
   'deviceDetails',
   'deviceExport',
@@ -285,6 +297,7 @@ export class ConfigBundle {
   readonly general: GeneralSettingsPage;
   readonly language: LanguageSettingsPage;
   readonly spanInstallation: SpanInstallationPage;
+  readonly vehicleSetup: VehicleSetupPage;
   readonly displays: DisplaysSettingsPage;
   readonly autoUpdates = new AutoUpdatesPage();
   readonly longhornPosition: LonghornPositionConfigPage;
@@ -329,6 +342,7 @@ export class ConfigBundle {
     this.general = new GeneralSettingsPage(runtime);
     this.language = new LanguageSettingsPage(runtime);
     this.spanInstallation = new SpanInstallationPage(runtime);
+    this.vehicleSetup = new VehicleSetupPage(runtime);
     this.displays = new DisplaysSettingsPage(this.spanInstallation);
     this.longhornPosition = new LonghornPositionConfigPage(runtime);
     this.longhornLogging = new LonghornLoggingConfigPage(runtime);
@@ -356,6 +370,7 @@ export class ConfigBundle {
       generalSettings: this.general,
       languageSettings: this.language,
       spanInstallation: this.spanInstallation,
+      vehicleSetup: this.vehicleSetup,
       displaysSettings: this.displays,
       autoUpdates: this.autoUpdates,
       lghnPositionConfig: this.longhornPosition,
@@ -717,6 +732,7 @@ export * from './portConfig.ts';
 export * from './positionConfig.ts';
 export * from './radioConfig.ts';
 export * from './spanConfig.ts';
+export * from './vehicleSetup.ts';
 export * from './spoofingConfiguration.ts';
 export * from './deviceDetails.ts';
 export * from './deviceExport.ts';

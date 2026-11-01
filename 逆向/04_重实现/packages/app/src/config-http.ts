@@ -24,6 +24,7 @@ import {
   ALL_PAGE_NAMES,
   CONFIG_PAGE_NAMES,
   OPERATIONAL_PAGE_NAMES,
+  READ_ONLY_PAGES,
   ConfigHost,
   type ConfigCommand,
 } from './config-host.ts';
@@ -70,6 +71,12 @@ export const CONFIG_LABELS: Record<string, string> = {
   lghnPositionConfig: 'Longhorn Positioning',
   lghnLoggingConfig: 'Longhorn Logging',
   deviceDetails: 'Device Details',
+  /** §2.2.11: the shipped module is `deviceExport`, the window it draws is **Storage**. */
+  deviceExport: 'Storage',
+  /** §2.2.12: `deviceUpdate`, served read-only (see `config-host.ts#READ_ONLY_PAGES`). */
+  deviceUpdate: 'Update',
+  /** §2.2.7: the `spanInstallation` fragment under its own menu entry. */
+  vehicleSetup: 'Vehicle Setup',
   events: 'Events',
 };
 
@@ -313,6 +320,13 @@ export function configPageDocument(name: string, options: { connected?: boolean 
         '  .menu-layouts { display: block !important; }',
         '  .config-session-note { margin: 0 0 8px; padding: 8px 12px; background: #fff4e5;',
         '    border-left: 3px solid #d98500; font: 13px/1.4 sans-serif; color: #4a3200; }',
+        '  .config-readonly-note { margin: 0 0 10px; padding: 8px 12px; background: #fff4e5;',
+        '    border-left: 3px solid #a00214; font: 13px/1.4 sans-serif; color: #4a3200; }',
+        '  .config-page-note { margin: 0 0 10px; padding: 8px 12px; background: #fff4e5;',
+        '    border-left: 3px solid #d98500; font: 13px/1.4 sans-serif; color: #4a3200; }',
+        '  #deviceUpdateBrowseBtn[disabled], #deviceUpdateApplyBtn[disabled],',
+        '  .download-image-btn[disabled], .usb-image-btn[disabled], .delete-image-btn[disabled]',
+        '    { opacity: .55; cursor: not-allowed; }',
       ].join('\n');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
@@ -353,8 +367,12 @@ export function applyConfigEvent(
   const target = host(name);
   const applied = target.applyEvent(selector, event);
   const commands = target.takeCommands();
-  const note =
-    options.sent === 0 && commands.length > 0
+  /* A read-only page (§2.2.12 Update) dropped whatever it framed; say that in the page rather than
+   * letting the click look like a no-op. */
+  const readOnly = READ_ONLY_PAGES[name];
+  const note = readOnly
+    ? `Nothing was sent: ${readOnly}`
+    : options.sent === 0 && commands.length > 0
       ? `${commands.length} command(s) were framed by this page but not sent: ${NO_SESSION_NOTE_TEXT}`
       : null;
   return {

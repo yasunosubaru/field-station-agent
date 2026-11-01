@@ -77,14 +77,17 @@ async function postJson(path: string, body: unknown) {
 
 /* ------------------------------------------------------------------ 1/12 the pages */
 
-test('the page list serves the fourteen Configuration pages, Device Details and Events', async () => {
+test('the page list serves the Configuration pages, the four menu pages and Events', async () => {
   const { response, text } = await getText('/api/config/pages');
   assert.equal(response.status, 200);
   const body = JSON.parse(text) as { pages: Array<{ name: string; label: string; operational: boolean }> };
   const names = body.pages.map((page) => page.name);
-  assert.equal(body.pages.filter((page) => !page.operational).length, 15);
+  assert.equal(body.pages.filter((page) => !page.operational).length, 18);
   assert.ok(names.includes('portConfig'));
   assert.ok(names.includes('deviceDetails'), 'Device ▸ Device Details is served by this build');
+  assert.ok(names.includes('deviceExport'), 'Device ▸ Storage (§2.2.11) is served by this build');
+  assert.ok(names.includes('deviceUpdate'), 'Device ▸ Update (§2.2.12) is served by this build');
+  assert.ok(names.includes('vehicleSetup'), 'Settings ▸ Vehicle Setup (§2.2.7) is served by this build');
   assert.ok(names.includes('events'));
   const events = body.pages.find((page) => page.name === 'events');
   assert.equal(events?.label, 'Events');
@@ -243,7 +246,21 @@ test('the page list marks the Settings pages apart from the Configuration pills'
   assert.equal(networking?.settings, true);
   const details = body.pages.find((page) => page.name === 'deviceDetails');
   assert.equal(details?.label, 'Device Details');
-  assert.equal(body.pages.filter((page) => !page.operational).length, 15, 'fourteen pills plus Device Details');
+  /* §2.2.7 / §2.2.11 / §2.2.12: the three pages this build added, with the menu each one hangs in. */
+  const vehicle = body.pages.find((page) => page.name === 'vehicleSetup');
+  assert.equal(vehicle?.label, 'Vehicle Setup');
+  assert.equal(vehicle?.settings, true);
+  const storage = body.pages.find((page) => page.name === 'deviceExport');
+  assert.equal(storage?.label, 'Storage', 'the module is deviceExport, the window is Storage');
+  assert.equal(storage?.settings, true);
+  const update = body.pages.find((page) => page.name === 'deviceUpdate');
+  assert.equal(update?.label, 'Update');
+  assert.equal(update?.settings, true);
+  assert.equal(
+    body.pages.filter((page) => !page.operational).length,
+    18,
+    'fourteen pills plus Device Details, Storage, Update and Vehicle Setup',
+  );
 });
 
 test('/config/generalSettings serves the shipped General page alone, and says there is no session', async () => {

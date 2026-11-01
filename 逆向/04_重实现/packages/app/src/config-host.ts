@@ -35,12 +35,26 @@ import type { ConfigOperationsHost } from '../../view/src/config/index.ts';
 /**
  * Pages `/config/<name>` serves, in drawer order.
  *
- * The fourteen pill/settings pages of the shipped Configuration template, plus `deviceDetails`:
- * that page is built by the same controller (`ConfigBundle.pagesByName.deviceDetails`) and its
- * subscription list is already declared, but the shipped app mounts it from **Device ▸ Device
- * Details** rather than from the Configuration pills, so it is not one of `CONFIG_PAGE_NAMES` in
- * the view layer. Serving it here is what makes `/config/deviceDetails` answer with the page
- * instead of `未知配置页：deviceDetails`.
+ * The fourteen pill/settings pages of the shipped Configuration template, plus the four pages the
+ * suite mounts from a menu rather than from the pill strip:
+ *
+ *   `deviceDetails`  **Device ▸ Device Details** (§2.2.8) — built by the same controller
+ *                    (`ConfigBundle.pagesByName.deviceDetails`) and its subscription list is
+ *                    already declared, but the shipped app mounts it from a menu rather than from
+ *                    the Configuration pills, so it is not one of `CONFIG_PAGE_NAMES` in the view
+ *                    layer. Serving it here is what makes `/config/deviceDetails` answer with the
+ *                    page instead of `未知配置页：deviceDetails`.
+ *   `deviceExport`   **Device ▸ Storage** (§2.2.11) — `deviceExport.html` *is* the Storage window:
+ *                    "Device / Storage" breadcrumb, the active log file, the available log files
+ *                    and Download / Copy to USB / Remove. The module keeps its component name; the
+ *                    page it draws is Storage.
+ *   `deviceUpdate`   **Device ▸ Update** (§2.2.12) — firmware read-out plus the flash controls.
+ *                    **Served read-only in this build** (`READ_ONLY_PAGES`): a firmware write can
+ *                    strand a receiver, so the page is here for its version display and its
+ *                    controls are disabled in the served document.
+ *   `vehicleSetup`   **Settings ▸ Vehicle Setup** (§2.2.7) — the `spanInstallation` fragment in a
+ *                    container of its own (§2.2.7's screen *is* that template; the suite has no
+ *                    separate `vehicleSetup` component).
  */
 const CONFIG_PAGE_NAMES = [
   'positionConfig',
@@ -55,9 +69,12 @@ const CONFIG_PAGE_NAMES = [
   'generalSettings',
   'languageSettings',
   'spanInstallation',
+  'vehicleSetup',
   'lghnPositionConfig',
   'lghnLoggingConfig',
   'deviceDetails',
+  'deviceExport',
+  'deviceUpdate',
 ] as const;
 
 export type ConfigPageName = (typeof CONFIG_PAGE_NAMES)[number];
@@ -122,6 +139,45 @@ export interface ConfigHostOptions {
 /** Which pages `/config/<name>` accepts, in the order the drawer lists them. */
 export const ALL_PAGE_NAMES = [...CONFIG_PAGE_NAMES, ...OPERATIONAL_PAGE_NAMES] as const;
 
+/**
+ * Pages this build serves **read-only**, with the sentence the page prints instead.
+ *
+ * `deviceUpdate` (§2.2.12) is here on purpose. Flashing firmware over a link that cannot be power
+ * cycled under supervision can strand a receiver, and nothing in this build can verify an image
+ * before it runs, so the page keeps its *read* half — Current Firmware Version / Current Manage
+ * (Web) Version, filled from VERSION (#37) — and its Browse/Apply controls are disabled in the
+ * served document. `takeCommands()` drops anything a read-only page still manages to queue, so a
+ * hand-crafted POST cannot get a SOFTLOAD frame onto the link either.
+ */
+export const READ_ONLY_PAGES: Record<string, string> = {
+  deviceUpdate:
+    'Read-only in this build: the firmware version above comes from the receiver (VERSION #37), ' +
+    'but a firmware write cannot be undone here, so Browse and Apply are disabled and no SOFTLOAD ' +
+    'frame is ever queued.',
+};
+
+/** Elements a read-only page must not start from. */
+const READ_ONLY_DISABLED = ['#deviceUpdateBrowseBtn', '#deviceUpdateApplyBtn'];
+
+/**
+ * Pages whose subject the model does not have, with the sentence the page prints above its own
+ * empty state.
+ *
+ * `deviceExport` is the **Storage** window (§2.2.11). The desk receiver this build was measured
+ * against answers `LOG FILESTATUS ONCE` with `<ERROR:Message is invalid for this model` and emits
+ * no `FILESTATUS (#2127)` record at all (`03_分析/17_A1_连接层与Terminal.md` §17.8.6), so the page
+ * can only ever show its own "No log files found" line. Without this note that line reads as "the
+ * disk happens to be empty today", which is a different claim from "this model has no file log".
+ * The controls above it (Download / Copy to USB / Remove) need a receiver and a mounted storage
+ * device, so they are disabled here as well.
+ */
+export const UNSUPPORTED_PAGES: Record<string, string> = {
+  deviceExport:
+    'No storage on this model: `FILESTATUS (#2127)` answers <ERROR:Message is invalid for this ' +
+    'model`, so no log file can be listed, downloaded, copied or removed here. The empty list ' +
+    'below is the shipped page’s own state, not a reading of a disk.',
+};
+
 /** The minimal clock the controller needs; the suite only reads `now()` during a page build. */
 function hostClock() {
   const now = (): number => Date.now();
@@ -142,6 +198,9 @@ export class ConfigHost {
   private readonly features: FeatureFlags;
   private commands: ConfigCommand[] = [];
   private readonly commandLimit: number;
+  /** Set while a `READ_ONLY_PAGES` entry is on screen; `takeCommands` then refuses its frames. */
+  private readOnlyPage = '';
+  private droppedByReadOnly = 0;
 
   constructor(options: ConfigHostOptions) {
     const appRoot = options.appRoot;
@@ -226,7 +285,7 @@ export class ConfigHost {
     this.registry.setHidden(this.tab, false);
   }
 
-  /** Module names this host serves: the view's fourteen pages plus `deviceDetails`. */
+  /** Module names this host serves: the view's fourteen pill pages plus the four menu pages. */
   pageNames(): string[] {
     return [...CONFIG_PAGE_NAMES];
   }
@@ -257,7 +316,62 @@ export class ConfigHost {
       // the Device/Events pages (manage.ts#mountOperationalPage).
       this.manage.applyLanguage(this.tab as never);
     }
+    const readOnlyNote = READ_ONLY_PAGES[name];
+    if (readOnlyNote) {
+      this.readOnlyPage = name;
+      this.applyPageNote(name, readOnlyNote, { disable: READ_ONLY_DISABLED, id: 'config-readonly-note' });
+    } else {
+      this.readOnlyPage = '';
+      const unsupported = UNSUPPORTED_PAGES[name];
+      if (unsupported) {
+        this.applyPageNote(name, unsupported, {
+          disable: ['.download-image-btn', '.usb-image-btn', '.delete-image-btn'],
+          id: 'config-unsupported-note',
+        });
+      }
+    }
     return { html: this.html(), mounted };
+  }
+
+  /**
+   * Put a note at the top of a menu page and, optionally, disable the controls listed.
+   *
+   * The controls are disabled by **attribute** (what the browser honours and what `serializeNode`
+   * emits), and the note is a `<p>` with the page's own class so the drawer's stylesheet picks it up
+   * without a new rule. Nothing here inspects the controller: the page is still built, still fed
+   * its records and still shows its own rows — only the doors that would write are closed.
+   */
+  private applyPageNote(
+    name: string,
+    note: string,
+    options: { disable: readonly string[]; id: string },
+  ): void {
+    const panelId = this.menuPanelId(name);
+    const container = panelId ? this.doc.getElementById(panelId) : null;
+    if (!container) return;
+    const root = container as unknown as {
+      querySelectorAll(selector: string): Element[];
+      querySelector(selector: string): Element | null;
+      appendChild(node: unknown): void;
+      insertBefore(node: unknown, reference: unknown): void;
+      firstChild: unknown;
+    };
+    for (const selector of options.disable) {
+      for (const node of root.querySelectorAll(selector)) {
+        (node as unknown as { setAttribute(a: string, b: string): void }).setAttribute('disabled', '');
+      }
+    }
+    if (root.querySelector(`#${options.id}`)) return;
+    const paragraph = this.doc.createElement('p') as unknown as {
+      className: string;
+      id: string;
+      textContent: string;
+    };
+    paragraph.className = 'config-page-note';
+    paragraph.id = options.id;
+    paragraph.textContent = note;
+    if (root.firstChild) root.insertBefore(paragraph, root.firstChild);
+    else root.appendChild(paragraph);
   }
 
   /**
@@ -573,7 +687,18 @@ export class ConfigHost {
   takeCommands(): ConfigCommand[] {
     const queued = this.commands;
     this.commands = [];
+    // A read-only page (§2.2.12 Update) must never reach the link, even if a hand-written POST
+    // managed to trigger its Apply handler: the frames are dropped here, not just hidden.
+    if (this.readOnlyPage) {
+      this.droppedByReadOnly += queued.length;
+      return [];
+    }
     return queued;
+  }
+
+  /** Commands a read-only page tried to frame and this host refused (`0` in a normal session). */
+  readOnlyRefusals(): number {
+    return this.droppedByReadOnly;
   }
 
   private record(command: ConfigCommand): void {

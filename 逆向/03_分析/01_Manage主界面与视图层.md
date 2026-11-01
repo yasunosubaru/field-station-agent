@@ -1076,3 +1076,193 @@ R1–R50 未覆盖或写错的地方）。
   `packages/view/src/manage.ts:62,133`、`packages/view/src/tabs.ts:64,127,262-267`。
   测试：`packages/view/test/view.test.ts:71,78,110,121,190,207`、
   `packages/view/test/manage.test.ts:137`、`packages/view/test/tabs.test.ts:224-236`。`[观察]`
+
+## 12. Status 页补 tile（§2.3.4–§2.3.12）与三个缺页（§2.2.7/§2.2.11/§2.2.12）——本轮实测
+
+口径：数据源只有抓包（`/api/records`，capture 模式），接收机 COM10 被别的进程占着，本轮**没有**
+接实时链路。控件值一律从浏览器 DOM 读，原始值从同一份 `.sbf` 解码出来，两边逐字段对过。
+截图与对照脚本见 §12.5。
+
+### 12.1 补的 7 块 tile
+
+`packages/app/src/web/panels/manage.js` 的 `.mg-grid` 现在按顺序是：Positioning / Device /
+Interference / **Ports** / **Logging** / Satellite View（宽）/ **PPP Corrections** / **Radio** /
+**ALIGN** / **SPAN** / **Satellite Tracking**（宽）。后七块是本轮新增或重写。
+
+| tile | 手册 | 读的报文 | 每列/每行怎么来 |
+|---|---|---|---|
+| Ports | 2.3.4 | `SERIALCONFIG #1246`（每串口一条）、`PORTSTATS #72`（一条，内含 30 个 port 项）、`LOGLIST #5`、`INTERFACEMODE #3` | Rate = `baud_rate` + `data_bits/parity/stop_bits`；Logs = `log_list[]` 里该 `log_port_address` 的条数；State 由 `PORTSTATS` 的 `framing_errors/parity_errors/over_runs`（红）与 rx/tx 字节（绿）判，`--` 只在整份记录缺失时出现 |
+| Logging | 2.3.5 | `FILESTATUS #2127` | Status = `file_status`；Size = `file_size`；Name = `file_name`；Messages = 该文件的日志列表 |
+| PPP Corrections | 2.3.10 | `TERRASTARINFO #1719` / `OCEANIXINFO #2159` / `VERIPOSINFO #1728`、`TERRASTARSTATUS #1729` / `OCEANIXSTATUS #2160` / `VERIPOSDECODERSTATUS #2075`、`LBANDTRACKSTAT #1201`、`NTRIPCONFIG #1249`、`PPPPOS #1538`、`PPPDOP #1997` / `PPPDOP2 #1546` | Subscribed = `operating_mode` + `subscription_details`；Locked / Primary Signal / Signal Strength / Bit Success Rate 各自等 `#1729/#2160/#2075`、`#1201`（缺则 `--`）；PPP Position / DOP 直接印报文原值 |
+| Radio | 2.3.11 | `SATELSTATUS #2205`、`SATELDETECT #2204` | 有记录才印 `satel_status` / `comm_port` / `failed_command`，没有就是手册的 Off（灰） |
+| ALIGN | 2.3.8 | `HEADING2 #1335`，回退 `DUALANTENNAALIGN #1761` | Heading/Pitch 带 `heading_std_dev`/`pitch_std_dev`；Baseline = `b_length` |
+| SPAN | 2.3.9 | `INSPVAX #1465` | Status/Position Type/Azimuth/Pitch/Roll/三路速度/经纬高，各自带 `*_std_dev`；**Alignment 与 Converged 在 INSPVAX 里没有独立字段，保持 `--`**，不拿标准差倒推 |
+| Satellite Tracking | 2.3.12 | `RANGE #43` 最新历元 + `SATVIS2 #1043` | 每星一行、每信号（`(c_status>>21)&0x1f`）一根条；C/No = `obs[].C_No`，Lock = `obs[].lock_time`，El/Az = SATVIS2 的 `sat_vis_list[].elevation/azimuth`；阈值照 `satelliteTracking.js:71-72`（C/No 20/35，锁星 1800/3600 s） |
+
+信号名表 `RANGE_SIGNALS` 抄自 `packages/graph/src/range-charts.ts:43-67`（那张表是拿 golden 逐格
+对过的）；表里没有的系统印 `S<system>·s<signal>`，不借名字。`[观察]`
+
+### 12.2 「显示值 vs 抓包原字段」逐条对照
+
+b1 = `live-20261031/b1-20261101.sbf`（2026-10-31 14:23 UTC，机型 `PFNLYNTBN` / `OEM729-2.03`）；
+b4 = `live-20261031/b4-20261101.sbf`（2026-11-01 03:44 UTC，唯一带 PPP / L-Band 订阅记录的一份）。
+
+| tile | 字段 | 页面显示（capture 模式） | 抓包原始字段 | 判定 |
+|---|---|---|---|---|
+| Ports | COM1 Rate | `9600 8N1` | `SERIALCONFIG`: `port=COM1, baud_rate=9600, data_bits=8, parity=N, stop_bits=1` | 一致 |
+| Ports | COM2 / COM3 Rate | `38400 8N1` | `SERIALCONFIG` 记录 1/2：`baud_rate=38400` | 一致 |
+| Ports | COM3 State | `Error`（行左红条 + tile 角标 `Error`） | `PORTSTATS[2]`: `port=COM3, framing_errors=393838` | 一致（接收机自己的计数器动了） |
+| Ports | USB1 Rate | `--` | `SERIALCONFIG` 没有 USB1 记录 | 一致（不编 9600） |
+| Ports | COM1 Logs | `--` | b1 里没有 `LOGLIST #5` | 一致（不印 0） |
+| Ports | 行数 | 7 行（COM1/2/3、USB1/2/3、WCOM1） | `PORTSTATS` 有 30 个 port 项，其余 23 个 rx=tx=0 且无配置 | 一致（0 流量不占行） |
+| Logging | Status / Size / Name / Messages | `--`（角标 `Off` 灰） | b1 无 `FILESTATUS #2127`；本机 `LOG FILESTATUS ONCE` → `<ERROR:Message is invalid for this model`（`17_A1_连接层与Terminal.md` §17.8.6） | 一致（无文件日志机型） |
+| PPP | Subscribed | `Unsubscribed · UNASSIGNED · 0x00000000`（b4） | `TERRASTARINFO`: `operating_mode=UNASSIGNED`, `subscription_details=0(00000000)` | 一致 |
+| PPP | PPP Position | `INSUFFICIENT_OBS / NONE · 0 sv` | `PPPPOS`: `solution_status=INSUFFICIENT_OBS`, `position_type=NONE`, `num_svs=0` | 一致 |
+| PPP | DOP (G/P/H/V) | `9999.00 / 9999.00 / 9999.00 / --` | `PPPDOP`: `gdop=pdop=hdop=9999`；该记录没有 `vdop`（`PPPDOP2` 才有） | 一致（缺的印 `--`，没把 9999 改成 0） |
+| PPP | Lband Tracking | `--` | b4 无 `LBANDTRACKSTAT #1201` | 一致 |
+| PPP | PPP NTRIP (SID) Link | `Off` | b4 无 `NTRIPCONFIG #1249` | 一致（未启用） |
+| Radio | Status / Comm Port | `--` `--`（角标 `Off`） | b1/b4 都没有 `SATELSTATUS #2205` / `SATELDETECT #2204` | 一致（手册 2.3.11：只在外接发射电台的系统上出现） |
+| ALIGN | Heading / Pitch / Baseline | `--` `--` `--`（角标 `Off`） | 无 `HEADING2 #1335`；`MODELFEATURES #1329` feature 10 `ALIGN_HEADING=AUTHORIZED`、feature 28 `ANTENNA=SINGLE` | 一致（单天线出不了航向） |
+| SPAN | 全部 13 行 | `--`（角标 `Off`） | 无 `INSPVAX #1465`；`MODELFEATURES` feature 23 `IMU=UNAUTHORIZED`、feature 22 `INS=UNAUTHORIZED` | 一致（该机型没有 SPAN） |
+| Satellite Tracking | 首行 GPS 1 | `GPS 1 · GPS_L1_CA 42.0 dB-Hz · GPS_L5_Q 43.1 · GPS_L2_CM 42.2 · 17.5° / 45.5°` | RANGE 最新历元 `sv_prn=1` 三条：`C_No=42.0400/42.2305/43.1488`，`lock_time=1476.1/18317.1/18086.6`；`SATVIS2` GPS 记录 `sat_vis_list[6]`：`elevation=17.5581`、`azimuth=45.4961` | 一致（42.04→42.0、43.15→43.1、42.23→42.2 是 1 位小数显示） |
+| Satellite Tracking | 历元 | `RANGE (#43) 14:24:15 UTC · 29 颗 / 79 个信号` | b1 共 531 个 RANGE 历元，最后一个 `2026-10-31T14:24:15.150Z`；SATVIS2 最新一版 `14:23:55.000Z`（比 RANGE 早 20 s，tile 里两个时间分别印出） | 一致 |
+
+`--` 的文案不是「无数据」四个字，而是点名缺哪条报文 / 哪个机型位，例如
+`PPP 未授权（MODELFEATURES #1329 里 PPP = UNAUTHORIZED） · 缺 TERRASTARINFO (#1719) / … / PPPPOS (#1538)`。
+
+### 12.3 三个缺页
+
+| 页 | 手册 | 实现 | 抽屉分组 | 数据 |
+|---|---|---|---|---|
+| **Vehicle Setup** | 2.2.7 | 新页 `packages/view/src/config/vehicleSetup.ts`，容器 `#vehicleSetup-layout_<tab>`，片段就是 `spanInstallation.html`（原版没有单独的 vehicleSetup 组件，`jarvisInterface.js:4998` 也是从 `#displaysSettings-layout_<tab> … #vehicleSetupTab` 进去的） | Settings ▸ Vehicle Setup… | **不读任何报文**。手册自己写的：「These fields are used to properly scale the visual representation… not used in the position solution」「used only to show the location of the IMU」；`requiredLogs('vehicleSetup')` 返回 `[]`，Apply 只写 userStore（同 `spanInstallation.js:331-357`） |
+| **Storage** | 2.2.11 | 已有页 `deviceExport`（`deviceExport.html` 就是 Storage：面包屑 Device/Storage、active log、Available Log Files、Download / Copy to USB / Remove），本轮接进抽屉 | Device ▸ Storage… | 源是 `FILESTATUS #2127` + `FILELIST #2100`；本机没有文件日志子系统（同 §12.2 Logging 那条），所以页面固定是「No log files found.」+ 一条「该机型无存储」说明，三个按钮**禁用**。片段里写死的示例 `LOG_9898` / `72 KB` 被 `DeviceExportPage.mount` 隐藏（`setVisible('.active-log-layout', false)`），不会当成实测值 |
+| **Update** | 2.2.12 | 已有页 `deviceUpdate`，本轮接进抽屉并**改成只读** | Device ▸ Update… | 只读：版本行本来来自 `VERSION #37`，但本 build 无实时链路，两行都是 `--`；`Browse` / `Apply` 在服务端渲染时打 `disabled`，页面顶部印「Read-only in this build…」；`ConfigHost.takeCommands()` 对只读页**丢弃**队列里的帧（`readOnlyRefusals()` 计数），手写 POST 也发不出 `SOFTLOADRESET/SREC/DATA`。测试里用一份 `.hex` 真跑 `start()`，断言零帧外发 |
+
+三页都在 `CONFIG_PAGE_NAMES`（`packages/app/src/config-host.ts`，15 → 18 条）、`CONFIG_LABELS`
+（`config-http.ts`：`deviceExport: 'Storage'`、`deviceUpdate: 'Update'`、`vehicleSetup: 'Vehicle Setup'`）
+和 `MENU_PAGE_NAMES`（`view/src/config/index.ts` 增 `vehicleSetup`）里；`/api/config/pages` 的
+`settings` 标记让 `manage.js` 把它们分进 Settings / Device 两组（实测 optgroup，见 §12.5）。
+
+三处片段/词典对不上，都按原版自己的补法补的：
+
+- `spanInstallation.html` 的 `data-lang-frombaseline/-fromtbdline/-fromrearline` 三个标记，通用
+  `data-lang-*` 规则会拼成 `FROMBASELINE`，而词典键是 `FROM_BASE_LINE`，原版在
+  `spanInstallation.js:424-463` 有一张显式表；`VehicleSetupPage` 抄同一张表，否则三个 RP 输入框
+  没有标签。`[观察]`
+- `deviceUpdate.html` 把两个标记拼错了：`data-lang-current-firmaware-version`、
+  `data-lang-current-software-monitor-verison`，词典键是 `CURRENT_FIRMWARE_VERSION` /
+  `CURRENT_SOFTWARE_MONITOR_VERSION`，原版靠 `deviceUpdate.js:17-27` 显式填。`deviceUpdate.ts`
+  补了同一张表，否则两行版本只有 `--` 没有标题。`[观察]`
+- `.veh-images .card` 在片段里是 `display:none`，原版由 `jarvisInterface.js:5016` 按 `MarinePak`
+  显示非船用那一组（外加 Large Vessel）；`VehicleSetupPage.decorate` 照抄这一步，否则 Type 一行
+  是空的。`[观察]`
+
+### 12.4 本轮没做到
+
+1. **实时链路一律没跑**（COM10 被占）。新增 7 块 tile 在 Live 模式下统一 `--`，并在 `mg-reason`
+   里说明「这一路解码器只产出 Positioning/Device/Interference/Satellite 的视图模型，这几块读的是
+   `/api/records` 字段路径」——`live.ts` 不在本轮改动范围，没有为了好看去伪造 live 值。
+2. **`FILESTATUS #2127` / `SATELSTATUS #2205` / `HEADING2 #1335` / `INSPVAX #1465` /
+   `INTERFACEMODE #3` 都没有可用记录**：b1–b5 一条都没有，接收机也不出。所以这几块只验了 `--` 态与
+   原因文案，「有值时怎么显示」的分支只有单测用合成字段走过。
+3. **Storage 的 Download / Copy to USB / Remove 没有真做过一次**：没有接收机、没有挂在接收机上的
+   U 盘，按钮现在是禁用的；接上实时链路要另开一轮。
+4. **Update 的固件写入故意没做**：只读门禁是这一轮的结论，不是待办。
+5. 手册 2.3.6 Device 里的 **Storage Usage** 仍未接（要 `FILESYSTEMCAPACITY #2137`），本轮没动
+   Device tile。
+
+### 12.5 截图与对照脚本
+
+目录 `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-manage\`，服务
+`node packages/app/src/server.ts --port 7813`，Playwright 1706×1400：
+
+| 文件 | 内容 |
+|---|---|
+| `b1-ports.png` `b4-ports.png` | Ports（b1：7 行、COM3 红；b4：17 行、Logs 列有数） |
+| `b1-logging.png` `b4-logging.png` | Logging 的「该机型无文件日志」态 |
+| `b1-ppp.png` `b4-ppp.png` | PPP Corrections（b1：Off + 全 `--`；b4：Unsubscribed + PPPPOS/PPPDOP） |
+| `b1-radio.png` `b4-radio.png` | Radio 的「无电台」态 |
+| `b1-align.png` `b4-align.png` | ALIGN（b1 有 MODELFEATURES 依据，b4 连能力都未知） |
+| `b1-span.png` `b4-span.png` | SPAN |
+| `b1-tracking.png` `b4-tracking.png` | Satellite Tracking（C/No 视图） |
+| `b1-tracking-locktime.png` `b4-tracking-locktime.png` | 同一块的 Lock Time 视图（b4 无 SATVIS2，El/Az 全 `--`） |
+| `b1-dashboard-full.png` `b4-dashboard-full.png` | 整页（新 tile 的排布） |
+| `page-vehicle-setup.png` `page-storage.png` `page-update.png` | 三个新页单独打开 |
+| `drawer-vehicle-setup.png` `drawer-storage.png` `drawer-update.png` | 同一页在 Configuration 抽屉里（含分组 optgroup 与只读/无存储提示） |
+
+对照脚本：`%TEMP%\opencode\crosscheck.mjs`（DOM 值 ↔ 解码字段，输出即 §12.2 的表）、
+`shoot.mjs`（tile 截图）、`shoot-pages.mjs`（三页截图 + 抽屉分组 + console 计数）。两次运行均
+`0 console / 0 pageerror`。
+
+### 12.6 判据
+
+```powershell
+cd "逆向\04_重实现"
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 873 tests / 873 pass / 0 fail
+```
+
+新增：`packages/app/test/manage-tiles.test.ts`（12 项：用 b1/b4 的真实字段做样本 + `--` 文案）、
+`packages/app/test/manage-pages.test.ts`（8 项：三页可打开、标签、抽屉分组、Vehicle Setup 零请求、
+Storage 无存储态与禁用按钮、Update 只读门禁）。既有 `config-host.test.ts` / `config-endpoints.test.ts`
+里「非 operational 页 = 15」的断言按新页数改成 18，并加了三个新名字与标签的断言。
+
+---
+
+## 13. Events 实测：`RXSTATUSEVENT` 到底由什么触发（2026-11-01 真机）
+
+样本 `00_来源/samples/live-20261031/b7-20261101.sbf`（69 s，OEM729 / `OM7MR1002RN0000`，COM10）。
+做法：`LOG RXSTATUSEVENTA ONCHANGED` 全程挂着，再用各类"该出错"的命令去戳，看接收机是否发
+`#RXSTATUSEVENTA`。脚本 `逆向/tools/remote/b7-capture.ps1`（事件在 t=10/16/22/28/34/40 s 各戳一次）。
+
+### 13.1 结论：一条都没出来，而且这不是"没抓到"
+
+`RXSTATUSEVENTA` 从 t=0 开到 t=45 s（收尾前），期间 6 次主动制造条件，抓包里
+`#RXSTATUSEVENTA` / `<RXSTATUSEVENT` 记录数 **0**（二进制 id 94 也是 0；套件 Summary 的转换表里
+没有这一行）。逐条证据：
+
+| 发出去 | 接收机回的原话 | 该记录条数（整段 45 s）|
+|---|---|---:|
+| `LOG RXSTATUSEVENTA ONCHANGED` | `<OK` | 0（就是这个日志本身）|
+| `LOG NOTAREALLOGB ONCE` | `<ERROR:Invalid Message. Field = 2` | 0 |
+| `LOG RANGEB NOTAREALTYPE ONCE` | `<ERROR:Invalid Message. Field = 4` | 0 |
+| `LOG RANGEB ONTIME`（漏参数）| `<ERROR:Invalid offset.` | 0 |
+| `INTERFACEMODE COM9 BAD BAD ON` | `<ERROR:Invalid Message. Field = 2` | 0 |
+| `ITWARNINGCONFIG 1`（配置写入）| `<OK` | 0 |
+| `ITDETECTCONFIG ALL`（配置写入）| `<OK` | 0 |
+| `ITSPECTRALANALYSIS PREDECIMATION GPSL2 1000 1K 1 1` | `<OK` | 0 |
+
+`INTERFACEMODE COM9 …` 被拒之后，`COM9` 的接口模式没有变（收尾的 `LOG RXCONFIGA ONCE` 里
+`#INTERFACEMODEA,…` 与抓包前一致）。
+
+### 13.2 它是什么，为什么命令错误戳不动
+
+`RXSTATUSEVENT`（id 94）是 **RXSTATUS 字里的位发生变化时的文本说明**：字段
+`word` / `bit_position` / `event(CLEAR/SET/UPDATE)` / `description`。也就是说，只有接收机自己
+的状态位翻动（天线开路/短路、电压/温度越界、授权码、型号不符……）才会产生它；**命令被拒不是
+事件**，那只是 `<ERROR:…>` 应答，而且应答不发日志。
+
+本轮的物理限制（如实记）：要触发这些位得动硬件——拔天线、换不合法的授权/型号、制造过压过温。
+机器挂在野外台站的机柜里、天线在屋顶，本轮**不能也不该**去动，所以这类事件在真机上没有造出来。
+可造的路径只有"命令/配置被拒"和"干扰检测"两类，而实测这两类都不产生 `RXSTATUSEVENT`：
+
+- 命令/配置被拒 → 只有 `<ERROR:…>`，0 条事件；
+- 干扰检测 → 走 `ITDETECTSTATUS`（本抓包 47 条，38 条带 L2 检测），**不**经过
+  `RXSTATUSEVENT`。Events 页对干扰的判断是 `itk()` 读 `ITDETECTSTATUS` 自己算的。
+
+### 13.3 `events.ts` 认哪些 key，各自的数据来源
+
+`packages/view/src/config/events.ts` 的 `EVENTS_DATA_LANG_MAP` 有 44 个 `data-lang-*` key。按
+`updateData()` 的分派，它们来自**四种**完全不同的源，只有前两个 key 来自 `RXSTATUSEVENT`：
+
+| 源 | 触发的 key | 本次抓包能否产出 |
+|---|---|---|
+| `RXSTATUSEVENT` 文本（`rxStatusEvent()`）| `data-lang-invalid-model`（"MODEL INVALID FOR THIS RECEIVER"）、`data-lang-invalid-authcode`（"INVALID AUTHORIZATION CODE"）| 否：没有这两种状态位 |
+| `ITDETECTSTATUS`（`itk()`）| `data-lang-itk-detected-at`（带 `%1` 频率）| **是**：38 条检测，L2，其中频谱法给 1270.176 MHz |
+| `TRACKSTAT` / `BESTPOS` / `LBANDTRACKSTAT` / `INSPVAX`（本地计算）| `gps/glo/gal/bds/navic-tracking-less`、`no-sbas-tracked`、`no-position-available`、`high-pos-std-dev`、`high-ins-std-dev`、`no-lband` | 是（`#TRACKSTATA` 9、`#BESTPOSA` 62）|
+| `HWMONITOR` / `RXSTATUS`（本地计算）| 3V3/1V2/1V8/天线电压电流/TCXO/DDR 温度、`high-cpu`、`spoofing-detected` | 需阈值越界；本机 6 条 `#HWMONITORA` 全在界内，`rx_error=0`，故无事件 |
+
+一个待核对项（读代码得出，未在本轮改动）：`itk()` 取 `row.detectionType` / `row.centerFrequency`，
+而 `edie-layouts.json` 里 `ITDETECTSTATUS` 的字段名是
+`frequency` / `int_detect_method` / `parameter1…4` / `severity1` / `severity2`，数组键是
+`interference_statuses`（`rowsOf()` 认的是 `data/Data/blocks/channelData/sats` 或数字键）。要让
+Events 页真的显示干扰条目，这两处名字得先对上；`packages/view` 本轮不在改动范围，只记在这里。

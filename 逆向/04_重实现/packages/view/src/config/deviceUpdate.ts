@@ -139,7 +139,37 @@ export class DeviceUpdatePage extends BaseConfigPage {
         : this.fragmentPath,
     );
     this.bindActions(tab, container);
+    this.applyUpdateLabels(tab, container);
     return true;
+  }
+
+  /**
+   * `deviceUpdate.js:17-27`: the fragment's markers that the generic `data-lang-*` walk cannot
+   * resolve. Two of them are misspelt in the shipped HTML (`data-lang-current-firmaware-version`,
+   * `data-lang-current-software-monitor-verison`) while the dictionary keys are spelled correctly
+   * (`CURRENT_FIRMWARE_VERSION`, `CURRENT_SOFTWARE_MONITOR_VERSION`), so without this table the two
+   * version rows print a bare `--` with no label above them.
+   */
+  private applyUpdateLabels(tab: TabId, container: Element): void {
+    const table: Array<[string, string]> = [
+      ['data-lang-update', 'UPDATE'],
+      ['data-lang-device', 'DEVICE'],
+      ['data-lang-update-firmware-or-software', 'UPDATE_FIRMWARE_OR_SOFTWARE'],
+      ['data-lang-current-firmaware-version', 'CURRENT_FIRMWARE_VERSION'],
+      ['data-lang-current-software-monitor-verison', 'CURRENT_SOFTWARE_MONITOR_VERSION'],
+      ['data-lang-update-files-extension', 'UPDATE_FILES_EXTENSION'],
+      ['data-lang-select-file', 'SELECT_FILE'],
+      ['data-lang-browse', 'BROWSE'],
+      ['data-lang-need-help', 'NEED_HELP'],
+      ['data-lang-apply', 'APPLY'],
+      ['data-lang-select-valid-file', 'PLEASESELECTVALIDFILE'],
+    ];
+    for (const [attribute, key] of table) {
+      const text = this.context.translate(key);
+      if (!text || text === key) continue;
+      for (const node of container.querySelectorAll(`[${attribute}]`)) node.textContent = text;
+    }
+    void tab;
   }
 
   protected override bindActions(tab: TabId, container: Element): void {

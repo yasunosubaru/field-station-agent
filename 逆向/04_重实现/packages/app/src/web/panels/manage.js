@@ -121,6 +121,782 @@ const LIVE_RANGE_HISTORY = 120;
 /** Entries the Terminal asks for when it opens: enough context without a multi-MB backfill. */
 const TERMINAL_BACKFILL = 150;
 
+/* ------------------------------------------------------------------ the 2.3.x status tiles
+ *
+ * The seven tiles below the four above are the manual's §2.3.4 / §2.3.5 / §2.3.8 / §2.3.9 /
+ * §2.3.10 / §2.3.11 / §2.3.12 pages. Every number they print comes from a record the receiver
+ * emitted; a field the opened capture does not carry prints `--` and the tile says *why* (which
+ * message id is missing, or which `MODELFEATURES` bit says the model cannot produce it). Nothing
+ * here is computed from a neighbouring field and nothing is defaulted to zero.
+ */
+
+/** Message ids these tiles read (same numbers as `packages/view/src/status/common.ts:MSG_ID`). */
+const PORTSTATS = 72;
+const SERIALCONFIG = 1246;
+const INTERFACEMODE = 3;
+const LOGLIST = 5;
+const FILESTATUS = 2127;
+const MODELFEATURES = 1329;
+const HEADING2 = 1335;
+const DUALANTENNAALIGN = 1761;
+const INSPVAX = 1465;
+const PPPPOS = 1538;
+const PPPDOP = 1997;
+const PPPDOP2 = 1546;
+const TERRASTARINFO = 1719;
+const VERIPOSINFO = 1728;
+const OCEANIXINFO = 2159;
+const TERRASTARSTATUS = 1729;
+const OCEANIXSTATUS = 2160;
+const VERIPOSDECODERSTATUS = 2075;
+const SATELDETECT = 2204;
+const SATELSTATUS = 2205;
+const NTRIPCONFIG = 1249;
+const LBANDTRACKSTAT = 1201;
+
+/**
+ * `MODELFEATURES.features[].feature` ids these tiles gate on, and the observable that pins each
+ * status word: b1 (`live-20261031/b1-20261101.sbf`, record 0) reports `AUTHORIZED` as 0 and
+ * `UNAUTHORIZED` as 1 for all 21 entries, e.g. `feature 23 (IMU) = 1 (UNAUTHORIZED)` and
+ * `feature 10 (ALIGN_HEADING) = 0 (AUTHORIZED)`.
+ */
+const FEATURE = {
+  ALIGN_HEADING: 10,
+  ALIGN_RELATIVE_POS: 11,
+  NTRIP: 15,
+  PPP: 19,
+  INS: 22,
+  IMU: 23,
+  ANTENNA: 28,
+  INTERFERENCE_MITIGATION: 26,
+};
+
+/**
+ * `(system, 5-bit signal type)` → signal name. Copied from
+ * `packages/graph/src/range-charts.ts:RANGE_SIGNALS`, where the split is verified cell-for-cell
+ * against the shipped goldens. The three systems there are the three the captures track; any other
+ * system keeps its raw pair (`S<system>·s<signal>`) rather than borrowing a name.
+ */
+const RANGE_SIGNALS = {
+  0: {
+    0: 'GPS_L1_CA',
+    16: 'GPS_L1_CP',
+    9: 'GPS_L2_PY',
+    17: 'GPS_L2_CM',
+    14: 'GPS_L5_Q',
+  },
+  4: {
+    0: 'BEIDOU_B1I_D1',
+    4: 'BEIDOU_B1I_D2',
+    1: 'BEIDOU_B2I_D1',
+    2: 'BEIDOU_B3I_D1',
+    6: 'BEIDOU_B3I_D2',
+  },
+  5: {
+    0: 'QZSS_L1_CA',
+    16: 'QZSS_L1_CP',
+    17: 'QZSS_L2_CM',
+    14: 'QZSS_L5_Q',
+  },
+};
+
+/** `system = (c_status >> 16) & 7` → the row of `CONSTELLATIONS` it belongs to. */
+const SYSTEM_ROWS = [
+  { system: SYSTEM_GPS, key: 'gps', label: 'GPS' },
+  { system: SYSTEM_GLO, key: 'glo', label: 'GLO' },
+  { system: SYSTEM_GAL, key: 'gal', label: 'GAL' },
+  { system: SYSTEM_BDS, key: 'bds', label: 'BDS' },
+  { system: SYSTEM_QZSS, key: 'qzss', label: 'QZSS' },
+  { system: SYSTEM_NAVIC, key: 'navic', label: 'NAVIC' },
+  { system: SYSTEM_SBAS, key: 'sbas', label: 'SBAS' },
+];
+
+function numOf(value) {
+  if (value === null || value === undefined || value === '') return NaN;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+/** One record's `path → field` index; the readers below all speak `/api/records` shapes. */
+function fieldIndex(record) {
+  const map = new Map();
+  if (!record || !Array.isArray(record.fields)) return map;
+  for (const field of record.fields) if (!map.has(field.path)) map.set(field.path, field);
+  return map;
+}
+
+/** `obs.count` / `features.count` style array length, capped so a damaged record cannot hang. */
+function countOf(fields, path, cap) {
+  return Math.max(0, Math.min(Number(fields.get(path)?.value) || 0, cap));
+}
+
+/**
+ * `MODELFEATURES (#1329)` → `{ imu, ins, ppp, ntrip, alignHeading, alignRelative, antenna }`, each
+ * the enum text the receiver printed (`AUTHORIZED` / `UNAUTHORIZED` / …) or `null` when the capture
+ * has no MODELFEATURES record at all. `null` is different from "not authorized": only the receiver
+ * may say a feature is missing.
+ */
+export function readFeatures(record) {
+  if (!record) return null;
+  const fields = fieldIndex(record);
+  const byFeature = new Map();
+  const total = countOf(fields, 'features.count', 128);
+  for (let index = 0; index < total; index += 1) {
+    const id = numOf(fields.get(`features[${index}].feature`)?.value);
+    if (!Number.isFinite(id)) continue;
+    byFeature.set(id, shown(fields.get(`features[${index}].feature_status`)));
+  }
+  const pick = (id) => byFeature.get(id) ?? null;
+  return {
+    alignHeading: pick(FEATURE.ALIGN_HEADING),
+    alignRelative: pick(FEATURE.ALIGN_RELATIVE_POS),
+    ntripp: pick(FEATURE.NTRIP),
+    ppp: pick(FEATURE.PPP),
+    ins: pick(FEATURE.INS),
+    imu: pick(FEATURE.IMU),
+    antenna: pick(FEATURE.ANTENNA),
+    interference: pick(FEATURE.INTERFERENCE_MITIGATION),
+    entries: byFeature.size,
+  };
+}
+
+/** `AUTHORIZED` is the only status that means "the model can do this". */
+function featureOff(value) {
+  return typeof value === 'string' && value !== '' && value !== 'AUTHORIZED';
+}
+
+/* ---- 2.3.4 Ports ------------------------------------------------------------------------- */
+
+/**
+ * §2.3.4 Ports status, from the three records the original reads:
+ *
+ *   `SERIALCONFIG (#1246)` one record per serial port → the rate and framing (9600 8N1 …)
+ *   `PORTSTATS (#72)`      one record, one entry per port → rx/tx counters and the error counters
+ *   `LOGLIST (#5)`         one record, one entry per configured log → how many logs that port carries
+ *   `INTERFACEMODE (#3)`   one record per port → the interface each direction speaks
+ *
+ * The row colours are the manual's own four: green = configured and active, amber = configured and
+ * not active, red = the receiver's error counters moved, grey = not configured. "Active" is decided
+ * by `LOGLIST` (a log is attached to the port), never by a threshold on the byte counters.
+ */
+export function readPorts(input = {}) {
+  const stats = input.stats ?? null;
+  const serial = input.serial ?? [];
+  const logs = input.logs ?? null;
+  const iface = input.iface ?? [];
+  const rows = new Map();
+  const row = (name) => {
+    if (!rows.has(name)) {
+      rows.set(name, {
+        name,
+        baud: NaN,
+        framing: '',
+        handshaking: '',
+        breaksOn: '',
+        logs: 0,
+        logsKnown: false,
+        rx: NaN,
+        tx: NaN,
+        framingErrors: NaN,
+        parityErrors: NaN,
+        overRuns: NaN,
+        input: null,
+        output: null,
+        serialPresent: false,
+        statsPresent: false,
+      });
+    }
+    return rows.get(name);
+  };
+
+  for (const record of serial) {
+    const fields = fieldIndex(record);
+    const name = shown(fields.get('port'));
+    if (!name) continue;
+    const target = row(name);
+    target.baud = numOf(fields.get('baud_rate')?.value);
+    target.framing = [shown(fields.get('data_bits')), shown(fields.get('parity')), shown(fields.get('stop_bits'))]
+      .filter((part) => part && part !== 'null')
+      .join('');
+    target.handshaking = shown(fields.get('hand_shaking')) ?? '';
+    target.breaksOn = shown(fields.get('breaks')) ?? '';
+    target.serialPresent = true;
+  }
+
+  if (stats) {
+    const fields = fieldIndex(stats);
+    const total = countOf(fields, 'port_statistics.count', 64);
+    for (let index = 0; index < total; index += 1) {
+      const base = `port_statistics[${index}]`;
+      const name = shown(fields.get(`${base}.port`));
+      if (!name) continue;
+      const target = row(name);
+      target.rx = numOf(fields.get(`${base}.rx_chars`)?.value);
+      target.tx = numOf(fields.get(`${base}.tx_chars`)?.value);
+      target.framingErrors = numOf(fields.get(`${base}.framing_errors`)?.value);
+      target.parityErrors = numOf(fields.get(`${base}.parity_errors`)?.value);
+      target.overRuns = numOf(fields.get(`${base}.over_runs`)?.value);
+      target.statsPresent = true;
+    }
+  }
+
+  if (logs) {
+    const fields = fieldIndex(logs);
+    const total = countOf(fields, 'log_list.count', 256);
+    for (let index = 0; index < total; index += 1) {
+      const name = shown(fields.get(`log_list[${index}].log_port_address`));
+      if (!name) continue;
+      const target = row(name);
+      target.logs += 1;
+      target.logsKnown = true;
+    }
+  }
+
+  for (const record of iface) {
+    const fields = fieldIndex(record);
+    const name = shown(fields.get('port'));
+    if (!name) continue;
+    const target = row(name);
+    target.input = shown(fields.get('receive_interface_mode'));
+    target.output = shown(fields.get('transmit_interface_mode'));
+  }
+
+  const list = [...rows.values()]
+    .map((item) => {
+      const errors =
+        (Number.isFinite(item.framingErrors) ? item.framingErrors : 0) +
+        (Number.isFinite(item.parityErrors) ? item.parityErrors : 0) +
+        (Number.isFinite(item.overRuns) ? item.overRuns : 0);
+      /* `PORTSTATS` lists every port the firmware knows — 30 entries on this model, most of them
+       * carrying 0/0 because nothing is attached. A row with no configuration, no log and no
+       * traffic since boot is not "a port in the grey state", it is a port that does not exist on
+       * this hardware, so it is left out rather than padding the tile with empty names. */
+      const used =
+        item.serialPresent ||
+        item.logs > 0 ||
+        item.input !== null ||
+        item.rx > 0 ||
+        item.tx > 0 ||
+        errors > 0;
+      /* Green = configured and active, amber = configured and idle, red = the receiver's error
+       * counters moved, grey = nothing attached. "Active" is the byte counters: `LOGLIST` (which
+       * would prove a log is attached) is not in every capture, so a port with traffic is still
+       * active even when the log list is missing. */
+      let tone = 'off';
+      if (errors > 0) tone = 'bad';
+      else if (item.logs > 0) tone = 'good';
+      else if (item.rx > 0 || item.tx > 0) tone = 'good';
+      else if (Number.isFinite(item.baud)) tone = 'warn';
+      return { ...item, errors, tone, used };
+    })
+    .filter((item) => item.used)
+    .sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+
+  const worst = { off: 0, unknown: 1, warn: 2, bad: 3 };
+  let tone = 'off';
+  for (const item of list) {
+    if ((worst[item.tone] ?? 0) > (worst[tone] ?? 0)) tone = item.tone;
+  }
+
+  const missing = [];
+  if (!stats) missing.push('PORTSTATS (#72)');
+  if (!serial.length) missing.push('SERIALCONFIG (#1246)');
+  if (!logs) missing.push('LOGLIST (#5)');
+  if (!iface.length) missing.push('INTERFACEMODE (#3)');
+  return { rows: list, tone: list.length ? tone : 'off', missing, configured: list.length };
+}
+
+/* ---- 2.3.5 Logging ---------------------------------------------------------------------- */
+
+/**
+ * §2.3.5 Logging status, from `FILESTATUS (#2127)`.
+ *
+ * The desk OEM729 answers `LOG FILESTATUS ONCE` with
+ * `<ERROR:Message is invalid for this model` and emits no record at all
+ * (`03_分析/17_A1_连接层与Terminal.md` §17.8.6), and none of the five b1..b5 captures contains
+ * #2127 either. That is a *model* answer, not a zero, so the tile keeps `supported: false` and
+ * every field `--`.
+ */
+export function readLogging(input = {}) {
+  const records = input.filestatus ?? [];
+  const logs = input.logs ?? null;
+  let fileLogs = 0;
+  if (logs) {
+    const fields = fieldIndex(logs);
+    const total = countOf(fields, 'log_list.count', 256);
+    for (let index = 0; index < total; index += 1) {
+      const name = shown(fields.get(`log_list[${index}].log_port_address`)) ?? '';
+      if (/^FILE/i.test(name)) fileLogs += 1;
+    }
+  }
+  const record = records.find((item) => {
+    const fields = fieldIndex(item);
+    const status = shown(fields.get('file_status')) ?? '';
+    return status !== '' && status !== 'DISABLED' && status !== 'ERROR';
+  }) ?? records[0] ?? null;
+  if (!record) {
+    return {
+      supported: false,
+      status: null,
+      fileName: null,
+      fileSize: NaN,
+      messages: [],
+      fileLogs,
+      logsKnown: Boolean(logs),
+      reason: 'FILESTATUS (#2127)',
+    };
+  }
+  const fields = fieldIndex(record);
+  return {
+    supported: true,
+    status: shown(fields.get('file_status')),
+    fileName: shown(fields.get('file_name')),
+    fileSize: numOf(fields.get('file_size')?.value),
+    mediaType: shown(fields.get('media_type')),
+    mediaRemaining: numOf(fields.get('media_remaining_capacity')?.value),
+    mediaTotal: numOf(fields.get('media_total_capacity')?.value),
+    messages: [],
+    fileLogs,
+    logsKnown: Boolean(logs),
+    reason: '',
+  };
+}
+
+/* ---- 2.3.10 PPP Corrections ------------------------------------------------------------- */
+
+/** `subscription_details` / `operating_mode` of whichever correction service the model reports. */
+function readSubscription(input) {
+  const services = [
+    { id: TERRASTARINFO, label: 'TerraStar', records: input.terrastar ?? [] },
+    { id: OCEANIXINFO, label: 'Oceanix', records: input.oceanix ?? [] },
+    { id: VERIPOSINFO, label: 'Veripos', records: input.veripos ?? [] },
+  ];
+  for (const service of services) {
+    const record = service.records[0];
+    if (!record) continue;
+    const fields = fieldIndex(record);
+    const mode = shown(fields.get('operating_mode')) ?? '';
+    const details = fields.get('subscription_details');
+    const code = details ? Number(details.value) : NaN;
+    return {
+      service: service.label,
+      messageId: service.id,
+      mode,
+      details: details ? String(details.value) : '',
+      detailsHex: Number.isFinite(code) ? `0x${(code >>> 0).toString(16).padStart(8, '0')}` : '--',
+      subscribed: mode !== '' && mode !== 'UNASSIGNED' && mode !== 'NONE' && code !== 0,
+    };
+  }
+  return null;
+}
+
+/**
+ * §2.3.10 PPP Corrections. Subscribed / Locked / Lband Tracking / Primary Signal / Signal
+ * Strength / Bit Success Rate / NTRIP are the manual's seven fields; each one names the record it
+ * needs, and the PPP position/DOP rows print `PPPPOS`/`PPPDOP`/`PPPDOP2` when the capture has them
+ * (b4 does, b1 does not).
+ */
+export function readPpp(input = {}) {
+  const features = input.features ?? null;
+  const subscription = readSubscription(input);
+  const positionRecord = (input.ppppos ?? [])[0] ?? null;
+  const dopRecord = (input.pppdop ?? [])[0] ?? null;
+  const dop2Record = (input.pppdop2 ?? [])[0] ?? null;
+  const lockRecord =
+    (input.terrastarstatus ?? [])[0] ??
+    (input.oceanixstatus ?? [])[0] ??
+    (input.veriposdecoder ?? [])[0] ??
+    null;
+  const ntripRecord = (input.ntrip ?? [])[0] ?? null;
+  const lbandRecord = (input.lband ?? [])[0] ?? null;
+
+  const position = positionRecord
+    ? (() => {
+        const fields = fieldIndex(positionRecord);
+        return {
+          solution: shown(fields.get('solution_status')),
+          type: shown(fields.get('position_type')),
+          satellites: numOf(fields.get('num_svs')?.value),
+          diffAge: numOf(fields.get('diff_age')?.value),
+          utc: positionRecord.header?.utc ?? '',
+        };
+      })()
+    : null;
+
+  const dop = dopRecord || dop2Record
+    ? (() => {
+        const fields = fieldIndex(dopRecord ?? dop2Record);
+        return {
+          gdop: numOf(fields.get('gdop')?.value),
+          pdop: numOf(fields.get('pdop')?.value),
+          hdop: numOf(fields.get('hdop')?.value),
+          vdop: numOf(fields.get('vdop')?.value),
+          messageId: dopRecord ? PPPDOP : PPPDOP2,
+        };
+      })()
+    : null;
+
+  const pppOff = featureOff(features?.ppp);
+  const missing = [];
+  if (!subscription) missing.push('TERRASTARINFO (#1719) / OCEANIXINFO (#2159) / VERIPOSINFO (#1728)');
+  if (!lockRecord) missing.push('TERRASTARSTATUS (#1729) / OCEANIXSTATUS (#2160) / VERIPOSDECODERSTATUS (#2075)');
+  if (!lbandRecord) missing.push('LBANDTRACKSTAT (#1201)');
+  if (!ntripRecord) missing.push('NTRIPCONFIG (#1249)');
+  if (!positionRecord) missing.push('PPPPOS (#1538)');
+
+  /* Off is the original's own state (grey): PPP is off when the model has no PPP authorization or
+   * when nothing says it is running. An unsubscribed L-Band account is `Unsubscribed`, not `Off`. */
+  const tone = pppOff || (!subscription && !position) ? 'off' : subscription && !subscription.subscribed ? 'warn' : 'good';
+  return {
+    subscription,
+    position,
+    dop,
+    lockRecord: Boolean(lockRecord),
+    ntripRecord: Boolean(ntripRecord),
+    lbandRecord: Boolean(lbandRecord),
+    pppOff,
+    tone,
+    missing,
+  };
+}
+
+/* ---- 2.3.11 Radio ----------------------------------------------------------------------- */
+
+/**
+ * §2.3.11 Radio status. `SATELSTATUS (#2205)` is the status record and `SATELDETECT (#2204)` the
+ * detect reply; the manual says the tile exists only on systems with an external transmit radio,
+ * so "no such record in this capture" is the tile's own `Off` state, not a zero.
+ */
+export function readRadio(input = {}) {
+  const status = (input.satelstatus ?? [])[0] ?? null;
+  const detect = (input.sateldetect ?? [])[0] ?? null;
+  if (!status && !detect) {
+    return { present: false, tone: 'off', status: null, port: null, reason: 'SATELSTATUS (#2205) / SATELDETECT (#2204)' };
+  }
+  const fields = fieldIndex(status ?? detect);
+  const statusWord = status ? shown(fields.get('satel_status')) : null;
+  const errorWord = status ? shown(fields.get('satel_error')) : null;
+  const failed = status ? shown(fields.get('failed_command')) : null;
+  const port = detect ? shown(fields.get('comm_port')) : null;
+  const bad = Boolean(failed) || (errorWord && errorWord !== '' && errorWord !== '0');
+  return {
+    present: true,
+    tone: bad ? 'bad' : 'good',
+    status: statusWord,
+    error: errorWord,
+    failed,
+    port,
+    reason: '',
+  };
+}
+
+/* ---- 2.3.8 ALIGN / 2.3.9 SPAN ----------------------------------------------------------- */
+
+/** §2.3.8 ALIGN: `HEADING2 (#1335)`, falling back to `DUALANTENNAALIGN (#1761)`. */
+export function readAlign(input = {}) {
+  const features = input.features ?? null;
+  const headingRecords = input.heading2 ?? [];
+  const dualRecords = input.dualantenna ?? [];
+  const record = headingRecords[0] ?? dualRecords[0] ?? null;
+  const messageId = headingRecords.length ? HEADING2 : dualRecords.length ? DUALANTENNAALIGN : null;
+  const alignSupported =
+    features && (features.alignHeading === 'AUTHORIZED' || features.alignRelative === 'AUTHORIZED');
+  if (!record) {
+    return {
+      supported: alignSupported ?? null,
+      messageId,
+      heading: NaN,
+      headingDev: NaN,
+      pitch: NaN,
+      pitchDev: NaN,
+      baseline: NaN,
+      solved: false,
+      reason: 'HEADING2 (#1335) / DUALANTENNAALIGN (#1761)',
+    };
+  }
+  const fields = fieldIndex(record);
+  return {
+    supported: true,
+    messageId,
+    heading: numOf(fields.get('heading')?.value),
+    headingDev: numOf(fields.get('heading_std_dev')?.value),
+    pitch: numOf(fields.get('pitch')?.value),
+    pitchDev: numOf(fields.get('pitch_std_dev')?.value),
+    baseline: numOf(fields.get('b_length')?.value),
+    solved: (shown(fields.get('solution_status')) ?? '') === 'SOL_COMPUTED',
+    status: shown(fields.get('solution_status')),
+    type: shown(fields.get('position_type')),
+    satellites: numOf(fields.get('num_svs')?.value),
+    reason: '',
+  };
+}
+
+/**
+ * §2.3.9 SPAN: `INSPVAX (#1465)`. The manual's fields are Status / Position Type / Alignment /
+ * Converged / Azimuth / Pitch / Roll / the three velocities and the position; `INSPVAX` carries all
+ * of them except a separate "converged" word, so that row stays `--` rather than being guessed from
+ * the standard deviations.
+ */
+export function readSpan(input = {}) {
+  const features = input.features ?? null;
+  const record = (input.inspvax ?? [])[0] ?? null;
+  const spanSupported = features ? !featureOff(features.ins) || !featureOff(features.imu) : null;
+  if (!record) {
+    return {
+      supported: spanSupported,
+      reason: 'INSPVAX (#1465)',
+      values: null,
+    };
+  }
+  const fields = fieldIndex(record);
+  return {
+    supported: true,
+    reason: '',
+    values: {
+      status: shown(fields.get('ins_solution_status')),
+      type: shown(fields.get('position_type')),
+      azimuth: numOf(fields.get('azimuth')?.value),
+      azimuthDev: numOf(fields.get('azimuth_std_dev')?.value),
+      pitch: numOf(fields.get('pitch')?.value),
+      pitchDev: numOf(fields.get('pitch_std_dev')?.value),
+      roll: numOf(fields.get('roll')?.value),
+      rollDev: numOf(fields.get('roll_std_dev')?.value),
+      north: numOf(fields.get('north_vel')?.value),
+      east: numOf(fields.get('east_vel')?.value),
+      up: numOf(fields.get('up_vel')?.value),
+      latitude: numOf(fields.get('latitude')?.value),
+      longitude: numOf(fields.get('longitude')?.value),
+      height: numOf(fields.get('orthometric_height')?.value),
+      heightDev: numOf(fields.get('height_std_dev')?.value),
+      age: numOf(fields.get('time_since_update')?.value),
+      utc: record.header?.utc ?? '',
+    },
+  };
+}
+
+/* ---- 2.3.12 Satellite Tracking ---------------------------------------------------------- */
+
+/**
+ * §2.3.12 Satellite Tracking: the newest `RANGE (#43)` epoch, one row per PRN and one bar per
+ * signal, plus the real elevation/azimuth from `SATVIS2 (#1043)` when the capture has that record.
+ *
+ * `sv_freq` in the decoded record is 0 for every observation of the sample; the frequency index is
+ * the `c_status` bits 21..25 (`packages/graph/src/range-charts.ts:8-14`), which is what the signal
+ * name is looked up with. El/Az are `--` when `SATVIS2` has no entry for that PRN — never filled in
+ * from a neighbouring satellite.
+ */
+export function readSatTracking(input = {}) {
+  const range = (input.range ?? [])[0] ?? null;
+  const satvis = input.satvis ?? [];
+  const sky = new Map();
+  let satvisEpoch = '';
+  for (const record of satvis) {
+    const fields = fieldIndex(record);
+    const systemName = (shown(fields.get('system_type')) ?? '').toUpperCase();
+    const system = Object.entries({ GPS: SYSTEM_GPS, GLONASS: SYSTEM_GLO, GALILEO: SYSTEM_GAL, BEIDOU: SYSTEM_BDS, QZSS: SYSTEM_QZSS, NAVIC: SYSTEM_NAVIC, SBAS: SYSTEM_SBAS })
+      .find(([name]) => name === systemName)?.[1];
+    if (system === undefined) continue;
+    const total = countOf(fields, 'sat_vis_list.count', 128);
+    for (let index = 0; index < total; index += 1) {
+      const id = numOf(fields.get(`sat_vis_list[${index}].id`)?.value);
+      if (!Number.isFinite(id)) continue;
+      sky.set(`${system}:${id}`, {
+        elevation: numOf(fields.get(`sat_vis_list[${index}].elevation`)?.value),
+        azimuth: numOf(fields.get(`sat_vis_list[${index}].azimuth`)?.value),
+        epoch: record.header?.utc ?? '',
+      });
+      if (record.header?.utc && record.header.utc > satvisEpoch) satvisEpoch = record.header.utc;
+    }
+  }
+
+  if (!range) {
+    return { rows: [], systems: [], epoch: '', total: 0, skyEpoch: satvisEpoch, reason: 'RANGE (#43)' };
+  }
+  const fields = fieldIndex(range);
+  const total = countOf(fields, 'obs.count', 256);
+  const rows = new Map();
+  for (let index = 0; index < total; index += 1) {
+    const base = `obs[${index}]`;
+    const status = numOf(fields.get(`${base}.c_status`)?.value);
+    if (!Number.isFinite(status)) continue;
+    const system = (status >> 16) & 7;
+    const signal = (status >> 21) & 0x1f;
+    const prn = numOf(fields.get(`${base}.sv_prn`)?.value);
+    if (!Number.isFinite(prn)) continue;
+    const key = `${system}:${prn}`;
+    if (!rows.has(key)) {
+      const rowLabel = SYSTEM_ROWS.find((item) => item.system === system);
+      rows.set(key, {
+        key,
+        system,
+        systemLabel: rowLabel?.label ?? `S${system}`,
+        rowKey: rowLabel?.key ?? `sys${system}`,
+        prn,
+        signals: [],
+        elevation: NaN,
+        azimuth: NaN,
+      });
+    }
+    const row = rows.get(key);
+    row.signals.push({
+      signal,
+      name: RANGE_SIGNALS[system]?.[signal] ?? `S${system}·s${signal}`,
+      cno: numOf(fields.get(`${base}.C_No`)?.value),
+      lock: numOf(fields.get(`${base}.lock_time`)?.value),
+    });
+  }
+  for (const row of rows.values()) {
+    row.signals.sort((a, b) => a.signal - b.signal);
+    const hit = sky.get(row.key);
+    if (hit) {
+      row.elevation = hit.elevation;
+      row.azimuth = hit.azimuth;
+    }
+  }
+  const list = [...rows.values()].sort((a, b) => a.system - b.system || a.prn - b.prn);
+  const systems = [...new Set(list.map((row) => row.rowKey))];
+  return {
+    rows: list,
+    systems,
+    epoch: range.header?.utc ?? '',
+    total,
+    skyEpoch: satvisEpoch,
+    reason: '',
+  };
+}
+
+/**
+ * `MODELFEATURES` is a one-shot record; this is the sentence the tiles quote when a model bit, not
+ * a missing record, is the reason a field has no value.
+ */
+export function featureSentence(features) {
+  if (!features) return '这个抓包里没有 MODELFEATURES (#1329)，机型能力未知';
+  const parts = [];
+  if (features.antenna) parts.push(`ANTENNA = ${features.antenna}`);
+  if (features.imu) parts.push(`IMU = ${features.imu}`);
+  if (features.ins) parts.push(`INS = ${features.ins}`);
+  if (features.ppp) parts.push(`PPP = ${features.ppp}`);
+  if (features.alignHeading) parts.push(`ALIGN_HEADING = ${features.alignHeading}`);
+  return parts.length ? `MODELFEATURES (#1329)：${parts.join(' · ')}` : 'MODELFEATURES (#1329) 没有这些能力项';
+}
+
+/* ------------------------------------------------- the `--` state, in words *
+ * One function per tile, module level and pure, so the sentence a reader sees under a tile can be
+ * asserted without a browser: it is the same string the renderer writes into `.mg-reason`. Every
+ * one of them names the message id (or the MODELFEATURES bit) that would have filled the field —
+ * the tile never says "no data" without saying which data.
+ */
+
+/** `--` when SERIALCONFIG never named this port: the tile must not print an invented 9600. */
+export function portRateText(row) {
+  if (!row || !Number.isFinite(row.baud)) return '--';
+  return `${row.baud} ${row.framing}`.trim();
+}
+
+/** `--` when the capture has no LOGLIST (#5): "0 logs" would be a claim, not a measurement. */
+export function portLogsText(row) {
+  return row && row.logsKnown ? String(row.logs) : '--';
+}
+
+export function portsReasonText(ports) {
+  if (!ports.rows.length) {
+    return '抓包回放 · 这个抓包里没有 SERIALCONFIG (#1246) / PORTSTATS (#72) / LOGLIST (#5) — 端口表保持空。';
+  }
+  const present = [];
+  if (ports.rows.some((row) => row.serialPresent)) present.push('SERIALCONFIG (#1246)');
+  if (ports.rows.some((row) => row.statsPresent)) present.push('PORTSTATS (#72)');
+  if (ports.rows.some((row) => row.logsKnown)) present.push('LOGLIST (#5)');
+  if (ports.rows.some((row) => row.input !== null)) present.push('INTERFACEMODE (#3)');
+  const missing = ports.missing.length ? ` · 缺 ${ports.missing.join(' / ')}` : '';
+  const inputs = present.includes('INTERFACEMODE (#3)')
+    ? ''
+    : ' · Input/Output 两列要 INTERFACEMODE (#3)，本抓包没有 → 不列这两列';
+  return `抓包回放 · ${ports.rows.length} 个端口 · 源 ${present.join(' + ') || '无'}${missing}${inputs}`;
+}
+
+export function loggingReasonText(logging, captureName) {
+  if (logging.supported) {
+    return `抓包回放 · FILESTATUS (#2127) ${captureName || ''} · ${logging.mediaType ?? '--'}`.trim();
+  }
+  const portLogs = logging.logsKnown
+    ? `LOGLIST (#5) 有记录：${logging.fileLogs} 条落在 FILE 端口上`
+    : 'LOGLIST (#5) 也不在这个抓包里，连“日志挂在哪”都不知道';
+  return (
+    `抓包回放 · 无文件日志：FILESTATUS (#2127) 不在 ${captureName || '这个抓包'} 里；本机实测 ` +
+    `LOG FILESTATUS ONCE 回 <ERROR:Message is invalid for this model（该机型没有文件日志组件）· ${portLogs}`
+  );
+}
+
+export function pppReasonText(ppp) {
+  const reasons = [];
+  reasons.push(
+    ppp.pppOff
+      ? 'PPP 未授权（MODELFEATURES #1329 里 PPP = UNAUTHORIZED）'
+      : ppp.subscription
+        ? `${ppp.subscription.service}：operating_mode = ${ppp.subscription.mode || '--'}，subscription_details = ${ppp.subscription.detailsHex}`
+        : 'PPP 订阅：抓包里没有 TERRASTARINFO/OCEANIXINFO/VERIPOSINFO',
+  );
+  if (ppp.position) {
+    reasons.push(`PPPPOS (#1538) ${utcClock(ppp.position.utc)} UTC = ${ppp.position.solution ?? '--'}`);
+  }
+  if (ppp.dop) reasons.push(`PPPDOP (#${ppp.dop.messageId})`);
+  if (ppp.missing.length) reasons.push(`缺 ${ppp.missing.join(' / ')}`);
+  return `抓包回放 · ${reasons.join(' · ')}`;
+}
+
+export function radioReasonText(radio, captureName) {
+  if (radio.present) return `抓包回放 · ${radio.reason || 'SATELSTATUS (#2205)'}`;
+  return (
+    `抓包回放 · 无电台：${captureName || '这个抓包'} 里没有 SATELSTATUS (#2205) / SATELDETECT (#2204) — ` +
+    '手册 2.3.11 说这一块只在外接发射电台的系统上出现，保持 Off（灰）而不是编一个 Good。'
+  );
+}
+
+export function alignReasonText(align, features) {
+  if (align.messageId) {
+    return (
+      `抓包回放 · #${align.messageId} ${align.status ?? '--'} / ${align.type ?? '--'} · ` +
+      `${Number.isFinite(align.satellites) ? `${align.satellites} sv` : 'sv --'}`
+    );
+  }
+  const antenna = features?.antenna;
+  const capability = align.supported
+    ? `MODELFEATURES (#1329) 里 ALIGN_HEADING 是 AUTHORIZED${antenna ? `、ANTENNA = ${antenna}` : ''}`
+    : 'MODELFEATURES (#1329) 里看不到 ALIGN 能力项';
+  return (
+    `抓包回放 · 无 ALIGN 解：${capability}，抓包里也没有 HEADING2 (#1335) / DUALANTENNAALIGN (#1761) — ` +
+    '手册 2.3.8 要有两台 ALIGN 接收机或双天线才出解。'
+  );
+}
+
+export function spanReasonText(span) {
+  if (span.values) {
+    return (
+      `抓包回放 · INSPVAX (#1465) ${utcClock(span.values.utc)} UTC · ` +
+      'Alignment / Converged 在 INSPVAX 里没有对应字段，保持 --。'
+    );
+  }
+  const capability =
+    span.supported === false
+      ? 'MODELFEATURES (#1329) 里 IMU / INS 都是 UNAUTHORIZED（该机型没有 SPAN）'
+      : 'MODELFEATURES (#1329) 不在这个抓包里，机型能力未知';
+  return `抓包回放 · 无 SPAN 解：${capability}，抓包里也没有 INSPVAX (#1465) — 字段保持 --。`;
+}
+
+export function trackingReasonText(tracking, metric) {
+  if (!tracking.rows.length) {
+    return '抓包回放 · 这个抓包里没有 RANGE (#43)，逐星表保持空。';
+  }
+  const satellites = tracking.rows.length;
+  const signals = tracking.rows.reduce((sum, row) => sum + row.signals.length, 0);
+  const sky = tracking.skyEpoch ? `${utcClock(tracking.skyEpoch)} UTC` : '--';
+  return (
+    `抓包回放 · RANGE (#43) ${utcClock(tracking.epoch)} UTC · ${satellites} 颗 / ${signals} 个信号 · ` +
+    `El/Az 来自 SATVIS2 (#1043) ${sky}${tracking.skyEpoch ? '' : '（该抓包没有 SATVIS2 → --）'} · ` +
+    `${metric === 'lock' ? 'Lock Time' : 'Carrier-to-Noise'}`
+  );
+}
+
 /**
  * The black bar under the app bar. `Status` and `Configuration` are real pages in this build;
  * `Settings` carries the two shipped settings pages it has (General, Networking) and opens them in
@@ -139,6 +915,7 @@ const MENU = [
     items: [
       { key: 'generalSettings', label: 'General…', wired: true },
       { key: 'networkingSettings', label: 'Networking…', wired: true },
+      { key: 'vehicleSetup', label: 'Vehicle Setup…', wired: true },
     ],
   },
   {
@@ -161,7 +938,18 @@ const MENU = [
       },
     ],
   },
-  { key: 'device', label: 'Device', icon: 'device', caret: true, wired: false },
+  {
+    key: 'device',
+    label: 'Device',
+    icon: 'device',
+    caret: true,
+    wired: true,
+    items: [
+      { key: 'deviceDetails', label: 'Device Details…', wired: true },
+      { key: 'deviceExport', label: 'Storage…', wired: true },
+      { key: 'deviceUpdate', label: 'Update…', wired: true },
+    ],
+  },
 ];
 
 const UNWIRED_NOTE =
@@ -169,16 +957,19 @@ const UNWIRED_NOTE =
   'the other pages need a live receiver.';
 
 /** `Settings ▸ …` entries: each opens the drawer on the shipped page it names. */
-const SETTINGS_PAGES = new Set(['generalSettings', 'networkingSettings']);
+export const SETTINGS_PAGES = new Set(['generalSettings', 'networkingSettings', 'vehicleSetup']);
 
 /**
- * `Device ▸ Device Details`: a menu page of the same family — mounted into the tab's menu layouts
- * and served by the same controller — but it belongs to the Device menu, not to Settings. The
- * drawer's page list comes from `/api/config/pages`, which marks every menu page `settings: true`,
- * so the name is what tells the two menus apart here.
+ * `Device ▸ …`: menu pages of the same family — mounted into the tab's menu layouts and served by
+ * the same controller — but they belong to the Device menu, not to Settings. The drawer's page list
+ * comes from `/api/config/pages`, which marks every menu page `settings: true`, so the name is what
+ * tells the two menus apart here.
+ *
+ *   `deviceDetails` **Device Details** (§2.2.8)
+ *   `deviceExport`  **Storage**       (§2.2.11) — the shipped component keeps its module name
+ *   `deviceUpdate`  **Update**        (§2.2.12) — served read-only, see `READ_ONLY_PAGES`
  */
-const DEVICE_PAGES = new Set(['deviceDetails']);
-
+export const DEVICE_PAGES = new Set(['deviceDetails', 'deviceExport', 'deviceUpdate']);
 /* Material-style glyphs, 24×24 viewBox, drawn with `currentColor` so the bar can dim the
  * unwired items. The gear is the same path the shell's app-bar settings icon uses
  * (`icons/menubar_settings.svg`). */
@@ -540,6 +1331,36 @@ function template() {
                 title="Interference reads ITDETECTSTATUS (#2065): rfPath, detection method and the four parameters, with the tile badge driven by the severity words. A live session that does not log #2065 prints -- and says so; the captures in this build do not contain it, so capture mode keeps the original's Not detected with no number invented.">Help</button>
       </section>
 
+      <section class="mg-card" data-area="ports">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Ports</h2>
+          <span class="mg-badge mg-badge-unknown" data-el="portsBadge" data-tone="unknown">--</span>
+        </div>
+        <div class="mg-port-head">
+          <span>Port</span><span>Rate</span><span>Logs</span><span>State</span>
+        </div>
+        <div class="mg-port-list" data-el="portsList"></div>
+        <p class="mg-reason" data-el="portsReason"></p>
+        <button type="button" class="mg-help" data-help="ports"
+                title="Ports status (manual 2.3.4). Rate and framing are SERIALCONFIG (#1246, one record per serial port); Logs is how many entries of LOGLIST (#5) name that port; State is the receiver's own counters from PORTSTATS (#72): red when framing/parity/over-run counters moved, green when a log is attached or bytes moved, amber when the port is configured but idle, grey when nothing touches it. Input/Output need INTERFACEMODE (#3), which these captures do not carry, so those two columns print --.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="logging">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Logging</h2>
+          <span class="mg-badge mg-badge-unknown" data-el="logBadge" data-tone="unknown">--</span>
+        </div>
+        <div class="mg-kv">
+          ${kvRow('Status', 'logStatus')}
+          ${kvRow('Log File Size', 'logSize')}
+          ${kvRow('Log File Name', 'logName')}
+          ${kvRow('Messages', 'logMessages')}
+        </div>
+        <p class="mg-reason" data-el="logReason"></p>
+        <button type="button" class="mg-help" data-help="logging"
+                title="Logging status (manual 2.3.5) reads FILESTATUS (#2127): file_status, file_name, file_size and the log's message list. This model has no file-log subsystem — LOG FILESTATUS ONCE answers <ERROR:Message is invalid for this model and emits no record — and none of the b1..b5 captures contains #2127, so every field prints -- and the tile says so instead of inventing an empty file.">Help</button>
+      </section>
+
       <section class="mg-card mg-card-wide" data-area="satellite">
         <div class="mg-card-head">
           <h2 class="mg-heading">Satellite View</h2>
@@ -568,11 +1389,97 @@ function template() {
 
       <section class="mg-card" data-area="ppp">
         <div class="mg-card-head">
-          <h2 class="mg-heading">PPP Corrections - Off</h2>
-          <span class="mg-badge mg-badge-off" data-tone="off">Off</span>
+          <h2 class="mg-heading">PPP Corrections</h2>
+          <span class="mg-badge mg-badge-off" data-el="pppBadge" data-tone="off">Off</span>
         </div>
-        <button type="button" class="mg-ppp-link" data-help="ppp"
-                title="PPP Corrections are switched on through Configuration › PPP, which needs a live receiver; this build reads a capture and cannot change receiver settings.">Switch on via configuration</button>
+        <div class="mg-kv">
+          ${kvRow('Subscribed', 'pppSubscribed')}
+          ${kvRow('Locked', 'pppLocked')}
+          ${kvRow('Lband Tracking', 'pppLband')}
+          ${kvRow('Primary Signal', 'pppPrimary')}
+          ${kvRow('Signal Strength', 'pppSignal')}
+          ${kvRow('Bit Success Rate', 'pppBitRate')}
+          ${kvRow('PPP NTRIP (SID) Link', 'pppNtrip')}
+          ${kvRow('PPP Position', 'pppPosition')}
+          ${kvRow('DOP (G/P/H/V)', 'pppDop')}
+        </div>
+        <p class="mg-reason" data-el="pppReason"></p>
+        <button type="button" class="mg-help" data-help="ppp"
+                title="PPP Corrections (manual 2.3.10). Subscribed comes from TERRASTARINFO (#1719) / OCEANIXINFO (#2159) / VERIPOSINFO (#1728) — operating_mode plus the subscription_details word; a service the model does not report stays -- . Locked needs TERRASTARSTATUS (#1729) / OCEANIXSTATUS (#2160) / VERIPOSDECODERSTATUS (#2075), Lband Tracking needs LBANDTRACKSTAT (#1201), PPP NTRIP needs NTRIPCONFIG (#1249): whichever of those the opened capture lacks prints -- with the id named on the tile. PPP Position and DOP are PPPPOS (#1538), PPPDOP (#1997) and PPPDOP2 (#1546) exactly as the receiver wrote them.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="radio">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Radio</h2>
+          <span class="mg-badge mg-badge-off" data-el="radioBadge" data-tone="off">Off</span>
+        </div>
+        <div class="mg-kv">
+          ${kvRow('Status', 'radioStatus')}
+          ${kvRow('Comm Port', 'radioPort')}
+          ${kvRow('Failed Command', 'radioFailed')}
+        </div>
+        <p class="mg-reason" data-el="radioReason"></p>
+        <button type="button" class="mg-help" data-help="radio"
+                title="Radio status (manual 2.3.11) reads SATELSTATUS (#2205) and the SATELDETECT (#2204) reply. The manual says the tile only exists on systems with an external transmit radio; neither record is in any b1..b5 capture, so the tile keeps the manual's own Off state instead of printing a made-up Good.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="align">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">ALIGN</h2>
+          <span class="mg-badge mg-badge-unknown" data-el="alignBadge" data-tone="unknown">--</span>
+        </div>
+        <div class="mg-kv">
+          ${kvRow('Heading', 'alignHeading')}
+          ${kvRow('Pitch', 'alignPitch')}
+          ${kvRow('Baseline', 'alignBaseline')}
+        </div>
+        <p class="mg-reason" data-el="alignReason"></p>
+        <button type="button" class="mg-help" data-help="align"
+                title="ALIGN status (manual 2.3.8) reads HEADING2 (#1335) — heading, pitch, baseline length and their standard deviations — falling back to DUALANTENNAALIGN (#1761). Two ALIGN receivers or a dual-antenna receiver are required; MODELFEATURES (#1329) says this unit is authorized for ALIGN but reports ANTENNA = SINGLE, and no capture carries #1335/#1761, so the values stay --.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="span">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">SPAN</h2>
+          <span class="mg-badge mg-badge-off" data-el="spanBadge" data-tone="off">Off</span>
+        </div>
+        <div class="mg-kv">
+          ${kvRow('Status', 'spanStatus')}
+          ${kvRow('Position Type', 'spanType')}
+          ${kvRow('Alignment', 'spanAlignment')}
+          ${kvRow('Converged', 'spanConverged')}
+          ${kvRow('Azimuth', 'spanAzimuth')}
+          ${kvRow('Pitch', 'spanPitch')}
+          ${kvRow('Roll', 'spanRoll')}
+          ${kvRow('North Velocity', 'spanNorth')}
+          ${kvRow('East Velocity', 'spanEast')}
+          ${kvRow('Up Velocity', 'spanUp')}
+          ${kvRow('Latitude', 'spanLat')}
+          ${kvRow('Longitude', 'spanLon')}
+          ${kvRow('Height (MSL)', 'spanHeight')}
+        </div>
+        <p class="mg-reason" data-el="spanReason"></p>
+        <button type="button" class="mg-help" data-help="span"
+                title="SPAN status (manual 2.3.9) reads INSPVAX (#1465): ins_solution_status, position_type, azimuth/pitch/roll, the three velocities, the position and the standard deviations beside each value. Alignment and Converged have no field of their own in INSPVAX, so they stay -- rather than being inferred. MODELFEATURES (#1329) reports IMU and INS as UNAUTHORIZED on this unit and no capture carries #1465.">Help</button>
+      </section>
+
+      <section class="mg-card mg-card-wide" data-area="tracking">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">Satellite Tracking</h2>
+          <span class="mg-badge mg-badge-unknown" data-el="trackBadge" data-tone="unknown">--</span>
+          <div class="mg-track-tools">
+            <div class="mg-track-consts" data-el="trackConsts" role="group" aria-label="Constellation"></div>
+            <div class="mg-track-metrics" role="group" aria-label="Graph">
+              <button type="button" class="mg-track-metric is-active" data-track-metric="cno" aria-pressed="true">Carrier-to-Noise</button>
+              <button type="button" class="mg-track-metric" data-track-metric="lock" aria-pressed="false">Lock Time</button>
+            </div>
+          </div>
+        </div>
+        <div class="mg-track-legend" data-el="trackLegend"></div>
+        <div class="mg-track-body" data-el="trackBody"></div>
+        <p class="mg-reason" data-el="trackReason"></p>
+        <button type="button" class="mg-help" data-help="tracking"
+                title="Satellite Tracking (manual 2.3.12) is the newest RANGE (#43) epoch: one row per satellite, one bar per signal, C/No in dB-Hz and lock time in seconds taken straight from obs[].C_No and obs[].lock_time. The signal name comes from (c_status >> 21) & 0x1f, the same split packages/graph/src/range-charts.ts verifies against the goldens. Elevation/azimuth come from SATVIS2 (#1043) and print -- when that record has no entry for the PRN. Bar colours follow the shipped thresholds: C/No poor < 20, warning < 35, good >= 35 dB-Hz (axis 0..60); lock time < 1800 s, 1800..3600 s, > 3600 s.">Help</button>
       </section>
     </div>
   </div>
@@ -1233,6 +2140,8 @@ export function mount(root, ctx = {}) {
     range: null,
     version: null,
     interference: null,
+    /** §2.3.4…§2.3.12 tiles: what `loadTiles()` read out of the opened capture. */
+    tiles: null,
     time: '',
     /** Bumped per open; a slower response for an older capture never overwrites a newer one. */
     token: 0,
@@ -1413,6 +2322,374 @@ export function mount(root, ctx = {}) {
     renderDevice();
     renderInterference(state.interference ? { entries: state.interference.entries, time: state.interference.time } : null, 'capture');
     renderSatellite();
+    renderTiles('capture');
+  }
+
+  /* ---- the 2.3.4…2.3.12 tiles -------------------------------------------------
+   *
+   * `state.tiles` is what `loadTiles()` read out of the opened capture; the readers themselves are
+   * module-level pure functions (`readPorts`, `readLogging`, `readPpp`, `readRadio`, `readAlign`,
+   * `readSpan`, `readSatTracking`) so the mapping is testable without a DOM. A mode other than
+   * `capture` prints `--` in every field and says which mode it is: live only decodes the four
+   * records above, and "live lost" must never borrow capture values.
+   */
+
+  const TONE_WORD = {
+    good: 'Active',
+    warn: 'Not active',
+    bad: 'Error',
+    off: 'Not configured',
+    unknown: '--',
+  };
+
+  const TRACK_VIEW = { system: 'all', metric: 'cno' };
+
+  function dash(value, digits, suffix = '') {
+    const parsed = numberOrNaN(value);
+    return Number.isFinite(parsed) ? `${parsed.toFixed(digits)}${suffix}` : '--';
+  }
+
+  /** `value ± sd` — the manual puts the standard deviation right of each ALIGN/SPAN value. */
+  function withDev(value, dev, digits, suffix = '') {
+    const main = dash(value, digits, suffix);
+    if (main === '--') return '--';
+    const spread = numberOrNaN(dev);
+    return Number.isFinite(spread) ? `${main} ± ${spread.toFixed(digits)}` : main;
+  }
+
+  function resetTileValues() {
+    for (const node of [
+      el.logStatus,
+      el.logSize,
+      el.logName,
+      el.logMessages,
+      el.pppSubscribed,
+      el.pppLocked,
+      el.pppLband,
+      el.pppPrimary,
+      el.pppSignal,
+      el.pppBitRate,
+      el.pppNtrip,
+      el.pppPosition,
+      el.pppDop,
+      el.radioStatus,
+      el.radioPort,
+      el.radioFailed,
+      el.alignHeading,
+      el.alignPitch,
+      el.alignBaseline,
+      el.spanStatus,
+      el.spanType,
+      el.spanAlignment,
+      el.spanConverged,
+      el.spanAzimuth,
+      el.spanPitch,
+      el.spanRoll,
+      el.spanNorth,
+      el.spanEast,
+      el.spanUp,
+      el.spanLat,
+      el.spanLon,
+      el.spanHeight,
+    ]) {
+      setText(node, '--');
+    }
+    if (el.portsList) el.portsList.innerHTML = '';
+    if (el.trackBody) el.trackBody.innerHTML = '';
+    for (const node of [el.portsBadge, el.logBadge, el.pppBadge, el.radioBadge, el.alignBadge, el.spanBadge, el.trackBadge]) {
+      setBadge(node, 'unknown');
+    }
+  }
+
+  function renderTiles(mode) {
+    const tiles = mode === 'capture' ? state.tiles : null;
+    if (!tiles) {
+      resetTileValues();
+      const why =
+        mode === 'live'
+          ? 'Live · 这一路的解码器只产出 Positioning / Device / Interference / Satellite 记录的视图模型，这五块读的是抓包字段路径（/api/records）；要看它们，先断开回放到同一份抓包。'
+          : 'Live lost · 会话已断开，不拿抓包数字顶替 — 字段回到 --。';
+      for (const node of [el.portsReason, el.logReason, el.pppReason, el.radioReason, el.alignReason, el.spanReason, el.trackReason]) {
+        setText(node, why);
+      }
+      setBadge(el.portsBadge, 'unknown');
+      setBadge(el.logBadge, 'unknown');
+      setBadge(el.pppBadge, 'off');
+      setBadge(el.radioBadge, 'off');
+      setBadge(el.alignBadge, 'unknown');
+      setBadge(el.spanBadge, 'off');
+      setBadge(el.trackBadge, 'unknown');
+      if (el.trackConsts) el.trackConsts.innerHTML = '';
+      if (el.trackLegend) el.trackLegend.innerHTML = '';
+      setText(el.bandLogging, '--');
+      return;
+    }
+    renderPortsTile(tiles.ports);
+    renderLoggingTile(tiles.logging);
+    renderPppTile(tiles.ppp);
+    renderRadioTile(tiles.radio);
+    renderAlignTile(tiles.align);
+    renderSpanTile(tiles.span);
+    renderTrackingTile(tiles.tracking);
+  }
+
+  /* ---- 2.3.4 Ports ---- */
+
+  function portTitle(row) {
+    const part = (label, value) => `${label} ${Number.isFinite(numberOrNaN(value)) ? value : '--'}`;
+    return (
+      `${row.name} — SERIALCONFIG (#1246): ${part('baud', row.baud)} ${row.framing || ''}`.trim() +
+      ` · PORTSTATS (#72): ${part('rx_chars', row.rx)} / ${part('tx_chars', row.tx)}` +
+      ` · framing ${Number.isFinite(row.framingErrors) ? row.framingErrors : '--'}` +
+      ` parity ${Number.isFinite(row.parityErrors) ? row.parityErrors : '--'}` +
+      ` over-runs ${Number.isFinite(row.overRuns) ? row.overRuns : '--'}` +
+      ` · LOGLIST (#5): ${row.logsKnown ? `${row.logs} log(s)` : 'not in this capture'}`
+    );
+  }
+
+  function renderPortsTile(ports) {
+    if (!el.portsBadge) return;
+    if (!ports.rows.length) {
+      el.portsList.innerHTML = '<p class="mg-port-empty">No port row: this capture has none of SERIALCONFIG / PORTSTATS / LOGLIST.</p>';
+      setBadge(el.portsBadge, 'off');
+      setText(el.portsReason, portsReasonText(ports));
+      return;
+    }
+    el.portsList.innerHTML = ports.rows
+      .map((row) => {
+        const rate = portRateText(row);
+        const logs = portLogsText(row);
+        return (
+          `<div class="mg-port-row" data-tone="${esc(row.tone)}" title="${esc(portTitle(row))}">` +
+          `<span class="mg-port-name">${esc(row.name)}</span>` +
+          `<span class="mg-port-rate">${esc(rate)}</span>` +
+          `<span class="mg-port-logs">${esc(logs)}</span>` +
+          `<span class="mg-port-state" data-tone="${esc(row.tone)}">${esc(TONE_WORD[row.tone] ?? '--')}</span>` +
+          '</div>'
+        );
+      })
+      .join('');
+    setBadge(el.portsBadge, ports.tone);
+    el.portsBadge.title =
+      'Row colour from the receiver’s own counters: red = framing/parity/over-run counter moved, ' +
+      'green = a log is attached or bytes moved, amber = configured but idle, grey = not configured.';
+    setText(el.portsReason, portsReasonText(ports));
+  }
+
+  /* ---- 2.3.5 Logging ---- */
+
+  function renderLoggingTile(logging) {
+    if (!el.logBadge) return;
+    if (!logging.supported) {
+      for (const node of [el.logStatus, el.logSize, el.logName, el.logMessages]) setText(node, '--');
+      setBadge(el.logBadge, 'off');
+      el.logBadge.title = 'No file-log subsystem on this model: FILESTATUS (#2127) is not produced.';
+      setText(el.logReason, loggingReasonText(logging, baseName(state.capture)));
+      setText(el.bandLogging, '--');
+      if (el.bandLogging) el.bandLogging.title = 'No file-log subsystem: FILESTATUS (#2127) is not produced on this model.';
+      return;
+    }
+    setText(el.logStatus, logging.status ?? '--');
+    setText(el.logSize, Number.isFinite(logging.fileSize) ? bytesText(logging.fileSize) : '--');
+    setText(el.logName, logging.fileName || '--');
+    setText(el.logMessages, logging.messages.length ? String(logging.messages.length) : '--');
+    const active = String(logging.status ?? '').toUpperCase() === 'ACTIVE';
+    setBadge(el.logBadge, active ? 'good' : 'off');
+    setText(el.logReason, loggingReasonText(logging, baseName(state.capture)));
+    setText(el.bandLogging, logging.status ?? '--');
+  }
+
+  /* ---- 2.3.10 PPP Corrections ---- */
+
+  function renderPppTile(ppp) {
+    if (!el.pppBadge) return;
+    const subscription = ppp.subscription;
+    setText(
+      el.pppSubscribed,
+      subscription
+        ? `${subscription.subscribed ? 'Subscribed' : 'Unsubscribed'} · ${subscription.mode || '--'} · ${subscription.detailsHex}`
+        : '--',
+    );
+    setText(el.pppLocked, '--');
+    setText(el.pppLband, ppp.pppOff ? 'Off' : '--');
+    setText(el.pppPrimary, '--');
+    setText(el.pppSignal, '--');
+    setText(el.pppBitRate, '--');
+    setText(el.pppNtrip, ppp.ntripRecord ? '--' : 'Off');
+    setText(
+      el.pppPosition,
+      ppp.position
+        ? `${ppp.position.solution ?? '--'} / ${ppp.position.type ?? '--'} · ${Number.isFinite(ppp.position.satellites) ? `${ppp.position.satellites} sv` : 'sv --'}`
+        : '--',
+    );
+    setText(
+      el.pppDop,
+      ppp.dop
+        ? `${dash(ppp.dop.gdop, 2)} / ${dash(ppp.dop.pdop, 2)} / ${dash(ppp.dop.hdop, 2)} / ${dash(ppp.dop.vdop, 2)}`
+        : '--',
+    );
+    setBadge(el.pppBadge, ppp.tone);
+    setText(el.pppReason, pppReasonText(ppp));
+    for (const [node, present] of [
+      [el.pppLocked, ppp.lockRecord],
+      [el.pppPrimary, false],
+      [el.pppSignal, false],
+      [el.pppBitRate, false],
+    ]) {
+      if (node && !present) node.title = 'No record for this field in the opened capture.';
+    }
+  }
+
+  /* ---- 2.3.11 Radio ---- */
+
+  function renderRadioTile(radio) {
+    if (!el.radioBadge) return;
+    setText(el.radioStatus, radio.present ? radio.status ?? '--' : '--');
+    setText(el.radioPort, radio.port || '--');
+    setText(el.radioFailed, radio.failed || '--');
+    setBadge(el.radioBadge, radio.tone);
+    el.radioBadge.title = radio.present
+      ? 'SATELSTATUS (#2205) / SATELDETECT (#2204) from the receiver.'
+      : 'No SATELSTATUS (#2205) / SATELDETECT (#2204): the manual keeps this tile Off on systems without an external transmit radio.';
+    setText(
+      el.radioReason,
+      radioReasonText(radio, baseName(state.capture)),
+    );
+  }
+
+  /* ---- 2.3.8 ALIGN ---- */
+
+  function renderAlignTile(align) {
+    if (!el.alignBadge) return;
+    setText(el.alignHeading, withDev(align.heading, align.headingDev, 2, '°'));
+    setText(el.alignPitch, withDev(align.pitch, align.pitchDev, 2, '°'));
+    setText(el.alignBaseline, dash(align.baseline, 3, ' m'));
+    if (!align.messageId) {
+      setBadge(el.alignBadge, align.supported ? 'off' : 'unknown');
+      setText(el.alignReason, alignReasonText(align, state.tiles?.features));
+      return;
+    }
+    setBadge(el.alignBadge, align.solved ? 'good' : 'warn');
+    setText(el.alignReason, alignReasonText(align, state.tiles?.features));
+  }
+
+  /* ---- 2.3.9 SPAN ---- */
+
+  function renderSpanTile(span) {
+    if (!el.spanBadge) return;
+    const v = span.values;
+    if (!v) {
+      setBadge(el.spanBadge, span.supported === false ? 'off' : 'unknown');
+      setText(el.spanReason, spanReasonText(span));
+      return;
+    }
+    setText(el.spanStatus, v.status ?? '--');
+    setText(el.spanType, v.type ?? '--');
+    setText(el.spanAlignment, '--');
+    setText(el.spanConverged, '--');
+    setText(el.spanAzimuth, withDev(v.azimuth, v.azimuthDev, 3, '°'));
+    setText(el.spanPitch, withDev(v.pitch, v.pitchDev, 3, '°'));
+    setText(el.spanRoll, withDev(v.roll, v.rollDev, 3, '°'));
+    setText(el.spanNorth, dash(v.north, 3, ' m/s'));
+    setText(el.spanEast, dash(v.east, 3, ' m/s'));
+    setText(el.spanUp, dash(v.up, 3, ' m/s'));
+    setText(el.spanLat, dash(v.latitude, 9, '°'));
+    setText(el.spanLon, dash(v.longitude, 9, '°'));
+    setText(el.spanHeight, withDev(v.height, v.heightDev, 3, ' m'));
+    setBadge(el.spanBadge, (v.status ?? '') === 'INS_SOLUTION_GOOD' ? 'good' : 'warn');
+    setText(el.spanReason, spanReasonText(span));
+  }
+
+  /* ---- 2.3.12 Satellite Tracking ---- */
+
+  const TRACK_THRESHOLDS = {
+    cno: { poor: 20, good: 35, max: 60, unit: ' dB-Hz', digits: 1 },
+    lock: { poor: 1800, good: 3600, max: 3600, unit: ' s', digits: 0 },
+  };
+
+  function trackTone(value, metric) {
+    const limit = TRACK_THRESHOLDS[metric];
+    const parsed = numberOrNaN(value);
+    if (!Number.isFinite(parsed)) return 'unknown';
+    if (parsed < limit.poor) return 'poor';
+    if (parsed < limit.good) return 'warn';
+    return 'good';
+  }
+
+  function trackBarHtml(signal, metric) {
+    const value = metric === 'lock' ? signal.lock : signal.cno;
+    const limit = TRACK_THRESHOLDS[metric];
+    const parsed = numberOrNaN(value);
+    const pct = Number.isFinite(parsed) ? Math.max(1, Math.min(100, (parsed / limit.max) * 100)) : 0;
+    const text = Number.isFinite(parsed) ? `${parsed.toFixed(limit.digits)}${limit.unit}` : 'no signal';
+    const tone = Number.isFinite(parsed) ? trackTone(parsed, metric) : 'unknown';
+    return (
+      `<div class="mg-track-bar" data-tone="${tone}">` +
+      `<span class="mg-track-name">${esc(signal.name)}</span>` +
+      '<span class="mg-track-track"><i style="width:' + pct.toFixed(1) + '%"></i></span>' +
+      `<span class="mg-track-value">${esc(text)}</span>` +
+      '</div>'
+    );
+  }
+
+  function renderTrackingTile(tracking) {
+    if (!el.trackBadge) return;
+    const rows = tracking.rows;
+    if (!rows.length) {
+      el.trackBody.innerHTML = '<p class="mg-track-empty">No RANGE (#43) record in this capture — nothing to track.</p>';
+      setBadge(el.trackBadge, 'unknown');
+      setText(el.trackReason, '抓包回放 · 这个抓包里没有 RANGE (#43)，逐星表保持空。');
+      el.trackConsts.innerHTML = '';
+      el.trackLegend.innerHTML = '';
+      return;
+    }
+    const systems = tracking.systems;
+    if (TRACK_VIEW.system !== 'all' && !systems.includes(TRACK_VIEW.system)) TRACK_VIEW.system = 'all';
+    const labelOf = (key) => CONSTELLATIONS.find((item) => item.key === key)?.label ?? key.toUpperCase();
+    el.trackConsts.innerHTML =
+      '<button type="button" class="mg-track-const" data-track-system="all" aria-pressed="' +
+      String(TRACK_VIEW.system === 'all') +
+      '">All</button>' +
+      systems
+        .map(
+          (key) =>
+            `<button type="button" class="mg-track-const" data-track-system="${esc(key)}" aria-pressed="${String(TRACK_VIEW.system === key)}">${esc(labelOf(key))}</button>`,
+        )
+        .join('');
+
+    const metric = TRACK_VIEW.metric === 'lock' ? 'lock' : 'cno';
+    const limit = TRACK_THRESHOLDS[metric];
+    el.trackLegend.innerHTML =
+      metric === 'cno'
+        ? `<span class="mg-track-key" data-tone="poor">&lt; ${limit.poor} dB-Hz</span>` +
+          `<span class="mg-track-key" data-tone="warn">${limit.poor}–${limit.good} dB-Hz</span>` +
+          `<span class="mg-track-key" data-tone="good">&ge; ${limit.good} dB-Hz</span>`
+        : `<span class="mg-track-key" data-tone="poor">&lt; ${limit.poor} s</span>` +
+          `<span class="mg-track-key" data-tone="warn">${limit.poor}–${limit.good} s</span>` +
+          `<span class="mg-track-key" data-tone="good">&gt; ${limit.good} s</span>`;
+
+    const visible = TRACK_VIEW.system === 'all' ? rows : rows.filter((row) => row.rowKey === TRACK_VIEW.system);
+    const sky = tracking.skyEpoch
+      ? `${utcClock(tracking.skyEpoch)} UTC`
+      : '--';
+    el.trackBody.innerHTML = visible
+      .map((row) => {
+        const elAz =
+          Number.isFinite(row.elevation) && Number.isFinite(row.azimuth)
+            ? `${row.elevation.toFixed(1)}° / ${row.azimuth.toFixed(1)}°`
+            : '--';
+        return (
+          `<div class="mg-track-row" data-system="${esc(row.rowKey)}">` +
+          `<span class="mg-track-prn">${esc(row.systemLabel)} ${esc(String(row.prn))}</span>` +
+          `<div class="mg-track-bars">${row.signals.map((signal) => trackBarHtml(signal, metric)).join('')}</div>` +
+          `<span class="mg-track-sky" title="Elevation / Azimuth from SATVIS2 (#1043) ${esc(sky)}">${esc(elAz)}</span>` +
+          '</div>'
+        );
+      })
+      .join('');
+
+    setBadge(el.trackBadge, visible.length > 0 ? 'good' : 'warn');
+    setText(el.trackReason, trackingReasonText({ ...tracking, rows: visible }, metric));
   }
 
   /* ---- numbers shared by both modes ---------------------------------------- */
@@ -2029,6 +3306,7 @@ export function mount(root, ctx = {}) {
 
     const real = satvisSky();
     paintSky(real.length ? real : symbolicSky(symbolic));
+    renderTiles('live');
   }
 
   /* ---- lost mode: show the gap, never substitute captured values ---- */
@@ -2087,6 +3365,7 @@ export function mount(root, ctx = {}) {
     setBadge(el.satBadge, 'unknown');
     setText(el.satNote, `Live lost · 会话在 ${when} 断开 — 星座计数与星点已清空。`);
     paintSky([]);
+    renderTiles('lost');
   }
 
   /* ---- loading ---- */
@@ -2100,6 +3379,109 @@ export function mount(root, ctx = {}) {
     }
   }
 
+  /** Several records of one id — `SERIALCONFIG`/`INTERFACEMODE` carry one record per port. */
+  async function probeList(msgId, limit = 1, offset = 0) {
+    try {
+      const data = await api.get('/api/records', { capture: state.capture, msgId, offset, limit });
+      return Array.isArray(data.records) ? data.records : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function recordTotal(msgId) {
+    try {
+      const data = await api.get('/api/records', { capture: state.capture, msgId, limit: 1 });
+      return Number(data.total) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * §2.3.4…§2.3.12 in one pass. Every list is fetched as a list (not as "the first record"), the
+   * newest RANGE epoch is fetched by its own offset so the tracking table cannot drift from the
+   * Satellite View counters, and a failed fetch degrades to an empty list — the readers then print
+   * `--` and name the id, which is the same state a capture without that record produces.
+   */
+  async function loadTiles(capture) {
+    if (!capture) return null;
+    const [
+      features,
+      stats,
+      serial,
+      logs,
+      iface,
+      filestatus,
+      ppppos,
+      pppdop,
+      pppdop2,
+      terrastar,
+      oceanix,
+      veripos,
+      terrastarstatus,
+      oceanixstatus,
+      veriposdecoder,
+      ntrip,
+      lband,
+      satelstatus,
+      sateldetect,
+      heading2,
+      dualantenna,
+      inspvax,
+    ] = await Promise.all([
+      probeList(MODELFEATURES),
+      probeList(PORTSTATS),
+      probeList(SERIALCONFIG, 8),
+      probeList(LOGLIST),
+      probeList(INTERFACEMODE, 8),
+      probeList(FILESTATUS),
+      probeList(PPPPOS),
+      probeList(PPPDOP),
+      probeList(PPPDOP2),
+      probeList(TERRASTARINFO),
+      probeList(OCEANIXINFO),
+      probeList(VERIPOSINFO),
+      probeList(TERRASTARSTATUS),
+      probeList(OCEANIXSTATUS),
+      probeList(VERIPOSDECODERSTATUS),
+      probeList(NTRIPCONFIG, 4),
+      probeList(LBANDTRACKSTAT),
+      probeList(SATELSTATUS),
+      probeList(SATELDETECT, 2),
+      probeList(HEADING2),
+      probeList(DUALANTENNAALIGN),
+      probeList(INSPVAX),
+    ]);
+    const featureState = readFeatures(features[0]);
+    const rangeTotal = await recordTotal(RANGE);
+    const newestRange = rangeTotal ? await probeList(RANGE, 1, rangeTotal - 1) : [];
+    const satvis = await probeList(SATVIS2, 8);
+    return {
+      features: featureState,
+      ports: readPorts({ stats: stats[0], serial, logs: logs[0], iface, features: featureState }),
+      logging: readLogging({ filestatus, logs: logs[0] }),
+      ppp: readPpp({
+        features: featureState,
+        ppppos,
+        pppdop,
+        pppdop2,
+        terrastar,
+        oceanix,
+        veripos,
+        terrastarstatus,
+        oceanixstatus,
+        veriposdecoder,
+        ntrip,
+        lband,
+      }),
+      radio: readRadio({ satelstatus, sateldetect }),
+      align: readAlign({ features: featureState, heading2, dualantenna }),
+      span: readSpan({ features: featureState, inspvax }),
+      tracking: readSatTracking({ range: newestRange, satvis }),
+    };
+  }
+
   async function openCapture(capture) {
     if (!capture) return;
     const token = (state.token += 1);
@@ -2108,6 +3490,7 @@ export function mount(root, ctx = {}) {
     state.open = true;
     state.version = null;
     state.interference = null;
+    state.tiles = null;
     setBodyState();
     renderDeviceShell();
 
@@ -2154,12 +3537,15 @@ export function mount(root, ctx = {}) {
 
     render();
 
-    try {
-      state.range = await loadRange(capture);
-    } catch {
-      state.range = null; // an unreadable RANGE only empties the counters
-    }
+    /* The counters and the 2.3.x tiles read the same capture in parallel: one capture parse is
+     * cached per process, so the extra record fetches cost a JSON round trip each, not a re-parse. */
+    const [range, tiles] = await Promise.all([
+      loadRange(capture).catch(() => null),
+      loadTiles(capture).catch(() => null),
+    ]);
     if (stale()) return;
+    state.range = range; // an unreadable RANGE only empties the counters
+    state.tiles = tiles;
     render();
   }
 
@@ -2171,6 +3557,7 @@ export function mount(root, ctx = {}) {
     state.range = null;
     state.version = null;
     state.interference = null;
+    state.tiles = null;
     setBodyState();
     renderAppBar();
     renderList();
@@ -2232,14 +3619,36 @@ export function mount(root, ctx = {}) {
   };
 
   /* Tools ▸ Terminal / Events / Device ▸ .cfg, and the Configuration drawer. */
-  const closeDrops = () => {
-    root.querySelectorAll('[data-drop]').forEach((node) => {
+  const closeDrops = () => {    root.querySelectorAll('[data-drop]').forEach((node) => {
       node.hidden = true;
     });
     root.querySelectorAll('[data-submenu]').forEach((node) => {
       node.setAttribute('aria-expanded', 'false');
     });
   };
+  /**
+   * Satellite Tracking's two controls: the constellation buttons and the Carrier-to-Noise /
+   * Lock Time switch. Both only re-arrange the rows already read from the capture — no refetch,
+   * no second pass over the file.
+   */
+  const onTrackClick = (event) => {
+    const metric = event.target.closest('[data-track-metric]');
+    if (metric) {
+      TRACK_VIEW.metric = metric.dataset.trackMetric === 'lock' ? 'lock' : 'cno';
+      for (const node of root.querySelectorAll('[data-track-metric]')) {
+        const active = node.dataset.trackMetric === TRACK_VIEW.metric;
+        node.classList.toggle('is-active', active);
+        node.setAttribute('aria-pressed', String(active));
+      }
+      if (state.tiles?.tracking) renderTrackingTile(state.tiles.tracking);
+      return;
+    }
+    const constellation = event.target.closest('[data-track-system]');
+    if (!constellation) return;
+    TRACK_VIEW.system = constellation.dataset.trackSystem || 'all';
+    if (state.tiles?.tracking) renderTrackingTile(state.tiles.tracking);
+  };
+
   const onMenuClick = (event) => {
     /* A nested flyout is opened by its own button and must not run the leaf action. Its parent
      * dropdown has to stay open, otherwise `closeDrops()` would hide the flyout along with it. */
@@ -2279,6 +3688,7 @@ export function mount(root, ctx = {}) {
     if (key === 'terminal') termOpen();
     else if (key === 'events') void openConfigDrawer('events');
     else if (SETTINGS_PAGES.has(key)) void openConfigDrawer(key);
+    else if (DEVICE_PAGES.has(key)) void openConfigDrawer(key);
     else if (key === 'exportCfg') openDeviceModal('export');
     else if (key === 'importCfg') openDeviceModal('import');
   };
@@ -2356,6 +3766,7 @@ export function mount(root, ctx = {}) {
   el.device.addEventListener('click', onHelpClick);
   el.device.addEventListener('click', onMenuClick);
   el.device.addEventListener('click', onModeAction);
+  el.device.addEventListener('click', onTrackClick);
   if (el.config) {
     el.config.addEventListener('click', onConfigClick);
     el.config.addEventListener('change', onConfigChange);
@@ -2387,6 +3798,7 @@ export function mount(root, ctx = {}) {
     el.device.removeEventListener('click', onHelpClick);
     el.device.removeEventListener('click', onMenuClick);
     el.device.removeEventListener('click', onModeAction);
+    el.device.removeEventListener('click', onTrackClick);
     if (el.config) {
       el.config.removeEventListener('click', onConfigClick);
       el.config.removeEventListener('change', onConfigChange);
