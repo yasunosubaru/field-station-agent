@@ -49,7 +49,7 @@
  */
 
 import { novatelCrc32 } from './crc.ts';
-import { formatField, latin1Bytes, toBigInt } from './ascii-log.ts';
+import { escapePassThrough, formatField, latin1Bytes, toBigInt } from './ascii-log.ts';
 import type { EdieArray, EdieLayout, EdieScalar, EdieSegment, EdieString, EdieTables } from './edie.ts';
 import type { Frame } from './framing.ts';
 
@@ -69,6 +69,95 @@ export interface TextLogRecord {
   name: string;
   /** The nine header tokens after the name (kept verbatim), then every body token. */
   tokens: string[];
+  /** Where those tokens really sit in the record's own text — `%P` needs the raw bytes, not tokens. */
+  source?: TextBodySource;
+}
+
+/**
+ * A record's own text plus the char offset of each token in it.
+ *
+ * `%P` is the one field the suite does **not** read as a token. It reads exactly `count` bytes
+ * straight out of the record text, unescaping `\xNN` / `\\` on the way, so an unescaped comma, a
+ * space, a `*` or even the record's own CRC trailer are payload bytes and not separators (measured
+ * — see the `%P` block in `renderBody`). `starts` is what makes that read possible: `starts[i]` is
+ * the offset of the token the layout walker has just consumed.
+ *
+ * `text` is everything the record could read from: for a `#` record the text behind its `;`
+ * (CRC trailer included, which is why a count that runs past the body prints CRC digits), and for
+ * a `<` record the header plus continuation lines joined by `\n` (the `\r\n` themselves dropped).
+ */
+export interface TextBodySource {
+  text: string;
+  /** Offsets aligned with the token list the renderer walks — body tokens only. */
+  starts: number[];
+}
+
+/**
+ * `%P` payload: read `count` bytes out of the record's text starting at the token behind the
+ * count, then print them escaped the way the suite does (`ascii-log.ts#escapePassThrough`).
+ *
+ * Decoding is the suite's: `\xNN` is one byte (either hex case), `\\` is one backslash, a `\`
+ * before anything else is a literal backslash whose follower is read normally (`\q` → `5c 71`),
+ * and every other character is its own byte. Everything past `count` bytes is discarded, even
+ * when it sits in another comma-separated token.
+ *
+ * Measured through the suite's Convert on hand-built `#PASSCOM1A` / `<PASSCOM1` records:
+ *
+ * | token                     | suite's field             |
+ * |---------------------------|---------------------------|
+ * | `4,\xED\xFF\xF7\xB9`      | `4,\xed\xff\xf7\xb9` (lowercased) |
+ * | `2,\q`                    | `2,\\q` (`5c 71`)         |
+ * | `3,a,b`                   | `3,a,b` (the comma is a payload byte) |
+ * | `3,a*b`                   | `3,a*b`                   |
+ * | `2,abcd`                  | `2,ab` (truncated to the count) |
+ * | `0,abc`                   | `0,` (the extra token is dropped) |
+ * | `8,abc*19fc1fdc`          | `8,abc*19fc` — it keeps reading into the CRC trailer |
+ * | `1,<raw 0x09>`            | `1,\x09`                  |
+ *
+ * A count that reads past the entire record text simply stops there: the suite reads into whatever
+ * its buffer holds next, which is past anything we are given.
+ */
+function passThroughField(source: TextBodySource | undefined, countIndex: number, count: number): string | undefined {
+  if (!source) return undefined;
+  const token = source.starts[countIndex];
+  if (token === undefined) return undefined;
+  const next = source.starts[countIndex + 1];
+  // The payload starts at the next token when there is one (that keeps a `<` data line's run of
+  // spaces intact) and right behind the count otherwise.
+  let at = next !== undefined ? next : token + 1;
+  const bytes: number[] = [];
+  while (bytes.length < count && at < source.text.length) {
+    const char = source.text[at] as string;
+    if (char === '\\') {
+      const hex = source.text.slice(at + 2, at + 4);
+      if (source.text[at + 1] === 'x' && /^[0-9a-fA-F]{2}$/.test(hex)) {
+        bytes.push(parseInt(hex, 16));
+        at += 4;
+        continue;
+      }
+      bytes.push(0x5c);
+      at += source.text[at + 1] === '\\' ? 2 : 1;
+      continue;
+    }
+    // Not escaped: one byte per character. A raw byte ≥ 0x80 never reaches here — the suite drops
+    // such a record before it is parsed (`passThroughAscii` / `collectTextLogs`).
+    bytes.push(char.charCodeAt(0) & 0xff);
+    at += 1;
+  }
+  return escapePassThrough(Uint8Array.from(bytes), 0, bytes.length);
+}
+
+/**
+ * `#`/`<` text records are ASCII-only. The suite writes `\xNN` for every byte outside 0x20..0x7E,
+ * so a record a receiver wrote never carries one — and a hand-built record that does is dropped
+ * whole (no ASCII line, no ABBREV block, no binary frame), even when the byte forms valid UTF-8
+ * and the CRC is right. Measured with 0x80, 0xE9 and the pair 0xC3 0xA9, in the body, in an extra
+ * token and in the port token; a good record next to a bad one still converts, so the drop is per
+ * record, not per capture.
+ */
+function isAsciiRecord(text: string): boolean {
+  for (let i = 0; i < text.length; i += 1) if (text.charCodeAt(i) > 0x7f) return false;
+  return true;
 }
 
 function unquote(token: string): string {
@@ -154,6 +243,7 @@ function renderBody(
   tables: EdieTables,
   out: string[],
   keepExtra = false,
+  source?: TextBodySource,
 ): boolean {
   let at = 0;
   let complete = true;
@@ -171,15 +261,27 @@ function renderBody(
           out.push(String(count));
         }
         // A `%P` payload and a `%Z` byte array are one token each however many elements they hold.
-        // `%Z` prints as lowercase hex, so it is normalised and cut back to `count` bytes.
+        // `%P` goes through the record's own text instead (`passThroughField`): its payload is a
+        // byte count, not a token, so a comma inside it belongs to the payload and the suite
+        // re-escapes what it decoded. `%Z` prints as lowercase hex, so it is normalised and cut
+        // back to `count` bytes.
         const format = String(array.format ?? '');
         if (format === '%P' || format === '%Z') {
           if (at >= tokens.length) {
             complete = false;
             return;
           }
+          // The payload token is consumed, but `%P` is read from the count's position in the text.
+          const countIndex = at - 1;
           const token = tokens[at++] ?? '';
-          out.push(format === '%Z' ? token.toLowerCase().slice(0, Math.max(0, count) * 2) : token);
+          if (format === '%Z') {
+            out.push(token.toLowerCase().slice(0, Math.max(0, count) * 2));
+            continue;
+          }
+          // No source (`renderBody` called without a record, e.g. the `%R` inner message or the
+          // binary gate): the token is copied as it stands.
+          const field = source && array.countSize ? passThroughField(source, countIndex, count) : undefined;
+          out.push(field ?? token);
           continue;
         }
         for (let i = 0; i < count && at < tokens.length; i++) walk(array.elements);
@@ -295,11 +397,29 @@ export function collectTextLogs(frames: readonly Frame[], tables: EdieTables): M
 
   frames.forEach((frame, index) => {
     if (frame.kind !== 'text' || frame.prefix !== '<') return;
-    const tokens = frame.text.slice(1).trim().split(/\s+/).filter(Boolean);
+    // Text after the `<`, without the line terminator. Offsets into this are what `%P` reads from.
+    const line = frame.text.slice(1).replace(/[\r\n]+$/, '');
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return; // a bare `<`, seen 4× per capture
     const name = headerName(tokens, names);
+    // A record carrying a raw byte ≥ 0x80 is dropped by the suite whole (`isAsciiRecord`), so it
+    // never opens, and a record already open loses everything collected so far — the suite writes
+    // no line for the header either.
+    if (!isAsciiRecord(line)) {
+      if (name !== undefined) open = undefined;
+      else if (open) {
+        records.delete(open.index);
+        open = undefined;
+      }
+      return;
+    }
     if (name !== undefined) {
-      open = { index, name, tokens: tokens.slice(1) };
+      open = {
+        index,
+        name,
+        tokens: tokens.slice(1),
+        source: { text: line, starts: tokenOffsets(line, tokens).slice(1) },
+      };
       records.set(index, open);
       return;
     }
@@ -310,9 +430,25 @@ export function collectTextLogs(frames: readonly Frame[], tables: EdieTables): M
     // A continuation line: `<     73`, `<   SOL_COMPUTED SINGLE …`, `<   GPS TRUE TRUE 32`.
     // Records can be interrupted by frames from another port, so this stays open until the next
     // header (or a response) rather than requiring the lines to be adjacent.
-    if (open) open.tokens.push(...tokens);
+    if (open) {
+      open.source.text += `\n${line}`;
+      open.source.starts.push(...tokenOffsets(line, tokens, open.source.text.length - line.length));
+      open.tokens.push(...tokens);
+    }
   });
   return records;
+}
+
+/** Where each token of one line sits in it. `base` shifts the offsets into a multi-line source. */
+function tokenOffsets(line: string, tokens: readonly string[], base = 0): number[] {
+  const offsets: number[] = [];
+  let search = 0;
+  for (const token of tokens) {
+    const found = line.indexOf(token, search);
+    offsets.push(base + (found < 0 ? search : found));
+    search = found < 0 ? search : found + token.length;
+  }
+  return offsets;
 }
 
 /** Render one assembled `<` record as the ASCII line the suite writes. */
@@ -325,8 +461,11 @@ export function encodeTextLog(
   const head = record.tokens.slice(0, 9);
   const body = record.tokens.slice(9);
   const rendered: string[] = [];
-  if (layout) renderBody(layout.fields, body, tables, rendered);
-  else rendered.push(...body);
+  if (layout) {
+    renderBody(layout.fields, body, tables, rendered, false, record.source
+      ? { text: record.source.text, starts: record.source.starts.slice(9) }
+      : undefined);
+  } else rendered.push(...body);
   const sentence = `${record.name}${options.versionLetter ?? 'A'},${head.join(',')};${rendered.join(',')}`;
   return `#${sentence}*${hex8(novatelCrc32(latin1Bytes(sentence)))}`;
 }
@@ -340,6 +479,9 @@ export function encodeTextLog(
  */
 export function passThroughAscii(text: string, names: ReadonlySet<string> = new Set()): string | undefined {
   const line = text.replace(/[\r\n]+$/, '');
+  // ASCII only — see `isAsciiRecord`. The suite writes every byte outside 0x20..0x7E as `\xNN`,
+  // so a record a receiver wrote never trips this gate.
+  if (!isAsciiRecord(line)) return undefined;
   const match = /^#([A-Z][A-Z0-9_]*),[\s\S]*\*([0-9a-fA-F]{8})$/.exec(line);
   if (!match) return undefined;
   if (names.size > 0 && hashName(match[1], names) === undefined) return undefined;
@@ -407,6 +549,11 @@ interface HashRecord {
   body: string[];
   /** The body exactly as it arrived, between the first `;` and the last `*`. */
   rawBody: string;
+  /**
+   * The body as text behind the `;`, CRC trailer included, with the offset of every body token —
+   * what `%P` reads its byte count from (a count that overruns the body prints CRC digits).
+   */
+  source: TextBodySource;
 }
 
 function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecord | undefined {
@@ -418,13 +565,21 @@ function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecor
   if (tokens.length < 9) return undefined;
   const base = rawName.slice(0, -1);
   const name = /[A-Z]$/.test(rawName) && byName.has(base) ? base : rawName;
+  const body = line.slice(semicolon + 1, star).split(',');
+  const starts: number[] = [];
+  let at = 0;
+  for (const token of body) {
+    starts.push(at);
+    at += token.length + 1;
+  }
   return {
     rawName,
     name,
     layout: byName.get(name),
     head: renderHead(tokens.slice(0, 9)),
-    body: line.slice(semicolon + 1, star).split(','),
+    body,
     rawBody: line.slice(semicolon + 1, star),
+    source: { text: line.slice(semicolon + 1), starts },
   };
 }
 
@@ -586,7 +741,7 @@ export function encodeHashLog(record: HashRecord, tables: EdieTables): string | 
     const inner = encodeEmbeddedAscii(record.rawBody, layoutIndex(tables), tables);
     if (inner === undefined) return undefined;
     body.push(inner);
-  } else if (record.layout && !renderBody(record.layout.fields, record.body, tables, body)) return undefined;
+  } else if (record.layout && !renderBody(record.layout.fields, record.body, tables, body, false, record.source)) return undefined;
   else if (!record.layout) body.push(...record.body);
   const sentence = `${record.rawName},${record.head.join(',')};${body.join(',')}`;
   return `#${sentence}*${hex8(novatelCrc32(latin1Bytes(sentence)))}`;
@@ -636,12 +791,15 @@ export function collectBinaryRecords(
     if (record.tokens.length <= 9) continue;
     const layout = byName.get(record.name);
     if (!layout) continue;
+    const source = record.source
+      ? { text: record.source.text, starts: record.source.starts.slice(9) }
+      : undefined;
     records.set(index, {
       index,
       name: record.name,
       layout,
       head: record.tokens.slice(0, 9),
-      body: record.tokens.slice(9),
+      body: rewritePassThroughBody(layout, record.tokens.slice(9), source),
     });
   }
 
@@ -675,11 +833,47 @@ export function collectBinaryRecords(
       name: record.name,
       layout: record.layout,
       head: record.head,
-      body: record.body,
+      body: rewritePassThroughBody(record.layout, record.body, record.source),
     });
   });
 
   return records;
+}
+
+/**
+ * The body tokens the **binary** writer needs for a `%P` field.
+ *
+ * `binary-log.ts` encodes a `%P` field as "count token, then one escaped token, count rewritten to
+ * the decoded length". The suite does the same thing, but the payload it decodes is one byte count,
+ * not one token — so a payload with an unescaped comma (`3,a,b`), a `<` data line's space
+ * (`3,a b`), a truncated token (`2,abcd` → `ab`) or a count that runs into the CRC
+ * (`8,abc*19fc`) is one field the token list cannot express. Replacing the payload tokens with the
+ * single escaped string `passThroughField` produces gives the binary writer exactly those bytes
+ * (`61 2c 62` / `61 20 62` / `61 62` / `61 62 63 2a 31 39 66 63`), measured against the suite.
+ *
+ * Every `%P` layout in the dictionary (`PASSCOM*` / `PASSUSB*` / `PASSICOM*` / `PASSNCOM*` /
+ * `PASSAUX` / `PASSTHROUGH`) has the field last, so only the trivial shape — plain fields in front
+ * of it — is rewritten; anything else is left alone rather than guessed at.
+ */
+function rewritePassThroughBody(
+  layout: EdieLayout,
+  tokens: string[],
+  source?: TextBodySource,
+): string[] {
+  if (!source) return tokens;
+  let countIndex = 0;
+  for (const segment of layout.fields) {
+    if (segment.kind === 'array') {
+      if (String(segment.format ?? '') !== '%P') return tokens;
+      if (!segment.countSize) return tokens;
+      const count = Number(tokens[countIndex] ?? '0');
+      const field = Number.isFinite(count) ? passThroughField(source, countIndex, count) : undefined;
+      if (field === undefined) return tokens;
+      return [...tokens.slice(0, countIndex + 1), field];
+    }
+    countIndex += 1;
+  }
+  return tokens;
 }
 
 /**
@@ -722,7 +916,9 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
     if (record.tokens.length <= 9) continue;
     const layout = byName.get(record.name);
     if (layout) {
-      const lines_ = abbrevFromTokens(record, layout, tables);
+      const lines_ = abbrevFromTokens(record, layout, tables, false, record.source
+        ? { text: record.source.text, starts: record.source.starts.slice(9) }
+        : undefined);
       if (lines_) lines.set(index, lines_);
     }
   }
@@ -739,10 +935,11 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
       }
       if (record?.layout) {
         const blocks = abbrevFromTokens(
-          { index, name: record.name, tokens: [...record.head, ...record.body] },
+          { index, name: record.name, tokens: [...record.head, ...record.body], source: record.source },
           record.layout,
           tables,
           true,
+          record.source,
         );
         if (blocks) lines.set(index, blocks);
       }
@@ -798,12 +995,13 @@ function abbrevFromTokens(
   layout: EdieLayout,
   tables: EdieTables,
   requireComplete = false,
+  source?: TextBodySource,
 ): string[] | undefined {
   const head = record.tokens.slice(0, 9);
   const body = record.tokens.slice(9);
   const first: string[] = [];
   const blocks: string[][] = [];
-  const complete = walkAbbrev(layout.fields, body, tables, first, blocks);
+  const complete = walkAbbrev(layout.fields, body, tables, first, blocks, source);
   // A `#` record whose body runs out of tokens is dropped whole, exactly as in ASCII output (the
   // suite prints nothing for it — see `encodeHashLog`). A `<` record keeps the lenient reading,
   // because no capture carries a truncated one.
@@ -831,6 +1029,7 @@ function walkAbbrev(
   tables: EdieTables,
   first: string[],
   blocks: string[][],
+  source?: TextBodySource,
 ): boolean {
   let at = 0;
   let complete = true;
@@ -854,9 +1053,18 @@ function walkAbbrev(
       first.push(String(count));
       // A `%P` payload or a `%Z` byte array is one token on this line, no element lines — the same
       // shape the binary writer produces (`USERCANDATA … 3 deadbe …`, and `… 0  7 …` for an empty
-      // one, where the empty token leaves the two spaces around it).
+      // one, where the empty token leaves the two spaces around it). `%P` is read out of the
+      // record's own text when there is one, and re-escaped exactly like the ASCII writer.
       const format = String(array.format ?? '');
       if (format === '%P' || format === '%Z') {
+        if (format === '%P' && source) {
+          const field = passThroughField(source, at - 1, count);
+          if (field !== undefined) {
+            first.push(field);
+            at += 1;
+            continue;
+          }
+        }
         if (at < tokens.length) {
           const token = tokens[at++] ?? '';
           first.push(format === '%Z' ? token.toLowerCase().slice(0, Math.max(0, count) * 2) : token);

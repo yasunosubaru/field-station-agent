@@ -597,7 +597,8 @@ b2             DIFFERENT 4 931 973 → 4 931 990（仍只有 IPSTATUSA 那 1 行
 - ❌ **ULONG64 / LONGLONG 仍无样本**：唯一用到 `%llu` 的 FILESYSTEMCAPACITY 被这台模型拒绝，
   `%lld` 只在 INSPVACMP（SPAN，无 IMU）里。宽度表已按声明实现，但没有真机数据背书。
 - ⚠️ `%P`（29 条 PASS*）依旧无样本：需要外部串口往接收机灌数据；本轮 `%Z` + 数组的组合只能靠
-  RAWGPSSUBFRAME / GLORAWEPHEM 覆盖。
+  RAWGPSSUBFRAME / GLORAWEPHEM 覆盖。**→ §9.x.20 用合成 `#PASSCOM1A` / `<PASSCOM1` 记录补上了
+  文本侧的 oracle（真机样本仍然没有）。**
 
 ## 9.x.10 ABBREV 渲染重写 + IPSTATUSA 动态偏移（2026-11-01）
 
@@ -1992,7 +1993,8 @@ packages/protocol/test/*.test.ts   298 项全绿（含本轮新增 8 项）
 - **`ANTENNATYPE` / `USERANTENNA` 的 `pc_cs`**（dense stride 16，`packedStructSize` 92）现在也会
   按 92 走：这两条是配置报文，14 份抓包里没有，合成帧也没做（它们的 `pcv` 是 19 个定长元素，
   套件是否真的按 92 读没有证据）。规则是对的（固定元素 = 结构体），但**没有 oracle 背书**，
-  记为已知缺口。
+  记为已知缺口。**→ §9.x.20 已用合成 `count = 1/2` 帧补上 oracle：92 字节元素、`pco` +4、
+  `pcv` +16、尾部无字段。**
 - `%` 短 ASCII、越界读这些既有差异不变（§9.x.14「剩余」）。
 
 ## 9.x.19 文本 → 二进制：`-b` 把 ASCII 记录重新编码成帧（2026-11-02）
@@ -2082,5 +2084,92 @@ Summary 记 `269 → 247`。
   真机 `PASSTHROUGH` 文本记录可验。
 - 未知端口名的回退（192）来自一次合成探测；套件是否对某些名字另有规则没有穷举。
 - 一条正文里有两个 `%R` 时套件只转第一个（ASCII 侧已如此），编码器沿用这个上限。
+
+## 9.x.20 台账 A5 的两条：`%P` 的**文本侧**与 `pc_cs` 的 92 字节元素（2026-11-02）
+
+台账 `18_1比1差距台账.md` 的 A5/J5 记着两条"没有 oracle"的边角。这一轮不再靠推断：两处都改为
+**合成记录喂本机套件**，逐字节对。探针两个，都可以直接跑：
+
+```
+node 逆向/tools/oracle-pc-cs.ts            # 6 例，exit 0 = 全部与套件逐字节
+node 逆向/tools/oracle-passthrough-text.ts # 27 例，同一份抓包跑 -a / --abbrev / -b
+```
+
+### ① `pc_cs`（`ANTENNATYPE` #2281 / `USERANTENNA` #2282）：92 是对的
+
+字典给这个数组标的 `stride` 是 **16**，而成员加起来是 **92**（`frequency` 0..4、`pco` 4..16、
+`pcv` 16..92）。这两条配置日志在 14 份抓包里一条都没有，`count = 1` 又分不出"16 字节元素"
+和"92 字节结构体"，所以 §9.x.18 只把 92 记为"规则对、无背书"。
+
+合成 `count = 1 / 2` 帧，每个元素每个成员写 `1000 × (元素号+1) + 10 × 成员号`，套件的行是：
+
+```
+ANTENNATYPE count=1  …;ADD,USER,"ANTENNA-ONE",1,GPSL1,1010.00,…,1220.00*3b98918c
+ANTENNATYPE count=2  …;…,2,GPSL1,1010.00,…,1220.00,GPSL2,2010.00,…,2220.00*4a613aef
+USERANTENNA count=1  …;USER,"USER-ANT-ONE",1,GPSL1,1010.00,…,1220.00*409aa1b3
+USERANTENNA count=2  …;…,2,GPSL1,…,1220.00,GPSL2,2010.00,…,2220.00*c83da631
+```
+
+- 第二个元素在 `28 + 92 = 120`（ANTENNATYPE）/ `24 + 92 = 116`（USERANTENNA）才开始读；若按字典的
+  16 走，`GPSL2` 那一段会读到第一个元素的中段，值全错——所以这不是"两种读法碰巧一样"。
+- `pco` 读在 +4、`pcv` 在 +16，最后一个成员（`pcv[18]`）在 +88：上面 `1220.00 / 2220.00` 就是它。
+- `pc_cs` 是最后一段，**尾部没有字段**：在最后一个元素后塞 4 字节哨兵（`0x51ab`），套件输出与
+  不塞时逐字节相同。所以"尾部 `t0`"这一项在两条报文里不成立（没有尾字段），不是漏读。
+- ABBREV 侧同样是每个元素一行（`<          GPSL1 …` / `<          GPSL2 …`），两个定长数组
+  （`pco` / `pcv`）留在元素行上。
+
+结论：**`pack(4)` 92 字节的读法正确，`edie.ts` 不需要改**；`pc-cs-geometry.test.ts`（6 项）把
+上面四行、ABBREV 块、元素起点和尾部哨兵钉住。
+
+### ② `%P`：文本侧是"按字节数读 + 重新转义"，不是"复制一个 token"
+
+`%P` 的**二进制 → 文本**方向早就有 oracle（一个 `PASSCOM1` 帧装下全部 256 个字节值，
+`ascii-log.ts#escapePassThrough`）。缺的是**文本 → 文本 / 文本 → 二进制**：接收机自己写出来的
+`#PASSCOM1A,…` 长什么样没人见过，而套件对文本记录是"解析后重打"，不是原样拷贝。
+
+手写 27 条 `#PASSCOM1A` / `#PASSTHROUGH` / `<PASSCOM1` 记录（CRC 按 `#` 后全部字节算），
+每条都跑套件 `-a`、`--abbrev`、`-b`，结论一条一条是测出来的：
+
+| 输入字段 | 套件输出 | 说明 |
+|---|---|---|
+| `4,\xED\xFF\xF7\xB9` | `4,\xed\xff\xf7\xb9` | 大小写归一 |
+| `2,\q` | `2,\\q`（字节 `5c 71`） | 不认识的转义 = 字面反斜杠 + 下一个字符 |
+| `3,a,b` | `3,a,b`（字节 `61 2c 62`） | **逗号是 payload 字节**，不是分隔符 |
+| `3,a*b` | `3,a*b` | `*` 也不是分隔符 |
+| `3,a b`（`<` 形式） | `3,a b`（`61 20 62`） | 空格同样是 payload 字节 |
+| `2,abcd` | `2,ab` | 按 count 截断，多出来的丢弃 |
+| `0,abc` | `0,` | count = 0 时后面的 token 被吞掉 |
+| `8,abc*19fc1fdc` | `8,abc*19fc*6ce17c80` | 越过正文继续读**记录自己的 CRC 串**，再重算 CRC |
+| `1,<裸 0x09>` / `0x7F` | `1,\x09` / `1,\x7f` | 裸控制字节重新转义 |
+| 任意位置出现裸 ≥ 0x80 | **整条不输出**（三种格式都没有） | 0x80 / 0xE9 / 合法 UTF-8 的 `C3 A9` 一样；同包里好的那条照常输出 |
+
+即：payload 是**「count 个字节」**，从 count 后面的原文开始读，`\xNN`/`\\` 边读边解码，读完
+`count` 个字节停；打印时再走一遍 `escapePassThrough`。所以反斜杠、控制字节、大小写都被规范化，
+而逗号/空格/`*` 原样保留。
+
+`<` 形式（`<PASSCOM1 <9 个头>\r\n<     4 \xED…`）规则完全一样：ASCII 重打成 `#PASSCOM1A,…`，
+ABBREV 重打成同样的两行，`-b` 也按同一段字节编码。
+
+实现（只在 `text-log.ts`，`binary-log.ts` 一行没动）：
+
+- `TextBodySource`：给每条记录留下**原文**与每个 token 的字符偏移（`#` 的原文从 `;` 后开始、
+  含 `*crc`；`<` 是多行用 `\n` 连起来），`passThroughField()` 就靠它按字节数读；
+- `renderBody`（ASCII）、`walkAbbrev`（ABBREV）、`encodeHashLog` / `encodeTextLog` 共用这一个读法；
+- `collectBinaryRecords` 把 `%P` 的 payload token 换成 `passThroughField` 的单个转义串
+  （`rewritePassThroughBody`），`binary-log.ts` 的编码器因此写出的正是套件那串字节；
+- `#` 与 `<` 各加一道 ASCII 闸门（`passThroughAscii` / `collectTextLogs`），裸 ≥ 0x80 的整条
+  丢弃，与套件一致——接收机自己写记录时会把这类字节转义，所以真机样本永远不会撞上。
+
+测试：`passthrough-text.test.ts`（9 项）钉住上表每一行、`<` 形式的三种形状、`PASSTHROUGH`
+的端口枚举，以及"高字节整条丢弃 / 好记录照常"。
+
+### 仍然没做到的
+
+- **count 大到越过整行**：`13,abc` 这种，套件把行尾的 `\r` 也当成第 13 个字节
+  （`13,abc*ec5b0c61\x0d`），我们读到记录文本末尾就停（少一个 `\x0d`）。这需要把行终止符也
+  纳入读取缓冲，而接收机不会写出 count 超过 payload 的记录，故意没做。
+- **真机 `PASS*` 样本依旧没有**：29 条 `PASS*` 里这台 OEM729 只有 `PASSCOM3` 真在转发
+  （b5，一条，走的是二进制帧那条已验的路）。文本形态的结论全部来自合成记录。
+
 
 
