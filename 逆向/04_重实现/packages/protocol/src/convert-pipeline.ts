@@ -248,11 +248,12 @@ interface ConvertBlock {
   /** The record's own GPS stamp — the *week* is kept as well: `--daily-utc` counts whole days. */
   stamp?: RecordStamp;
   /**
-   * The record's time status. `--daily-utc` only moves its day clock on an *observation* time:
-   * `FINE`…`FINESTEERING`, not `COARSESTEERING`/`APPROXIMATE`/`UNKNOWN`/`SATTIME` — see
-   * `partitionBlocks`.
+   * The record's time status. `--daily-utc` only moves its day clock on certain statuses, and a
+   * **text** record's set is one step wider than a binary record's — see `partitionBlocks`.
    */
   timeStatus?: number;
+  /** True when the block came from a text record (`#NAME …` / `<NAME …`), false for an SBF frame. */
+  text?: boolean;
   /** Capture offset of the record, for `--unknown-bytes=interleave`. */
   offset?: number;
 }
@@ -433,15 +434,17 @@ function renderBlocks(
   const bump = (id: number, count: number) => rendered.set(id, (rendered.get(id) ?? 0) + count);
   const push = (index: number, name: string, lines: readonly string[]) => {
     if (lines.length === 0) return;
-    const timeStatus = frames[index].kind === 'sbf'
-      ? (frames[index] as SbfFrame).header.timeStatus
-      : textTimeStatus(lines[0] ?? '');
+    const text = frames[index].kind === 'text';
+    const timeStatus = text
+      ? textTimeStatus(lines[0] ?? '')
+      : (frames[index] as SbfFrame).header.timeStatus;
     blocks.push({
       lines,
       bytes: latin1Bytes(`${lines.join('\r\n')}\r\n`),
       name,
       ...(stamps[index] ? { stamp: stamps[index] } : {}),
       ...(timeStatus !== undefined ? { timeStatus } : {}),
+      text,
       ...(frames[index].offset !== undefined ? { offset: frames[index].offset } : {}),
     });
   };
@@ -596,10 +599,13 @@ function countTextRecords(
  *
  *  1. **`<base>.UNKNOWN`** (`--unknown-bytes=file`) is the capture minus every record whose payload
  *     renders, minus every text record the parser resolves (a `<NAME …` header **and** its
- *     continuation rows). It is format-independent: `b1` gives the same 5386 bytes under `-a`,
- *     `--abbrev` and `-b`. A record that is a log but renders nothing — an `RXCONFIG` (128) whose
- *     embedded message the dictionary lacks, 22 of them in `b1`, 1616 bytes — is *in* the file:
- *     the writer had nothing to put in the output, so the record's bytes are unconverted.
+ *     continuation rows), and minus every record the reader never reached — the ones `--decimate`
+ *     dropped and the SBF records a Time Interval left out (their bytes are neither output nor
+ *     unknown: b1 `--decimate=5` writes 4 014 B, not 5 386; its windowed run 3 770 B). It is
+ *     format-independent: `b1` gives the same 5386 bytes under `-a`, `--abbrev` and `-b`. A record
+ *     that is a log but renders nothing — an `RXCONFIG` (128) whose embedded message the dictionary
+ *     lacks, 22 of them in `b1`, 1616 bytes — is *in* the file: the writer had nothing to put in the
+ *     output, so the record's bytes are unconverted.
  *
  *  2. **The Summary's `UNKNOWN` row** comes from the pre-scan (`readmessage`), which *does* parse
  *     those silent records (they show up as `RXCONFIG 278`), so their bytes are **not** in it.
@@ -612,14 +618,14 @@ function countTextRecords(
  *         the parser has not synced on a record yet, so it reads the leading text as garbage.
  *     Numbers: b1 3695 / b2 6875 / b3 224 / b5 350 — every one of them exact.
  */
-interface UnknownSpans {
+export interface UnknownSpans {
   /** Complement of the records the **pre-scan** parses — what the `UNKNOWN` row counts. */
   parseRuns: Span[];
   /** Complement of the records that **produce output** — what `.UNKNOWN` holds. */
   fileRuns: Span[];
 }
 
-interface Span { start: number; end: number }
+export interface Span { start: number; end: number }
 
 /** `<OK`/`<ERROR` up to CRLF. `IGNORED`/`INVALID` are not responses: `<IGNORED\r\n` counts as 10 B. */
 const RESPONSE_LINE = /<(OK|ERROR)[^\r\n]*\r\n/y;
@@ -669,14 +675,32 @@ function complement(spans: readonly Span[], length: number): Span[] {
   return runs;
 }
 
-function unknownSpans(
+export function unknownSpans(
   frames: readonly Frame[],
   tables: EdieTables,
   length: number,
+  /**
+   * Records the reader never reaches — `--decimate` drops them, a Time Interval leaves SBF records
+   * outside its window out. Their bytes are **neither written nor unknown**: measured on b1
+   * (`--decimate=5`: 5 386 → 4 014 B, the 1 372 B all belonging to off-grid records that render
+   * nothing) and on a synthetic capture (a silent `RXCONFIG` on the grid stays in `.UNKNOWN`, the
+   * same record off the grid disappears from it). The junk *around* such a record stays: what goes
+   * away is the record's own span, not a buffer of pending bytes.
+   *
+   * This only moves the `.UNKNOWN` side. The Summary's `UNKNOWN` row keeps counting the full
+   * capture (`parseRuns`, b1 3 695 both ways).
+   */
+  skipped: readonly Frame[] = [],
 ): UnknownSpans {
   const resolved = resolvedTextFrames(frames, tables);
   const parsed: Span[] = [];
   const written: Span[] = [];
+  const dropped: Span[] = [];
+  for (const frame of skipped) {
+    if (frame.offset === undefined) continue;
+    const size = frame.kind === 'sbf' ? frame.bytes.length : frame.text.length;
+    dropped.push({ start: frame.offset, end: frame.offset + size });
+  }
   frames.forEach((frame, index) => {
     if (frame.offset === undefined) return;
     if (frame.kind === 'sbf') {
@@ -695,7 +719,13 @@ function unknownSpans(
     parsed.push({ start: frame.offset, end });
     written.push({ start: frame.offset, end });
   });
-  return { parseRuns: complement(parsed, length), fileRuns: complement(written, length) };
+  return {
+    parseRuns: complement(parsed, length),
+    fileRuns: complement(
+      [...written, ...dropped].sort((a, b) => a.start - b.start),
+      length,
+    ),
+  };
 }
 
 /**
@@ -744,14 +774,28 @@ function latin1(bytes: Uint8Array): string {
 const MEBIBYTE = 1_048_576;
 
 /**
- * The time statuses that carry an **observation** time as far as `--daily-utc` is concerned:
- * `FINE` (80), `FINEADJUSTING` (100), `DEGRADED` (120), `ALIGNING` (160) and `FINESTEERING` (180).
+ * The time statuses that move `--daily-utc`'s day clock on a **binary** record: `FINE` (80),
+ * `FINEADJUSTING` (100), `DEGRADED` (120), `ALIGNING` (160) and `FINESTEERING` (180).
  *
- * Measured with one synthetic record per status, `[2442:577759:180, 0:2.176:<status>, 2442:577760:180]`:
- * statuses 0, 20, 60 and 200 leave the capture at one part, 80/100/120/160/180 split it — i.e.
- * `COARSESTEERING` (60) does **not** move the day clock, and `SATTIME` (200) is out as well.
+ * Measured with one probe record between two same-day ones,
+ * `[2442:577759:180, <week:ms>:<status>, 2442:577760:180]`, one status per run: 0, 20, 60 and 200
+ * leave the capture at one part; 80/100/120/160/180 split it at the probe record. A week-0 probe
+ * gives the mirror image — status 80 splits *at the following record* (the probe pulled the clock
+ * back to day 0), statuses 0/20/60/200 do not split at all.
  */
 const DAILY_CLOCK_TIME_STATUS = new Set([80, 100, 120, 160, 180]);
+
+/**
+ * The same set for a **text** record, and it is one step wider: `COARSESTEERING` (60) participates.
+ *
+ * Measured with the same shape, the probe written as a `#BESTPOSA,…` text record (its CRC covers
+ * the record after the leading `#`, so the suite echoes it verbatim): statuses 0, 20 and 200 leave
+ * one part while 60/80/100/120/160/180 split both forward (`2442:577759` → `2443:1.000`) and
+ * backward (a week-0 probe pulls the clock to day 0 and the next same-day record splits). The two
+ * gates really differ: the *identical* `COARSESTEERING` stamp splits as a text record and does not
+ * as a binary frame.
+ */
+const DAILY_CLOCK_TEXT_STATUS = new Set([60, 80, 100, 120, 160, 180]);
 
 /**
  * Split `blocks` into the parts one of the three file-splitting modes writes.
@@ -774,9 +818,20 @@ const DAILY_CLOCK_TIME_STATUS = new Set([80, 100, 120, 160, 180]);
  *
  * `'daily'` — `--daily-utc`: a new part whenever a record's GPS day (whole days since the GPS
  * epoch, **no leap-second correction** — the boundary is seconds-of-week ≡ 0 mod 86400, measured
- * either side of 518400 and 604800) is *later* than the previous record's day. Late records never
- * move back, and a jump inside one day never splits. b2 spans one UTC day, hence one part of the
- * whole file (905 lines / 4 931 973 B, named `b2-20261101_Part0.ASCII`).
+ * either side of 518400 and 604800) is *later* than the day clock, and the clock **follows every
+ * record that moves it, backwards included**:
+ *
+ *  - the clock starts at the first block that carries a stamp at all, whatever its status (a week-0
+ *    `COARSESTEERING` frame starts it at day 0, and the first real day after that splits);
+ *  - a binary frame moves it when its header status is in `DAILY_CLOCK_TIME_STATUS`, a text record
+ *    when its printed status is in `DAILY_CLOCK_TEXT_STATUS` (one status wider);
+ *  - a late record therefore *rewinds* the clock, so the next jump forward splits again — exactly
+ *    what b7 does: `2443/35948` (day 17101) opens Part1 after day 17100, the late
+ *    `2442/553834.993` (day 17100) rewinds it inside Part1, and `2443/23262.546` (day 17101) opens
+ *    Part2. A monotone clock instead writes b7 as one 609-line part.
+ *
+ * b2 spans one UTC day, hence one part of the whole file (905 lines / 4 931 973 B, named
+ * `b2-20261101_Part0.ASCII`); b5 and live-nav split into two.
  */
 function partitionBlocks(
   blocks: readonly ConvertBlock[],
@@ -815,14 +870,16 @@ function partitionBlocks(
     for (const block of blocks) {
       const day = block.stamp ? gpsDay(block.stamp) : undefined;
       // The clock starts at the first record that carries a stamp at all, whatever its status, and
-      // from then on only records whose status means "this is an observation time" can move it.
+      // from then on only records whose status means "this time is worth trusting" move it.
       // b2's `ALMANAC` (200) and `GLORAWALM` (200, week 2402 of a 2026-11 capture) leave it at one
       // part; b1's 24 `RXCONFIG` records stamped 0 with status 200 and its `id 1246` frames with
       // status 20 and week 0 leave it at one part too — while a status-180 record stamped 0 does
       // start the clock at day 0 and splits the capture at the first real record.
       if (day !== undefined) {
         if (clockDay === undefined) clockDay = day;
-        else if (DAILY_CLOCK_TIME_STATUS.has(block.timeStatus ?? -1)) {
+        else if ((block.text ? DAILY_CLOCK_TEXT_STATUS : DAILY_CLOCK_TIME_STATUS).has(block.timeStatus ?? -1)) {
+          // Measured: the clock is *not* monotone — a late record rewinds it, so the next record
+          // that is later than the rewound clock opens a new part (b7's Part1 → Part2 boundary).
           if (day > clockDay) close();
           clockDay = day;
         }
@@ -1122,6 +1179,34 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     ? inputStamps
     : stampsFor(frames, textMap ? textRecordStamps(textMap) : new Map<number, RecordStamp>());
 
+  /**
+   * The records the reader never reaches: the ones `--decimate` drops, and the SBF records a Time
+   * Interval leaves out. Their own bytes are neither written nor "unknown" — measured on b1:
+   * `--decimate=5` writes a 4 014 B `.UNKNOWN` instead of 5 386, `--start-time=2442,570250
+   * --finish-time=2442,570255` 3 770 B, and both together 3 770 B as well (the window already covers
+   * all 22 silent `RXCONFIG`s, 1 616 B; decimation covers 19 of them, 1 372 B).
+   *
+   * Text records are **not** narrowed by the window in this account: b1's 3 770 bytes of banners,
+   * `[USB2]` markers and `<OK` replies survive the window intact, so only SBF records are skipped
+   * here. The decimation is decided over the **whole capture** — a window narrows which records are
+   * written, not which ones the decimator throws away.
+   */
+  const skipped: Frame[] = [];
+  if (windowed) {
+    const keptByWindow = new Set<Frame>(inputFrames);
+    for (const frame of captureFrames) {
+      if (frame.kind === 'sbf' && !keptByWindow.has(frame)) skipped.push(frame);
+    }
+  }
+  if (interval) {
+    const captureStamps = stampsFor(
+      captureFrames,
+      textRecordStamps(writesText ? textLinesOf(captureFrames) : new Map<number, RecordStamp>()),
+    );
+    const keptByDecimation = new Set<Frame>(decimateFrames(captureFrames, captureStamps, interval));
+    for (const frame of captureFrames) if (!keptByDecimation.has(frame)) skipped.push(frame);
+  }
+
   const all = frames.filter((frame): frame is SbfFrame => frame.kind === 'sbf');
   // `PASSTHROUGH` is converted like every other log — b5's summary lists `1342 … 1 in / 1 out`.
   const passthrough = all.filter(isPassthrough);
@@ -1134,15 +1219,15 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   let countsRendered: Map<number, number> | undefined;
   let countsText: Map<number, string | string[]> | undefined;
 
-  // Unknown bytes, when the caller handed us the capture itself (they are in no frame). Measured
-  // over the **whole** capture and before `--decimate` drops anything: the suite's b1 run at
-  // `--decimate=5` still reports the full 3 695 in the summary's UNKNOWN row, and a Time Interval
-  // does not narrow the account either — b2 with `--start-time=2442,577760
-  // --finish-time=2442,577770 --unknown-bytes=file` still writes the full 7 056-byte `.UNKNOWN`.
+  // Unknown bytes, when the caller handed us the capture itself (they are in no frame). The account
+  // is over the **whole** capture and the Summary's UNKNOWN row never moves: the suite's b1 run at
+  // `--decimate=5` still reports 3 695. What moves is `.UNKNOWN` itself — the bytes of the records
+  // the reader never reached are in neither file (5 386 → 4 014 B on b1 with `--decimate=5`, →
+  // 3 770 B with a Time Interval). `skipped` above carries exactly those records.
   const mode: UnknownBytesMode = options.unknownBytes ?? 'ignore';
   const source = options.source;
   const spans = source && source.length > 0 && captureFrames.every((frame) => frame.offset !== undefined)
-    ? unknownSpans(captureFrames, tables, source.length)
+    ? unknownSpans(captureFrames, tables, source.length, skipped)
     : undefined;
   const textFamily = format === 'ASCII' || format === 'ABBREV_ASCII' || format === 'BINARY';
   // The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`).

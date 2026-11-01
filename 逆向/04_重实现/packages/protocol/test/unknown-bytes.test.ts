@@ -5,8 +5,10 @@
  *
  *  - **the file** (`--unknown-bytes=file`, the CLI spelling of the GUI's `SEPARATEFILE`) is the
  *    capture minus every record whose payload renders minus every text record the parser resolves
- *    (a `<NAME …` header **and** its continuation rows). 5386 / 7056 / 364 / 565 bytes; ours is
- *    byte-identical, the `.UNKNOWN` goldens sit next to the captures.
+ *    (a `<NAME …` header **and** its continuation rows) minus every record the reader never reached
+ *    (`--decimate` drops it, or a Time Interval leaves it outside the window — 2026-11-02).
+ *    5386 / 7056 / 364 / 565 bytes; ours is byte-identical, the `.UNKNOWN` goldens sit next to the
+ *    captures.
  *  - **the Summary's `UNKNOWN` row** is the pre-scan's own count — 3695 / 6875 / 224 / 350 — which
  *    differs from the file on every capture. Same module, `unknownSpans`/`countUnknown`.
  *  - `ignore` (and no flag) write nothing and leave the count alone; `interleave` splices the bytes
@@ -16,10 +18,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { appendCrcLe } from '../src/crc.ts';
+import { convertFrames } from '../src/convert-pipeline.ts';
+import type { EdieTables } from '../src/edie.ts';
+import { SbfDeframer, type Frame, type SbfFrame } from '../src/framing.ts';
+import { buildLongHeader } from '../src/header.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = join(here, '..', '..', 'cli', 'src', 'convert.ts');
@@ -132,4 +141,142 @@ test('b1: interleave splices the unknown bytes into the converted stream at thei
   } finally {
     for (const run of [interleaved, plain]) rmSync(run.out, { recursive: true, force: true });
   }
+});
+
+/* -------------------------------------------------------------------------------------------
+ * --decimate × --unknown-bytes=file
+ * ---------------------------------------------------------------------------------------- */
+
+const tables = JSON.parse(
+  readFileSync(join(here, '..', 'data', 'edie-layouts.json'), 'utf8'),
+) as EdieTables;
+
+const latin1Text = (bytes: Uint8Array): string => Buffer.from(bytes).toString('latin1');
+
+const latin1Bytes = (text: string): Uint8Array => {
+  const out = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff;
+  return out;
+};
+
+const concat = (...parts: Uint8Array[]): Uint8Array => {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) { out.set(part, at); at += part.length; }
+  return out;
+};
+
+/** A sealed SBF frame with the header fields the probes vary. */
+function sealed(
+  messageId: number,
+  payload: Uint8Array,
+  header: { week: number; milliseconds: number; timeStatus: number },
+): Uint8Array {
+  const head = buildLongHeader({
+    messageId,
+    payloadLength: payload.length,
+    portAddress: 32,
+    sequence: 1,
+    idleTimeRaw: 0,
+    receiverStatus: 0x03800800,
+    reserved: 0xcdba,
+    softwareVersion: 18278,
+    ...header,
+  });
+  const body = new Uint8Array(head.length + payload.length);
+  body.set(head, 0);
+  body.set(payload, head.length);
+  return appendCrcLe(body);
+}
+
+const framesFrom = (bytes: Uint8Array): Frame[] => [...new SbfDeframer({ crcMode: 'validate' }).push(bytes)];
+
+/**
+ * Measured through the suite on the synthetic captures built below: `--decimate` removes the bytes
+ * of the records it drops from `.UNKNOWN` too — but only those, never the junk around them.
+ *
+ *  - a silent record (an `RXCONFIG` that renders nothing) **off** the 5 s grid: the suite writes
+ *    84 B without the flag and **16 B** with `--decimate=5` — the two 8-byte junk runs survive, the
+ *    68-byte record does not;
+ *  - the same record **on** the grid: 84 B both ways.
+ *
+ * On b1 that is 5 386 B → **4 014 B**: all 1 372 bytes belong to 12 spans / 19 `RXCONFIG` records
+ * that render nothing and sit off the grid (the first at capture offset 132 094, stamped
+ * `0/1.985`, status 20). The Summary's `UNKNOWN` row is a different question and stays at 3 695.
+ */
+test('--decimate takes the records it drops out of .UNKNOWN, and only those', () => {
+  const b1 = framesFrom(new Uint8Array(readFileSync(join(live, 'b1-20261101.sbf'))));
+  const silent = b1.find(
+    (frame): frame is SbfFrame => frame.kind === 'sbf' && frame.header.messageId === 128 && frame.offset === 132094,
+  );
+  assert.ok(silent, 'b1 carries the silent RXCONFIG at 132094');
+  const junk = '\r\n[USB2]';
+  const good = () => sealed(42, new Uint8Array(32), { week: 2442, milliseconds: 580_000_000, timeStatus: 180 });
+  const silentAt = (milliseconds: number) =>
+    sealed(128, silent.payload, { week: 0, milliseconds, timeStatus: 20 });
+
+  const unknownOf = (capture: Uint8Array, decimate?: number) => convertFrames(framesFrom(capture), {
+    format: 'ASCII',
+    at: new Date('2026-11-01T00:00:00Z'),
+    tables,
+    name: 'probe.sbf',
+    source: capture,
+    unknownBytes: 'file',
+    ...(decimate === undefined ? {} : { decimate }),
+  }).unknown;
+
+  // 577 500 500 ms is off the 5 s grid, 580 000 000 ms is on it.
+  const offGrid = concat(latin1Bytes(junk), silentAt(577_500_500), latin1Bytes(junk), good());
+  assert.equal(unknownOf(offGrid).length, 84);
+  assert.equal(unknownOf(offGrid, 5).length, 16);
+  assert.equal(latin1Text(unknownOf(offGrid, 5)), `${junk}${junk}`);
+
+  const onGrid = concat(latin1Bytes(junk), silentAt(580_000_000), latin1Bytes(junk), good());
+  assert.equal(unknownOf(onGrid).length, 84);
+  assert.equal(unknownOf(onGrid, 5).length, 84);
+  assert.equal(
+    latin1Text(unknownOf(onGrid, 5)),
+    latin1Text(concat(latin1Bytes(junk), silentAt(580_000_000), latin1Bytes(junk))),
+  );
+});
+
+test("b1: --decimate=5 --unknown-bytes=file writes the suite's 4 014-byte .UNKNOWN", () => {
+  withRun('b1-20261101', ['--decimate=5', '--unknown-bytes=file'], (run) => {
+    const ours = readFileSync(join(run.formatDir, 'b1-20261101.UNKNOWN'));
+    assert.equal(ours.length, 4014);
+    // SHA-256 of the file the suite itself wrote for the same capture and the same flags.
+    assert.equal(
+      createHash('sha256').update(ours).digest('hex'),
+      '50f75de6db28abcf2f19287803455641238994617261937df14a84eb47fe8600',
+    );
+    // Not the 5 386-byte stream truncated: the 19 dropped records (12 spans) are absent from it.
+    const full = readFileSync(join(live, 'golden-b1-20261101.UNKNOWN'));
+    assert.equal(full.length - ours.length, 1372);
+    // The Summary's UNKNOWN row is the pre-scan count and does not follow --decimate.
+    assert.match(run.summary, /^\s+0 \| UNKNOWN\s*\|\s+3695 \|/m);
+  });
+});
+
+/**
+ * A Time Interval narrows `.UNKNOWN` the same way, and here the measurements really differ from the
+ * old assumption: b1's windowed run writes **3 770 B** (5 386 − the 22 silent `RXCONFIG`s, 1 616),
+ * b1 windowed *and* decimated the same 3 770 B (the window already covers all 22; decimation covers
+ * 19 of them, 1 372 B), and b2's windowed run keeps its whole 7 056 B (b2 has no silent record
+ * outside the window). The 3 770 bytes of banners, `[USB2]` markers and `<OK` replies survive the
+ * window untouched — text records are not skipped by it.
+ */
+test('b1: a Time Interval takes the records it leaves out of .UNKNOWN as well', () => {
+  const window = ['--start-time=2442,570250', '--finish-time=2442,570255', '--unknown-bytes=file'];
+  withRun('b1-20261101', window, (run) => {
+    const ours = readFileSync(join(run.formatDir, 'b1-20261101.UNKNOWN'));
+    assert.equal(ours.length, 3770);
+    // The 22 silent records are gone, the 3 770 bytes of text junk are not.
+    assert.equal(Buffer.from(ours.subarray(0, 13)).toString('latin1'), '\r\n<OK\r\n[USB2]');
+  });
+  withRun('b1-20261101', [...window, '--decimate=5'], (run) => {
+    assert.equal(readFileSync(join(run.formatDir, 'b1-20261101.UNKNOWN')).length, 3770);
+  });
+  withRun('b2-20261101', ['--start-time=2442,577760', '--finish-time=2442,577770', '--unknown-bytes=file'], (run) => {
+    assert.equal(readFileSync(join(run.formatDir, 'b2-20261101.UNKNOWN')).length, 7056);
+  });
 });

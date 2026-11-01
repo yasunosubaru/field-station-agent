@@ -28,12 +28,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { appendCrcLe } from '../src/crc.ts';
+import { appendCrcLe, novatelCrc32 } from '../src/crc.ts';
 import { SbfDeframer, type Frame } from '../src/framing.ts';
 import { buildLongHeader } from '../src/header.ts';
 import { convertFrames, type ConvertOptions } from '../src/convert-pipeline.ts';
@@ -305,6 +306,164 @@ test('--daily-utc only moves its day clock on an observation time status', () =>
   ]));
   for (const status of [0, 20, 60, 200]) assert.deepEqual(clockMovedBy(status), [3], `status ${status}`);
   for (const status of [80, 100, 120, 160, 180]) assert.deepEqual(clockMovedBy(status), [2, 1], `status ${status}`);
+});
+
+/** The body of b1's `#BESTPOSA` text records — a complete, canonical message the parser renders. */
+const BESTPOS_BODY = 'SOL_COMPUTED,SINGLE,30.53997306366,114.35280786048,64.8239,-14.4000,WGS84,1.0263,'
+  + '1.1219,2.8355,"",0.000,0.000,31,17,17,17,00,06,30,03';
+
+/**
+ * A `#BESTPOSA` text record with its own header time. The CRC covers the sentence after the leading
+ * `#` (measured: a record whose trailer matches is echoed verbatim by the suite, everything else is
+ * dropped before parsing), so the week/seconds/status can be set freely.
+ */
+function textBestpos(week: number, seconds: number, status: string): Frame {
+  const sentence = `BESTPOSA,USB2,0,72.0,${status},${week},${seconds.toFixed(3)},03801800,cdba,18278;${BESTPOS_BODY}`;
+  const body = new Uint8Array(sentence.length);
+  for (let i = 0; i < sentence.length; i++) body[i] = sentence.charCodeAt(i) & 0xff;
+  const crc = novatelCrc32(body).toString(16).padStart(8, '0');
+  return { kind: 'text', prefix: '#', text: `#${sentence}*${crc}\r\n` };
+}
+
+const dailyLines = (frames: Frame[]): number[] => convertFrames(frames, {
+  format: 'ASCII', at: AT, tables, name: 'probe.sbf', splitMode: 'daily',
+}).files.map((file) => latin1Bytes(file.bytes).split('\r\n').filter((line) => line.length > 0).length);
+
+/**
+ * A **text** record's day clock is one status wider than a binary record's: `COARSESTEERING` (60)
+ * participates, `UNKNOWN` (0), `APPROXIMATE` (20) and `SATTIME` (200) still do not. Measured on the
+ * suite one status per run, the probe written as a `#BESTPOSA` text record:
+ *
+ * ```
+ * 2442:577759 → 2443:1.000 → 2442:577760     60/80/100/120/160/180 → two parts (cut at the probe)
+ *                                             0/20/200               → one part
+ * 2442:577759 → week 0:2.176 → 2442:577760   60/80/100/120/160/180 → two parts (cut at the *last*)
+ *                                             0/20/200               → one part
+ * ```
+ *
+ * The identical `COARSESTEERING` stamp as a *binary* frame does not move the clock at all, which is
+ * the whole reason the two sets exist: b7 carries `COARSESTEERING` text records, and the suite
+ * splits it three ways because they count.
+ */
+test('--daily-utc moves a text record its own status, one status wider than a binary frame', () => {
+  const advancing = (status: string) => dailyLines([
+    textBestpos(2442, 577759, 'FINESTEERING'),
+    textBestpos(2443, 1, status),
+    textBestpos(2442, 577760, 'FINESTEERING'),
+  ]);
+  for (const status of ['COARSESTEERING', 'FINE', 'FINEADJUSTING', 'DEGRADED', 'ALIGNING', 'FINESTEERING']) {
+    assert.deepEqual(advancing(status), [1, 2], status);
+  }
+  for (const status of ['UNKNOWN', 'APPROXIMATE', 'SATTIME']) {
+    assert.deepEqual(advancing(status), [3], status);
+  }
+
+  // A week-0 text record pulls the clock back to day 0, and the next same-day record opens a part.
+  const backwards = (status: string) => dailyLines([
+    textBestpos(2442, 577759, 'FINESTEERING'),
+    textBestpos(0, 2.176, status),
+    textBestpos(2442, 577760, 'FINESTEERING'),
+  ]);
+  for (const status of ['COARSESTEERING', 'FINE', 'FINESTEERING']) {
+    assert.deepEqual(backwards(status), [2, 1], status);
+  }
+  for (const status of ['UNKNOWN', 'APPROXIMATE', 'SATTIME']) {
+    assert.deepEqual(backwards(status), [3], status);
+  }
+
+  // The same stamps as binary frames: COARSESTEERING does not move the clock there.
+  const binary = (status: number) => dailyLines(synthetic([
+    { week: 2442, seconds: 577759 },
+    { week: 2443, seconds: 1, status },
+    { week: 2442, seconds: 577760 },
+  ]));
+  assert.deepEqual(binary(60), [3]);
+  assert.deepEqual(binary(120), [1, 2]);
+});
+
+/**
+ * The day clock is **not monotone**: a late record rewinds it, so the next record that is later than
+ * the rewound clock opens a new part. Measured on the suite with
+ * `[2443:1.000:120, 2442:577760:120, 2443:2.000:120]` → two parts, the second holding only the last
+ * record — and the same shape with text records at `COARSESTEERING`.
+ *
+ * This is the rule that writes b7's three parts: `2443/35948` (day 17101) opens Part1 after day
+ * 17100, the late `2442/553834.993` (day 17100) rewinds it *inside* Part1, and `2443/23262.546`
+ * (day 17101) opens Part2. b7's binary frames are status 120, its text records `COARSESTEERING` —
+ * both participate.
+ */
+test('--daily-utc follows a late record backwards and splits again on the next jump forward', () => {
+  assert.deepEqual(dailyLines(synthetic([
+    { week: 2443, seconds: 1000, status: 120 },
+    { week: 2442, seconds: 577760, status: 120 },
+    { week: 2443, seconds: 2000, status: 120 },
+  ])), [2, 1]);
+  assert.deepEqual(dailyLines(synthetic([
+    { week: 2443, seconds: 1000, status: 80 },
+    { week: 2442, seconds: 577760, status: 80 },
+    { week: 2443, seconds: 2000, status: 80 },
+  ])), [2, 1]);
+  assert.deepEqual(dailyLines([
+    textBestpos(2443, 1, 'COARSESTEERING'),
+    textBestpos(2442, 577760, 'COARSESTEERING'),
+    textBestpos(2443, 2, 'COARSESTEERING'),
+  ]), [2, 1]);
+  // Same day, out of order: no part boundary either way.
+  assert.deepEqual(dailyLines(synthetic([
+    { week: 2442, seconds: 577760, status: 60 },
+    { week: 2442, seconds: 577759, status: 60 },
+    { week: 2442, seconds: 577761, status: 60 },
+  ])), [3]);
+});
+
+/**
+ * The clock starts at the first record that carries a stamp **at all**, whatever its status: a
+ * week-0 `COARSESTEERING` frame starts it at day 0, and the first real day after that splits
+ * (measured `[0:2.176:60, 2443:1.000:120, 2443:2.000:120]` → `1 + 2` lines). A record that cannot
+ * move the clock can still start it; only moving it is gated.
+ */
+test('--daily-utc starts its clock at the first stamped record, whatever its status', () => {
+  assert.deepEqual(dailyLines(synthetic([
+    { week: 0, seconds: 2.176, status: 60 },
+    { week: 2443, seconds: 1000, status: 120 },
+    { week: 2443, seconds: 2000, status: 120 },
+  ])), [1, 2]);
+  assert.deepEqual(dailyLines([
+    textBestpos(0, 2.176, 'UNKNOWN'),
+    textBestpos(2443, 1, 'COARSESTEERING'),
+    textBestpos(2443, 2, 'COARSESTEERING'),
+  ]), [1, 2]);
+});
+
+/**
+ * b7 is the capture that exposed the rule: 609 lines that the suite writes as
+ * **233 + 24 + 352**. Every number below was measured from the suite's own `--daily-utc` run
+ * (40 933 / 5 161 / 1 054 895 bytes), and the digests are of its three part files.
+ */
+test('b7: --daily-utc writes the suite\'s three parts, byte for byte', () => {
+  const b7 = convertCapture(join(live, 'b7-20261101.sbf'), { splitMode: 'daily' });
+  const SIZES = [40_933, 5_161, 1_054_895];
+  const LINES = [233, 24, 352];
+  const DIGESTS = [
+    '12d89017487251b084d0ce4853ea428968b46a97be730900b0b134fbb18ede2c',
+    'fd21de678a9d1b73d46d23eb700e5a221ddbe869d5c10b49315b93cb2b96fd6c',
+    '7e1765f622287ba48dd710959b0051f6ce860c911d22a4a90158e6386a174eea',
+  ];
+  assert.deepEqual(b7.files.map((file) => file.name), [
+    'b7-20261101_Part0.ASCII', 'b7-20261101_Part1.ASCII', 'b7-20261101_Part2.ASCII',
+  ]);
+  b7.files.forEach((file, index) => {
+    assert.equal(file.bytes.length, SIZES[index], `Part${index} bytes`);
+    assert.equal(latin1Bytes(file.bytes).split('\r\n').filter((line) => line.length > 0).length, LINES[index]);
+    assert.equal(createHash('sha256').update(file.bytes).digest('hex'), DIGESTS[index], `Part${index} digest`);
+  });
+  // The cut is at the record that is a *later* day: Part1 opens on the `2443/35948.000` BESTPOS and
+  // Part2 on the `2443/23262.546` RXCONFIG that follows the late `2442/553862.266` one.
+  assert.match(latin1Bytes(b7.files[1].bytes).slice(0, 80), /^#BESTPOSA,[^,]+,0,[^,]+,COARSESTEERING,2443,35948\.000,/);
+  assert.match(latin1Bytes(b7.files[2].bytes).slice(0, 80), /^#RXCONFIGA,[^,]+,2,[^,]+,COARSESTEERING,2443,23262\.546,/);
+  // Part1 is the only part that holds two days: it *ends* on the late `2442/553862.266` record.
+  const lastOfPart1 = latin1Bytes(b7.files[1].bytes).split('\r\n').filter((line) => line.length > 0).pop();
+  assert.match(lastOfPart1 ?? '', /^#RXCONFIGA,.*,COARSESTEERING,2442,553862\.266,/);
 });
 
 /* -------------------------------------------------------------------------------------------
