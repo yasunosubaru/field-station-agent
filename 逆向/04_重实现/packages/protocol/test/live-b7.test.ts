@@ -201,15 +201,16 @@ test('a config dump line survives the deframer even though it quotes another rec
   }
 });
 
-test('we print all 269 config records, and 226 of them match the suite byte for byte', () => {
+test('we print the 247 config records the suite resolves, and drop the same 22', () => {
   const ours = ofType(ascii, 'RXCONFIGA');
   const suiteSet = new Set(lines(goldenAscii));
-  assert.equal(ours.length, 269);
-  // The 247 the suite keeps are the ones whose embedded message it can re-render; the rest it drops,
-  // and of the lines we print the ones that differ are exactly where it re-renders an unknown enum
-  // (`INTERFACEMODE`'s `LCOM1` → `UNKNOWN`). Written up in `03_分析/05_GRIT-Monitor.md`.
+  // 269 lines came off the wire. The suite re-renders the embedded message of each one and writes
+  // nothing when the dictionary cannot resolve it — 22 of the 269 embed a name this dictionary does
+  // not carry (`AGCMODEA`, `SETIONOMODELA`, …), which leaves 247 in both outputs.
+  assert.equal(ours.length, 247);
   assert.equal(ofType(goldenAscii, 'RXCONFIGA').length, 247);
-  assert.equal(ours.filter((line) => suiteSet.has(line)).length, 226);
+  assert.deepEqual(ours, lines(goldenAscii).filter((line) => line.startsWith('#RXCONFIGA')));
+  assert.equal(ours.filter((line) => suiteSet.has(line)).length, 247);
 });
 
 test('the suite prints the embedded config message as an indented block of its own', () => {
@@ -219,13 +220,13 @@ test('the suite prints the embedded config message as an indented block of its o
   assert.match(suiteBlock[head + 1], /^<     LOG USB2 10 76\.5 COARSESTEERING 2442 553862\.246 03809800 92b2 18278 $/);
   assert.equal(suiteBlock[head + 2], '<     USB1_30 ITPSDDETECTB ONNEW 0.000000 0.000000 HOLD');
 
-  // Ours has the same three lines except that the embedded record's own CRC stays glued to the last
-  // value — the one ABBREV difference this capture leaves behind.
+  // Ours is the same three lines, byte for byte — the embedded record is re-rendered, not copied,
+  // so no CRC stays glued to the last value.
   const ourBlock = lines(abbrev);
   const at = ourBlock.findIndex((line) => line === suiteBlock[head]);
   assert.ok(at >= 0);
   assert.equal(ourBlock[at + 1], suiteBlock[head + 1]);
-  assert.match(ourBlock[at + 2], new RegExp(`^${suiteBlock[head + 2].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\*[0-9a-f]{8}$`));
+  assert.equal(ourBlock[at + 2], suiteBlock[head + 2]);
 });
 
 // ------------------------------------------------------------------ framing regression guard

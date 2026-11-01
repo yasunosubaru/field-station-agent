@@ -1630,6 +1630,9 @@ b5 的 summary 里同样有一行，值是 **350**。而 b6 的输入文件里**
 本轮没解出来**，所以这里停在「照抄原文」：226/269 条逐字节相同，剩下的是已知差异，写在
 `05_GRIT-Monitor.md` §13.6，不猜。
 
+> **→ 已解，见 §9.x.17**：内层 CRC 是「重渲染后 `NAME,<head>;<body>` 的 NovAtel CRC **取反**」，
+> 247/247 全中；22 条丢弃是内嵌报文名不在字典里；两格式现在逐字节相同。
+
 ### 回归与数字（2026-11-01 19:4x）
 
 ```
@@ -1641,4 +1644,354 @@ golden-b7-20261101.ABBREV_ASCII 1 166 848 B  6 719 行   我们 6 780 行 / 1 17
 除 `#RXCONFIGA` 那 43 行 / 247 块以外，**全部逐行相同**（`cmp-lines.cjs`：ours 不在 oracle 里的
 行 43 条，全部是 `#RXCONFIGA`）。14 份既有 golden 在改动后仍逐字节相同（`golden-check.ts` 全 `OK`）。
 `packages/protocol/test/live-b7.test.ts` 新增 15 项。
+
+
+## 9.x.17 文本 `#RXCONFIGA` 的内嵌重渲染与内层 CRC：`~CRC32`，247/247（2026-11-01）
+
+§9.x.16 ④ 留了一个「没解出来」：套件把内嵌报文按字典重渲染，可它打印的内层 CRC
+`5633f5d1` 既不是收到的那一个，也不是重渲染正文的 NovAtel CRC。这一节把它量完。
+
+### 结构
+
+抓包与 golden 里都是同一个形状，**两个 `*` 字段**：
+
+```
+#RXCONFIGA,<outerHead>;#<INNER>,<innerHead>;<innerBody>*<innerCrc>*<outerCrc>
+```
+
+`b7-20261101.sbf` 上有 269 条这样的文本行，`golden-b7-20261101.ASCII` 里只剩 247 条。
+
+### ① 内嵌报文会被**整条重渲染**
+
+套件把 `%R` 里的那串文本当成一条**独立的 ASCII 记录**重新解析、再按字典打印一遍，不是照抄：
+
+| 输入（抓包） | 输出（golden） |
+|---|---|
+| `…#INTERFACEMODEA,…;LCOM1,NOVATEL,NOVATEL,ON*81750840*5674ed4f` | `…#INTERFACEMODEA,…;UNKNOWN,NOVATEL,NOVATEL,ON*5633f5d1*b7ce43ba` |
+
+重渲染的规则和顶层 `#` 记录完全一样（`renderHead` + `renderBody`）：
+
+- **额部**九项照打印规则重排：`02442`→`2442`、`72.00`→`72.0`、`570228.0`→`570228.000`、
+  `3800800`→`03800800`、`CDBA`→`cdba`；
+- **正文**逐字段过一遍转换串，`f32` 先四舍五入到单精度；
+- **枚举字段的 token 一律按「名字」读，数字不算名字**。这是本轮新量出来的规则：
+  `CommPort` 里 `8` = `ALL`、`3` = `COM3`，但套件对 `;8,OFF` 和 `;3,OFF` 两条合成输入
+  **都打印 `UNKNOWN,OFF`**（顶层 `#ECHOA` 与内嵌两种位置都试过，结果相同）。所以
+  `parseToken` 的枚举分支不再接受数字，`renderScalar` 把「表里查不到」统一印成 `UNKNOWN`；
+- `%m`（消息名）字段反过来要**按名字查回 id**：`LOGA` 的 `RXSTATUSEVENTA` 不能当成数字，
+  否则会印成 `UNKNOWNB`。`messageId()` 就是 `messageName()` 的逆（`A` → `|0x200000`、
+  `B` → 原值、无后缀 → `|0x400000`）。
+
+### ② 内嵌报文名不在字典里 → **整条外层记录丢弃**
+
+269 − 247 = 22 条。按内嵌名字统计（19 个不同的名字）：
+
+```
+AGCMODEA ×4   NMEARMCTIMEA   PRNMAPPINGA   RTKGLOBIASOPTIONA   RTKFIXEDSTDLIMITA
+SETRELIABILITYPARAMETERSA   CLOCKSTEERINGBIASTOLERANCEA   CLOCKSTEERINGSOURCEA
+GPRMCALTITUDEA   NMEAINCLUDESBASA   NMEASATELLITESOURCEA   PPPELEVMASKA
+PPPINTEGRITYMONITORINGA   PPPPLUSA   PSRDIFFCONFIGA   RTKAGEA   SETIONOMODELA
+SETRTCMFKPA   VERIPOSSTANDARDCONFIGA
+```
+
+一条都不打印，连空正文的行也没有——和二进制 `%R` 的「解析不了就丢整条」是同一条规则
+（§9.x.16 ④、`ascii-log.ts` 的 `unresolvedEmbedded`）。
+
+### ③ 内层 CRC = 重渲染正文 NovAtel CRC 的**反码**
+
+用 247 行做全集校验，先试了这些口径，**没有一条命中**（`probe-rxconfiga.ts`）：
+
+| # | 口径（对 golden 的重渲染正文计算） | 命中 |
+|---|---|---|
+| 1 | `INNER,<head>;<body>` | 0/247 |
+| 2 | `#INNER,<head>;<body>` | 0/247 |
+| 3 | `INNER,<head>;<body>*` | 0/247 |
+| 4 | `#INNER,<head>;<body>*` | 0/247 |
+| 5 | `<body>` | 0/247 |
+| 6 | `<body>*` | 0/247 |
+| 7 | `INNER;<body>` | 0/247 |
+| 8 | `#INNER;<body>` | 0/247 |
+| 9 | `<outerHead>;#INNER,…`（连外层头） | 0/247 |
+| 10 | `#<outerHead>;#INNER,…` | 0/247 |
+| 11 | 记录内**任意子串** `[i,j)` 全枚举 | 0 命中 |
+| 12 | 记录 + 装饰：前缀 `''`/`#`/`\r\n` × 后缀 `''`/`*`/`\r\n`/`*\r\n`/`\n`/`\r`/`;` | 0 命中 |
+| 13 | CRC-32 变体：poly `0xedb88320`/`0x04c11db7` × init `0`/`0xffffffff` × 反射 × 末异或 `0`/`0xffffffff` | **1 个命中** |
+
+命中的那一个是 **poly `0xedb88320`、init `0`、反射、末异或 `0xffffffff`** —— 也就是 NovAtel CRC
+**按位取反**（等价于 CRC-32/POSIX）。对 247 行全中：
+
+```
+内层 CRC = ~novatelCrc32("INNER,<head>;<body>")   // 不含 '#'，不含 '*'
+```
+
+拿 `INTERFACEMODE` 那条把三层数字摆在一起，链条就闭合了：
+
+| 正文 | NovAtel CRC | 打印/携带的 CRC |
+|---|---|---|
+| 抓包原文 `;LCOM1,NOVATEL,NOVATEL,ON` | `7e8af7bf` | `81750840` = 取反 |
+| 重渲染后 `;UNKNOWN,NOVATEL,NOVATEL,ON` | `a9cc0a2e` | `5633f5d1` = 取反 |
+
+也就是说：**接收机自己写内嵌记录的 CRC 时也是取反的**，套件只是照同一规则重算了一遍 ——
+§9.x.16 ④ 里「三类数字互不相等」正是漏掉了这一步取反。
+
+**携带的那个内层 CRC 完全不被校验**：把 `*81750840` 换成 `*00000000`、换成 `7e8af7bf`（正向）、
+换成 `a9cc0a2e`，套件打印的都是同一个 `5633f5d1`（三条合成抓包，`oracle-rxconfiga3.ts`）。
+
+### ④ 外层 CRC 覆盖内层整条（含内层 CRC）
+
+```
+外层 CRC = novatelCrc32("RXCONFIGA,<outerHead>;#INNER,<head>;<body>*<innerCrc>")
+```
+
+正向、不取反，且**包含**内层那 8 个十六进制字符。247 行逐行验证（新测试里对每一行都断言）。
+
+### ⑤ ABBREV：内嵌块是「五空格行 + 九空格数组行」
+
+```
+<RXCONFIG USB2 251 76.5 SATTIME 0 0.000 03808800 f702 18278
+<     SETTIMESOURCE USB2 251 76.5 SATTIME 0 0.000 03808800 8aba 18278 
+<     3 
+<          GPS 
+<          BEIDOU 
+<          GALILEO
+```
+
+- 第 1 行外层头，**不带**尾随空格；
+- 第 2 行内嵌头，缩进 **5** 空格，版本字母去掉（`SETTIMESOURCEA`→`SETTIMESOURCE`），尾部留一个空格；
+- 之后是内嵌正文，走和普通 `#` 记录一样的 ABBREV 布局（标量一行 `<    `，`FIELD_ARRAY`
+  每个元素一行 `<         `）。247 块里 244 块是 3 行，`SETTIMESOURCE` 是 6 行，
+  `SETTIMEBASE`/`DNSCONFIG` 各 4 行 —— 这三块正是唯一带数组的。
+
+### ⑥ 合成输入量出来的三条边角（b7 打不到）
+
+| 输入（`#RXCONFIGA` 包一条 `#ECHOA`） | 套件 | 我们 |
+|---|---|---|
+| 正文少一个 token（`;COM2`） | 打印 `;COM2`（有几个印几个） | 同 |
+| 正文多一个 token（`;COM2,OFF,99`） | 打印 `;COM2,OFF`（多余的丢） | 同 |
+| 正文空（`;`） | 整条丢 | 同 |
+| 内嵌名不在字典（`#FOOBARA,…`） | 整条丢 | 同 |
+| 额部时间状态写成数字 `20` | **整条丢** | 未实现（见「剩余」） |
+
+「正文少 token 保留」和顶层 `#` 记录相反（顶层少 token 是**整条丢**，`live-b7.test.ts` 里那条
+`#BESTPOSA` 用例仍然是这个结论），所以内嵌这条路单独走 `renderBody` 的宽松返回值。
+
+### 代码（只动了 `text-log.ts`）
+
+```
+parseEmbeddedRecord()   %R 里的文本 → {rawName,name,layout,head,body}
+embeddedCrc()           ~novatelCrc32("NAME,<head>;<body>")
+encodeEmbeddedAscii()   ASCII 侧：重渲染 + 重封内层 CRC
+embeddedAbbrevBlock()   ABBREV 侧：5 空格头 + walkAbbrev 的正文行
+renderScalar()          枚举名查不到 → UNKNOWN
+messageId()             %m 的 token → id
+```
+
+### 回归（全部真跑，2026-11-01）
+
+```
+b7-20261101.sbf   --to ASCII         1 100 989 B   609 行   逐字节相同
+b7-20261101.sbf   --to ABBREV_ASCII  1 166 848 B  6 719 行   逐字节相同
+14 份既有 golden（b1–b6、live-nav、live-nav2、remote-23types、broad-clean、clean-9600）
+                                      golden-check.ts  14/14 OK
+packages/protocol/test/*.test.ts      298 项全绿
+```
+
+新增 `packages/protocol/test/rxconfig-text-embedded.test.ts`（10 项：两格式整文件逐字节、
+247/22 的丢弃账、`LCOM1→UNKNOWN`、247 行内层/外层 CRC 的逐行不变量、`5633f5d1`/`a9cc0a2e`/
+`81750840` 三个具体值、合成边角的四条、ABBREV 六行块），并改写 `live-b7.test.ts` 里
+两条以旧行为为准的用例（269→247、内层 CRC 不再粘在末值后面）。
+
+### 剩余（为什么这里就停）
+
+- **额部时间状态写成数字 `20` 会让整条消失**，这一条只量到现象，没量到规则：我们没有模型解释
+  为什么正文的枚举接受数字（印 `UNKNOWN`）而额部的时间状态遇到数字直接丢记录。b7 的 269 条
+  额部全都写名字（`SATTIME` / `UNKNOWN`），goldens 里也没有数字型的时间状态，所以按「不猜」
+  停在现状；真要碰它得再造十几条合成帧把额部九个字段逐个试一遍。
+- `RXCONFIGUSER` 的 `%R` 载荷是**二进制**帧，不是文本；文本形式的 `#RXCONFIGUSERA` 在任何
+  抓包里都没出现过。现在这条路会把它当文本解析、解析不出就丢；二进制形式走的是
+  `convert-pipeline`/`ascii-log.ts` 那条 `%R` 路（§9.x.16 ④），两条互不影响。
+
+
+## 9.x.18 四条计数数组的元素 stride：30→32 / 26→28 / 29→32 / 63→68（2026-11-01）
+
+这是 A3–A8 最后一项。§9.x.14 的「剩余」里留着它：
+
+```
+SBAS17(30→32)、ETHSTATUS(26→28)、SAVEDSURVEYPOSITIONS(29→32)、WIFINETLIST(63→68)
+这四个**元素结构体**在 count ≥ 2 时 stride 应该变，但这四条报文在任何抓包里都没出现，
+count=1 也证明不了 stride，故不动。
+```
+
+### 为什么只能靠合成帧
+
+四条报文在 `00_来源/samples` 的 14 份 golden 里**一行都没有**（`SBAS17A` / `SAVEDSURVEYPOSITIONSA` /
+`WIFINETLISTA` 全零命中；`ETHSTATUS` 有 15 条，全部 `count=1`、payload 全 32 B、逐字节相同）。
+一个元素分不出「28 字节的结构体」和「26 字节 + 2 字节余量」，所以只能造 `count ≥ 2` 的帧。
+
+做法同 §9.x.14：按 `edie-layouts.json` 拼 payload → `buildLongHeader` + `appendCrcLe` 封帧 → 写到
+纯 ASCII 路径 → 调
+
+```
+NovAtelApplicationSuite.exe -a       -o <纯ASCII目录> <输入>
+NovAtelApplicationSuite.exe --abbrev -o <纯ASCII目录> <输入>
+```
+
+→ 套件写的 `ASCII/*.ASCII`、`ABBREV_ASCII/*.ABBREV_ASCII` 与 `convertFrames` 的输出逐字节比。
+**这里比对的是套件自己的转换结果，不是我们自己编的期望值。**
+
+| 工具 | 作用 |
+|---|---|
+| `逆向/tools/oracle-stride.ts` | 同一条报文造两份：一份按「成员 pack(4)、元素 packedStructSize 间隔」，一份按「成员 dense、元素仍 packed 间隔」，看套件跟哪一份 |
+| `逆向/tools/oracle-stride-sentinels.ts` | 10 个用例（`count=1/2/3`、长/短字符串、双字符串），两边行都打出来，退出码 0 = 全一致 |
+
+payload 里的值就是「自我描述」的：`SBAS17` 每个值写成 `1000 * 元素 + 10 * 成员`，所以行里出现
+`1010…1090,2010…2090` 就说明两个元素分别在 8 和 40；字符串用例则让**短**串去分开两种规则
+（字符串占满声明宽度时两种规则给出同一个偏移，这正是真机那 15 条 ETHSTATUS 两种读法都成立的原因）。
+
+### ① `SBAS17`（#980）：固定元素 = C 结构体，`pack(4)`，元素 32 字节
+
+```
+成员  data_id  prn_3  health   x    y    z  x_vel y_vel z_vel   元素
+dense    0       2      4      6   10   14   18    22    26      30
+pack(4)  0       2      4      8   12   16   20    24    28      32
+```
+
+`x` 从 6 挪到 8，是因为 `LONG` 在 `#pragma pack(4)` 下要 4 对齐；`t0` 是 `dynamicOffset`，落在
+`8 + count * 32`。三个用例（payload 44 / 76 / 108 B）：
+
+```
+套件 #SBAS17A,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;20907,2,1010,1020,1030,1040,1050,1060,1070,1080,1090,2010,2020,2030,2040,2050,2060,2070,2080,2090,20907*45a3c929
+我们 #SBAS17A,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;20907,2,1010,1020,1030,1040,1050,1060,1070,1080,1090,2010,2020,2030,2040,2050,2060,2070,2080,2090,20907*45a3c929
+```
+
+`count=1` 那一条（`…*dd56e7e3`）就已经证明「成员是 pack(4)」——`x` 读在 8 才拿到 1040；`count=3`
+（`…*932cf54c`）证明间隔重复、`t0` 在 8 + 96。ABBREV 同解（一个元素一行、缩进 10）。
+
+### ② `ETHSTATUS`（#1288）：元素里带 `variable` `STRING`，**按内容重走**
+
+```
+interface(enum)  mac_address(STRING 18, variable)  interface_config(enum)
+dense    0                 4                            22         (26)
+pack(4)  0                 4                            24         (28)
+```
+
+17 字符 MAC（真机的形状 `"00-21-66-08-6A-79"`）时字符串吃 20 B（17 字符 + NUL = 18 B，补到 20），
+所以 `interface_config` 在 +24、元素 28 B —— 与字典 26 的差正好是那 2 字节，32 B 的真机记录
+（4 计数 + 28）就是这么来的。**但 28 不是常量**：2 字符 MAC 时字符串只吃 4 B，套件把
+`interface_config` 打在 +8、下一个元素打在 +12：
+
+```
+套件（17 字符 MAC）#ETHSTATUSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,ETHA,"AA-BB-CC-DD-EE-FF",100_FULL,ETHB,"11-22-33-44-55-66",100_HALF*fc03a1c2
+我们（17 字符 MAC）#ETHSTATUSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,ETHA,"AA-BB-CC-DD-EE-FF",100_FULL,ETHB,"11-22-33-44-55-66",100_HALF*fc03a1c2
+
+套件（2 字符 MAC） #ETHSTATUSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,ETHA,"a0",100_FULL,ETHB,"b0",100_HALF*6b5e7bd1
+我们（2 字符 MAC） #ETHSTATUSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,ETHA,"a0",100_FULL,ETHB,"b0",100_HALF*6b5e7bd1
+```
+
+第二个元素在 2 字符那条里读出来是 `ETHB,"b0",100_HALF`，即元素起点 = 4 + 12 = 16 —— 内容长度，
+不是 28。
+
+### ③ `SAVEDSURVEYPOSITIONS`（#1951）：`id` 重走，4 字符 id 才凑成 32
+
+```
+id(STRING 5, variable)  latitude  longitude  height   元素
+dense   0                  5         13        21      29
+pack(4) 0                  8         16        24      32
+```
+
+`id` 声明 5 B，4 字符 + NUL = 5 → 补到 8，`f64` 在 8（`pack(4)` 只要求 4 对齐，所以是 8 而不是 12），
+元素 32 B；1 字符 id 只吃 4 B，`latitude` 就在 +4，元素 28 B：
+
+```
+套件（4 字符 id）#SAVEDSURVEYPOSITIONSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"abcd",11.50000000000,12.50000000000,13.5000,"ABCd",21.50000000000,22.50000000000,23.5000*59fc4c74
+我们（4 字符 id）#SAVEDSURVEYPOSITIONSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"abcd",11.50000000000,12.50000000000,13.5000,"ABCd",21.50000000000,22.50000000000,23.5000*59fc4c74
+
+套件（1 字符 id）#SAVEDSURVEYPOSITIONSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"a",11.50000000000,12.50000000000,13.5000,"a",21.50000000000,22.50000000000,23.5000*014ce30c
+我们（1 字符 id）#SAVEDSURVEYPOSITIONSA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"a",11.50000000000,12.50000000000,13.5000,"a",21.50000000000,22.50000000000,23.5000*014ce30c
+```
+
+### ④ `WIFINETLIST`（#2210）：**两个**字符串，旧代码在这里是错的
+
+```
+ssid(STRING 33, variable)  rssi  channel  bssid(STRING 18, variable)  security   元素
+dense   0                    33      37          41                      59       63
+pack(4) 0                    36      40          44                      64       68
+```
+
+32 字符 SSID + 17 字符 BSSID 时：36 + 4 + 4 + 20 + 4 = 68（字典 63 + 5），这就是「63→68」；
+SSID 短、BSSID 也短时元素只剩 24 B：
+
+```
+套件（32 字符 SSID / 17 字符 BSSID）#WIFINETLISTA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"01234567890123456789012345678901",4096,8192,"AA-BB-CC-DD-EE-FF",OPEN,"0123456789012345678901234567890Z",4097,8193,"AA-BB-CC-DD-EE-F@",WPA*381b8957
+我们（同上）                        #WIFINETLISTA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"01234567890123456789012345678901",4096,8192,"AA-BB-CC-DD-EE-FF",OPEN,"0123456789012345678901234567890Z",4097,8193,"AA-BB-CC-DD-EE-F@",WPA*381b8957
+
+套件（2 字符 SSID / 5 字符 BSSID）#WIFINETLISTA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"n0",4096,8192,"zz-yy",OPEN,"nZ",4097,8193,"zz-y@",WPA*453c5e3f
+我们（同上）                       #WIFINETLISTA,COM1,1,0.0,FINESTEERING,2402,577759.000,03800800,cdba,18278;2,"n0",4096,8192,"zz-yy",OPEN,"nZ",4097,8193,"zz-y@",WPA*453c5e3f
+```
+
+第三个用例（32 字符 SSID + **1** 字符 BSSID，元素 52 B，`…*6d426e2a`）是这条报文的关键：第二个
+字符串的漂移必须**从第一个字符串真正结束的位置**算起。旧实现 `segmentsWireSize` 里写的是
+
+```
+shift += at + size - (base + segment.offset + denseSegmentSize(segment));
+```
+
+而 `at` 本身已经含 `shift`，于是每过一个变长成员就把漂移**再加一遍**——一个字符串看不出来，
+两个就错位。
+
+### 结论：这四条不是「stride 变大」，而是「stride 不是常量」
+
+| 报文 | 字典 dense | 元素真正的规则 | 满宽时 | 短字符串时 |
+|---|---|---|---|---|
+| `SBAS17` | 30 | 固定结构体，成员 `pack(4)`，间隔 `packedStructSize` | 32 | 32（无字符串） |
+| `ETHSTATUS` | 26 | 变长 MAC 重走，`interface_config` 紧跟其后 | 28（17 字符 MAC） | 12（2 字符） |
+| `SAVEDSURVEYPOSITIONS` | 29 | 变长 `id` 重走 | 32（≥4 字符 id） | 28（1 字符） |
+| `WIFINETLIST` | 63 | 两个变长字符串都重走 | 68（32+17 字符） | 52 / 24 |
+
+所以「`ETHSTATUS` 是 28」「`WIFINETLIST` 是 68」只在真机那种满宽字符串下成立；把它写成常量会
+在短字符串的合成帧上立刻露馅（上面两张短串行就是证据）。**固定元素列表**（`SBAS17`）才是真正的
+`packedStructSize`，且与 `count` 无关——`count=1` 时成员偏移就已经是 8，`count≥2` 只是让间隔看得见。
+
+### 代码（只动了 `edie.ts`）
+
+| 改动 | 内容 |
+|---|---|
+| 新增 `wireElementSegments()` | 元素列表里**没有**变长成员时，把成员偏移就地改成 `pack(4)`（`WeakSet` 记住，只改一次，幂等）；有变长成员的列表保持 dense 偏移 |
+| `walkArray()` | `stride` 由 `array.stride` 改为 `variable ? 内容 : packedStructSize()`；定长元素先过 `wireElementSegments()` |
+| `segmentsWireSize()` | `shift` 由 `+=` 改为赋值（累计漂移），`dynamicOffset` 段保留增量形式 |
+
+就地改写的理由：`ascii-log.ts` / `abbrev-log.ts` 是拿 `array.elements` 直接取成员偏移的，而本轮
+的边界不许碰这两个文件。改写只发生一次、且改的是「线上真实布局」，不是按样本开关。
+
+### 回归（全部真跑，2026-11-01）
+
+```
+packages/protocol/test/*.test.ts   298 项全绿（含本轮新增 8 项）
+全仓 packages/*/test/*.test.ts     935 项：929 绿 / 6 红
+```
+
+6 条红全在 `packages/app`、`packages/session`、`packages/view`（配置页 pill 数 19≠18、15≠14、
+`interferenceToolkit` 待改值一类），是同一仓库另一路并行工作正在改的地方。已用 **HEAD 版
+`edie.ts`** 复跑同一批文件，红的是同 3 条（当时另外 3 条还没被那一路加进来）——与本节改动无关。
+
+14 份 golden：字节数与 SHA-256 全部不变，`golden-check.ts` 全 `OK`
+（`broad-clean` 5 567 000 B / `c1196c58cf9f633c` … `clean-9600.ABBREV` 567 576 B / `c59fbfae34cb4232`）。
+
+### 新增测试
+
+`packages/protocol/test/stride-counted-arrays.test.ts`（8 项）：四条各自断言「字典 stride」与
+「`packedStructSize`」，`walkArray` 的元素起点（`SBAS17` 1/2/3 个元素、`ETHSTATUS` 长/短 MAC、
+`SAVEDSURVEYPOSITIONS` 4/1 字符 id、`WIFINETLIST` 24/52/68），以及上面那些**套件行原文**
+（ASCII 逐字节 + 4 条 ABBREV 块）。
+
+### 剩余（为什么这里就停）
+
+- **没有真机样本**：这四条报文这台机器抓不到（`SBAS17` 是 ASYNCH，另三条在这套固件/配置下不出），
+  全部结论来自套件对合成帧的转换。真机一旦出现 `count ≥ 2`，应当拿它再验一遍——尤其是 MAC / SSID
+  的满宽形状，本节只是证明「满宽时是 28 / 68」和「不满宽时按内容」。
+- **`ANTENNATYPE` / `USERANTENNA` 的 `pc_cs`**（dense stride 16，`packedStructSize` 92）现在也会
+  按 92 走：这两条是配置报文，14 份抓包里没有，合成帧也没做（它们的 `pcv` 是 19 个定长元素，
+  套件是否真的按 92 读没有证据）。规则是对的（固定元素 = 结构体），但**没有 oracle 背书**，
+  记为已知缺口。
+- `%` 短 ASCII、越界读这些既有差异不变（§9.x.14「剩余」）。
 

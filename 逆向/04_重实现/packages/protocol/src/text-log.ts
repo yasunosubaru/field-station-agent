@@ -56,6 +56,9 @@ import type { Frame } from './framing.ts';
 /** Command responses that must never be mistaken for a log body. */
 const RESPONSE_WORDS = new Set(['OK', 'ERROR', 'IGNORED', 'INVALID']);
 
+/** Eight lowercase hex digits — the ASCII log/command CRC form. */
+const hex8 = (value: number): string => (value >>> 0).toString(16).padStart(8, '0');
+
 const HEX_SPECS = new Set(['x', 'X', 'XB', 'B']);
 const INT_SPECS = new Set(['u', 'hu', 'lu', 'llu', 'd', 'hd', 'ld', 'lld', 'id', 'UB']);
 
@@ -76,6 +79,26 @@ function specOf(format: string | null | undefined): string | undefined {
   return /^%\d*(?:\.\d+)?l{0,2}([A-Za-z]{1,2})$/.exec(format ?? '')?.[1];
 }
 
+/**
+ * The message id a `%m` token stands for, or the token itself when the dictionary has no such name.
+ *
+ * `messageName` (`ascii-log.ts`) prints `name + suffix`, and the suffix says which id flavour the
+ * value carries: `A` for the ASCII log (`id | 0x200000`), `B` for the binary one (`id` itself) and
+ * nothing at all for `id | 0x400000`. This is the inverse, over the dictionary's own ids.
+ */
+function messageId(token: string, tables: EdieTables): number | string {
+  const letter = /[AB]$/.test(token) ? token.slice(-1) : '';
+  const name = letter ? token.slice(0, -1) : token;
+  for (const [id, layout] of Object.entries(tables.messages)) {
+    if (layout.name !== name) continue;
+    const value = Number(id);
+    if (letter === 'A') return value | 0x200000;
+    if (letter === 'B') return value;
+    return value | 0x400000;
+  }
+  return token;
+}
+
 /** Read one printed token back into the field the layout declares. */
 function parseToken(segment: EdieScalar | EdieString, token: string, tables: EdieTables): number | string {
   const scalar = segment as EdieScalar;
@@ -85,11 +108,20 @@ function parseToken(segment: EdieScalar | EdieString, token: string, tables: Edi
     if (table) {
       for (const [value, name] of Object.entries(table.values)) if (name === token) return Number(value);
     }
-    const numeric = Number(token);
-    return Number.isFinite(numeric) ? numeric : token;
+    // An enum token is a **name**, never a number: `8` is `ALL` in `CommPort` and Convert still
+    // prints `UNKNOWN` for it. Measured on a synthetic `#ECHOA,<head>;8,OFF` at top level *and*
+    // embedded in `#RXCONFIGA` — both come back `UNKNOWN,OFF`, exactly like `3` (which is `COM3`) and
+    // like a name the table has never heard of. `renderScalar` turns the returned token into
+    // `UNKNOWN`.
+    return token;
   }
   if (scalar.type === 'bool') return /^true$/i.test(token) ? 1 : 0;
   if (segment.kind === 'string' || spec === 's') return unquote(token);
+  // `%m` prints a **message name** (`RXSTATUSEVENTA`), so a text token has to be mapped back to the
+  // id `formatField` prints it from. `A` is the ASCII flavour, `B` the binary one and no letter the
+  // suffixed-by-nothing flavour — the three cases `messageName` documents in `ascii-log.ts`. A name
+  // the dictionary does not carry stays a string, and prints `UNKNOWNB` (measured: `NOTALOG`).
+  if (spec === 'm') return messageId(token, tables);
   // `%T` prints `ms / 1000`, so a text token has to be scaled back before it is printed again.
   if (spec === 'T') return Math.round(Number(token) * 1000);
   // `%c` prints one raw character; its value is that character's code, not a number.
@@ -159,7 +191,7 @@ function renderBody(
         out.push(String(segment.format ?? '').endsWith('Z') ? unquote(token) : `"${unquote(token)}"`);
         continue;
       }
-      out.push(formatField(segment as EdieScalar, parseToken(segment, token, tables), tables));
+      out.push(renderScalar(segment as EdieScalar, token, tables));
     }
   };
   walk(segments);
@@ -167,6 +199,21 @@ function renderBody(
   // diff) and dropped for a `#` record, because that is what Convert does with them.
   if (keepExtra) while (at < tokens.length) out.push(tokens[at++]);
   return complete;
+}
+
+/**
+ * One scalar body token printed again, including the rule `formatField` cannot see on its own.
+ *
+ * `parseToken` hands back the token **as a string** when an enum field carries a name the table does
+ * not list (`INTERFACEMODE`'s `LCOM1`, which this receiver writes and the dictionary spells
+ * `UNKNOWN`), and a string reaching `formatField` would print as `NaN`. The suite prints `UNKNOWN`
+ * for it — the same answer it gives for a number outside the table. Measured through Convert on a
+ * synthetic `#RXCONFIGA` wrapping `#ECHOA,…;BOGUS,OFF` and `#ECHOA,…;8,OFF`, both `UNKNOWN,OFF`.
+ */
+function renderScalar(segment: EdieScalar, token: string, tables: EdieTables): string {
+  const value = parseToken(segment, token, tables);
+  if (typeof value === 'string' && segment.enum) return 'UNKNOWN';
+  return formatField(segment, value, tables);
 }
 
 /** `<NAME tok …>` header? The first token must be a message the dictionary knows. */
@@ -281,8 +328,7 @@ export function encodeTextLog(
   if (layout) renderBody(layout.fields, body, tables, rendered);
   else rendered.push(...body);
   const sentence = `${record.name}${options.versionLetter ?? 'A'},${head.join(',')};${rendered.join(',')}`;
-  const crc = novatelCrc32(latin1Bytes(sentence)).toString(16).padStart(8, '0');
-  return `#${sentence}*${crc}`;
+  return `#${sentence}*${hex8(novatelCrc32(latin1Bytes(sentence)))}`;
 }
 
 /**
@@ -299,6 +345,18 @@ export function passThroughAscii(text: string, names: ReadonlySet<string> = new 
   if (names.size > 0 && hashName(match[1], names) === undefined) return undefined;
   const sum = novatelCrc32(latin1Bytes(line.slice(1, line.lastIndexOf('*'))));
   return sum === parseInt(match[2], 16) ? line : undefined;
+}
+
+/** Dictionary name → layout. Every `#` and `<` path needs this lookup, so it is built once per table. */
+const LAYOUT_INDEX = new WeakMap<EdieTables, Map<string, EdieLayout>>();
+
+function layoutIndex(tables: EdieTables): Map<string, EdieLayout> {
+  const cached = LAYOUT_INDEX.get(tables);
+  if (cached) return cached;
+  const byName = new Map<string, EdieLayout>();
+  for (const layout of Object.values(tables.messages)) byName.set(layout.name, layout);
+  LAYOUT_INDEX.set(tables, byName);
+  return byName;
 }
 
 /** One `#NAME,…;…*crc` line as the same token list a `<` record assembles into. */
@@ -371,14 +429,93 @@ function parseHashLine(line: string, byName: Map<string, EdieLayout>): HashRecor
 }
 
 /**
- * A record whose whole body is one raw blob (`RXCONFIG` / `RXCONFIGUSER`: a single `%R` span). The
- * suite copies that blob out unchanged �� it is an embedded ASCII message, commas, semicolons and its
- * own CRC included �� so it is never rendered token by token.
+ * A record whose whole body is one raw blob (`RXCONFIG` / `RXCONFIGUSER`: a single `%R` span).
+ *
+ * The blob is an embedded ASCII message, commas, semicolons and its own CRC included, so it is never
+ * rendered token by token: `encodeEmbeddedAscii` parses it as a record of its own and re-renders that.
  */
 function rawBodyLayout(layout: EdieLayout | undefined): boolean {
   if (!layout || layout.fields.length !== 1) return false;
   const only = layout.fields[0];
   return only.kind === 'array' && String(only.format ?? '') === '%R';
+}
+
+/** An embedded ASCII message, parsed and ready to be printed again. */
+interface EmbeddedRecord {
+  /** The name token as the capture spells it (`INTERFACEMODEA`) — what Convert prints. */
+  rawName: string;
+  /** Dictionary name without the version letter (`INTERFACEMODE`). */
+  name: string;
+  layout: EdieLayout;
+  /** The nine header tokens, re-rendered. */
+  head: string[];
+  /** The body tokens, as the message wrote them. */
+  body: string[];
+}
+
+/**
+ * Parse the `%R` blob of a text `RXCONFIG`/`RXCONFIGUSER` record: `#NAME,<head>;<body>*<crc>`.
+ *
+ * `undefined` when the suite would drop the whole outer record, which it does for a blob the
+ * dictionary cannot resolve — measured on `b7-20261101.sbf`, where 22 of the 269 `#RXCONFIGA` lines
+ * embed a name this dictionary does not carry (`AGCMODEA`, `SETIONOMODELA`, …) and the suite writes
+ * nothing for them, leaving 247 lines. The trailing `*<crc>` is dropped: see `embeddedCrc`.
+ */
+function parseEmbeddedRecord(blob: string, byName: Map<string, EdieLayout>): EmbeddedRecord | undefined {
+  if (!blob.startsWith('#')) return undefined;
+  const star = blob.lastIndexOf('*');
+  const text = blob.slice(1, star > 0 ? star : undefined);
+  const semicolon = text.indexOf(';');
+  if (semicolon < 0) return undefined;
+  const tokens = text.slice(0, semicolon).split(',');
+  const rawName = tokens.shift() ?? '';
+  if (tokens.length < 9) return undefined;
+  const base = rawName.slice(0, -1);
+  const name = /[A-Z]$/.test(rawName) && byName.has(base) ? base : rawName;
+  const layout = byName.get(name);
+  if (!layout) return undefined;
+  return {
+    rawName,
+    name,
+    layout,
+    head: renderHead(tokens.slice(0, 9)),
+    body: text.slice(semicolon + 1) === '' ? [] : text.slice(semicolon + 1).split(','),
+  };
+}
+
+/**
+ * The CRC the suite prints for an embedded ASCII message: the **one's complement** of the NovAtel
+ * CRC over `NAME,<head>;<body>`.
+ *
+ * Measured on all 247 `#RXCONFIGA` lines of `golden-b7-20261101.ASCII`: the plain CRC over the
+ * re-rendered sentence reproduces none of them, `~crc` reproduces every one — e.g. sequence 265's
+ * `INTERFACEMODEA,USB2,265,…,7a68,18278;UNKNOWN,NOVATEL,NOVATEL,ON` is `5633f5d1`, and the plain
+ * CRC of those bytes is `a9cc0a2e`. This is the same `invertCrc` rule the binary `%R` path uses
+ * (`ascii-log.ts`, `AsciiLogOptions.invertCrc`), so both halves of `RXCONFIG` agree.
+ *
+ * The carried CRC is not even validated: a blob whose inner CRC reads `00000000`, the plain CRC or
+ * `~crc` all print the same recomputed value (three synthetic captures through Convert).
+ */
+function embeddedCrc(sentence: string): string {
+  return hex8((novatelCrc32(latin1Bytes(sentence)) ^ 0xffffffff) >>> 0);
+}
+
+/**
+ * Re-render an embedded ASCII message as the `#NAME,…;…*crc` line that goes inside the outer record.
+ *
+ * The body is rendered the way the outer record's is, with one measured difference: a body that runs
+ * out of tokens prints the fields it **has** instead of dropping the record (synthetic `#RXCONFIGA`
+ * wrapping `#ECHOA,<head>;COM2` → `…#ECHOA,<head>;COM2*cb1e7741*…`), while an **empty** body prints
+ * nothing at all and takes the outer record with it. Both are corners of a record a receiver never
+ * writes; b7's 269 config lines all carry complete bodies.
+ */
+function encodeEmbeddedAscii(blob: string, byName: Map<string, EdieLayout>, tables: EdieTables): string | undefined {
+  const inner = parseEmbeddedRecord(blob, byName);
+  if (!inner || inner.body.length === 0) return undefined;
+  const body: string[] = [];
+  renderBody(inner.layout.fields, inner.body, tables, body);
+  const sentence = `${inner.rawName},${inner.head.join(',')};${body.join(',')}`;
+  return `#${sentence}*${embeddedCrc(sentence)}`;
 }
 
 /**
@@ -407,8 +544,7 @@ export function textRecordFields(
   line: string,
   tables: EdieTables,
 ): { name: string; head: string[]; fields: Array<{ path: string; token: string; value: number | string }> } | undefined {
-  const byName = new Map<string, EdieLayout>();
-  for (const layout of Object.values(tables.messages)) byName.set(layout.name, layout);
+  const byName = layoutIndex(tables);
   const record = parseHashLine(line.trim(), byName);
   if (!record || !record.layout) return undefined;
   const fields: Array<{ path: string; token: string; value: number | string }> = [];
@@ -443,15 +579,17 @@ export function textRecordFields(
 
 export function encodeHashLog(record: HashRecord, tables: EdieTables): string | undefined {
   const body: string[] = [];
-  // An embedded ASCII message (`RXCONFIG`'s payload) goes out verbatim, `#` and inner CRC included:
-  // the suite's line is `#RXCONFIGA,<head>;#LOGA,<head>;<body>*<inner crc>*<outer crc>`.
-  const raw = rawBodyLayout(record.layout);
-  if (raw) body.push(...record.body);
-  else if (record.layout && !renderBody(record.layout.fields, record.body, tables, body)) return undefined;
-  if (!record.layout) body.push(...record.body);
+  // An embedded ASCII message (`RXCONFIG`'s payload) is parsed and printed again, `#` and its own
+  // CRC included: the suite's line is `#RXCONFIGA,<head>;#LOGA,<head>;<body>*<inner crc>*<outer crc>`,
+  // and a blob it cannot resolve drops the whole record.
+  if (rawBodyLayout(record.layout)) {
+    const inner = encodeEmbeddedAscii(record.rawBody, layoutIndex(tables), tables);
+    if (inner === undefined) return undefined;
+    body.push(inner);
+  } else if (record.layout && !renderBody(record.layout.fields, record.body, tables, body)) return undefined;
+  else if (!record.layout) body.push(...record.body);
   const sentence = `${record.rawName},${record.head.join(',')};${body.join(',')}`;
-  const crc = novatelCrc32(latin1Bytes(sentence)).toString(16).padStart(8, '0');
-  return `#${sentence}*${crc}`;
+  return `#${sentence}*${hex8(novatelCrc32(latin1Bytes(sentence)))}`;
 }
 
 /**
@@ -485,8 +623,7 @@ export function encodeHashLog(record: HashRecord, tables: EdieTables): string | 
  *    `RAWALM …,2402,91818.000,0` and the four such SATVIS2 records in `live-nav.sbf`.
  */
 export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables): Map<number, string[]> {
-  const byName = new Map<string, EdieLayout>();
-  for (const layout of Object.values(tables.messages)) byName.set(layout.name, layout);
+  const byName = layoutIndex(tables);
   const names = new Set(byName.keys());
   const lines = new Map<number, string[]>();
 
@@ -506,7 +643,7 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
       if (line === undefined) return;
       const record = parseHashLine(line, byName);
       if (record?.layout && rawBodyLayout(record.layout)) {
-        const block = embeddedAbbrevBlock(record, byName);
+        const block = embeddedAbbrevBlock(record, byName, tables);
         if (block) lines.set(index, block);
         return;
       }
@@ -532,29 +669,38 @@ export function abbrevTextLogLines(frames: readonly Frame[], tables: EdieTables)
 /**
  * The ABBREV block for a record whose body is an embedded ASCII message (`RXCONFIG`'s payload).
  *
- * Measured on `b7-20261101.sbf` (247 blocks, all identical in shape):
+ * Measured on `b7-20261101.sbf` (247 blocks):
  *
  *   `<RXCONFIG USB2 10 76.5 COARSESTEERING 2442 553862.246 03809800 f702 18278`
  *   `<     LOG USB2 10 76.5 COARSESTEERING 2442 553862.246 03809800 92b2 18278 `
  *   `<     USB1_30 ITPSDDETECTB ONNEW 0.000000 0.000000 HOLD`
  *
- * �� the outer header, then the embedded message's own header as the data line (its version letter
- * dropped, like every other ABBREV name), then its body values on a line at the same indent.
+ * — the outer header, then the embedded message's own header as a data line at the **five**-space
+ * indent (its version letter dropped, like every other ABBREV name, and its header re-rendered), then
+ * its values laid out exactly like any other ABBREV body: one line for the scalar fields and one
+ * **nine**-space line per array element, which is why 244 of the 247 blocks are three lines and the
+ * rest longer (`SETTIMESOURCE` prints `3` and three sources, `DNSCONFIG` one address).
+ *
+ * Every line but the block's last carries one trailing space, the same rule `formatAbbrev` follows.
  */
-function embeddedAbbrevBlock(record: HashRecord, byName: Map<string, EdieLayout>): string[] | undefined {
-  const payload = record.rawBody.replace(/^#/, '');
-  const semicolon = payload.indexOf(';');
-  if (semicolon < 0) return undefined;
-  const headTokens = payload.slice(0, semicolon).split(',');
-  const rawName = headTokens.shift() ?? '';
-  const base = rawName.slice(0, -1);
-  const innerName = /[A-Z]$/.test(rawName) && byName.has(base) ? base : rawName;
-  const values = payload.slice(semicolon + 1).split(',');
-  const lines = [`<${record.name} ${record.head.join(' ')}`];
-  const data = `<     ${innerName} ${headTokens.join(' ')}`;
-  if (values.length) lines.push(`${data} `, `<     ${values.join(' ')}`);
-  else lines.push(data);
-  return lines;
+function embeddedAbbrevBlock(
+  record: HashRecord,
+  byName: Map<string, EdieLayout>,
+  tables: EdieTables,
+): string[] | undefined {
+  const inner = parseEmbeddedRecord(record.rawBody, byName);
+  if (!inner || inner.body.length === 0) return undefined;
+  const first: string[] = [];
+  const blocks: string[][] = [];
+  walkAbbrev(inner.layout.fields, inner.body, tables, first, blocks);
+  const lines = [
+    `<${record.name} ${record.head.join(' ')}`,
+    `<     ${inner.name} ${inner.head.join(' ')}`,
+    `<    ${first.length ? ` ${first.join(' ')}` : ''}`,
+    ...blocks.map((block) => `<         ${block.length ? ` ${block.join(' ')}` : ''}`),
+  ];
+  // The outer header ends the line; every line after it but the last carries one trailing space.
+  return lines.map((line, index) => (index === 0 || index === lines.length - 1 ? line : `${line} `));
 }
 
 function abbrevFromTokens(
@@ -689,7 +835,7 @@ function walkElement(
       out.push(format === '%Z' ? token.toLowerCase() : token);
       continue;
     }
-    out.push(formatField(segment as EdieScalar, parseToken(segment, token, tables), tables));
+    out.push(renderScalar(segment as EdieScalar, token, tables));
   }
   return at;
 }
@@ -704,8 +850,7 @@ function walkElement(
  * receiver always follows a header with its data line.)
  */
 export function textLogLines(frames: readonly Frame[], tables: EdieTables): Map<number, string> {
-  const byName = new Map<string, EdieLayout>();
-  for (const layout of Object.values(tables.messages)) byName.set(layout.name, layout);
+  const byName = layoutIndex(tables);
   const names = new Set(byName.keys());
   const lines = new Map<number, string>();
   for (const [index, record] of collectTextLogs(frames, tables)) {
