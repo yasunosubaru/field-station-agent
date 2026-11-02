@@ -98,7 +98,7 @@ export interface ConvertOptions {
    * writes `<base>_Part<N>.<ext>` except `'logs'`, which is the per-log writer above.
    */
   splitMode?: ConvertSplitMode;
-  /** `--limit-output-size=<MB>`: one **mebibyte** (1 048 576 B), measured on b2 — see `partition`. */
+  /** `--limit-output-size=<MB>`: one **mebibyte** (1 048 576 B), measured on b2 — see `partitionPieces`. */
   splitSizeMb?: number;
   /** `--limit-output-duration=<SECONDS>`. */
   splitSeconds?: number;
@@ -107,6 +107,10 @@ export interface ConvertOptions {
    * log. `'file'` writes them next to the output as `<base>.UNKNOWN`, `'interleave'` splices them
    * into the converted file at the position they came from, `'ignore'` (the default, the suite's
    * `SKIP`) drops them — the summary still counts them either way.
+   *
+   * The split modes change both: under `--split` (LOGS) neither splices and both write
+   * `<base>_UNKNOWN.<ext>`; under `--limit-output-size` / `--limit-output-duration` / `--daily-utc`
+   * both splice and no sidecar is written. See `convertFrames`' `spliced`.
    */
   unknownBytes?: UnknownBytesMode;
   /**
@@ -263,7 +267,7 @@ interface ConvertBlock {
   stamp?: RecordStamp;
   /**
    * The record's time status. `--daily-utc` only moves its day clock on certain statuses, and a
-   * **text** record's set is one step wider than a binary record's — see `partitionBlocks`.
+   * **text** record's set is one step wider than a binary record's — see `partitionPieces`.
    */
   timeStatus?: number;
   /** True when the block came from a text record (`#NAME …` / `<NAME …`), false for an SBF frame. */
@@ -833,9 +837,60 @@ const DAILY_CLOCK_TIME_STATUS = new Set([80, 100, 120, 160, 180]);
 const DAILY_CLOCK_TEXT_STATUS = new Set([60, 80, 100, 120, 160, 180]);
 
 /**
- * Split `blocks` into the parts one of the three file-splitting modes writes.
+ * One piece of an output file: a converted record's bytes, or a run of bytes Convert could not
+ * attribute to a log spliced back where the capture had it (`--unknown-bytes=interleave`).
  *
- * `'size'` — see `MEBIBYTE` above.
+ * The split modes all cut this **one** stream, so a part is a slice of the interleaved file rather
+ * than "its records, with the unknown bytes appended somewhere". Measured on b2 (2026-11-02): the
+ * suite's five `--limit-output-size=1` parts and its seven `--limit-output-duration=5` parts both
+ * concatenate to exactly the unsplit `--unknown-bytes=interleave` file (4 939 029 B).
+ */
+interface OutputPiece {
+  bytes: Uint8Array;
+  /** The record this piece prints; `undefined` for a run of unknown bytes. */
+  block?: ConvertBlock;
+  /** Capture offset — the record's own, or the start of the unknown run. */
+  offset: number;
+}
+
+/** Does this record's time status mean "this time is worth trusting"? The `--daily-utc` gates. */
+function timeStatusTrusted(block: ConvertBlock): boolean {
+  return (block.text ? DAILY_CLOCK_TEXT_STATUS : DAILY_CLOCK_TIME_STATUS).has(block.timeStatus ?? -1);
+}
+
+/**
+ * The output stream in capture order: the converted records and, when the caller asked for
+ * `--unknown-bytes=interleave`, the runs of unattributable bytes spliced back at their offsets.
+ *
+ * Ordering both by the one capture offset is the whole rule; a Time Interval needs no special case
+ * either (the runs are the windowed account and the blocks carry the offsets of the records the
+ * window kept).
+ */
+function mergePieces(
+  blocks: readonly ConvertBlock[],
+  runs: readonly Span[],
+  source: Uint8Array,
+): OutputPiece[] {
+  return [
+    ...blocks.filter((block) => block.bytes.length > 0)
+      .map((block) => ({ bytes: block.bytes, block, offset: block.offset ?? 0 })),
+    ...runs.map((run) => ({ bytes: source.subarray(run.start, run.end), offset: run.start })),
+  ].sort((a, b) => a.offset - b.offset);
+}
+
+/**
+ * Split `pieces` into the parts one of the three file-splitting modes writes.
+ *
+ * `'size'` — see `MEBIBYTE` above. The counter is over **everything written**, unknown bytes
+ * included, and it is tested after every piece: measured on a synthetic capture (13 BESTPOS records
+ * of 214 B, a 13-byte run at the top and an 8-byte one at the end, `--limit-output-size=0.001025` =
+ * 1 074.8 B), the plain run closes Part0 after six records (1 284 B) while the interleaved run
+ * closes it after five records **plus** that leading junk (1 083 B). A junk run can therefore close
+ * a part on its own — 3 000 bytes of junk after the first record closed Part0 before the next record
+ * arrived. That is also why b2's five
+ * 1 MiB parts under `--unknown-bytes=interleave` are 1 051 452 / 1 055 374 / 1 051 235 / 1 054 714 /
+ * 726 254 B instead of the plain 1 051 261 / 1 055 491 / 1 051 236 / 1 054 714 / 719 271: the junk
+ * in each part counts towards its limit.
  *
  * `'time'` — `--limit-output-duration=<SECONDS>`: a part runs from the time of **its own first
  * record** for that many seconds, both ends inclusive, and the record that *reaches* the window's
@@ -851,13 +906,25 @@ const DAILY_CLOCK_TEXT_STATUS = new Set([60, 80, 100, 120, 160, 180]);
  * it: their time is behind the window, not past it. Verified on synthetic captures as well: with
  * records at `577760.00` and `577765.00` and nothing between, both stay in Part0.
  *
+ * **A part that opens on unknown bytes has no anchor** (measured 2026-11-02, and the reason b2's
+ * interleaved `--limit-output-duration=5` writes seven parts instead of eight). b2's capture starts
+ * with `\r\n<OK\r\n[USB2]`, then the `ALMANAC` (`577140.000`, `SATTIME` = 200) — and the interleaved
+ * run anchors Part0 on `577758.950` (COARSESTEERING = 120), not on the almanac: the part runs
+ * `577758.95 … 577763.95` and `577764.000` opens Part1. The same shape on synthetic captures:
+ * `[*junk, 577140:200, 577145:180 …]` anchors at 577145, and `[*junk, 577140:200, 577143:200,
+ * 577150:60 …]` never starts the clock at all (one part). So when a part's first piece is not a
+ * record, the clock waits for the first record whose status is in the same trusted set the day clock
+ * uses; a part that *starts* with a record takes it whatever its status (that is how the plain run
+ * anchors on the almanac).
+ *
  * `'daily'` — `--daily-utc`: a new part whenever a record's GPS day (whole days since the GPS
  * epoch, **no leap-second correction** — the boundary is seconds-of-week ≡ 0 mod 86400, measured
  * either side of 518400 and 604800) is *later* than the day clock, and the clock **follows every
  * record that moves it, backwards included**:
  *
  *  - the clock starts at the first block that carries a stamp at all, whatever its status (a week-0
- *    `COARSESTEERING` frame starts it at day 0, and the first real day after that splits);
+ *    `COARSESTEERING` frame starts it at day 0, and the first real day after that splits) — unknown
+ *    bytes do not take part, so the interleaved run anchors exactly like the plain one;
  *  - a binary frame moves it when its header status is in `DAILY_CLOCK_TIME_STATUS`, a text record
  *    when its printed status is in `DAILY_CLOCK_TEXT_STATUS` (one status wider);
  *  - a late record therefore *rewinds* the clock, so the next jump forward splits again — exactly
@@ -867,63 +934,84 @@ const DAILY_CLOCK_TEXT_STATUS = new Set([60, 80, 100, 120, 160, 180]);
  *
  * b2 spans one UTC day, hence one part of the whole file (905 lines / 4 931 973 B, named
  * `b2-20261101_Part0.ASCII`); b5 and live-nav split into two.
+ *
+ * Unknown bytes belong to the part of the record **before** them: the junk between the record that
+ * closes a part and the record that opens the next one stays at the end of the earlier part
+ * (measured on synthetics for both `time` and `daily`: Part0 ends with its junk, Part1 opens on a
+ * record). Because the close is decided when the *next* record arrives, the iterator below has
+ * already pushed that junk into `current` when `close()` runs.
  */
-function partitionBlocks(
-  blocks: readonly ConvertBlock[],
+function partitionPieces(
+  pieces: readonly OutputPiece[],
   splitMode: ConvertSplitMode | undefined,
   options: ConvertOptions,
-): ConvertBlock[][] {
-  if (splitMode === undefined || splitMode === 'logs') return [blocks.slice()];
-  const parts: ConvertBlock[][] = [];
-  let current: ConvertBlock[] = [];
+): OutputPiece[][] {
+  if (splitMode === undefined || splitMode === 'logs') return [pieces.slice()];
+  const parts: OutputPiece[][] = [];
+  let current: OutputPiece[] = [];
   const close = () => { parts.push(current); current = []; };
   if (splitMode === 'size') {
     const limit = (options.splitSizeMb ?? 0) * MEBIBYTE;
     let bytes = 0;
-    for (const block of blocks) {
-      current.push(block);
-      bytes += block.bytes.length;
+    for (const piece of pieces) {
+      current.push(piece);
+      bytes += piece.bytes.length;
       if (limit > 0 && bytes >= limit) { close(); bytes = 0; }
     }
   } else if (splitMode === 'time') {
     const duration = (options.splitSeconds ?? 0) * 1000;
     let start: number | undefined;
     let expired = false;
-    for (const block of blocks) {
-      const stamp = block.stamp ? absoluteMilliseconds(block.stamp) : undefined;
+    /** True only for the very first piece of a part: a record there anchors whatever its status. */
+    let first = true;
+    for (const piece of pieces) {
+      const block = piece.block;
+      const stamp = block?.stamp ? absoluteMilliseconds(block.stamp) : undefined;
       if (stamp !== undefined && duration > 0) {
-        if (start === undefined) start = stamp;
-        else if (expired && stamp > start + duration) { close(); start = stamp; expired = false; }
+        if (start === undefined) {
+          if (first || timeStatusTrusted(block!)) start = stamp;
+        } else if (expired && stamp > start + duration) {
+          close(); start = stamp; expired = false; first = true;
+        }
       }
-      current.push(block);
+      current.push(piece);
+      first = false;
       if (stamp !== undefined && start !== undefined && !expired && duration > 0 && stamp - start >= duration) {
         expired = true;
       }
     }
   } else {
     let clockDay: number | undefined;
-    for (const block of blocks) {
-      const day = block.stamp ? gpsDay(block.stamp) : undefined;
+    for (const piece of pieces) {
+      const block = piece.block;
+      const day = block?.stamp ? gpsDay(block.stamp) : undefined;
       // The clock starts at the first record that carries a stamp at all, whatever its status, and
       // from then on only records whose status means "this time is worth trusting" move it.
       // b2's `ALMANAC` (200) and `GLORAWALM` (200, week 2402 of a 2026-11 capture) leave it at one
       // part; b1's 24 `RXCONFIG` records stamped 0 with status 200 and its `id 1246` frames with
       // status 20 and week 0 leave it at one part too — while a status-180 record stamped 0 does
       // start the clock at day 0 and splits the capture at the first real record.
-      if (day !== undefined) {
+      if (day !== undefined && block) {
         if (clockDay === undefined) clockDay = day;
-        else if ((block.text ? DAILY_CLOCK_TEXT_STATUS : DAILY_CLOCK_TIME_STATUS).has(block.timeStatus ?? -1)) {
+        else if (timeStatusTrusted(block)) {
           // Measured: the clock is *not* monotone — a late record rewinds it, so the next record
           // that is later than the rewound clock opens a new part (b7's Part1 → Part2 boundary).
           if (day > clockDay) close();
           clockDay = day;
         }
       }
-      current.push(block);
+      current.push(piece);
     }
   }
   if (current.length) parts.push(current);
   return parts.length ? parts : [[]];
+}
+
+function concatPieces(pieces: readonly OutputPiece[]): Uint8Array {
+  const out = new Uint8Array(pieces.reduce((sum, piece) => sum + piece.bytes.length, 0));
+  let at = 0;
+  for (const piece of pieces) { out.set(piece.bytes, at); at += piece.bytes.length; }
+  return out;
 }
 
 function concatBlocks(blocks: readonly ConvertBlock[]): Uint8Array {
@@ -938,6 +1026,10 @@ function concatBlocks(blocks: readonly ConvertBlock[]): Uint8Array {
  * `<base>_<LOGNAME>.<ext>` for `--split` (which only the ASCII family honours — the suite writes
  * per-log files for it and single files for BINARY/RINEX/KML), and `<base>_Part<N>.<ext>` for the
  * three other modes.
+ *
+ * `spliced` is `--unknown-bytes=interleave`: the runs go back at their capture offsets, and the
+ * three splitting modes cut the resulting stream (see `partitionPieces`). `--split` never splices —
+ * the suite writes the whole unknown stream to `<base>_UNKNOWN.<ext>` instead (see `convertFrames`).
  */
 function assembleFiles(
   base: string,
@@ -946,6 +1038,7 @@ function assembleFiles(
   blocks: readonly ConvertBlock[],
   splitMode: ConvertSplitMode | undefined,
   options: ConvertOptions,
+  spliced?: { runs: readonly Span[]; source: Uint8Array },
 ): ConvertFile[] {
   if (splitMode === 'logs') {
     const perLog = new Map<string, ConvertBlock[]>();
@@ -961,9 +1054,23 @@ function assembleFiles(
       return { name: `${base}_${logName}.${extension}`, text: text ? latin1(bytes) : null, bytes };
     });
   }
-  const parts = partitionBlocks(blocks, splitMode, options);
+  let pieces: OutputPiece[] = spliced
+    ? mergePieces(blocks, spliced.runs, spliced.source)
+    : blocks.map((block) => ({ bytes: block.bytes, block, offset: block.offset ?? 0 }));
+  /**
+   * `--daily-utc` drops the unknown run(s) that come *before the first record*: b1's interleaved
+   * daily run writes 5 094 255 B = 5 088 882 (the plain part) + 5 386 (`.UNKNOWN`) − 13, and those
+   * 13 bytes are the capture's opening `\r\n<OK\r\n[USB2]` — the same run `size` and `time` keep
+   * (measured 2026-11-02). It is the one place the suite loses unknown bytes, and it is reproduced
+   * rather than silently "fixed" so the bytes match.
+   */
+  if (splitMode === 'daily') {
+    const firstRecord = pieces.findIndex((piece) => piece.block !== undefined);
+    if (firstRecord > 0) pieces = pieces.slice(firstRecord);
+  }
+  const parts = partitionPieces(pieces, splitMode, options);
   return parts.map((part, index) => {
-    const bytes = concatBlocks(part);
+    const bytes = concatPieces(part);
     const fileName = splitMode === undefined ? `${base}.${extension}` : `${base}_Part${index}.${extension}`;
     return { name: fileName, text: text ? latin1(bytes) : null, bytes };
   });
@@ -1373,8 +1480,18 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     : undefined;
   const textFamily = format === 'ASCII' || format === 'ABBREV_ASCII' || format === 'BINARY';
   /**
-   * The suite only offers the option for the ASCII/BINARY family (`03_Convert组件.md §5.6`), and it
-   * does not combine with a split.
+   * `--unknown-bytes` under a split mode, all measured on the 2.11.0 suite (2026-11-02):
+   *
+   *  - **no split**: `file` writes `<base>.UNKNOWN`, `interleave` splices into `<base>.<ext>`;
+   *  - **`--split` (LOGS)**: neither splices — both write the whole unknown stream to
+   *    `<base>_UNKNOWN.<ext>`, byte-identical for `file` and `interleave` (b1, all three formats:
+   *    5 386 B / `d3855e28…`). There is no combined file to splice into, and the suite does not
+   *    repeat the junk inside every per-log file;
+   *  - **`--limit-output-size` / `--limit-output-duration` / `--daily-utc`**: **both** splice. The
+   *    sidecar is not written at all — `--unknown-bytes=file` is ignored and behaves exactly like
+   *    `interleave` (b2 `--limit-output-size=1`: the same five parts, sizes and digests, with no
+   *    `.UNKNOWN`; b7 `--daily-utc`: the same three parts as the interleaved run). The parts are a
+   *    partition of the *interleaved* stream (see `partitionPieces`).
    *
    * A **Time Interval does not stop it**: measured on b1 `--start-time=2442,570250
    * --finish-time=2442,570255 --unknown-bytes=interleave` (2026-11-02) the suite writes 985 626 B =
@@ -1382,10 +1499,12 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
    * capture offsets. So the runs are `spans.fileRuns` — the windowed account, which already drops
    * the bytes of the records the window skipped — and no window-relative re-basing happens: the
    * bytes keep their capture offsets and the first block is simply the first record the window kept.
-   * `interleave` copes with that because it orders blocks and runs by the same capture offset.
    */
-  const interleaving = mode === 'interleave' && textFamily && splitMode === undefined
-    && spans !== undefined && source !== undefined;
+  const splitSplices = mode !== 'ignore' && splitMode !== undefined && splitMode !== 'logs';
+  const spliced = spans && source && textFamily && splitMode !== 'logs'
+    && (mode === 'interleave' || splitSplices)
+    ? { runs: spans.fileRuns, source }
+    : undefined;
 
   if (format === 'ASCII') {
     const rendered = new Map<number, number>();
@@ -1394,11 +1513,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
       const line = encodeAsciiLog(frame, layout, tables);
       return line ? [line] : [];
     }, stamps, expand, rendered);
-    if (interleaving) {
-      files.push(interleave(`${outputBase}.ASCII`, blocks, spans!.fileRuns, source!));
-    } else {
-      files.push(...assembleFiles(outputBase, 'ASCII', true, blocks, splitMode, options));
-    }
+    files.push(...assembleFiles(outputBase, 'ASCII', true, blocks, splitMode, options, spliced));
     countsRendered = rendered;
     countsText = textAt;
   } else if (format === 'ABBREV_ASCII') {
@@ -1409,11 +1524,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
       (frame, layout) => encodeAbbrevLines(frame, layout, tables),
       stamps, expand, rendered,
     );
-    if (interleaving) {
-      files.push(interleave(`${outputBase}.ABBREV_ASCII`, blocks, spans!.fileRuns, source!));
-    } else {
-      files.push(...assembleFiles(outputBase, 'ABBREV_ASCII', true, blocks, splitMode, options));
-    }
+    files.push(...assembleFiles(outputBase, 'ABBREV_ASCII', true, blocks, splitMode, options, spliced));
     countsRendered = rendered;
     countsText = textAt;
   } else if (format === 'KML') {
@@ -1460,11 +1571,7 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
     const rendered = new Map<number, number>();
     const blocks = binaryBlocks(frames, tables, stamps, expand, textMap, failures, rendered);
     unencodedText = failures;
-    if (interleaving) {
-      files.push(interleave(`${outputBase}.BINARY`, blocks, spans!.fileRuns, source!));
-    } else {
-      files.push(...assembleFiles(outputBase, 'BINARY', false, blocks, splitMode, options));
-    }
+    files.push(...assembleFiles(outputBase, 'BINARY', false, blocks, splitMode, options, spliced));
     // The Summary's OUTPUT column: a record that renders nothing is not written (`RXCONFIG
     // 278 → 256`), and an expanded `RANGECMP*` counts as the `RANGE` frame it becomes. Text records
     // are added by `countTextRecords`, so they are not in this map.
@@ -1503,8 +1610,16 @@ export function convertFrames(captureFrames: readonly Frame[], options: ConvertO
   if (spans && source) {
     unknownCount = countUnknown(source, spans.parseRuns);
     unknownBytes = concatBytes(spans.fileRuns.map((run) => source.subarray(run.start, run.end)));
-    if (mode === 'file' && textFamily) {
-      files.push({ name: `${outputBase}.UNKNOWN`, text: null, bytes: unknownBytes });
+    /**
+     * `--split` (LOGS) is the one split mode that writes a sidecar instead of splicing, and it names
+     * it after the split pattern: `<base>_UNKNOWN.<ext>` — for `file` **and** `interleave` alike
+     * (measured on b1 in ASCII, ABBREV_ASCII and BINARY: all three sidecars are the same 5 386 bytes,
+     * `d3855e28…`). Every other mode either writes `<base>.UNKNOWN` (no split) or splices the runs
+     * into the parts and writes nothing (size/time/daily) — see `spliced` above.
+     */
+    if (mode !== 'ignore' && textFamily && spliced === undefined) {
+      const name = splitMode === 'logs' ? `${outputBase}_UNKNOWN.${format}` : `${outputBase}.UNKNOWN`;
+      files.push({ name, text: null, bytes: unknownBytes });
     }
   }
 
@@ -1556,29 +1671,4 @@ function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
   let at = 0;
   for (const part of parts) { out.set(part, at); at += part.length; }
   return out;
-}
-
-/**
- * `--unknown-bytes=interleave`: put the unknown bytes back where the capture had them, ordered by
- * capture offset. Measured on a synthetic capture through `-a` / `--abbrev` / `-b`: the bytes are
- * spliced verbatim between the records, so the file is no longer line-oriented.
- *
- * A Time Interval needs no special case here: `runs` is the windowed account (the bytes of the
- * records the window skipped are not in it), the blocks carry the capture offset of the records the
- * window kept, and ordering both by that one number reproduces the suite's file byte for byte
- * (b1 window: 985 626 B = 981 856 B of records + the 3 770 B of `.UNKNOWN`).
- */
-function interleave(
-  name: string,
-  blocks: readonly ConvertBlock[],
-  runs: readonly Span[],
-  source: Uint8Array,
-): ConvertFile {
-  const pieces = [
-    ...blocks.filter((block) => block.bytes.length > 0)
-      .map((block) => ({ offset: block.offset ?? 0, bytes: block.bytes })),
-    ...runs.map((run) => ({ offset: run.start, bytes: source.subarray(run.start, run.end) })),
-  ].sort((a, b) => a.offset - b.offset);
-  const bytes = concatBytes(pieces.map((piece) => piece.bytes));
-  return { name, text: latin1(bytes), bytes };
 }

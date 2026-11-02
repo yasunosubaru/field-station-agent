@@ -75,6 +75,9 @@
 | `file` | 格式目录下多一个 `<base>.UNKNOWN`，内容同套件逐字节 | 照旧 |
 | `interleave` | 未知字节**原样插回**转换文件的对应位置（按捕获偏移排序），文件不再按行组织 | 照旧 |
 
+> 与分片组合时这两档都会变样：`--split` 下两者都只写 `<base>_UNKNOWN.<ext>`，`size`/`time`/`daily`
+> 下两者都交错且不写 sidecar。见下面「分片 × `--unknown-bytes`」。
+
 `interleave` 的插入位置用三帧合成捕获实测过：`#BESTPOSA…\r\n` + `\r\n[USB2]\r\n<OK\r\n` +
 下一条 `#BESTPOSA…`。我们与套件在 BINARY 上逐字节相同；ASCII/ABBREV 的记录行本身对这条**零填充短
 payload** 的合成记录还有已知差异（`ascii-log.ts` 对截断 payload 的默认值，真实捕获 14 份 golden 全同），
@@ -110,6 +113,53 @@ payload** 的合成记录还有已知差异（`ascii-log.ts` 对截断 payload �
    第一条保留 SBF 记录**之前**，套件写了而我们以前丢了——`981 856 − 978 069 = 3 787` 就是它，
    跟交错无关。现在 `applyTimeWindow` 先按记录头的时间戳筛文本，续行跟着记录头走。
 
+### 分片 × `--unknown-bytes`（2026-11-02 补测，四种切法全覆盖）
+
+套件 2.11.0 与本仓库 CLI 同参数各跑一遍，逐文件比字节/sha256：
+
+| 组合 | 套件产物 | 我们 |
+|---|---|---|
+| b1 `-a --split --unknown-bytes=interleave` | 27 个文件：26 个 `<base>_<LOG>.ASCII` + `<base>_UNKNOWN.ASCII` 5 386 B | 27/27 逐字节相同（sidecar sha `d3855e28…`） |
+| b1 `--abbrev --split …` | 同上，sidecar `_UNKNOWN.ABBREV_ASCII` 5 386 B | 27/27 相同 |
+| b1 `-b --split …` | 同上，sidecar `_UNKNOWN.BINARY` 5 386 B | 27/27 相同 |
+| b1 `-a --split --unknown-bytes=ignore` | 26 个日志文件，无 sidecar | 26/26 相同 |
+| b2 `-a --limit-output-size=1 …` | 5 片：1 051 452 / 1 055 374 / 1 051 235 / 1 054 714 / 726 254 | 逐片 sha 相同 |
+| b2 `-a --limit-output-duration=5 …` | 7 片：573 318 / 795 078 / 781 441 / 782 301 / 781 840 / 780 106 / 444 945 | 逐片 sha 相同 |
+| b5 `-a --daily-utc …` | 2 片：1 439 624 / 4 915 874 | 相同 |
+| b7 `-a --daily-utc …` | 3 片：44 518 / 5 161 / 1 055 245 | 相同 |
+| b1 `-a --daily-utc …` | 1 片：5 094 255 | 相同 |
+| b2 `--abbrev --limit-output-size=1 …` | 6 片：1 048 595 / 1 053 322 / 1 054 462 / 1 054 335 / 1 052 900 / 467 255 | 相同 |
+| b2 `-b --limit-output-duration=5 …` | 7 片：321 188 / 440 324 / 433 416 / 432 992 / 433 550 / 431 920 / 247 004 | 相同 |
+
+四条规则：
+
+1. **`--split`（LOGS）不交错。** 没有合并文件可插，套件也不会把同一段垃圾重复进 26 个日志文件：
+   `file` 与 `interleave` 都写 `<base>_UNKNOWN.<ext>`（与 `<base>.UNKNOWN` 同字节），`ignore` 什么都
+   不写。sidecar 的名字跟切分模式走（`b2-20261101_UNKNOWN.ASCII`），后缀是各自格式。
+2. **`size` / `time` / `daily` 一律交错**，而且在这三种模式下 `--unknown-bytes=file` **等同**
+   `interleave`——套件不写 sidecar（b2 size、b7 daily 的 `file` 与 `interleave` 产物 sha 完全相同）。
+3. **分片就是交错流的切分。** b2 五片（size）与七片（time）首尾相接 = 不分片的
+   `--unknown-bytes=interleave` 文件 4 939 029 B，`Buffer.compare` 为 0。所以「交错发生在切分前」
+   ——先给出整条交错流，再按模式切片；不是每片各自交错一次。
+4. **片与片之间的垃圾归前一片**（`time` / `daily`：Part0 以垃圾结尾、Part1 以记录开头，合成捕获
+   实测）；`size` 因为计数器含垃圾，垃圾段自己也可能收片（见下）。
+
+`size` 的计数器**把垃圾算进去**。合成捕获（13 条 214 B 的 BESTPOS、首 13 B 垃圾、尾 8 B 垃圾、
+`--limit-output-size=0.001025` = 1 074.8 B）：plain `1 284 / 1 284 / 214`，interleave
+`1 083 / 1 284 / 436`——13 B 垃圾计入后第 5 条就越限。单独的垃圾段也能收片：一条记录后接 3 000 B
+垃圾（上限 1 048 B）时，Part0 在垃圾之后立即收，Part1 从下一条记录开始。
+
+`time` 有一个**锚点例外**，也正是 b2 交错版出 7 片而不是 8 片的原因：**片首是未知字节时，时钟要等
+第一条状态可信的记录**。b2 抓包以 `\r\n<OK\r\n[USB2]` 开头，紧跟 `ALMANAC 577140.000`（SATTIME=200）；
+交错跑法把 Part0 的窗口锚在 `577758.950`（COARSESTEERING=120）而不是 almanac，于是 Part0 =
+577758.95…577763.95、Part1 从 577764.000 开始。合成捕获同形：`[垃圾, 577140:200, 577145:180 …]` 锚在
+577145；`[垃圾, 577140:200, 577143:200, 577150:60 …]` 一条可信记录都没有，根本不切；片首若是记录，
+则无论状态都锚（plain 跑法锚在 almanac 上）。可信集合沿用日钟那两套（二进制 / 文本）。
+
+`--daily-utc` 还**丢掉首记录之前的那段未知字节**——套件唯一一处真的丢字节：b1 交错版 5 094 255 =
+5 088 882 + 5 386 − 13，那 13 B 就是抓包开头的 `\r\n<OK\r\n[USB2]`（`size`/`time` 都保留它，见上文）。
+我们照抄这个行为而不是「修」掉，否则字节对不上；`daily` 的日钟本身与 plain 完全一致。
+
 ---
 
 ## 分片、抽稀与压缩记录展开（2026-11-01 实测，手册 4.5.3–4.5.6）
@@ -132,7 +182,8 @@ payload** 的合成记录还有已知差异（`ascii-log.ts` 对截断 payload �
 `--split` 走「每条日志一个文件」（`<base>_<LOGNAME>.<ext>`，已实现）；其余三种走
 `<base>_Part<N>.<ext>`，**N 从 0**，按记录顺序编号。RINEX 与 KML 不分片——实测
 `-r3.04 --limit-output-size=0.1` 仍然只写一个 5.8 MB 的 `.26O`，KML 的四个
-`<base>_<LOGNAME>.KML` 与开关无关（那是 KML 自己的按位置日志分文件）。
+`<base>_<LOGNAME>.KML` 与开关无关（那是 KML 自己的按位置日志分文件）。未知字节开关与这四种切法的
+组合见上一节「分片 × `--unknown-bytes`」：LOGS 只写 sidecar，其余三种一律交错。
 
 ### `--limit-output-size=<MB>`（4.5.3）
 
@@ -383,16 +434,18 @@ node 逆向\tools\probe-text-layouts.ts                  # SETNAV/LOGLIST/SENDHE
 | 位置 | 内容 |
 |---|---|
 | `cli/src/convert.ts` | 五个开关的解析 + 分片模式优先级（`splitMode`） |
-| `convert-pipeline.ts#partitionBlocks` | `size` / `time` / `daily` 三种切法（按输出块切，块 = 一行 / 一个多行记录块 / 一帧）；`daily` 的日钟、两套状态闸门与回拨见 `DAILY_CLOCK_*` |
+| `convert-pipeline.ts#partitionPieces` | `size` / `time` / `daily` 三种切法，切的是**输出流**（记录 + 未知字节段，按捕获偏移排好）；`daily` 的日钟、两套状态闸门与回拨见 `DAILY_CLOCK_*`，`time` 的片首锚点见 `partitionPieces` 的注释 |
 | `convert-pipeline.ts#decimateFrames` | 抽稀（记录 + 文本记录各自的时间） |
 | `convert-pipeline.ts#applyTimeWindow` | 窗口的 SBF 侧（自己的 GPS 时间）与文本侧（记录头的时间戳；无戳的 `<OK`/`[USB2]` 按位置） |
 | `convert-pipeline.ts#unknownSpans` | `.UNKNOWN` 的两套口径（预扫描计数 / 实际产物）、`interleave`、以及 `--decimate`/窗口丢掉的记录不进 `.UNKNOWN` |
+| `convert-pipeline.ts#mergePieces` / `assembleFiles` | 交错流（记录 + 垃圾段按捕获偏移排序）与四种切法的组合：`--split` 只写 `<base>_UNKNOWN.<ext>`，`size`/`time`/`daily` 切交错流且不写 sidecar，`daily` 丢弃首记录前的垃圾 |
 | `convert-pipeline.ts#buildRangeBinaryPayload` | BINARY 展开时的 float32 存储规则与 CMP5 `sd_adr` 表 |
 | `convert-pipeline.ts#binaryBlocks` | BINARY 的块序列（展开、跳过打不出行的记录、把文本记录编码成帧插回原位） |
 | `protocol/src/binary-log.ts` | 文本记录 → SBF 帧（头部映射、`pack(4)` 正文、float/枚举/字符串/数组/`%R`、CRC） |
 | `protocol/test/text-to-binary.test.ts` | 12 条用例：b1/b7 整文件 sha256、b1 `--decimate=5`、七类记录逐字段头部、BESTPOS/RANGE/SATVIS2/RXSTATUS/TIMESYNC/HWMONITOR 正文、固定与变长字符串、`%R` 内嵌帧与取反 CRC、三条失败路径 |
 | `protocol/test/convert-cli-options.test.ts` | 19 条用例：四种 `--limit-output-size` 产物、五种 `--limit-output-duration` 边界（含合成捕获）、`--daily-utc` 的状态矩阵（二进制 / 文本两套闸门、回拨、起点）、b7 三片逐字节、三种 `--decimate`（含对齐基准与文本记录）、`--expand-cmp` 两档 |
 | `protocol/test/unknown-bytes.test.ts` | `.UNKNOWN` 的六个口径：四份 golden、ignore/SKIP、interleave、`--decimate=5` 的 4 014 B、合成捕获上「网格外打不出行的记录消失、网格上的留下」，以及窗口 + interleave（b1 ASCII/ABBREV/BINARY 与 b2 的 sha256、两个小数窗口、窗口+抽稀、合成捕获的整段垃圾规则） |
+| `protocol/test/split-interleave.test.ts` | 13 条用例：`--split` + interleave/file/ignore（b1 ASCII/ABBREV/BINARY 整树逐字节）、b2 `--limit-output-size=1` 五片与 `--limit-output-duration=5` 七片逐片 sha、b5/b7/b1 `--daily-utc` 逐片 sha（含 b1 丢 13 B 的特例）、`file` 在 Part 分片下等同 interleave、abbrev/binary 各一组 Part 分片，以及两条规则本身（size 计数含垃圾、time 片首锚点）的合成用例 |
 
 复验命令：
 
@@ -509,9 +562,10 @@ Prefix/Suffix 的**落点**没有 CLI 开关可测（`cli.js:228-232` 恒发 `{v
   `messageIdFilter` 等写法都崩），所以时间窗的 oracle 用的是**套件 CLI** 同参数（`cli.js:276-289`
   把 `--start-time/--finish-time` 原样写进同一个 `timeInterval` 字段），并附上 `1 362 914 B` 的
   逐字节产物。
-- 既有未复刻项未动：`--daily-utc` 的 b7 三片。窗口 + `interleave` 组合已复刻（见
-  「`--unknown-bytes`」一节，b1 985 626 B 逐字节相同），`--decimate=5` 的 `.UNKNOWN` 也已是套件的
-  4 014 B。（**文本记录进 BINARY 已复刻**，见上一节；b1/b7 的 `-b` 现在与套件逐字节相同。）
+- 既有未复刻项：无（`--daily-utc` 的 b7 三片已复刻并逐字节钉住；窗口 + `interleave` 见
+  「`--unknown-bytes`」，b1 985 626 B 逐字节相同；「分片 × `--unknown-bytes`」的 11 组组合也逐文件
+  比过 sha；`--decimate=5` 的 `.UNKNOWN` 是套件的 4 014 B）。**文本记录进 BINARY 已复刻**，b1/b7 的
+  `-b` 与套件逐字节相同。
 - 面板的点击交互（radio 走 `click` 委派，因为弹窗里套了一层 `<label>`，点文字不触发外层 input）
   只有 Playwright 端到端覆盖，没有 DOM 单测——`packages/view` 的 minidom 不属于本条任务的改动范围。
 
