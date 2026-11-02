@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>NovAtelReverse</AssemblyName>
     <RootNamespace>NasGui</RootNamespace>
-    <Version>0.1.1</Version>
-    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>0.1.2</Version>
+    <ApplicationIcon>app-inverted.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,4 +18,5 @@
   </ItemGroup>
 
 </Project>
+
 
