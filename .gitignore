@@ -30,3 +30,9 @@ config/*.local.json
 tools/desensitization.local.txt
 # 公开数据的本地缓存（原始文件只进缓存，不入库；见 data/public/manifest.json）
 data/public/cache/
+
+# 打包产物（单文件 exe 约 131 MB，不入库；源在 逆向/05_打包/NovAtelReverseGui）
+dist/
+逆向/05_打包/**/payload.zip
+逆向/05_打包/**/bin/
+逆向/05_打包/**/obj/
