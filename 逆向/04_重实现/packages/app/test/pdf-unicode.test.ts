@@ -8,10 +8,11 @@
  *
  * Two halves, as before:
  *
- *  - **A pure-ASCII report must not change by one byte.** `graph-pdf.test.ts` compares two builds of
- *    the same input, which cannot catch "the writer now embeds a font it does not need". The clean
- *    report is therefore pinned by the SHA-256 recorded from the writer *before* the CJK work, and
- *    the same document is rebuilt with embedding forced off to prove the two agree.
+ *  - **A pure-ASCII report must embed nothing.** The clean report is checked for the absence of a
+ *    font file at all, and its *shape* — 8 pages, 13 charts, two cards per sheet, `Trajectory Plot`
+ *    alone on page 2 — is checked against the original's own page map. (The old writer pinned a
+ *    SHA-256 of the bytes; page-per-CSV gave that up: the document is now laid out like the
+ *    original, so its bytes are expected to differ, and the layout is the thing worth asserting.)
  *  - **A report with Chinese text must carry that text.** `/FontFile2` + `/Identity-H` +
  *    `/CIDFontType2` + `/ToUnicode` + `/W`, and `pdftotext` must give the characters back.
  *
@@ -23,7 +24,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,11 +36,13 @@ import { pdfCjkFontStatus, resetPdfFontCache } from '../../graph/src/pdf-font.ts
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
- * SHA-256 of the clean report as the app writer produced it *before* any font embedding existed
- * (fixed `generatedAt`, CSVs in file-name order). Recorded from the pre-change writer; a change
- * here means a pure-ASCII document stopped being byte-compatible.
+ * The clean report's shape, taken from the original `clean.pdf` (`pdftotext -layout`, page by
+ * page): one information page, `Trajectory Plot` alone, then two charts per sheet — 8 pages, 13
+ * charts for the 12 CSVs. Recorded here because the earlier pin was a SHA-256, and a layout that
+ * copies the original cannot keep one.
  */
-const ASCII_SHA256 = 'b19c81b0f69b4744454b068abf35b438dfa1622bbfe1673bda7cdf3ba116983b';
+const PAGE_COUNT = 8;
+const CHART_COUNT = 13;
 
 const GENERATED = '2026/10/30 21:00:00';
 
@@ -57,10 +59,6 @@ const CJK_SOURCES: GraphPdfSource[] = SOURCES.map((source) => ({
     .replace(/^#Project Directory: .*$/m, '#Project Directory:    C:\\测试\\项目'),
 }));
 
-function sha256(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
 function latin1(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('latin1');
 }
@@ -72,7 +70,7 @@ function streams(bytes: Uint8Array): string[] {
     .filter((stream) => !stream.includes('\u0000'));
 }
 
-test('a pure-ASCII report is byte-for-byte the pre-CJK document', () => {
+test('a pure-ASCII report embeds no font and keeps the original page map', () => {
   resetPdfFontCache();
   const bytes = buildGraphPdf(SOURCES, { generatedAt: GENERATED });
   const text = latin1(bytes);
@@ -82,11 +80,20 @@ test('a pure-ASCII report is byte-for-byte the pre-CJK document', () => {
   assert.ok(!text.includes('/ToUnicode'), 'no ToUnicode CMap');
   assert.ok(!text.includes('/F3 '), 'no /F3 resource on any page');
   assert.ok(text.includes('/Resources << /Font << /F1 4 0 R /F2 5 0 R >> /ProcSet [/PDF /Text] >>'), 'page resources untouched');
-  assert.equal(
-    sha256(bytes),
-    ASCII_SHA256,
-    'the clean report changed bytes — a pure-ASCII document must stay identical to the old writer',
-  );
+
+  // The layout the original prints: 8 pages, two charts per sheet, the track alone on page 2.
+  assert.equal((text.match(/\/Type \/Page\b/g) ?? []).length, PAGE_COUNT, `${PAGE_COUNT} pages`);
+  assert.match(text, new RegExp(`/Count ${PAGE_COUNT} >>`), 'page tree agrees');
+  const report = graphPdfReport(SOURCES, { generatedAt: GENERATED });
+  assert.equal(report.pages, PAGE_COUNT);
+  assert.equal(report.charts, CHART_COUNT, 'the Overview track plus one chart per CSV');
+  assert.ok(text.includes('(13 charts - hand-written PDF 1.4'), 'the cover counts the charts');
+  // The card titles live in the content streams as plain literals, page by page.
+  const pages = [...text.matchAll(/stream\n([\s\S]*?)\nendstream/g)].map((match) => match[1]);
+  assert.equal(pages.length, PAGE_COUNT, 'one stream per page');
+  assert.match(pages[1], /\(Trajectory Plot\)/, 'page 2 is the Overview track');
+  // The CSVs here are in file-name order, so name no title: every sheet after page 2 holds two.
+  assert.equal((pages[2].match(/\/F2 13 Tf/g) ?? []).length, 2, 'page 3 holds two chart cards');
 });
 
 test('the face being available does not change an ASCII document', () => {
@@ -153,7 +160,7 @@ test('pdftotext recovers the Chinese path from the embedded face', (t) => {
     const info = spawnSync('pdfinfo', [file], { encoding: 'utf8' });
     if (!info.error) {
       assert.equal(info.status, 0, `pdfinfo opens the document: ${info.stderr}`);
-      assert.ok(new RegExp(`^Pages:\\s+${SOURCES.length + 1}$`, 'm').test(info.stdout), 'one cover plus one page per CSV');
+      assert.ok(new RegExp(`^Pages:\\s+${PAGE_COUNT}$`, 'm').test(info.stdout), 'one cover, the track, then two charts per sheet');
     }
 
     const result = spawnSync('pdftotext', ['-enc', 'UTF-8', '-f', '1', '-l', '1', file, '-'], { encoding: 'utf8' });

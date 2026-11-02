@@ -5,38 +5,84 @@
  *
  *  - `%PDF-1.4` header, `%%EOF` trailer, and **every** `xref` entry's offset re-read from the file
  *    and matched against the `N 0 obj` it claims to point at (the `startxref` offset included);
- *  - one page per CSV plus the information page, counted both as `/Type /Page` objects and as the
- *    page tree's `/Count`;
+ *  - the page count and the **charts on each page**, against the map measured from the original
+ *    `逆向/00_来源/samples/graph/export/clean.pdf` (`pdftotext -layout`, one page at a time):
+ *    page 1 information, page 2 `Trajectory Plot` alone, then two charts per page — PVT
+ *    (Position Type + Position Status, Position SD + Solution Statistics, 2D Trajectory + Height),
+ *    Tracking & Measurements (GNSS Signal Strength + Satellites and Signals, Tracking Time +
+ *    Receiver Status) and Receiver Status (CPU Usage + HW Monitor Status). Eight pages, 13 charts;
  *  - the chart names and the project's six comment fields are findable in the uncompressed content
  *    streams (text is not encrypted or compressed, so a plain search must succeed);
  *  - a fixed `generatedAt` gives the same bytes twice, and the file stays well under 200 KB;
+ *  - `pdftotext` on the file we write puts the same titles on the same page as `pdftotext` on the
+ *    original (skipped when poppler is not installed);
  *  - the HTTP route returns the same document with `application/pdf` and a `.pdf` disposition.
  */
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { GRAPH_CSV_DIR } from '../src/graphcsv.ts';
-import { buildGraphPdf, CHART_SPECS, graphPdfFileName, graphPdfOrder, graphPdfReport, PDF_PAGE } from '../src/pdf.ts';
+import { SAMPLES_DIR } from '../src/paths.ts';
+import {
+  buildGraphPdf,
+  CHART_SPECS,
+  graphPdfFileName,
+  graphPdfOrder,
+  graphPdfReport,
+  PDF_CHARTS_PER_PAGE,
+  PDF_PAGE,
+} from '../src/pdf.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = resolve(here, '..', 'src', 'server.ts');
 const panelPath = resolve(here, '..', 'src', 'web', 'panels', 'graph.js');
+/** The original Graph export this writer is measured against. */
+const ORIGINAL_PDF = join(SAMPLES_DIR, 'graph', 'export', 'clean.pdf');
 
 const SOURCES = readdirSync(GRAPH_CSV_DIR)
   .filter((name) => name.endsWith('.csv'))
   .sort()
   .map((name) => ({ name, text: readFileSync(join(GRAPH_CSV_DIR, name), 'utf8') }));
 
-/** The catalogue's order — the one the route serves, so page 2 is `Position Type`. */
+/** The catalogue's order — the one the route serves, so page 3 starts with `Position Type`. */
 const ORDERED = graphPdfOrder(SOURCES.map((source) => source.name))
   .map((name) => SOURCES.find((source) => source.name === name)!);
 
 const GENERATED = '2026/10/30 21:00:00';
+
+/**
+ * The original's page map, page 1 first, measured page by page (`pdftotext -layout`). Page 2 holds
+ * one chart; every page after it holds two, and a section heading can start between two cards
+ * (`Receiver Status` does).
+ */
+const ORIGINAL_PAGES: ReadonlyArray<readonly string[]> = [
+  [], // 1 — information page
+  ['Trajectory Plot'], // 2 — the Overview track, alone
+  ['Position Type', 'Position Status'], // 3 — PVT starts here
+  ['Position SD', 'Solution Statistics'], // 4
+  ['2D Trajectory', 'Height'], // 5
+  ['GNSS Signal Strength', 'Satellites and Signals'], // 6 — Tracking & Measurements starts
+  ['Tracking Time', 'Receiver Status'], // 7 — Receiver Status starts between the cards
+  ['CPU Usage', 'HW Monitor Status'], // 8
+];
+
+/** The tab headings the original prints above a card, page by page (only where a tab starts). */
+const ORIGINAL_SECTIONS: ReadonlyArray<readonly string[]> = [
+  [],
+  ['Trajectory Plot'],
+  ['PVT'],
+  [],
+  [],
+  ['Tracking & Measurements'],
+  ['Receiver Status'],
+  [],
+];
 
 function document_(options: Parameters<typeof buildGraphPdf>[1] = {}): Buffer {
   return Buffer.from(buildGraphPdf(SOURCES, { generatedAt: GENERATED, ...options }));
@@ -46,7 +92,7 @@ function latin1(bytes: Buffer): string {
   return bytes.toString('latin1');
 }
 
-test('the report is a valid PDF 1.4 with one page per CSV and exact xref offsets', () => {
+test('the report is a valid PDF 1.4 with the original page map and exact xref offsets', () => {
   const bytes = document_();
   const text = latin1(bytes);
 
@@ -74,9 +120,14 @@ test('the report is a valid PDF 1.4 with one page per CSV and exact xref offsets
     );
   }
 
+  // 1 information page + 1 sheet for the Overview track + two charts per sheet afterwards.
+  const twoPerPage = Math.ceil(SOURCES.length / PDF_CHARTS_PER_PAGE);
+  const expected = 1 + 1 + twoPerPage;
+  assert.equal(expected, ORIGINAL_PAGES.length, 'the clean CSVs cover the original 8 pages');
+
   const pages = (text.match(/\/Type \/Page\b/g) ?? []).length;
-  assert.equal(pages, SOURCES.length + 1, 'one information page plus one per chart');
-  assert.match(text, new RegExp(`/Type /Pages /Kids \\[[^\\]]+\\] /Count ${SOURCES.length + 1} >>`), 'page tree count');
+  assert.equal(pages, expected, 'one information page, then two charts per sheet');
+  assert.match(text, new RegExp(`/Type /Pages /Kids \\[[^\\]]+\\] /Count ${expected} >>`), 'page tree count');
 
   const streams = [...text.matchAll(/stream\n([\s\S]*?)\nendstream/g)];
   assert.equal(streams.length, pages, 'every page has one content stream');
@@ -91,6 +142,7 @@ test('the report is a valid PDF 1.4 with one page per CSV and exact xref offsets
 
   assert.ok(bytes.length < 200_000, `document is small enough to download (${bytes.length} B)`);
   assert.equal(PDF_PAGE.width, 842, 'A4 landscape, the same page box the suite used');
+  assert.equal(PDF_CHARTS_PER_PAGE, 2, 'two charts per sheet, as the original prints them');
   assert.equal(text.includes(`/MediaBox [0 0 ${PDF_PAGE.width} ${PDF_PAGE.height}]`), true);
 });
 
@@ -118,17 +170,34 @@ function pageStreams(bytes: Uint8Array): string[] {
     .map((match) => match[1]);
 }
 
+/** The card titles on a page: 13 pt bold runs (nothing else on a chart page is set that way). */
+function titlesOf(page: string): string[] {
+  return [...page.matchAll(/\/F2 13 Tf [\d.\- ]+Td \(([^)]*)\) Tj/g)].map((match) => match[1]);
+}
+
+/** The tab headings on a page: 9 pt bold runs (`PVT`, `Tracking & Measurements` …). */
+function sectionsOf(page: string): string[] {
+  return [...page.matchAll(/\/F2 9 Tf [\d.\- ]+Td \(([^)]*)\) Tj/g)].map((match) => match[1]);
+}
+
+/** The page whose chart carries `title`. */
+function pageWith(title: string): string {
+  const hit = PAGES.findIndex((page) => titlesOf(page).includes(title));
+  assert.ok(hit > 0, `no page draws ${title}`);
+  return PAGES[hit];
+}
+
 const REPORT = graphPdfReport(ORDERED, { generatedAt: GENERATED });
 const PAGES = pageStreams(REPORT.bytes);
 
-test('the catalogue order is the original tab order, and page 2 is its first chart', () => {
+test('the catalogue order is the original tab order, and page 3 is its first PVT chart', () => {
   assert.deepEqual(graphPdfOrder(['Height.csv', '2D Trajectory.csv', 'Position Type.csv']), [
     'Position Type.csv', '2D Trajectory.csv', 'Height.csv',
   ]);
   assert.equal(ORDERED[0].name, 'Position Type.csv');
   assert.equal(ORDERED[ORDERED.length - 1].name, 'HW Monitor Status.csv');
   assert.equal(PAGES.length, REPORT.pages);
-  assert.ok(PAGES[1].includes('(Position Type)'), 'page 2 is Position Type');
+  assert.ok(PAGES[2].includes('(Position Type)'), 'page 3 is Position Type, right after the track');
 });
 
 test('every page carries the header the original prints, and the page number', () => {
@@ -140,6 +209,34 @@ test('every page carries the header the original prints, and the page number', (
     );
     assert.ok(page.includes(`(${index + 1}/${REPORT.pages})`), `page ${index + 1} is numbered`);
   }
+  assert.equal(REPORT.pages, 8, 'the original prints 1/8 … 8/8');
+  assert.equal(REPORT.charts, SOURCES.length + 1, 'the Overview track plus one chart per CSV');
+});
+
+test('each page holds the charts the original puts there, in its order', () => {
+  assert.equal(PAGES.length, ORIGINAL_PAGES.length, 'one page per page of the original');
+  for (const [index, expected] of ORIGINAL_PAGES.entries()) {
+    const titles = titlesOf(PAGES[index]);
+    // Chart order, not just membership: the title runs are drawn top-down, so their stream order
+    // is the page order.
+    assert.deepEqual(titles, [...expected], `page ${index + 1}`);
+  }
+  // Page 2 is the one single-chart sheet; every later page holds two.
+  assert.equal(ORIGINAL_PAGES[1].length, 1);
+  for (const expected of ORIGINAL_PAGES.slice(2)) assert.equal(expected.length, PDF_CHARTS_PER_PAGE);
+});
+
+test('the section headings are printed once, where the original starts a tab', () => {
+  // Page 1 is the cover; its 9 pt bold labels are field names, not tab headings.
+  for (const index of ORIGINAL_PAGES.keys()) {
+    if (index === 0) continue;
+    assert.deepEqual(sectionsOf(PAGES[index]), [...ORIGINAL_SECTIONS[index]], `page ${index + 1}`);
+  }
+  // `Receiver Status` starts between two cards: its heading sits on page 7, above the second card.
+  const page7 = PAGES[6];
+  assert.ok(page7.indexOf('(Tracking Time)') < page7.indexOf('(Receiver Status)'), 'heading between the cards');
+  // No tab heading is repeated on the next page.
+  assert.equal(sectionsOf(PAGES[5]).includes('PVT'), false);
 });
 
 test('the cover is Report Information + Project Information + the chart summary table', () => {
@@ -151,60 +248,122 @@ test('the cover is Report Information + Project Information + the chart summary 
   ]) {
     assert.ok(cover.includes(label), `cover prints ${label}`);
   }
-  // One row per CSV, and the row's last column is the page it is drawn on.
-  for (const [index, source] of ORDERED.entries()) {
+  assert.ok(cover.includes('(13 charts - hand-written PDF 1.4'), 'the cover counts every chart');
+  // One row per CSV, and the row's last column is the page its chart is drawn on.
+  const pageOfTitle: Record<string, number> = {};
+  for (const [index, expected] of ORIGINAL_PAGES.entries()) {
+    for (const title of expected) pageOfTitle[title] = index + 1;
+  }
+  for (const source of ORDERED) {
     const title = source.name.replace(/\.csv$/, '');
     assert.ok(cover.includes(`(${title})`), `summary row for ${title}`);
-    assert.ok(cover.includes(`(${String(index + 2)})`), `summary row for ${title} names page ${index + 2}`);
   }
+  // `Position Type` is the first card of page 3 and `Height` the second of page 5 — the numbers the
+  // original's own page map gives.
+  assert.ok(cover.includes('(3)'), 'the summary names page 3 for the first PVT charts');
+  assert.ok(cover.includes('(5)'), 'and page 5 for 2D Trajectory + Height');
+  assert.equal(pageOfTitle.Height, 5);
+  assert.ok(cover.includes('(page 2: Trajectory Plot'), 'the cover says where the track went');
   // Real numbers, taken from the CSVs: Height is ~66.41 m, CPU Usage ~29 %.
   assert.ok(cover.includes('(66.41)') && cover.includes('(66.43)'), 'Height min / max from the CSV');
   assert.ok(cover.includes('(28.00)') && cover.includes('(29.50)'), 'CPU Usage min / max from the CSV');
 });
 
-test('each chart page has its section, title, axis labels and legend', () => {
-  const sections: Array<[string, string]> = [
-    ['Position Type', 'PVT'],
-    ['GNSS Signal Strength', 'Tracking & Measurements'],
-    ['Receiver Status', 'Receiver Status'],
-  ];
-  for (const [title, section] of sections) {
-    const page = PAGES[ORDERED.findIndex((source) => source.name === `${title}.csv`) + 1];
-    assert.ok(page.includes(`(${title})`), `${title} page prints its title`);
-    assert.ok(page.includes(`(${section})`), `${title} page prints the tab heading ${section}`);
-  }
-  // The tab heading is printed once, on the first chart of the section — the original's own rule.
-  const tracking = ORDERED.filter((source) => source.name === 'GNSS Signal Strength.csv').length;
-  assert.equal(tracking, 1);
-  const later = PAGES[ORDERED.findIndex((source) => source.name === 'Satellites and Signals.csv') + 1];
-  assert.equal(later.includes('(Tracking & Measurements)'), false, 'second chart of a tab repeats no heading');
-
-  // y-axis units, verbatim from the catalog (the rotated label escapes its parentheses).
+test('each card has its title, axis labels, legend and y-axis unit', () => {
   const unitsOf = new Map(CHART_SPECS.filter((spec) => spec.units).map((spec) => [spec.file, spec.units!]));
   for (const [file, units] of unitsOf) {
     if (!ORDERED.some((source) => source.name === file)) continue;
-    const page = PAGES[ORDERED.findIndex((source) => source.name === file) + 1];
-    if (!page) continue;
+    const page = pageWith(file.replace(/\.csv$/, ''));
+    // An interval chart carries no y scale, so it prints no unit — the same as before this change.
+    if (file === 'SPAN Filter Updates.csv') continue;
     const escaped = units.replace(/[()]/g, (char) => `\\${char}`);
     assert.ok(page.includes(`(${escaped})`), `${file} prints its y-axis unit ${units}`);
   }
   // The GPS week is spelled out once under the axis, and the ticks are seconds of that week.
-  const heightPage = PAGES[ORDERED.findIndex((source) => source.name === 'Height.csv') + 1];
+  const heightPage = pageWith('Height');
   assert.ok(heightPage.includes('(GPS week 2442 - seconds of week 463098 .. 463102)'), 'x axis caption');
   assert.ok(heightPage.includes('(463100)'), 'a whole-second tick prints without decimals');
   // Legend chip for the plotted column.
   assert.ok(heightPage.includes('(Height)'));
+
+  // The Overview track joins the fixes and says the original printed a map instead.
+  const track = pageWith('Trajectory Plot');
+  assert.match(track, /5 fixes joined into a track/, 'the track says what it is');
+  assert.match(track, /no basemap is embedded/, 'and that there is no basemap');
+  assert.ok((track.match(/ l /g) ?? []).length >= 4, 'the fixes are joined by a polyline');
 });
 
-test('a wide CSV keeps its page inside the point budget and says what it dropped', () => {
-  const at = ORDERED.findIndex((source) => source.name === 'GNSS Signal Strength.csv') + 1;
-  const page = PAGES[at];
+test('a wide CSV keeps its card inside the point budget and says what it dropped', () => {
+  const page = pageWith('GNSS Signal Strength');
   const vertices = (page.match(/ l /g) ?? []).length;
   assert.ok(vertices > 100, `the page draws polylines (${vertices} vertices)`);
   assert.ok(vertices < 4_000, `the page is decimated, not every one of the 7 326 samples (${vertices})`);
   assert.match(page, /every \d+th sample drawn/, 'the page says the stride it used');
   assert.match(page, /\(\+ \d+ more\)/, 'the legend counts the columns it could not name');
   assert.ok(REPORT.bytes.byteLength < 200_000, `the report is a download (${REPORT.bytes.byteLength} B)`);
+});
+
+/* ---------------- measured against the original PDF ---------------- */
+
+/**
+ * `pdftotext -layout` on a document, split into pages; `null` when poppler is not installed or the
+ * original export is not on this machine.
+ */
+function layoutPages(file: string): string[] | null {
+  if (spawnSync('pdftotext', ['-v'], { encoding: 'utf8' }).error) return null;
+  const result = spawnSync('pdftotext', ['-layout', '-enc', 'UTF-8', file, '-'], { encoding: 'utf8' });
+  if (result.status !== 0) return null;
+  return result.stdout.split('\f');
+}
+
+/** Every title of `expected` is on `page`, and in that order — by first occurrence. */
+function assertPageOrder(page: string, expected: readonly string[], label: string): void {
+  let previous = -1;
+  for (const title of expected) {
+    const at = page.indexOf(title);
+    assert.ok(at >= 0, `${label}: ${title} is on the page`);
+    assert.ok(at > previous, `${label}: ${title} comes after the previous chart`);
+    previous = at;
+  }
+}
+
+test('the page map above is what the original prints, and what this writer prints', (t) => {
+  const original = layoutPages(ORIGINAL_PDF);
+  if (!original) {
+    t.skip('pdftotext or the original clean.pdf is not available');
+    return;
+  }
+  assert.equal(original.length, ORIGINAL_PAGES.length + 1, 'the original has 8 pages (plus the trailing split)');
+  for (const [index, expected] of ORIGINAL_PAGES.entries()) {
+    if (!expected.length) continue;
+    assertPageOrder(original[index], expected, `original page ${index + 1}`);
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'app-pdf-layout-'));
+  try {
+    const file = join(dir, 'ours.pdf');
+    writeFileSync(file, REPORT.bytes);
+    const ours = layoutPages(file);
+    assert.ok(ours, 'pdftotext reads the document we write');
+    assert.equal(ours!.length, original.length, 'same number of pages as the original');
+
+    const info = spawnSync('pdfinfo', [file], { encoding: 'utf8' });
+    if (!info.error) {
+      assert.equal(info.status, 0, `pdfinfo opens it: ${info.stderr}`);
+      assert.match(info.stdout, /^Pages:\s+8$/m, 'pdfinfo counts eight pages');
+    }
+    for (const [index, expected] of ORIGINAL_PAGES.entries()) {
+      if (!expected.length) continue;
+      assertPageOrder(ours![index], expected, `page ${index + 1}`);
+    }
+    // Nothing extra: the 13 pt titles read back from our own content streams are exactly the
+    // original's list (the text dump above cannot tell a legend chip from a title, the streams can).
+    for (const [index, page] of PAGES.entries()) {
+      assert.deepEqual(titlesOf(page), [...ORIGINAL_PAGES[index]], `our page ${index + 1}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ---------------- the HTTP route ---------------- */
@@ -279,9 +438,9 @@ test('GET /api/graph/pdf downloads a real PDF named after the project', async ()
   assert.equal(text.slice(0, 8), '%PDF-1.4');
   assert.ok(text.endsWith('%%EOF\n'));
   const pages = (text.match(/\/Type \/Page\b/g) ?? []).length;
-  assert.equal(pages, SOURCES.length + 1);
-  assert.equal(headers.get('x-pdf-pages'), String(SOURCES.length + 1));
-  assert.equal(headers.get('x-pdf-charts'), String(SOURCES.length));
+  assert.equal(pages, 8, 'the original page count');
+  assert.equal(headers.get('x-pdf-pages'), '8');
+  assert.equal(headers.get('x-pdf-charts'), String(SOURCES.length + 1));
   assert.equal(headers.get('x-pdf-bytes'), String(bytes.length));
 });
 
@@ -289,6 +448,7 @@ test('GET /api/graph/pdf?file= has one chart page, and refuses a bad name', asyn
   const one = await get(`/api/graph/pdf?file=${encodeURIComponent('Height.csv')}`);
   assert.equal(one.status, 200);
   assert.equal(one.headers.get('x-pdf-pages'), '2');
+  assert.equal(one.headers.get('x-pdf-charts'), '1');
 
   const missing = await get(`/api/graph/pdf?file=${encodeURIComponent('Nope.csv')}`);
   assert.equal(missing.status, 404);
@@ -303,7 +463,7 @@ test('GET /api/graph/pdf?project= narrows the document to that project', async (
   assert.equal(clean.headers.get('content-type'), 'application/pdf');
   assert.equal(clean.headers.get('content-disposition'), 'attachment; filename="clean.pdf"');
   assert.equal(clean.headers.get('x-pdf-project'), 'clean');
-  assert.equal(clean.headers.get('x-pdf-pages'), String(SOURCES.length + 1));
+  assert.equal(clean.headers.get('x-pdf-pages'), '8');
   assert.equal(Buffer.from(clean.bytes).toString('latin1').slice(0, 8), '%PDF-1.4');
 
   // The project name in the CSVs is what matches, not the path; an unknown one is a 404 that names

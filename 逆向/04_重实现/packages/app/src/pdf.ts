@@ -16,13 +16,25 @@
  *              Report Information   Generated Date
  *              Project Information  the six comment fields, same spellings as the CSVs
  *              Chart Summary        one row per CSV: chart, section, rows, series, min, max, mean, page
- * page 2..13   one page per CSV (the original groups two charts on a page; one per page here keeps
- *              every chart legible and the page count equal to 1 + the number of CSVs):
- *              section heading on the first page of a section (`PVT`, `Tracking & Measurements`,
- *              `Receiver Status` — the original's own tab names), chart title, the y-axis unit
- *              rotated beside the axis, five value ticks, GPS-week x ticks, the series as
- *              polylines and the legend the original prints under the axis
+ * page 2       `Trajectory Plot` on its own: the overview track, redrawn as a vector polyline from
+ *              `2D Trajectory.csv`. The original prints a Leaflet tile image here; a screenshot is
+ *              not allowed to stand in for it, so the same fixes are drawn as a track instead.
+ * page 3..     **two chart cards per sheet**, in the original's own grouping — measured, not
+ *              guessed (`pdftotext -layout` page by page):
+ *                `PVT`   Position Type + Position Status
+ *                        Position SD + Solution Statistics
+ *                        2D Trajectory + Height
+ *                `Tracking & Measurements`  GNSS Signal Strength + Satellites and Signals
+ *                        Tracking Time + Receiver Status (`Receiver Status` starts a new section,
+ *                        and its heading is printed mid-page, between the two cards)
+ *                        CPU Usage + HW Monitor Status (still the Receiver Status section)
+ * card         card frame, chart title, the y-axis unit rotated beside the axis, five value ticks,
+ *              GPS-week x ticks, the series as polylines and the legend the original prints under
+ *              the axis; a section heading is printed above the first card of a section only
  * ```
+ *
+ * The page count is therefore `1 + 1 + ceil(rest / 2)` — eight for the 12-CSV `clean` project,
+ * the number the original prints (`1/8` … `8/8`).
  *
  * What is **not** copied, because the data is not here: the original's `Message Summary` table
  * (BESTPOS 5, RANGE 100 …) needs `DataSummary.json`, which no route serves, so inventing counts
@@ -40,12 +52,12 @@
  * on demand** — the same face, parser and PDF objects as the graph package, from `pdf-font.ts`:
  * `simhei.ttf` from the system font directory by default, `/FontFile2` + `Type0`/`CIDFontType2`
  * with `/Identity-H` and a `ToUnicode` CMap, glyph ids measured with the face's own advances so
- * right-aligned cells still line up. A pure-ASCII document embeds nothing and keeps its exact
- * bytes; a machine without a usable face degrades to `?` and the footer says so.
+ * right-aligned cells still line up. A pure-ASCII document embeds nothing at all, so its object
+ * table is the plain one; a machine without a usable face degrades to `?` and the footer says so.
  *
  * `packages/graph/src/pdf.ts` is the other writer in this repo and is richer (it also draws every
  * column of a wide table); this one exists so the **app** can serve a download with its own layout
- * (header/footer chrome, one chart per page, the chart summary table on the cover).
+ * (header/footer chrome, two charts per sheet, the chart summary table on the cover).
  */
 
 import {
@@ -123,6 +135,8 @@ interface ChartSpec {
   minYZero?: boolean;
   xColumn?: string;
   yColumn?: string;
+  /** The Overview's track card: drawn alone on its page, with the fixes joined into a path. */
+  overview?: boolean;
 }
 
 const PVT = 'PVT';
@@ -164,6 +178,24 @@ function specOf(name: string): ChartSpec {
   if (hit) return hit;
   return { file: name, title: name.replace(/\.csv$/i, ''), section: '', kind: 'line' };
 }
+
+/**
+ * The original's own page 2: the Overview's `Trajectory Plot`, a Leaflet map of the same fixes
+ * `2D Trajectory.csv` carries. There is no basemap here (and a screenshot is out), so the fixes are
+ * joined into a vector track on the same longitude/latitude frame the 2D chart uses.
+ */
+export const TRAJECTORY_PLOT: ChartSpec = {
+  file: '2D Trajectory.csv',
+  title: 'Trajectory Plot',
+  section: 'Trajectory Plot',
+  kind: 'geomap',
+  xColumn: 'Longitude',
+  yColumn: 'Latitude',
+  overview: true,
+};
+
+/** Charts the original puts on one sheet: two (its page 2 holds one, the Overview track). */
+export const PDF_CHARTS_PER_PAGE = 2;
 
 /**
  * Document order: the catalogue's order (PVT, Tracking & Measurements, Receiver Status — the
@@ -263,6 +295,8 @@ const MUTED = '0.42 0.46 0.5';
 const GRID = '0.9 0.91 0.93';
 const AXIS = '0.6 0.64 0.69';
 const RULE = '0 0.32 0.44';
+/** The card frame the original draws around every chart (`#c3d0d7`-ish). */
+const CARD = '0.73 0.79 0.83';
 
 /**
  * The ten colours `web/panels/graph.js` cycles through (`SERIES_COLOURS`), as PDF `rg` / `RG`
@@ -390,6 +424,11 @@ function rect(x: number, y: number, width: number, height: number, colour: strin
   return `${colour} rg ${round(x)} ${round(top(y + height))} ${round(width)} ${round(height)} re f`;
 }
 
+/** An unfilled box — the card frame the original draws around each chart. */
+function strokeRect(x: number, y: number, w: number, h: number, line: number, colour: string): string {
+  return `${colour} RG ${line} w ${round(x)} ${round(top(y + h))} ${round(w)} ${round(h)} re S`;
+}
+
 /** `2026/10/30 21:00:00` (default: now, local). */
 function stamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -497,6 +536,8 @@ interface GeomapModel {
   latMax: number;
   xLabel: string;
   yLabel: string;
+  /** Join the fixes into a path — the Overview's `Trajectory Plot`; `2D Trajectory` is dots. */
+  track: boolean;
   note: string;
 }
 
@@ -657,6 +698,7 @@ function geomapModel(file: CsvFile, spec: ChartSpec): GeomapModel {
   const [x0, x1] = pad(lonMin, lonMax);
   const [y0, y1] = pad(latMin, latMax);
   const track = points.length > 1 && lonMax > lonMin;
+  const overview = spec.overview === true;
   return {
     kind: 'geomap',
     points,
@@ -666,8 +708,12 @@ function geomapModel(file: CsvFile, spec: ChartSpec): GeomapModel {
     latMax: y1,
     xLabel: 'Longitude (degrees)',
     yLabel: 'Latitude (degrees)',
+    track: overview && points.length > 1,
     note: points.length
-      ? `${points.length} fixes${track ? '' : ' - all samples share one position, so this is a dot, not a track'}`
+      ? overview
+        ? `${points.length} fixes joined into a track - the original prints a Leaflet map here; `
+          + 'no basemap is embedded, so this is the same fixes on a plain lat/lon frame'
+        : `${points.length} fixes${track ? '' : ' - all samples share one position, so this is a dot, not a track'}`
       : 'no Latitude / Longitude column in this CSV',
   };
 }
@@ -861,17 +907,26 @@ function bands(box: Box, model: CategoryModel): string[] {
   });
 }
 
-/** Longitude / latitude fixes as small dots. */
+/** Longitude / latitude fixes as small dots, or joined into a path for the Overview's track. */
 function geomap(box: Box, model: GeomapModel): string[] {
   const width = box.right - box.left;
   const height = box.bottom - box.top;
   const px = (value: number) => box.left + ((value - model.lonMin) / ((model.lonMax - model.lonMin) || 1)) * width;
   const py = (value: number) => box.bottom - ((value - model.latMin) / ((model.latMax - model.latMin) || 1)) * height;
   const colour = '0.329 0.392 0.973'; // `#5464f8`, the GeoMapChart marker the panel draws
-  return model.points.map(([lon, lat]) => {
-    const size = 3;
-    return rect(px(lon) - size / 2, py(lat) - size / 2, size, size, colour);
-  });
+  const out: string[] = [];
+  if (model.track) {
+    // The fixes in CSV order: the original's map draws a polyline between consecutive epochs.
+    const path = model.points
+      .map(([lon, lat], at) => `${round(px(lon))} ${round(top(py(lat)))} ${at === 0 ? 'm' : 'l'}`)
+      .join(' ');
+    out.push(`1.4 w ${colour} RG ${path} S`);
+  }
+  for (const [lon, lat] of model.points) {
+    const size = model.track ? 4 : 3;
+    out.push(rect(px(lon) - size / 2, py(lat) - size / 2, size, size, colour));
+  }
+  return out;
 }
 
 /** One band per condition, labelled at the left edge — the `name,start,end,value` table. */
@@ -962,9 +1017,17 @@ function embeddedFontNote(face: TrueTypeFace): string {
 }
 
 /** Page 1: the original's title + Report Information + Project Information + a summary table. */
-function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome, fontNote: string = FONT_NOTE_ASCII): string {
+function infoPage(
+  charts: readonly Chart[],
+  fields: InfoField[],
+  context: Chrome,
+  pageOf: ReadonlyMap<string, number>,
+  overviewPage: number,
+  fontNote: string = FONT_NOTE_ASCII,
+): string {
+  const rows = charts.filter((chart) => !chart.lone);
   const out: string[] = [];
-  out.push(...chrome(context, 1, `${files.length} charts - hand-written PDF 1.4 - ${fontNote}`));
+  out.push(...chrome(context, 1, `${plural(charts.length, 'chart')} - hand-written PDF 1.4 - ${fontNote}`));
 
   out.push(textCentred(WIDTH / 2, 62, 22, true, INK, fit(context.project ? `${context.project} Report` : 'Report', WIDTH - 2 * MARGIN, 22)));
   out.push(rule(MARGIN, 76, WIDTH - MARGIN, 76, 1.2, RULE));
@@ -974,7 +1037,7 @@ function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome, fontNo
   y += 18;
   for (const [label, value] of [
     ['Generated Date', context.generatedAt],
-    ['Charts', String(files.length)],
+    ['Charts', String(charts.length)],
     ['Pages', String(context.pages)],
   ] as Array<[string, string]>) {
     out.push(text(MARGIN + 6, y, 9, true, INK, label));
@@ -1010,10 +1073,9 @@ function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome, fontNo
   out.push(rule(MARGIN, y, WIDTH - MARGIN, y, 0.6, GRID));
   y += 11;
 
-  files.forEach((file, at) => {
+  rows.forEach((chart) => {
     if (y > HEIGHT - 46) return;
-    const spec = specOf(file.name);
-    const model = modelOf(file, spec);
+    const { file, spec, model } = chart;
     const series = model.kind === 'line'
       ? model.series.length
       : model.kind === 'category'
@@ -1048,24 +1110,72 @@ function infoPage(files: CsvFile[], fields: InfoField[], context: Chrome, fontNo
     out.push(text(MARGIN + 450, y, 8, false, INK, low));
     out.push(text(MARGIN + 530, y, 8, false, INK, high));
     out.push(text(MARGIN + 610, y, 8, false, INK, mean));
-    out.push(text(MARGIN + 720, y, 8, false, INK, String(at + 2)));
+    // The page the chart is drawn on, not its position in the table: the Overview track takes the
+    // first sheet, so a CSV's card is one page further along than "row + 1".
+    out.push(text(MARGIN + 720, y, 8, false, INK, String(pageOf.get(file.name) ?? '--')));
     y += 12;
   });
+  if (overviewPage > 0 && y <= HEIGHT - 46) {
+    out.push(text(MARGIN + 6, y + 6, 7.5, false, MUTED, fit(
+      `page ${overviewPage}: Trajectory Plot - the same 2D Trajectory.csv fixes joined into a track `
+      + '(the original prints a Leaflet tile image there; no basemap is embedded)',
+      WIDTH - 2 * MARGIN - 12, 7.5,
+    )));
+  }
   return out.join('\n');
 }
 
-/** Pages 2..: one chart each, with the section heading the original prints when a tab starts. */
-function chartPage(file: CsvFile, spec: ChartSpec, model: ChartModel, context: Chrome, previousSection: string, page: number): string {
-  const out: string[] = [];
-  out.push(...chrome(context, page, `source: ${file.name}`));
+/* ---------------- charts on a sheet ---------------- */
 
-  let y = 50;
-  if (spec.section && spec.section !== previousSection) {
-    out.push(text(MARGIN, y, 8, true, RULE, spec.section));
-    y += 17;
+/**
+ * One chart in document order: the CSV it is drawn from, the catalogue entry that names it, the
+ * model computed from the file, and whether the original gives it a sheet of its own.
+ */
+interface Chart {
+  file: CsvFile;
+  spec: ChartSpec;
+  model: ChartModel;
+  /** The Overview track: page 2 of the original holds this one chart and nothing else. */
+  lone: boolean;
+}
+
+/**
+ * The charts a report draws, in the original's page order: the Overview's `Trajectory Plot` first
+ * (page 2), then one card per CSV in catalogue order. The track is only added to a multi-chart
+ * report — a `?file=` download of a single CSV is that one chart.
+ */
+function chartsOf(files: readonly CsvFile[]): Chart[] {
+  const charts: Chart[] = [];
+  const track = files.length > 1 ? files.find((file) => file.name === TRAJECTORY_PLOT.file) : undefined;
+  if (track) {
+    charts.push({ file: track, spec: TRAJECTORY_PLOT, model: geomapModel(track, TRAJECTORY_PLOT), lone: true });
   }
-  out.push(text(MARGIN, y + 10, 15, true, INK, fit(spec.title, WIDTH - 2 * MARGIN - 220, 15)));
+  for (const file of files) {
+    const spec = specOf(file.name);
+    charts.push({ file, spec, model: modelOf(file, spec), lone: false });
+  }
+  return charts;
+}
 
+/** Two charts per sheet; a `lone` chart (the track) takes a whole sheet, as the original does. */
+function paginate(charts: readonly Chart[]): Chart[][] {
+  const sheets: Chart[][] = [];
+  for (let at = 0; at < charts.length;) {
+    if (charts[at].lone) {
+      sheets.push([charts[at]]);
+      at += 1;
+      continue;
+    }
+    sheets.push(charts.slice(at, at + PDF_CHARTS_PER_PAGE));
+    at += PDF_CHARTS_PER_PAGE;
+  }
+  return sheets;
+}
+
+/** Title/facts of one card, above its plot — the original's card header. */
+function cardHeading(chart: Chart, area: Box): string[] {
+  const out: string[] = [];
+  const { file, spec, model } = chart;
   const facts: string[] = [plural(file.rows.length, 'row')];
   if (model.kind === 'line') {
     facts.push(plural(model.series.length, 'series', 'series'));
@@ -1077,29 +1187,41 @@ function chartPage(file: CsvFile, spec: ChartSpec, model: ChartModel, context: C
   } else {
     facts.push(plural(model.rows.length, 'condition'));
   }
-  out.push(textRight(WIDTH - MARGIN, y + 10, 7.5, false, MUTED, facts.join('  -  ')));
-  y += 20;
-  out.push(rule(MARGIN, y + 4, WIDTH - MARGIN, y + 4, 1, RULE));
+  out.push(text(area.left + 10, area.top + 16, 13, true, INK, fit(spec.title, area.right - area.left - 230, 13)));
+  out.push(textRight(area.right - 10, area.top + 16, 7, false, MUTED, facts.join('  -  ')));
+  return out;
+}
 
-  const boxArea: Box = {
-    left: MARGIN + (model.kind === 'interval' ? 186 : 46),
-    right: WIDTH - MARGIN - 6,
-    top: y + 22,
-    bottom: HEIGHT - 118,
+/**
+ * One chart card: frame, title, plot, legend and a note line. `area` is the whole card, so the
+ * plot box shrinks to whatever the sheet leaves it — a lone track card gets the full page.
+ */
+function card(chart: Chart, area: Box, legendRows: number): string[] {
+  const out: string[] = [];
+  const { file, model } = chart;
+  const inner = area.right - area.left;
+
+  out.push(strokeRect(area.left, area.top, inner, area.bottom - area.top, 0.6, CARD));
+  out.push(...cardHeading(chart, area));
+
+  const box: Box = {
+    left: area.left + (model.kind === 'interval' ? 176 : 52),
+    right: area.right - 14,
+    top: area.top + 26,
+    bottom: area.bottom - 84,
   };
-  out.push(...frame(boxArea, model, { showY: true }));
-  if (model.kind === 'line') out.push(...lines(boxArea, model));
-  else if (model.kind === 'category') out.push(...bands(boxArea, model));
-  else if (model.kind === 'geomap') out.push(...geomap(boxArea, model));
-  else out.push(...intervals(boxArea, model));
+  out.push(...frame(box, model, { showY: true }));
+  if (model.kind === 'line') out.push(...lines(box, model));
+  else if (model.kind === 'category') out.push(...bands(box, model));
+  else if (model.kind === 'geomap') out.push(...geomap(box, model));
+  else out.push(...intervals(box, model));
 
-  let cursor = boxArea.bottom + 40;
   const entries = model.kind === 'line'
     ? model.series.map((item) => ({ label: item.name, colour: item.colour }))
     : model.kind === 'category'
       ? model.legend
       : [];
-  if (entries.length) out.push(...legend(entries, MARGIN, cursor, WIDTH - 2 * MARGIN));
+  if (entries.length) out.push(...legend(entries, area.left + 10, box.bottom + 38, inner - 20, legendRows));
 
   const notes: string[] = [];
   if (model.note) notes.push(model.note);
@@ -1109,10 +1231,55 @@ function chartPage(file: CsvFile, spec: ChartSpec, model: ChartModel, context: C
     if (stride > 1) notes.push(`every ${stride}th sample drawn`);
   }
   if (notes.length) {
-    cursor = Math.min(HEIGHT - 44, cursor + 42);
-    out.push(text(MARGIN, cursor, 6.5, false, MUTED, fit(notes.join('  -  '), WIDTH - 2 * MARGIN, 6.5)));
+    out.push(text(area.left + 10, area.bottom - 8, 6, false, MUTED, fit(notes.join('  -  '), inner - 20, 6)));
   }
-  return out.join('\n');
+  return out;
+}
+
+const CONTENT_TOP = 44;
+const CONTENT_BOTTOM = HEIGHT - 39;
+const SHEET_GAP = 10;
+const SECTION_HEIGHT = 20;
+
+/**
+ * One sheet: up to two cards, the section heading the original prints when a tab starts (which can
+ * land between two cards, as `Receiver Status` does on its page), and the footer naming the CSVs.
+ *
+ * `section` is carried in and returned, so the heading is printed once per document — not once per
+ * page — exactly like the original.
+ */
+function sheetPage(
+  sheet: readonly Chart[],
+  context: Chrome,
+  page: number,
+  startSection: string,
+): { stream: string; section: string } {
+  const out: string[] = [];
+  const sources = [...new Set(sheet.map((chart) => chart.file.name))];
+  out.push(...chrome(context, page, `source: ${sources.join(' + ')}`));
+
+  let section = startSection;
+  const headings = sheet.map((chart) => {
+    const needed = Boolean(chart.spec.section && chart.spec.section !== section);
+    if (chart.spec.section) section = chart.spec.section;
+    return needed;
+  });
+
+  const fixed = headings.filter(Boolean).length * SECTION_HEIGHT + SHEET_GAP * (sheet.length - 1);
+  const cardHeight = (CONTENT_BOTTOM - CONTENT_TOP - fixed) / sheet.length;
+  const legendRows = 2;
+
+  let y = CONTENT_TOP;
+  sheet.forEach((chart, at) => {
+    if (headings[at]) {
+      out.push(text(MARGIN, y + 12, 9, true, RULE, chart.spec.section));
+      y += SECTION_HEIGHT;
+    }
+    out.push(...card(chart, { left: MARGIN, right: WIDTH - MARGIN, top: y, bottom: y + cardHeight }, legendRows));
+    y += cardHeight + SHEET_GAP;
+  });
+
+  return { stream: out.join('\n'), section };
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -1207,8 +1374,9 @@ function assemble(title: string, generatedAt: string, streams: string[], face: T
 
 export interface GraphPdfReport {
   bytes: Uint8Array;
-  /** 1 information page + one per CSV. */
+  /** 1 information page + one sheet per pair of charts (the Overview track has a sheet alone). */
   pages: number;
+  /** Charts drawn: the Overview track, when the report has one, plus one per CSV. */
   charts: number;
   /** `<project>.pdf`, the name Graph's own export used (`clean.pdf`), ASCII-escaped for the header. */
   fileName: string;
@@ -1224,8 +1392,18 @@ export interface GraphPdfReport {
 export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptions = {}): GraphPdfReport {
   const generatedAt = options.generatedAt ?? stamp(new Date());
   const files = sources.map(parseCsvSource);
-  const pages = 1 + files.length;
+  const charts = chartsOf(files);
+  const sheets = paginate(charts);
+  const pages = 1 + sheets.length;
   const face = beginPdfFont(options);
+
+  /** Page each CSV's own card lands on (the track's page is not a CSV's page). */
+  const pageOf = new Map<string, number>();
+  sheets.forEach((sheet, index) => {
+    for (const chart of sheet) if (!chart.lone) pageOf.set(chart.file.name, index + 2);
+  });
+  const overview = sheets.findIndex((sheet) => sheet.length === 1 && sheet[0].lone);
+  const overviewPage = overview >= 0 ? overview + 2 : 0;
 
   try {
     const first = files[0]?.comments ?? {};
@@ -1246,24 +1424,24 @@ export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptio
     // The cover can be the only page with non-ASCII text (project name, directory), so it is drawn
     // once to learn what the footer must say and once with that sentence. The probe only adds
     // glyphs to the same maps, so the second render is the one that is kept.
-    const streams = [infoPage(files, fields, context, FONT_NOTE_ASCII)];
-    let previous = '';
-    files.forEach((file, index) => {
-      const spec = specOf(file.name);
-      streams.push(chartPage(file, spec, modelOf(file, spec), context, previous, index + 2));
-      previous = spec.section;
+    const streams = [infoPage(charts, fields, context, pageOf, overviewPage, FONT_NOTE_ASCII)];
+    let section = '';
+    sheets.forEach((sheet, index) => {
+      const page = sheetPage(sheet, context, index + 2, section);
+      streams.push(page.stream);
+      section = page.section;
     });
 
     const embedded = cjkUsedEmbedded();
     const fontNote = embedded && face
       ? embeddedFontNote(face)
       : cjkUsedDegraded() ? FONT_NOTE_DEGRADED : FONT_NOTE_ASCII;
-    streams[0] = infoPage(files, fields, context, fontNote);
+    streams[0] = infoPage(charts, fields, context, pageOf, overviewPage, fontNote);
 
     return {
       bytes: assemble(title, generatedAt, streams, embedded ? face : null),
       pages,
-      charts: files.length,
+      charts: charts.length,
       fileName: graphPdfFileName(project),
       project: asciiHeaderValue(project),
     };
@@ -1273,8 +1451,9 @@ export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptio
 }
 
 /**
- * Build the document. One information page plus one page per CSV, in the order given — pass
- * {@link graphPdfOrder} to get the catalogue's order (the original's tab order).
+ * Build the document. An information page, then two charts per sheet in the order given (the
+ * Overview track gets a sheet of its own) — pass {@link graphPdfOrder} to get the catalogue's
+ * order, which is the original's tab order and therefore the original's page order.
  */
 export function buildGraphPdf(sources: GraphPdfSource[], options: GraphPdfOptions = {}): Uint8Array {
   return graphPdfReport(sources, options).bytes;

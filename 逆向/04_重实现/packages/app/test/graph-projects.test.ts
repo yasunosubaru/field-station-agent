@@ -351,8 +351,9 @@ test('GET /api/graph/pdf?project=b1 exports that project, not clean', async () =
   assert.equal(b1.status, 200);
   assert.equal(b1.headers.get('x-pdf-project'), 'b1');
   assert.equal(b1.headers.get('content-disposition'), 'attachment; filename="b1.pdf"');
-  assert.equal(b1.headers.get('x-pdf-charts'), '13');
-  assert.equal(b1.headers.get('x-pdf-pages'), '14');
+  // b1 has 13 CSVs: the Overview track (page 2) plus 13 cards, two per sheet → 9 pages.
+  assert.equal(b1.headers.get('x-pdf-charts'), '14');
+  assert.equal(b1.headers.get('x-pdf-pages'), '9');
   await b1.arrayBuffer();
 
   const unknown = await fetch(base + '/api/graph/pdf?project=Nope', { headers: { connection: 'close' } });
