@@ -552,3 +552,17 @@ test('a window keeps every junk run whole and drops only the skipped records’ 
   );
 });
 
+test('timeStatus 0 prints UNKNOWN, not "0"', () => {
+  // The suite prints UNKNOWN for a binary frame whose header time status is 0 (E7 probe `junk+binary0`:
+  // suite 1 292 B vs ours 1 286 B, the six-byte difference is this word). No golden carries status 0.
+  const zero = sealed(42, new Uint8Array(32), { week: 2442, milliseconds: 580_000_000, timeStatus: 0 });
+  const outcome = convertFrames(framesFrom(zero), {
+    format: 'ASCII',
+    at: new Date('2026-11-01T00:00:00Z'),
+    tables,
+    name: 'zero.sbf',
+  });
+  const line = outcome.files[0].text?.split('\n')[0] ?? '';
+  assert.match(line, /^#BESTPOSA,.*,UNKNOWN,2442,580000\.000,/);
+});
+

@@ -34,6 +34,7 @@ import { SbfDeframer, type SbfFrame } from './framing.ts';
 
 /** `20`→`UNKNOWN`, `180`→`FINESTEERING` — `01_解包/app/model/bestpos.js` (`timeStatusJSON`). */
 export const TIME_STATUS_NAMES: Record<number, string> = {
+  0: 'UNKNOWN',
   20: 'UNKNOWN',
   60: 'APPROXIMATE',
   80: 'COARSEADJUSTING',
