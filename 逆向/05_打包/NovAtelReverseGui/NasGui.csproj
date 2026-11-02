@@ -9,6 +9,7 @@
     <AssemblyName>NovAtelReverse</AssemblyName>
     <RootNamespace>NasGui</RootNamespace>
     <Version>0.1.0</Version>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

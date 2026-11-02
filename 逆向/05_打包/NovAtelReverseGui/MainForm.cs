@@ -29,6 +29,7 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "NovAtel Application Suite — reverse-engineered";
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         Width = 1440;
         Height = 900;
         MinimumSize = new Size(1000, 700);
