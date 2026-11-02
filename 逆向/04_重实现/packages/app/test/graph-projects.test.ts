@@ -362,3 +362,24 @@ test('GET /api/graph/pdf?project=b1 exports that project, not clean', async () =
   assert.match(error.error, /Nope/);
   assert.match(error.error, /clean/);
 });
+
+test('/api/graph/flags falls back cleanly when the project has no .gpf', async () => {
+  // The export projects in this repo have no .gpf, so the panel must stay on localStorage: the route
+  // is advertised in /api/health, answers `gpf:false`, and a write is refused with `no-gpf` rather
+  // than creating a file.
+  const health = await (await fetch(base + '/api/health', { headers: { connection: 'close' } })).json();
+  assert.ok(health.endpoints.includes('/api/graph/flags'), 'route listed in /api/health');
+
+  const read = await (await fetch(base + '/api/graph/flags?project=csv', { headers: { connection: 'close' } })).json();
+  assert.deepEqual(read, { ok: true, gpf: false });
+
+  const write = await (await fetch(base + '/api/graph/flags', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', connection: 'close' },
+    body: JSON.stringify({ project: 'csv', flags: { allFlags: [], isFlagsPanelOpen: false } }),
+  })).json();
+  assert.equal(write.ok, false);
+  assert.equal(write.gpf, false);
+  assert.equal(write.reason, 'no-gpf');
+});
+

@@ -56,7 +56,9 @@ import {
   listProjectCsv,
   projectCsvText,
   projectGraphData,
+  readProjectFlags,
   resolveExportProject,
+  writeProjectFlags,
   type ExportProject,
 } from '../../graph/src/export-projects.ts';
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
@@ -320,6 +322,7 @@ function health() {
       '/api/graph/projects',
       '/api/graph/files',
       '/api/graph/data',
+      '/api/graph/flags',
       '/api/graph/pdf',
       '/api/live/status',
       '/api/live/logs',
@@ -1040,6 +1043,39 @@ function handleGraphData(url: URL, res: ServerResponse, method: string): void {
 }
 
 /**
+ * `GET /api/graph/flags?project=<key|name>` and `POST /api/graph/flags` `{project, flags}`.
+ *
+ * The original Graph keeps its markers in the project's `.gpf` (`FlagsInitialState`), not in
+ * browser storage. This route is the server half of `graph.js#createFlagStore`: `gpf:false` means
+ * the project has no `.gpf` and the panel stays on `localStorage`; `gpf:true` with `flags:null`
+ * means the file exists but has no `FlagsInitialState` yet (an empty store, not a fallback).
+ * A write never creates a `.gpf` and never overwrites an unreadable one.
+ */
+async function handleGraphFlags(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'GET' && method !== 'POST') throw new HttpError(405, '/api/graph/flags 只接受 GET / POST');
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const project = graphProjectOrThrow(url.searchParams.get('project'));
+  if (method === 'GET') {
+    const read = readProjectFlags(project);
+    if (!read) {
+      sendJson(res, 200, { ok: true, gpf: false }, method);
+      return;
+    }
+    sendJson(res, 200, { ok: true, gpf: true, flags: read.flags, ...(read.error ? { error: read.error } : {}) }, method);
+    return;
+  }
+  const body = await readJsonBody(req);
+  const write = writeProjectFlags(project, body.flags as never);
+  sendJson(res, 200, {
+    ok: write.ok,
+    gpf: write.reason !== 'no-gpf',
+    ...(write.path ? { path: write.path } : {}),
+    ...(write.reason ? { reason: write.reason } : {}),
+    ...(write.error ? { error: write.error } : {}),
+  }, method);
+}
+
+/**
  * `GET /api/graph/pdf[?project=<key|name>][?file=<one csv>]` — what Graph's *Export → PDF* downloads.
  *
  * Built server-side from the CSVs that project already exported, so the bytes are a real PDF 1.4
@@ -1560,6 +1596,10 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/graph/data') {
         handleGraphData(url, res, method);
+        return;
+      }
+      if (path === '/api/graph/flags') {
+        await handleGraphFlags(req, res, method);
         return;
       }
       if (path === '/api/graph/pdf') {
