@@ -160,6 +160,60 @@ payload** 的合成记录还有已知差异（`ascii-log.ts` 对截断 payload �
 5 088 882 + 5 386 − 13，那 13 B 就是抓包开头的 `\r\n<OK\r\n[USB2]`（`size`/`time` 都保留它，见上文）。
 我们照抄这个行为而不是「修」掉，否则字节对不上；`daily` 的日钟本身与 plain 完全一致。
 
+### 三个边角证据缺口（2026-11-02 补测，E7）
+
+上面这几条规则各剩一处「只在一个抓包上测过、其余靠推断」的空白。这次用**合成捕获 + 套件 CLI 当
+oracle** 补齐：探针 `逆向/tools/probe-time-anchor.ts`、`probe-daily-leading-junk.ts`、
+`probe-split-interleave.ts` 都真跑 `NovAtelApplicationSuite.exe`，逐片比字节与 sha256。
+
+**① `--limit-output-duration`（`time`）的锚点：80 / 100 / 160 与文本记录。** 之前只实测 120
+（b2 交错版的 COARSESTEERING）与「片首是记录则无论状态」（almanac 的 SATTIME=200）。合成捕获：
+`\r\n<OK\r\n[USB2]` + 一条 `577140.000` 的 BESTPOS（状态逐次替换）+ `577145…577152` 的
+FINESTEERING 记录，跑 `-a --limit-output-duration=5 --unknown-bytes=interleave`：
+
+| 首帧状态 | 套件怎么切 | 说明 |
+|---|---|---|
+| 80 / 100 / 160 / 180 | `[577140, 577145]` `[577146 … 577152]` | 可信，锚在 577140（Part0 依次 444 / 435 / 433 / 441 B） |
+| 20 / 60 / 200 | `[577140 … 577150]` `[577152]` | 不可信，等第一条 180 记录（577145） |
+
+文本记录同形（`#BESTPOSA` 自带 `week,ms,status`）：`COARSESTEERING`（文本闸门里的 60）、`FINE`、
+`FINESTEERING` 都能锚；`UNKNOWN` / `APPROXIMATE` / `SATTIME` 不能——**同一个 COARSESTEERING 写成
+二进制帧不锚、写成文本记录就锚**，两套闸门确实不同。混排时锚的是「第一条**可信**记录」而不是
+「第一条记录」：`[垃圾, 577140:200, 577143:COARSESTEERING 文本, 577145…]` 的切点变成
+577148 / 577150；一条可信记录都没有则整份一片。20 个用例逐片 sha256 全同 → **现有实现即规则，
+未改代码**（另 1 个 status 0 用例是下面那处渲染差，不算锚点证据），测试钉在
+`packages/protocol/test/split-interleave.test.ts` §6。
+
+顺带发现一处**与三个缺口无关**的渲染差：状态码 **0** 的二进制帧，套件表头打 `UNKNOWN`，我们
+`ascii-log.ts` 的 `TIME_STATUS_NAMES[0] ?? String(0)` 打成 `0`，每行少 6 B（探针里的
+`junk+binary0`：套件 1 292 B / 我们 1 286 B，其余部分逐字节相同）。全部 golden 与真实抓包里都没有
+状态 0 的 SBF 帧，所以一直没暴露；`ascii-log.ts` 不在本次改动边界内，**未修**。
+
+**② `--daily-utc` 首记录之前的「多段垃圾」。** 之前只有 b1 的 13 B 单段。歧义在于丢的是
+「第一条**写出字节**的记录之前的全部内容」（规则 A），还是「预扫描认出的第一条记录之前」（规则 B）
+——后者会让「认得出名字但打不出行」的记录（b7 那 22 条内嵌消息不在字典里的 `#RXCONFIGA`）连同
+它后面的垃圾留下来。合成捕获把两者分开：把静默 `#RXCONFIGA` 放在 offset 0、后面接 8 B 垃圾：
+
+| 捕获 | 套件产物 | 判定 |
+|---|---|---|
+| 垃圾 + 静默 RXCONFIG + 垃圾 + 2 条 BESTPOS | 428 B（只有两条记录） | 全丢 |
+| 静默 RXCONFIG + 垃圾 + 2 条 BESTPOS（无前置垃圾） | 428 B，sha 同 | 连 offset 0 的静默记录一起丢 → **规则 A** |
+| 垃圾 + 静默 + 垃圾 + 静默 + 垃圾 + 2 条 BESTPOS | 428 B，sha 同 | 丢**每一段**，不只第一段 |
+| 记录 + 垃圾 + 静默 + 垃圾 + 记录 | 613 B | 首记录之后的垃圾与静默记录原样保留 |
+| 上表第二行，改 `--limit-output-duration=5` | 606 B | 同一段字节在 `time` 下**保留**（所以这是 daily 专属） |
+
+第二行是关键：静默记录 + 8 B 垃圾共 178 B 在 `time` 下出现在文件开头（606 = 428 + 178），在
+`daily` 下一个字节都不留。`mergePieces` 本来就把「垃圾 + 静默记录 + 垃圾」合成一段，所以
+`assembleFiles` 的 `pieces.slice(firstRecord)` 正好就是规则 A；`daily` 的 `unknown.length` 仍是
+完整的 191 B（丢的是文件里的字节，不是计数）。**未改代码**，测试 §7。
+
+**③ `--split` + `interleave` 的 b2 / b5 / b7。** 之前只在 b1 测过。三份抓包 × `-a` / `--abbrev` /
+`-b` × `--split --unknown-bytes=interleave` 全部逐文件比：b2 21 个（20 个日志 + sidecar
+7 056 B，sha `6765898e…`）、b5 27 个（26 + 565 B，`f2e0f650…`）、b7 16 个（15 + 3 935 B，
+`4ce1e637…`），**每种格式的每个文件都逐字节相同**。`file` 的 sidecar 与 `interleave` 同 sha，
+`ignore` 不写 sidecar，日志文件与 plain `--split` 逐字节一致（12 组套件跑法全对）。ASCII 的逐文件
+sha 已钉进测试 §8 的 `SPLIT_INTERLEAVE_FILES`。**未改代码。**
+
 ---
 
 ## 分片、抽稀与压缩记录展开（2026-11-01 实测，手册 4.5.3–4.5.6）
@@ -445,13 +499,13 @@ node 逆向\tools\probe-text-layouts.ts                  # SETNAV/LOGLIST/SENDHE
 | `protocol/test/text-to-binary.test.ts` | 12 条用例：b1/b7 整文件 sha256、b1 `--decimate=5`、七类记录逐字段头部、BESTPOS/RANGE/SATVIS2/RXSTATUS/TIMESYNC/HWMONITOR 正文、固定与变长字符串、`%R` 内嵌帧与取反 CRC、三条失败路径 |
 | `protocol/test/convert-cli-options.test.ts` | 19 条用例：四种 `--limit-output-size` 产物、五种 `--limit-output-duration` 边界（含合成捕获）、`--daily-utc` 的状态矩阵（二进制 / 文本两套闸门、回拨、起点）、b7 三片逐字节、三种 `--decimate`（含对齐基准与文本记录）、`--expand-cmp` 两档 |
 | `protocol/test/unknown-bytes.test.ts` | `.UNKNOWN` 的六个口径：四份 golden、ignore/SKIP、interleave、`--decimate=5` 的 4 014 B、合成捕获上「网格外打不出行的记录消失、网格上的留下」，以及窗口 + interleave（b1 ASCII/ABBREV/BINARY 与 b2 的 sha256、两个小数窗口、窗口+抽稀、合成捕获的整段垃圾规则） |
-| `protocol/test/split-interleave.test.ts` | 13 条用例：`--split` + interleave/file/ignore（b1 ASCII/ABBREV/BINARY 整树逐字节）、b2 `--limit-output-size=1` 五片与 `--limit-output-duration=5` 七片逐片 sha、b5/b7/b1 `--daily-utc` 逐片 sha（含 b1 丢 13 B 的特例）、`file` 在 Part 分片下等同 interleave、abbrev/binary 各一组 Part 分片，以及两条规则本身（size 计数含垃圾、time 片首锚点）的合成用例 |
+| `protocol/test/split-interleave.test.ts` | 20 条用例：`--split` + interleave/file/ignore（b1 ASCII/ABBREV/BINARY 整树逐字节）、b2 `--limit-output-size=1` 五片与 `--limit-output-duration=5` 七片逐片 sha、b5/b7/b1 `--daily-utc` 逐片 sha（含 b1 丢 13 B 的特例）、`file` 在 Part 分片下等同 interleave、abbrev/binary 各一组 Part 分片，以及两条规则本身（size 计数含垃圾、time 片首锚点）的合成用例；**E7 补的三组**：§6 `time` 锚点（80/100/160 二进制 + 文本记录两套闸门 + 混排 + 无可信记录）、§7 `daily` 首记录前的多段垃圾（静默记录在 offset 0、两段静默、中间垃圾保留、同字节在 `time` 下保留）、§8 b2/b5/b7 的 `--split` + interleave 逐文件 sha |
 
 复验命令：
 
 ```powershell
 cd 逆向\04_重实现
-node --test --test-force-exit "packages/*/test/*.test.ts"   # 全部通过（本项新增 12 条；本次 991 条，总数随并行改动增长；packages/graph 另有并行未完成改动，不在本项范围）
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 全绿（E7 新增 7 条；总数随并行任务增长，末次 1216 条全过）
 node 逆向\tools\golden-check.ts                            # 14 份 golden 全字节相同
 ```
 
@@ -460,6 +514,9 @@ node 逆向\tools\golden-check.ts                            # 14 份 golden 全
 ```powershell
 node 逆向\tools\probe-daily-regress.ts            # 10 份抓包 --daily-utc，逐片比 sha
 node 逆向\tools\probe-daily-matrix.ts             # 状态矩阵（二进制 vs 文本、回拨、起点）
+node 逆向\tools\probe-time-anchor.ts              # time 锚点：80/100/160/120/180 与文本记录，21 个合成用例
+node 逆向\tools\probe-daily-leading-junk.ts       # daily 首记录前的多段垃圾（静默记录夹在中间）+ time 对照
+node 逆向\tools\probe-split-interleave.ts [b2|b5|b7]   # --split + interleave，逐文件比（默认三份全跑）
 node 逆向\tools\probe-decimate-unknown.ts <抓包> <套件.UNKNOWN> --decimate 5   # 逐段判定 KEPT/DROPPED
 node 逆向\tools\probe-decimate-unknown-synth.ts   # 抽稀 × 未知字节的合成捕获
 ```

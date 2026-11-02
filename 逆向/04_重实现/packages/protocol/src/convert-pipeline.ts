@@ -917,6 +917,14 @@ function mergePieces(
  * uses; a part that *starts* with a record takes it whatever its status (that is how the plain run
  * anchors on the almanac).
  *
+ * Measured on synthetic captures as well (2026-11-02, `逆向/tools/probe-time-anchor.ts`, 20 cases,
+ * every part byte-identical): behind junk, a **binary** record anchors on 80 / 100 / 160 / 180 and
+ * not on 20 / 60 / 200; a **text** record uses the text gate, so `COARSESTEERING` (60) and `FINE`
+ * anchor while `UNKNOWN`, `APPROXIMATE` and `SATTIME` do not — the identical `COARSESTEERING` stamp
+ * as a frame does not anchor. The clock starts at the first *trusted* record of either kind, so a
+ * text record can anchor behind an untrusted frame, and a capture with no trusted record stays one
+ * part. A record that is the part's first piece anchors whatever its status, junk or no junk.
+ *
  * `'daily'` — `--daily-utc`: a new part whenever a record's GPS day (whole days since the GPS
  * epoch, **no leap-second correction** — the boundary is seconds-of-week ≡ 0 mod 86400, measured
  * either side of 518400 and 604800) is *later* than the day clock, and the clock **follows every
@@ -1063,6 +1071,15 @@ function assembleFiles(
    * 13 bytes are the capture's opening `\r\n<OK\r\n[USB2]` — the same run `size` and `time` keep
    * (measured 2026-11-02). It is the one place the suite loses unknown bytes, and it is reproduced
    * rather than silently "fixed" so the bytes match.
+   *
+   * "Before the first record" means the first piece that **writes bytes**, not the first record the
+   * pre-scan parses (measured 2026-11-02 with `逆向/tools/probe-daily-leading-junk.ts`): a silent
+   * `#RXCONFIGA` (a name the dictionary knows, an embedded message it does not) at offset 0, with
+   * junk behind it, is dropped as well — a rule that kept it would write 606 B where the suite writes
+   * 428. Several runs with silent records in between go the same way, and the same bytes under
+   * `--limit-output-duration` keep the whole prefix. `mergePieces` already folds the junk and the
+   * silent record into one run, so slicing at `firstRecord` is exactly the suite's behaviour; the
+   * `unknown` report still counts every run (191 B in that synthetic capture).
    */
   if (splitMode === 'daily') {
     const firstRecord = pieces.findIndex((piece) => piece.block !== undefined);
