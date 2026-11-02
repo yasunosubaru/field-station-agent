@@ -103,11 +103,14 @@ export function toggleTheme() {
 
 /** 页面加载时初始化：已保存值优先，否则跟随系统偏好（不写回 localStorage，免得把系统偏好当成用户选择） */
 export function initTheme() {
-  const theme = readStored() ?? systemTheme();
+  /* The original only turns dark when the stored setting says `dark-theme`
+   * (index.html:1071-1073). It does not follow the OS, so a Windows set to dark still opens the
+   * light suite. Following prefers-color-scheme here made a dark desktop open our half-dark,
+   * half-light build by default — the exact complaint from the bench on 2026-11-02. */
+  const theme = readStored() ?? 'light';
   document.body?.classList.toggle(DARK_CLASS, theme === 'dark');
   mountToggle();
   syncToggle();
-  watchSystem();
   return theme;
 }
 

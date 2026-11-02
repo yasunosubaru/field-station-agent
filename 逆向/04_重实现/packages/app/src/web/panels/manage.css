@@ -2474,3 +2474,201 @@ body[data-page="manage"] #tabs-list li.mg-filetabs:not([hidden]) {
   gap: 8px;
 }
 
+
+/* ------------------------------------------------------------------------------------------
+ * Dark mode for this dashboard.
+ *
+ * The original darkens the panel to #121212, the tiles to rgba(255,255,255,.12) with a #27A0BF
+ * border, and the headings to white (style.css S:23400-23415, S:23851). Before this block the
+ * panel kept its light surface while theme.css turned every span white, so the cards read as
+ * blank white boxes — the dashboard was unusable on a Windows set to dark.
+ * ---------------------------------------------------------------------------------------- */
+body.darkMode .manage-panel {
+  --mg-ink: rgba(255, 255, 255, 0.87);
+  --mg-ink-60: rgba(255, 255, 255, 0.6);
+  --mg-ink-38: rgba(255, 255, 255, 0.38);
+  --mg-surface: rgba(255, 255, 255, 0.12);
+  --mg-band: #1b1b1b;
+  --mg-band-rule: #3d3d3d;
+  --mg-rule: #3d3d3d;
+  --mg-teal: #27a0bf;
+  --mg-teal-dark: #27a0bf;
+}
+
+body.darkMode .manage-panel .mg-card {
+  border-color: #27a0bf;
+}
+
+/* The mode strip, the tab strip and the list are surfaces of the page, not of a dialog. */
+body.darkMode .manage-panel .mg-mode {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body.darkMode .manage-panel .mg-mode-action {
+  background: #1b1b1b;
+  color: #7fd4ee;
+  border-color: #27a0bf;
+}
+
+body.darkMode .manage-panel .mg-mode-action:hover {
+  background: #27a0bf;
+  color: #121212;
+}
+
+body.darkMode .manage-panel .mg-list-head,
+body.darkMode .manage-panel .mg-tabstrip {
+  background: transparent;
+}
+
+body.darkMode .manage-panel .mg-list-card,
+body.darkMode .manage-panel .mg-mode-strip {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #3d3d3d;
+}
+
+/* The sky disc is drawn for a white page in the original; on a dark tile it would be a white
+ * blob with invisible axes, so it follows the tile. */
+body.darkMode .manage-panel .mg-sky-disc {
+  fill: #2a2a2a;
+  stroke: rgba(255, 255, 255, 0.6);
+}
+
+body.darkMode .manage-panel .mg-sky-ring,
+body.darkMode .manage-panel .mg-sky-axis {
+  stroke: rgba(255, 255, 255, 0.35);
+}
+
+body.darkMode .manage-panel .mg-sky-dir,
+body.darkMode .manage-panel .mg-sky-deg {
+  fill: rgba(255, 255, 255, 0.7);
+}
+
+body.darkMode .manage-panel .mg-tracked {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.darkMode .manage-panel .mg-tracked p {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* The capture cards are this build's own addition (the original lists devices here); they follow
+ * the dashboard instead of staying white islands. */
+body.darkMode .manage-panel .mg-capture-card {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #3d3d3d;
+}
+
+body.darkMode .manage-panel .mg-capture-card span {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+/* Dialogs stay light on purpose: they mirror the original's light modal and their own text
+ * colours are literal, so the dark shell does not repaint them. */
+
+
+/* ---- dark dialogs: Add Device and the Terminal drawer ---------------------------------- */
+
+body.darkMode .manage-panel .mg-adddev-sheet,
+body.darkMode .manage-panel .mg-terminal {
+  background: #1b1b1b;
+  border-color: #3d3d3d;
+}
+
+body.darkMode .manage-panel .mg-adddev-sheet .mg-adddev-h,
+body.darkMode .manage-panel .mg-adddev-sheet .mg-adddev-tile-name {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .manage-panel .mg-adddev-sheet .mg-adddev-note,
+body.darkMode .manage-panel .mg-adddev-sheet .mg-adddev-tile-row,
+body.darkMode .manage-panel .mg-adddev-sheet .mg-adddev-tile-row > span:first-child,
+body.darkMode .manage-panel .mg-adddev-sheet .mg-adddev-field {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.darkMode .manage-panel .mg-adddev-tile {
+  background: #242424;
+  border-color: #3d3d3d;
+}
+
+body.darkMode .manage-panel .mg-adddev-tile:hover {
+  background: #2b353a;
+  border-color: #27a0bf;
+}
+
+body.darkMode .manage-panel .mg-adddev-tile.is-active {
+  background: #14384a;
+  border-color: #27a0bf;
+  box-shadow: inset 0 0 0 1px #27a0bf;
+}
+
+body.darkMode .manage-panel .mg-adddev-field input {
+  background: #121212;
+  color: #ffffff;
+  border-color: #4a4a4a;
+}
+
+body.darkMode .manage-panel .mg-adddev-empty {
+  background: #3a2a12;
+  color: #ffe0b2;
+  border-left-color: #d98500;
+}
+
+body.darkMode .manage-panel .mg-adddev-foot {
+  background: #141414;
+  border-top-color: #3d3d3d;
+}
+
+body.darkMode .manage-panel .mg-adddev-status {
+  color: #d6d6d6;
+}
+
+body.darkMode .manage-panel .mg-cfg-btn {
+  background: #1b1b1b;
+  color: #7fd4ee;
+  border-color: #27a0bf;
+}
+
+body.darkMode .manage-panel .mg-cfg-btn:hover:not(:disabled) {
+  background: #27a0bf;
+  color: #121212;
+}
+
+body.darkMode .manage-panel .mg-cfg-btn:disabled {
+  border-color: #4a4a4a;
+  color: #7a7a7a;
+}
+
+body.darkMode .manage-panel .mg-term-title {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .manage-panel .mg-term-field span,
+body.darkMode .manage-panel .mg-term-status {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.darkMode .manage-panel .mg-term-field input,
+body.darkMode .manage-panel .mg-term-send input {
+  background: #121212;
+  color: #eaeaea;
+  border-color: #4a4a4a;
+}
+
+body.darkMode .manage-panel .mg-term-output {
+  background: #0d0d0d;
+  color: #d8d8d8;
+  border-color: #3d3d3d;
+}
+
+body.darkMode .manage-panel .mg-term-btn {
+  background: #242424;
+  color: #7fd4ee;
+  border-color: #27a0bf;
+}
+
+body.darkMode .manage-panel .mg-term-btn:hover {
+  background: #27a0bf;
+  color: #121212;
+}
+

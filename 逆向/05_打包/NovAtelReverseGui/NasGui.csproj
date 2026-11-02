@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>NovAtelReverse</AssemblyName>
     <RootNamespace>NasGui</RootNamespace>
-    <Version>0.1.5</Version>
+    <Version>0.1.6</Version>
     <ApplicationIcon>app-inverted.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
@@ -19,6 +19,7 @@
   </ItemGroup>
 
 </Project>
+
 
 
 

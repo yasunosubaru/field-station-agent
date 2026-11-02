@@ -35,7 +35,11 @@ body.darkMode {
 }
 
 /* shell.css:57-60 的 `span { color: RGBA(0,0,0,0.87) }` 的深色镜像 */
-body.darkMode span {
+body.darkMode .navigation span,
+body.darkMode .tabs-view-data span,
+body.darkMode .gritSideNav span,
+body.darkMode .folder-detail-heading span,
+body.darkMode .receiver-count span {
   color: RGBA(255, 255, 255, 0.87); /* S:23247 */
 }
 

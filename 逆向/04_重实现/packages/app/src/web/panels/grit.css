@@ -1699,3 +1699,61 @@ body:not([data-page="grit"]) #tabs-list li.grit-appbar-add {
 .grit-term-send input:focus-visible {
   outline: 1px solid var(--grit-cyan);
 }
+/* --------------------------------------------------------------------------------------------
+ * Dark mode: this panel is variable-driven, so the dashboard follows in one block. Tile borders
+ * keep the original teal (#005170) and text/band flip; GRIT's own dark palette is not shipped in
+ * the unpacked tree, so these are the values that read correctly on #121212.
+ * ------------------------------------------------------------------------------------------ */
+body.darkMode .grit-page {
+  --grit-ink: rgba(255, 255, 255, 0.87);
+  --grit-ink-60: rgba(255, 255, 255, 0.6);
+  --grit-rule: rgba(255, 255, 255, 0.16);
+  --grit-surface: rgba(255, 255, 255, 0.08);
+  --grit-band: #1b1b1b;
+  background: #121212;
+}
+
+body.darkMode .grit-page .grit-status-bar {
+  border-bottom-color: #3d3d3d;
+}
+
+body.darkMode .grit-page .grit-tile {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #27a0bf;
+}
+
+
+/* Segmented buttons and the spectrum plot are painted white by the light replica; in dark they
+ * need their own surface or the inactive label disappears (white on white). */
+body.darkMode .grit-page .grit-seg-btn {
+  background: #1b1b1b;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: #4a4a4a;
+}
+
+body.darkMode .grit-page .grit-seg-btn.is-active {
+  background: #00516f;
+  color: #ffffff;
+  border-color: #27a0bf;
+}
+
+body.darkMode .grit-page .grit-spec-thumbbox {
+  fill: #1b1b1b;
+  stroke: #4a4a4a;
+}
+
+body.darkMode .grit-page .grit-spec-plot {
+  fill: #151515;
+  stroke: #4a4a4a;
+}
+
+body.darkMode .grit-page .grit-spec-grid {
+  stroke: rgba(255, 255, 255, 0.14);
+}
+
+
+body.darkMode .grit-page .grit-spec-band {
+  fill: #1c1c1c;
+  stroke: #4a7d92;
+}
+
