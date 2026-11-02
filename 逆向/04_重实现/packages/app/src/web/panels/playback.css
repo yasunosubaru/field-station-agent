@@ -1040,7 +1040,9 @@
 .pb-progress {
   position: relative;
   height: 10px;
-  margin: 12px 18px 16px 4px;
+  /* The extra bottom margin is the event strip's row (`renderEvents`), which the original keeps
+   * under the bar as `.playback-events` (`playbackcontrol.html:23`). */
+  margin: 12px 18px 28px 4px;
   background-color: rgba(255, 255, 255, 0.36); /* S:4617 */
   border-radius: 2px;
   cursor: pointer;
@@ -1086,7 +1088,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 12px;
+  top: -9px;
   height: 6px;
   pointer-events: none;
 }
@@ -1098,6 +1100,144 @@
   height: 6px;
   margin-left: -0.5px;
   opacity: 0.55;
+}
+
+/* ---- event strip (§11.5, D1) -------------------------------------------------------------
+ * `#btn-event` (S:5288-5300): a 16.67 px marker, absolutely positioned on the strip, red for
+ * `PoorEvent` (#D0021B, S:5358) and amber for `ModerateEvent` (S:5363). The original centres it on
+ * the event's own time — `left: calc(per% - 17px)` on a 16.67 px dot — which is what `margin-left`
+ * does here. */
+
+.pb-events {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.pb-events[hidden] {
+  display: none;
+}
+
+.pb-event {
+  position: absolute;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  background: var(--pb-amber);
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 6;
+  transition: transform 90ms ease-out, box-shadow 90ms ease-out;
+}
+
+.pb-event-poor {
+  background: #d0021b; /* S:5359 `.playback-events .PoorEvent` */
+}
+
+.pb-event-moderate {
+  background: var(--pb-amber); /* S:5362 */
+}
+
+.pb-event:hover,
+.pb-event:focus-visible,
+.pb-event.is-selected {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+  outline: none;
+}
+
+.pb-events-note {
+  display: block;
+  padding-left: 2px;
+  font-family: var(--pb-sans);
+  font-size: 11px;
+  line-height: 16px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The pinned tooltip — `#.pb-events` / `.event-pb-tooltip` (S:5385-5445): a 235 px grey box with
+ * the time+description line. It sits above the marker, as the original's `top: -55px` does. */
+.pb-event-pop {
+  position: fixed;
+  z-index: 60;
+  width: 235px;
+  padding: 8px 26px 8px 10px;
+  border-radius: 2px;
+  background: rgba(130, 130, 130, 1);
+  color: #fff;
+  font-family: var(--pb-sans);
+  font-size: 12px;
+  line-height: 17px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.pb-event-pop[hidden] {
+  display: none;
+}
+
+.pb-event-pop-text {
+  margin: 0;
+  font-weight: 700;
+}
+
+.pb-event-pop-source {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.pb-event-pop-close {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 15px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.pb-event-pop-arrow {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: rgba(130, 130, 130, 1);
+  transform: rotate(45deg);
+}
+
+/* `Show Events` — the original's `.show-events` block with its slider switch
+ * (`playbackcontrol.html:91-97`, `playbackview.js:122-135`). */
+.pb-events-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 14px;
+  cursor: pointer;
+}
+
+.pb-events-switch input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--pb-cyan);
+  cursor: pointer;
 }
 
 .pb-transport {

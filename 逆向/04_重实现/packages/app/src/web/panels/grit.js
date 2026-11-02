@@ -74,6 +74,11 @@
  *                stage is dropped exactly like Graph's `failLuciad()` and the tile paints
  *                `mapSvg()` — the same track as SVG — with the reason printed on the stage. No
  *                blank canvas, and nothing claims to be Luciad unless the stage said `ready`.
+ *   - satellite  the **Satellite** tab is imagery, which no capture carries: it is drawn by an XYZ
+ *                tile layer (Web Mercator, `/api/grit/tiles` proxy + disk cache) whose default is a
+ *                public source, because the original's Google Maps key is not in this repo. Every
+ *                frame of it is labelled a substitute; if the tiles cannot be had, the same `mapSvg()`
+ *                graticule paints and the note says why (see `gritTileNote`).
  *
  * Spectrum Viewer / Waterfall — fed by two sources, one store:
  *
@@ -577,7 +582,9 @@ function placeholderSpectrumSvg() {
   return parts.join('');
 }
 
-function template() {
+/** The panel's markup. Exported so a test can call it: a stray backtick in this literal is a
+ * ReferenceError at mount time, which no unit test would otherwise see until the browser. */
+export function template() {
   return `
 <div class="grit-page" data-el="page">
 
@@ -733,8 +740,11 @@ function template() {
         </div>
         <div class="grit-pos-canvas" data-el="posCanvas">
           <div class="grit-pos-map" data-el="posMap" hidden></div>
+          <div class="grit-pos-tiles" data-el="posTiles" hidden></div>
+          <div class="grit-pos-overlay" data-el="posOverlay" hidden></div>
           <iframe class="grit-pos-frame" data-el="posFrame" title="LuciadRIA 地图（原版 Graph 引擎）"
                   src="about:blank" hidden></iframe>
+          <p class="grit-pos-credit" data-el="posCredit" hidden></p>
           <p class="grit-pos-note" data-el="posNote" hidden></p>
           <p class="grit-pos-foot" data-el="posFoot" hidden></p>
         </div>
@@ -826,6 +836,27 @@ function template() {
         <p class="grit-sheet-note grit-disp-state" data-el="dispState"></p>
         <div class="grit-sheet-actions">
           <button type="button" class="grit-pop-btn is-ghost" data-el="dispReset">Reset to GRIT defaults</button>
+        </div>
+
+        <div class="grit-tile-settings">
+          <p class="grit-sheet-note"><strong>Base Map · 影像瓦片</strong> —— Satellite 页签的底图。原版
+            GRIT 的地图是 <strong>Google Maps</strong>（<code>setUpMonitor.html</code> 注入
+            <code>maps.googleapis.com/maps/api/js?key=…</code>，key 来自安装目录的
+            <code>configurationfile.node</code>，见 <code>03_分析/05_GRIT-Monitor.md</code> §2.3）。
+            本构建没有那把 key，也不该复用别人的瓦片，所以这里用<strong>可配置的 XYZ 公开源替代</strong>：
+            默认 Esri World Imagery，署名印在地图右上角，<strong>不是原版同源</strong>。瓦片经
+            <code>/api/grit/tiles/{z}/{x}/{y}</code> 代理并缓存在本机磁盘；断网时先吃缓存，缓存没有
+            就回退矢量网格。key 只放服务端 <code>GRIT_TILE_URL</code> / <code>GRIT_TILE_KEY</code>，
+            不写进仓库。</p>
+          <div class="grit-tile-form">
+            <label class="grit-poi-field grit-tile-field"><span>Tile URL</span>
+              <input class="grit-poi-input" data-el="tileInput" spellcheck="false"
+                     placeholder="留空 = 服务端 GRIT_TILE_URL / 默认公开源；off = 关闭影像"></label>
+            <button type="button" class="grit-pop-btn" data-el="tileApply">Apply</button>
+            <button type="button" class="grit-pop-btn is-ghost" data-el="tileReset">Server default</button>
+          </div>
+          <p class="grit-sheet-msg" data-el="tileMsg" hidden></p>
+          <p class="grit-sheet-note grit-disp-state" data-el="tileState"></p>
         </div>
       </section>
     </div>
@@ -957,25 +988,581 @@ export function gritTrackSummary(track) {
   };
 }
 
+/* ---------------- Position Overview · Satellite imagery (Web Mercator tiles) ----------------
+ *
+ * The Map tab is LuciadRIA (or `mapSvg()`); the Satellite tab needs *imagery*, and no capture in
+ * this repo carries any. What this adds is therefore an **honest substitute**, not the original
+ * layer. The original's map is Google Maps — `setUpMonitor.html` injects
+ * `maps.googleapis.com/maps/api/js?key=<key>` with the key read from the installed app's
+ * `configurationfile.node`, and the LuCIAD route wraps that same session
+ * (`03_分析/05_GRIT-Monitor.md` §2.3). This build has neither that key nor a licence to reuse the
+ * tiles, so the default here is a public source and every screen says so.
+ *
+ *   source    `GRIT_TILE_URL` (server env) → server default; `?tiles=` (page) or the Map Settings
+ *             field (localStorage `nas.grit.map.tiles.v1`) → override. `off` disables.
+ *   transport every tile goes through `/api/grit/tiles/{z}/{x}/{y}` (`?src=` carries an override),
+ *             so the server can cache bytes on disk and keep a key in `GRIT_TILE_KEY` — the browser
+ *             never sees it.
+ *   geometry  Web Mercator (EPSG:3857) at integer tile zooms; the track, the graticule, the 1σ ring
+ *             and the POIs are drawn by `gritTileOverlaySvg()` through the **same** transform as the
+ *             tiles, which is the one property that cannot be right by accident.
+ *
+ * Pure from top to bottom (template, maths, layout, SVG), so the whole path is testable without a
+ * browser; `renderTiles()` in `mount()` only fetches bytes and hands them to these functions.
+ */
+
+/** 256 px is the only tile size any of these sources serves. */
+export const GRIT_TILE_SIZE = 256;
+/** Public imagery. `{z}/{y}/{x}` is Esri's order — the row comes before the column. */
+export const GRIT_TILE_DEFAULT_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+/** What the map corner prints. "公开源替代" is not decoration — it is the provenance. */
+export const GRIT_TILE_ATTRIBUTION =
+  'Imagery © Esri, Maxar, Earthstar Geographics, GIS User Community · 公开源替代（非原版同源）';
+export const GRIT_TILE_PROXY = '/api/grit/tiles';
+export const GRIT_TILE_STORE_KEY = 'nas.grit.map.tiles.v1';
+/** Web Mercator's valid latitude range; beyond it the projection runs to infinity. */
+export const GRIT_TILE_MAX_LAT = 85.05112877980659;
+export const GRIT_TILE_ZOOM_MIN = 1;
+export const GRIT_TILE_ZOOM_MAX = 19;
+/** One batch is one fit of the track: any more than this and the layer stops being a basemap. */
+export const GRIT_TILE_LIMIT = 64;
+
+const TILE_EARTH_CIRCUMFERENCE_M = 40_075_016.686;
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * A tile template → the template this build will use, `'off'` when imagery is switched off, or
+ * `''` when the string is not a usable template. Anything without `{z}`, `{x}` and `{y}` is
+ * refused rather than half-substituted: a template missing a placeholder would silently serve the
+ * same tile for every coordinate.
+ */
+export function gritTileTemplate(raw) {
+  if (raw === null || raw === undefined) return '';
+  const text = String(raw).trim();
+  if (!text) return '';
+  const word = text.toLowerCase();
+  if (['off', 'none', 'vector', 'false', '0', 'disabled'].includes(word)) return 'off';
+  if (['on', 'default', '1', 'true', 'satellite'].includes(word)) return '';
+  if (!/^https?:\/\//i.test(text)) return '';
+  /* `{-y}` is the TMS spelling of the row: a template that has it does have a row placeholder. */
+  if (!text.includes('{z}') || !text.includes('{x}') || !(text.includes('{y}') || text.includes('{-y}'))) {
+    return '';
+  }
+  return text;
+}
+
+/** `{z}/{x}/{y}`, `{-y}` (TMS), `{s}` (a·b·c) and `{key}` → one tile's URL, or null if unusable. */
+export function gritTileUrl(template, tile, options) {
+  const source = gritTileTemplate(template);
+  if (!source || source === 'off') return null;
+  const z = Number(tile && tile.z);
+  const x = Number(tile && tile.x);
+  const y = Number(tile && tile.y);
+  if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y)) return null;
+  if (z < 0 || z > 22) return null;
+  const span = 2 ** z;
+  if (x < 0 || y < 0 || x >= span || y >= span) return null;
+  const key = options && typeof options.key === 'string' ? options.key : '';
+  const url = source
+    .replace(/\{z\}/g, String(z))
+    .replace(/\{-y\}/g, String(span - 1 - y))
+    .replace(/\{x\}/g, String(x))
+    .replace(/\{y\}/g, String(y))
+    .replace(/\{s\}/g, 'abc'[(x + y) % 3])
+    /* Only a configured key fills `{key}`; without one the placeholder stays and the URL is
+     * refused below — a template with `?key=` and nothing after it requests a tile that cannot
+     * exist and would be reported as "upstream is broken". */
+    .replace(/\{key\}/g, key || '{key}');
+  /* A leftover placeholder means a hole in the address (`{key}` with no key configured, a typo):
+   * refuse it instead of asking the upstream for a tile that cannot exist. */
+  return /\{[a-z-]+\}/i.test(url) ? null : url;
+}
+
+/**
+ * The request the browser makes. Default source = the server's own (env) template, which is also
+ * the only path that gets the disk cache keyed to `GRIT_TILE_URL`; an override travels as `src=`.
+ */
+export function gritTileRequest(tile, source) {
+  const z = Number(tile && tile.z);
+  const x = Number(tile && tile.x);
+  const y = Number(tile && tile.y);
+  if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y)) return null;
+  const base = `${GRIT_TILE_PROXY}/${z}/${x}/${y}`;
+  const template = gritTileTemplate(source);
+  if (!template || template === 'off') return base;
+  return `${base}?src=${encodeURIComponent(template)}`;
+}
+
+/** The host of a template (placeholders replaced by `0`) — labels, and the key/loopback guard. */
+export function gritTileHost(template) {
+  const source = gritTileTemplate(template);
+  if (!source || source === 'off') return '';
+  try {
+    return new URL(source.replace(/\{[^}]*\}/g, '0')).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** What the map corner prints: the server's attribution, or the host of an operator's template. */
+export function gritTileAttribution(tiles) {
+  const state = tiles || {};
+  if (state.source) {
+    const host = gritTileHost(state.source);
+    return `自定义 XYZ 瓦片源（${host || '未知主机'}）· 公开源替代（非原版同源）`;
+  }
+  return state.attribution || GRIT_TILE_ATTRIBUTION;
+}
+
+/**
+ * The same route with `?probe=1`: the server answers **200 JSON** (`{ok, source, error}`) instead of
+ * image bytes. The panel asks once per view before the batch, so a build with no network never
+ * issues a failed subresource — Chromium logs every one of those to the console, even when the JS
+ * catches it, and "0 console errors" is part of the contract.
+ */
+export function gritTileProbeRequest(tile, source) {
+  const request = gritTileRequest(tile, source);
+  if (!request) return null;
+  return `${request}${request.includes('?') ? '&' : '?'}probe=1`;
+}
+
+/** lon/lat → normalised Web Mercator (`0…1` from the west/north edge of the world). */
+export function gritMercator(lon, lat) {
+  const lng = clampNumber(Number(lon) || 0, -180, 180);
+  const latitude = clampNumber(Number(lat) || 0, -GRIT_TILE_MAX_LAT, GRIT_TILE_MAX_LAT);
+  const rad = (latitude * Math.PI) / 180;
+  return {
+    u: (lng + 180) / 360,
+    v: (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2,
+  };
+}
+
+/** The inverse of `gritMercator` — `v` is the *north-down* fraction, as tiles index it. */
+export function gritLonLat(u, v) {
+  const x = clampNumber(Number(u) || 0, 0, 1);
+  const y = clampNumber(Number(v) || 0, 0, 1);
+  const n = Math.PI * (1 - 2 * y);
+  return {
+    lon: x * 360 - 180,
+    lat: (Math.atan((Math.exp(n) - Math.exp(-n)) / 2) * 180) / Math.PI,
+  };
+}
+
+/** The `{z}/{x}/{y}` a fix falls in (clamped at the edges of the world, like every slippy map). */
+export function gritTileIndex(lon, lat, z) {
+  const zoom = clampNumber(Math.round(Number(z) || 0), 0, 22);
+  const span = 2 ** zoom;
+  const { u, v } = gritMercator(lon, lat);
+  return {
+    z: zoom,
+    x: clampNumber(Math.floor(u * span), 0, span - 1),
+    y: clampNumber(Math.floor(v * span), 0, span - 1),
+  };
+}
+
+/** A tile's geographic bounds — the check that index ↔ degree conversion really is a pair. */
+export function gritTileExtent(z, x, y) {
+  const zoom = clampNumber(Math.round(Number(z) || 0), 0, 22);
+  const span = 2 ** zoom;
+  const west = (x / span) * 360 - 180;
+  const east = ((x + 1) / span) * 360 - 180;
+  return {
+    west,
+    east,
+    north: gritLonLat(0, y / span).lat,
+    south: gritLonLat(0, (y + 1) / span).lat,
+  };
+}
+
+/**
+ * A viewport that holds every fix, in the units the tiles are laid out in:
+ *
+ *   `k`      pixels per whole-world unit — the single scale everything shares;
+ *   `z`      the integer tile zoom requested from the source;
+ *   `size`   how large one 256 px tile is drawn (`k / 2^z`), 256…512 px normally;
+ *   `u0/v0`  world-unit corner of the viewport.
+ *
+ * A degenerate bbox (one fix, or five fixes on one pixel) is held open at `minSpan` so the picture
+ * never zooms to an absurd z where every tile is one blurry pixel. Pure.
+ */
+export function gritTileView(points, width, height, options) {
+  const w = Math.max(1, Math.round(Number(width) || 0));
+  const h = Math.max(1, Math.round(Number(height) || 0));
+  const opts = options || {};
+  const minZoom = clampNumber(Number.isFinite(opts.minZoom) ? opts.minZoom : GRIT_TILE_ZOOM_MIN, 0, 22);
+  const maxZoom = clampNumber(Number.isFinite(opts.maxZoom) ? opts.maxZoom : GRIT_TILE_ZOOM_MAX, minZoom, 22);
+  const margin = Number.isFinite(opts.margin) && opts.margin > 0 ? opts.margin : 1.15;
+  /* ≈ 306 m of equator: five coincident fixes still show a neighbourhood, not a single pixel. */
+  const minSpan = Number.isFinite(opts.minSpan) && opts.minSpan > 0 ? opts.minSpan : 1 / 2 ** 17;
+
+  const fixes = (Array.isArray(points) ? points : [])
+    .filter((point) => point && Number.isFinite(point.lon) && Number.isFinite(point.lat));
+  if (!fixes.length) {
+    const z = 2;
+    const k = GRIT_TILE_SIZE * 2 ** z;
+    return {
+      z, size: GRIT_TILE_SIZE, k, width: w, height: h,
+      u0: 0.5 - w / k / 2, v0: 0.5 - h / k / 2,
+      centerLon: 0, centerLat: 0,
+    };
+  }
+
+  let uMin = 1;
+  let uMax = 0;
+  let vMin = 1;
+  let vMax = 0;
+  for (const point of fixes) {
+    const { u, v } = gritMercator(point.lon, point.lat);
+    uMin = Math.min(uMin, u);
+    uMax = Math.max(uMax, u);
+    vMin = Math.min(vMin, v);
+    vMax = Math.max(vMax, v);
+  }
+  const du = Math.max((uMax - uMin) * margin, minSpan);
+  const dv = Math.max((vMax - vMin) * margin, minSpan);
+  const k = Math.min(w / du, h / dv);
+  const z = clampNumber(Math.floor(Math.log2(k / GRIT_TILE_SIZE)), minZoom, maxZoom);
+  const size = k / 2 ** z;
+  const cu = (uMin + uMax) / 2;
+  const cv = (vMin + vMax) / 2;
+  const u0 = cu - w / k / 2;
+  const v0 = cv - h / k / 2;
+  const center = gritLonLat(cu, cv);
+  return {
+    z, size, k, width: w, height: h, u0, v0,
+    centerLon: center.lon, centerLat: center.lat,
+  };
+}
+
+/** Every tile the viewport touches, with its on-screen box. Off-world indices are dropped. */
+export function gritTileLayout(view, limit = GRIT_TILE_LIMIT) {
+  const box = view || {};
+  const z = clampNumber(Math.round(Number(box.z) || 0), 0, 22);
+  const k = Number(box.k);
+  const w = Math.max(1, Number(box.width) || 0);
+  const h = Math.max(1, Number(box.height) || 0);
+  if (!(k > 0) || !Number.isFinite(box.u0) || !Number.isFinite(box.v0)) return [];
+  const span = 2 ** z;
+  const size = k / span;
+  const x0 = Math.max(0, Math.floor(box.u0 * span));
+  const x1 = Math.min(span - 1, Math.floor((box.u0 + w / k) * span));
+  const y0 = Math.max(0, Math.floor(box.v0 * span));
+  const y1 = Math.min(span - 1, Math.floor((box.v0 + h / k) * span));
+  const tiles = [];
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      tiles.push({
+        z,
+        x,
+        y,
+        left: Math.round((x / span - box.u0) * k),
+        top: Math.round((y / span - box.v0) * k),
+        size: Math.round(size),
+      });
+      if (tiles.length >= Math.max(1, Number(limit) || GRIT_TILE_LIMIT)) return tiles;
+    }
+  }
+  return tiles;
+}
+
+/** lon/lat → viewport pixels, through the same `k`/`u0`/`v0` the tiles were laid out with. */
+export function gritProjectPoint(view, lon, lat) {
+  const box = view || {};
+  const k = Number(box.k) || 0;
+  const { u, v } = gritMercator(lon, lat);
+  return { x: (u - (Number(box.u0) || 0)) * k, y: (v - (Number(box.v0) || 0)) * k };
+}
+
+/** Metres per screen pixel at a latitude — the scale bar's only input. */
+export function gritMetresPerPixel(view, lat) {
+  const k = Number(view && view.k) || 0;
+  if (!(k > 0)) return 0;
+  return (TILE_EARTH_CIRCUMFERENCE_M * Math.cos(((Number(lat) || 0) * Math.PI) / 180)) / k;
+}
+
+/** 1·2·5·10 degrees, sized so about five of them fit across `spanDeg`. */
+function degreeTicks(spanDeg) {
+  const raw = Math.max(1e-9, Number(spanDeg) || 0) / 5;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((factor) => factor * power).find((value) => value >= raw) ?? power * 10;
+  return step;
+}
+
+function tickRange(min, max, step) {
+  const out = [];
+  if (!(step > 0) || !Number.isFinite(min) || !Number.isFinite(max)) return out;
+  for (let value = Math.ceil(min / step) * step; value <= max + step * 1e-6; value += step) {
+    out.push(Number(value.toFixed(10)));
+    if (out.length > 64) break;
+  }
+  return out;
+}
+
+/** Metres → degrees at a latitude, for the 1σ ring and the POI radii. */
+function metresToDegrees(metres, lat) {
+  const north = metres / 111_320;
+  const cos = Math.max(0.01, Math.cos(((Number(lat) || 0) * Math.PI) / 180));
+  return { dLat: north, dLon: north / cos };
+}
+
+/**
+ * The vector layer drawn **above** the imagery: graticule, track, 1σ ring, POIs, scale bar and
+ * north arrow, all through `gritProjectPoint`. Its viewBox is the viewport, so the pixel its
+ * `data-lon`/`data-lat` vertices land on is the same pixel the track sits on in `mapSvg()` — that
+ * is the invariant the tests read back.
+ *
+ * Transparent by construction: the imagery underneath must not be covered by a "paper" tint.
+ */
+export function gritTileOverlaySvg(view, model) {
+  const box = view || {};
+  const w = Math.max(1, Math.round(Number(box.width) || 0));
+  const h = Math.max(1, Math.round(Number(box.height) || 0));
+  const data = model || {};
+  const points = (Array.isArray(data.points) ? data.points : [])
+    .filter((point) => point && Number.isFinite(point.lon) && Number.isFinite(point.lat));
+  const sigmaM = Number.isFinite(data.sigmaM) ? Math.max(0, Number(data.sigmaM)) : 0;
+  const pois = Array.isArray(data.pois) ? data.pois : [];
+  const display = data.display || {};
+  const font = 'font-family="Consolas, monospace"';
+  const project = (lon, lat) => gritProjectPoint(box, lon, lat);
+  const parts = [
+    `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="影像底图上的轨迹与网格（Web Mercator）"`
+      + ` data-basemap="tiles" data-tile-z="${Number(box.z) || 0}"`
+      + ` data-center-lon="${(Number(box.centerLon) || 0).toFixed(8)}"`
+      + ` data-center-lat="${(Number(box.centerLat) || 0).toFixed(8)}">`,
+  ];
+
+  /* Graticule: the degrees of the four corners, in whole degrees that stay readable. */
+  if (display.graticule !== false) {
+    const nw = gritLonLat(box.u0, box.v0);
+    const se = gritLonLat(box.u0 + w / box.k, box.v0 + h / box.k);
+    const stepLon = degreeTicks(se.lon - nw.lon);
+    const stepLat = degreeTicks(nw.lat - se.lat);
+    for (const lon of tickRange(nw.lon, se.lon, stepLon)) {
+      const x = project(lon, nw.lat).x;
+      if (x < 1 || x > w - 1) continue;
+      parts.push(`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${h}"`
+        + ' stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="4 4"/>');
+      if (display.labels) {
+        parts.push(`<text x="${x.toFixed(1)}" y="14" font-size="10" fill="rgba(255,255,255,0.95)"`
+          + ` text-anchor="middle" paint-order="stroke" stroke="rgba(0,0,0,0.55)" stroke-width="3" ${font}>`
+          + `${lon.toFixed(4)}°${lon >= 0 ? 'E' : 'W'}</text>`);
+      }
+    }
+    for (const lat of tickRange(se.lat, nw.lat, stepLat)) {
+      const y = project(nw.lon, lat).y;
+      if (y < 1 || y > h - 1) continue;
+      parts.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${w}" y2="${y.toFixed(1)}"`
+        + ' stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="4 4"/>');
+      if (display.labels) {
+        parts.push(`<text x="6" y="${(y - 4).toFixed(1)}" font-size="10" fill="rgba(255,255,255,0.95)"`
+          + ` paint-order="stroke" stroke="rgba(0,0,0,0.55)" stroke-width="3" ${font}>`
+          + `${lat.toFixed(4)}°${lat >= 0 ? 'N' : 'S'}</text>`);
+      }
+    }
+  }
+
+  /* 1σ ring: Position SD.csv's first epoch, drawn as a 32-gon in degrees (mapSvg's rule). */
+  if (points.length && sigmaM > 0) {
+    const centre = project(points[0].lon, points[0].lat);
+    const per = metresToDegrees(sigmaM, points[0].lat);
+    const radiusPx = Math.abs(project(points[0].lon + per.dLon, points[0].lat).x - centre.x);
+    if (radiusPx >= 3 && radiusPx <= Math.max(w, h) * 1.5) {
+      const ring = [];
+      for (let i = 0; i < 32; i += 1) {
+        const angle = (i / 32) * Math.PI * 2;
+        const point = project(
+          points[0].lon + Math.cos(angle) * per.dLon,
+          points[0].lat + Math.sin(angle) * per.dLat,
+        );
+        ring.push(`${point.x.toFixed(1)},${point.y.toFixed(1)}`);
+      }
+      parts.push(`<polygon points="${ring.join(' ')}" fill="rgba(0,81,111,0.08)"`
+        + ' stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-dasharray="4 3"'
+        + ` data-sigma-m="${sigmaM.toFixed(3)}"/>`);
+    }
+  }
+
+  /* POIs: the same list Map Settings edits, ring + pin + name (the Luciad stage draws them too). */
+  for (const poi of pois) {
+    if (!poi || poi.visible === false) continue;
+    if (!Number.isFinite(Number(poi.lon)) || !Number.isFinite(Number(poi.lat))) continue;
+    const point = project(Number(poi.lon), Number(poi.lat));
+    if (point.x < -50 || point.x > w + 50 || point.y < -50 || point.y > h + 50) continue;
+    const colour = poi.active === false ? 'rgba(160,160,160,0.95)' : '#005170';
+    const radius = Number(poi.radius) || 0;
+    if (radius > 0) {
+      const per = metresToDegrees(radius, Number(poi.lat));
+      const ring = [];
+      for (let i = 0; i < 32; i += 1) {
+        const angle = (i / 32) * Math.PI * 2;
+        const edge = project(
+          Number(poi.lon) + Math.cos(angle) * per.dLon,
+          Number(poi.lat) + Math.sin(angle) * per.dLat,
+        );
+        ring.push(`${edge.x.toFixed(1)},${edge.y.toFixed(1)}`);
+      }
+      parts.push(`<polygon points="${ring.join(' ')}" fill="rgba(0,81,111,0.10)"`
+        + ` stroke="${colour}" stroke-width="1.2" stroke-dasharray="3 3" data-poi-radius="${radius}"/>`);
+    }
+    parts.push(
+      `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4.5" fill="${colour}"`
+        + ' stroke="#ffffff" stroke-width="1.6"/>',
+      `<text x="${(point.x + 8).toFixed(1)}" y="${(point.y + 4).toFixed(1)}" font-size="10"`
+        + ` fill="#ffffff" paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" ${font}>`
+        + `${esc(poi.name || 'POI')}</text>`,
+    );
+  }
+
+  if (points.length > 1) {
+    const coords = points
+      .map((point) => `${project(point.lon, point.lat).x.toFixed(1)},${project(point.lon, point.lat).y.toFixed(1)}`)
+      .join(' ');
+    parts.push(`<polyline points="${coords}" fill="none" stroke="${MAP_TRACK_COLOR}" stroke-width="2.6"`
+      + ' stroke-opacity="0.9" stroke-linejoin="round" stroke-linecap="round"/>');
+  }
+  const radius = points.length > 400 ? 2 : 3.2;
+  points.forEach((point, index) => {
+    const at = project(point.lon, point.lat);
+    parts.push(`<circle cx="${at.x.toFixed(1)}" cy="${at.y.toFixed(1)}" r="${radius}" fill="#ffffff"`
+      + ` fill-opacity="0.94" stroke="${MAP_TRACK_COLOR}" stroke-width="1.6"`
+      + ` data-i="${index}" data-lon="${point.lon}" data-lat="${point.lat}"/>`);
+  });
+
+  const cursor = Number.isInteger(data.cursor) ? data.cursor : -1;
+  if (cursor >= 0 && cursor < points.length) {
+    const at = project(points[cursor].lon, points[cursor].lat);
+    parts.push(`<circle cx="${at.x.toFixed(1)}" cy="${at.y.toFixed(1)}" r="7" fill="none"`
+      + ' stroke="#ffd400" stroke-width="2" data-cursor="1"/>');
+  }
+  if (points.length) {
+    const start = project(points[0].lon, points[0].lat);
+    const end = project(points[points.length - 1].lon, points[points.length - 1].lat);
+    parts.push(
+      `<circle cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="5" fill="#ffffff"`
+        + ' stroke="#2e8b57" stroke-width="2"/>',
+      `<path d="M${end.x.toFixed(1)} ${(end.y - 5).toFixed(1)} l5 5 -5 5 -5 -5 z" fill="#d0021b"/>`,
+    );
+  }
+
+  /* Scale bar, bottom-left: the only thing here whose length is a *measurement*. */
+  const mpp = gritMetresPerPixel(box, Number(box.centerLat) || 0);
+  if (mpp > 0) {
+    const target = Math.min(150, Math.max(48, w * 0.26));
+    const nice = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000].find((value) => value / mpp >= target * 0.6)
+      ?? 10_000;
+    const px = Math.min(w - 40, nice / mpp);
+    if (px > 8) {
+      /* Above the footer line (`grit-pos-foot` is 16–18 px tall), or the bar measures nothing but
+       * its own top edge. */
+      const barY = h - 46;
+      parts.push(
+        `<g data-scale-m="${nice}">`,
+        `<rect x="16" y="${barY}" width="${(px / 2).toFixed(1)}" height="6" fill="rgba(0,0,0,0.8)"/>`,
+        `<rect x="${(16 + px / 2).toFixed(1)}" y="${barY}" width="${(px / 2).toFixed(1)}" height="6"`
+          + ' fill="#ffffff" stroke="rgba(0,0,0,0.8)"/>',
+        `<text x="16" y="${barY + 17}" font-size="10" fill="#ffffff" paint-order="stroke"`
+          + ` stroke="rgba(0,0,0,0.6)" stroke-width="3" ${font}>0</text>`,
+        `<text x="${(16 + px).toFixed(1)}" y="${barY + 17}" font-size="10" fill="#ffffff"`
+          + ` text-anchor="end" paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" ${font}>`
+          + `${nice >= 1000 ? `${nice / 1000} km` : `${nice} m`}</text>`,
+        '</g>',
+      );
+    }
+  }
+  if (display.north !== false) {
+    parts.push(`<g data-north="1"><path d="M${w - 26} ${h - 58} l6 14 -6 -4 -6 4 z" fill="#ffffff"`
+      + ' stroke="rgba(0,0,0,0.65)" stroke-width="1"/>'
+      + `<text x="${w - 26}" y="${h - 36}" font-size="10" fill="#ffffff" text-anchor="middle"`
+      + ` paint-order="stroke" stroke="rgba(0,0,0,0.6)" stroke-width="3" ${font}>N</text></g>`);
+  }
+  parts.push('</svg>');
+  return parts.join('');
+}
+
+/**
+ * The sentence the Satellite tab prints for every state that is not "imagery is on screen". A
+ * silent fallback is the bug this function exists to prevent: an offline build must say that the
+ * picture is the vector graticule, not imagery.
+ */
+export function gritTileNote(tiles) {
+  const state = tiles || {};
+  if (state.enabled === false) {
+    return 'Satellite 影像已关闭（瓦片源设为 off 或 GRIT_TILE_URL 为空）· 当前是矢量网格：'
+      + '同一份轨迹、同一套坐标，没有影像。';
+  }
+  const status = state.status || 'idle';
+  if (status === 'ready') return '';
+  if (status === 'loading') {
+    return `正在加载影像瓦片（z=${Number(state.zoom) || 0}，${Number(state.count) || 0} 块，`
+      + '经 /api/grit/tiles 代理 + 本地缓存）…';
+  }
+  if (status === 'offline') {
+    return `影像瓦片不可用（${state.error || '未知原因'}）· 已回退矢量网格：`
+      + '轨迹、POI、比例尺都不依赖底图，离线照常显示。';
+  }
+  return 'Satellite 视图：影像瓦片将在轨迹就绪后按当前视野加载。';
+}
+
+/** `localStorage` → `{ source }`; `source` '' means "the server's own default". */
+export function gritTilesParse(text) {
+  const fallback = { source: '' };
+  if (typeof text !== 'string' || !text.trim()) return fallback;
+  let store;
+  try {
+    store = JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+  if (!store || typeof store !== 'object') return fallback;
+  const template = gritTileTemplate(store.source);
+  if (template === 'off') return { source: 'off' };
+  return { source: template };
+}
+
+/**
+ * `?tiles=` → `{ source }` or null when the page carries no override. `on`/`default` mean "use the
+ * server's source", a template means "use this one", `off`/`vector` means "no imagery".
+ */
+export function gritTilesFromSearch(search) {
+  const text = String(search === null || search === undefined ? '' : search);
+  if (!text) return null;
+  const params = new URLSearchParams(text.startsWith('?') ? text.slice(1) : text);
+  if (!params.has('tiles')) return null;
+  const raw = params.get('tiles') || '';
+  const template = gritTileTemplate(raw);
+  if (template === 'off') return { source: 'off' };
+  if (template) return { source: template };
+  const word = raw.trim().toLowerCase();
+  if (!word || ['on', 'default', '1', 'true', 'satellite'].includes(word)) return { source: '' };
+  return { source: '', invalid: raw.trim() };
+}
+
 /**
  * The one sentence the tile prints when the picture is not self-explanatory — and `''` only when
  * Luciad really is painting the track. This is the GRIT equivalent of Graph's `failLuciad()`
  * reason: a missing engine, a missing CSV or an empty column set always says *why*, so the tile
  * can never be a blank canvas that pretends everything is fine. Pure, for the tests.
+ *
+ * The Satellite tab is deliberately *not* covered here: its picture is the tile layer, so its note
+ * comes from `gritTileNote()` — otherwise a failed Luciad boot would be blamed on a view that does
+ * not use Luciad at all.
  */
 export function gritPositionReason(view) {
   const state = view || {};
   const points = Number(state.points) || 0;
   const lengthM = Number(state.lengthM) || 0;
-  if ((state.tab || 'map') === 'satellite') {
-    return 'Satellite 视图需要影像瓦片：本构建离线、没有影像层（原版用的是在线底图）。'
-      + '切回 Map —— 同一份轨迹由 LuciadRIA 绘制。';
-  }
   if (state.status === 'error') {
     return `读不到轨迹：${state.error || '未知错误'}（Position Overview 需要 Graph 导出的 ${MAP_FILE}）`;
   }
   if (state.status === 'empty') return `${MAP_FILE} 里没有可配对的经纬度列，画不出轨迹。`;
   if (state.status !== 'ready') return `正在通过 /api/graph/data 读取 ${MAP_FILE}…`;
+  /* Satellite does not touch Luciad: its own state is `gritTileNote()`'s business. */
+  if ((state.tab || 'map') === 'satellite') return '';
   if (state.engine === 'failed') {
     return `LuciadRIA 不可用（${state.engineError || '未知原因'}）· 已退回自绘经纬网：`
       + `同一份轨迹 ${points} 点 / ${formatDistance(lengthM)}，坐标系与配色都不变。`;
@@ -2578,6 +3165,9 @@ export function mount(root, ctx = {}) {
 
   const posCanvas = root.querySelector('[data-el="posCanvas"]');
   const posMap = root.querySelector('[data-el="posMap"]');
+  const posTiles = root.querySelector('[data-el="posTiles"]');
+  const posOverlay = root.querySelector('[data-el="posOverlay"]');
+  const posCredit = root.querySelector('[data-el="posCredit"]');
   const posFrame = root.querySelector('[data-el="posFrame"]');
   const posNote = root.querySelector('[data-el="posNote"]');
   const posFoot = root.querySelector('[data-el="posFoot"]');
@@ -2618,6 +3208,260 @@ export function mount(root, ctx = {}) {
     return { width: Math.round(rect.width), height: Math.round(rect.height) };
   }
 
+  /* ---------------- Satellite imagery (XYZ tiles, Web Mercator) ----------------
+   *
+   * The Map tab is the shared LuciadRIA stage (or `mapSvg()`). The Satellite tab has no imagery in
+   * any capture, so what it draws is the honest substitute described above the pure helpers: a
+   * configurable XYZ source (default: Esri World Imagery, a **public** source — the suite never
+   * names the original's provider), requested box by box through `/api/grit/tiles/{z}/{x}/{y}`.
+   *
+   * Why the proxy and not `<img src>`:
+   *   - the server caches the bytes on disk (`GRIT_TILE_DIR`), so a second look — or an offline
+   *     session — still paints the same imagery;
+   *   - a key stays in `GRIT_TILE_URL`/`GRIT_TILE_KEY` and never reaches the browser or the repo;
+   *   - a failed tile is an error this code can *report*, instead of a console error from a broken
+   *     `<img>` (the browser check asserts 0 console errors in both states).
+   *
+   * Failure is contained: `tiles.status` goes offline, the vector graticule paints instead and the
+   * note says why. The track, the POIs and the triggers never wait on a tile.
+   * ---------------------------------------------------------------------------------------------- */
+
+  const tiles = {
+    enabled: true,
+    source: '',
+    label: 'Esri World Imagery',
+    serverLabel: 'Esri World Imagery',
+    attribution: GRIT_TILE_ATTRIBUTION,
+    status: 'idle',
+    error: '',
+    zoom: 0,
+    count: 0,
+    view: null,
+    layout: [],
+    signature: '',
+    seq: 0,
+    cache: new Map(),
+  };
+
+  const searchedTiles = gritTilesFromSearch(typeof window === 'undefined' ? '' : window.location.search);
+  const storedTiles = readStore(GRIT_TILE_STORE_KEY, gritTilesParse, () => ({ source: '' }));
+  tiles.source = searchedTiles ? searchedTiles.source : storedTiles.source;
+  tiles.enabled = tiles.source !== 'off';
+
+  let tileConfigPromise = null;
+
+  /** `/api/grit/tiles/config` once per mount: is imagery on, and whose pixels are they. */
+  function tileConfig() {
+    if (!tileConfigPromise) {
+      tileConfigPromise = fetch(`${GRIT_TILE_PROXY}/config`, { headers: { Accept: 'application/json' } })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body) => (body && body.ok ? body : null))
+        .catch(() => null);
+    }
+    return tileConfigPromise;
+  }
+
+  const tileKey = (tile) => `${tiles.source}|${tile.z}/${tile.x}/${tile.y}`;
+
+  function blobDataUrl(blob) {
+    return new Promise((resolveUrl, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolveUrl(String(reader.result));
+      reader.onerror = () => reject(new Error('瓦片解码失败'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /** One tile's bytes as a `data:` URL. `data:` is what the page CSP already allows for images
+   * (`img-src 'self' data:`), so the layer needs no CSP change and still never touches a remote
+   * host from the browser. Fetched tiles are kept in `tiles.cache` (keyed by source + z/x/y) so a
+   * re-render — resize, tab flip — does not re-request them.
+   */
+  async function loadTile(tile) {
+    const key = tileKey(tile);
+    const hit = tiles.cache.get(key);
+    if (hit) return hit;
+    const url = gritTileRequest(tile, tiles.source);
+    if (!url) throw new Error('瓦片 URL 无法构造');
+    const response = await fetch(url, { headers: { Accept: 'image/*' } });
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body && body.error) detail = `${detail} ${body.error}`;
+      } catch {
+        /* not JSON (an upstream HTML error page): the status number is the message */
+      }
+      throw new Error(detail);
+    }
+    const blob = await response.blob();
+    if (!String(blob.type || '').startsWith('image/')) {
+      throw new Error(`不是图片（${blob.type || 'unknown'}）`);
+    }
+    const dataUrl = await blobDataUrl(blob);
+    tiles.cache.set(key, dataUrl);
+    while (tiles.cache.size > 240) tiles.cache.delete(tiles.cache.keys().next().value);
+    return dataUrl;
+  }
+
+  /**
+   * "Would a tile come back?" — one 200 JSON request before the batch. A negative answer becomes the
+   * fallback's reason; nothing else is requested, so an offline page logs no failed subresource.
+   */
+  async function probeTiles(tile) {
+    const url = gritTileProbeRequest(tile, tiles.source);
+    if (!url) return { ok: false, error: '瓦片 URL 无法构造' };
+    try {
+      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+      const body = await response.json();
+      if (!body || typeof body.ok !== 'boolean') return { ok: false, error: '探测返回无法解析' };
+      if (body.ok) return { ok: true, source: body.source };
+      return { ok: false, error: body.error || '影像瓦片不可用' };
+    } catch (error) {
+      return { ok: false, error: (error && error.message) || String(error) };
+    }
+  }
+
+  /** The imagery + overlay is on screen only when the bytes really arrived. */
+  function tileLayerActive() {
+    return state.track.tab === 'satellite'
+      && state.track.status === 'ready'
+      && tiles.status === 'ready'
+      && Boolean(tiles.view)
+      && tiles.layout.length > 0
+      && tiles.layout.every((tile) => tiles.cache.has(tileKey(tile)));
+  }
+
+  function paintTiles() {
+    const live = tileLayerActive();
+    if (posTiles) {
+      posTiles.hidden = !live;
+      posTiles.innerHTML = live
+        ? tiles.layout.map((tile) => {
+          const src = tiles.cache.get(tileKey(tile));
+          return `<img class="grit-maptile" alt="" width="${tile.size}" height="${tile.size}"`
+            + ` style="left:${tile.left}px;top:${tile.top}px;width:${tile.size}px;height:${tile.size}px"`
+            + ` src="${src}" data-tile="${tile.z}/${tile.x}/${tile.y}">`;
+        }).join('')
+        : '';
+    }
+    if (posOverlay) {
+      posOverlay.hidden = !live;
+      posOverlay.innerHTML = live
+        ? gritTileOverlaySvg(tiles.view, {
+          points: state.track.points,
+          sigmaM: state.track.sigmaM,
+          pois: poiList,
+          cursor: state.track.source === 'live' ? state.track.points.length - 1 : -1,
+          display,
+        })
+        : '';
+    }
+    if (posCredit) {
+      posCredit.hidden = !live;
+      posCredit.textContent = live
+        ? `${gritTileAttribution(tiles)} · z${tiles.zoom} · ${tiles.layout.length} 块 · /api/grit/tiles`
+        : '';
+    }
+  }
+
+  /** One batch = one view. Requests are dropped when the view moved on (sequence guard). */
+  async function loadTiles(layout) {
+    const seq = ++tiles.seq;
+    tiles.status = 'loading';
+    tiles.error = '';
+    tiles.count = 0;
+    renderPosition();
+    const config = await tileConfig();
+    if (disposed || seq !== tiles.seq) return;
+    if (config) {
+      tiles.serverLabel = config.label || tiles.serverLabel;
+      /* The server's label/attribution describe the server's own template; an operator override
+       * is labelled by its host, never as someone else's imagery. */
+      if (!tiles.source) {
+        tiles.label = tiles.serverLabel;
+        if (config.attribution) tiles.attribution = config.attribution;
+      }
+      if (config.enabled === false && !tiles.source) {
+        tiles.enabled = false;
+        tiles.status = 'offline';
+        tiles.error = config.reason || '服务端未配置瓦片源';
+        renderPosition();
+        return;
+      }
+    }
+    /* One probe before the batch: an unreachable source is reported, not hammered. */
+    const probe = await probeTiles(layout[Math.floor(layout.length / 2)]);
+    if (disposed || seq !== tiles.seq) return;
+    if (!probe.ok) {
+      tiles.status = 'offline';
+      tiles.error = probe.error;
+      renderPosition();
+      return;
+    }
+    const results = await Promise.all(layout.map((tile) => loadTile(tile)
+      .then(() => null)
+      .catch((error) => (error && error.message) || String(error))));
+    if (disposed || seq !== tiles.seq) return;
+    const failures = results.filter(Boolean);
+    if (failures.length === results.length) {
+      tiles.enabled = tiles.enabled && tiles.source !== 'off';
+      tiles.status = 'offline';
+      tiles.error = failures[0];
+      renderPosition();
+      return;
+    }
+    tiles.status = 'ready';
+    tiles.error = failures.length ? `${failures.length} 块缺失：${failures[0]}` : '';
+    tiles.count = results.length - failures.length;
+    renderPosition();
+  }
+
+  /**
+   * Decide whether this view needs tiles. The signature pins zoom + corner + size + source, so a
+   * resize or a tab flip refetches, and a render for any other reason does not.
+   */
+  function ensureTiles(box) {
+    if (!box || !state.track.points.length) return;
+    if (tiles.source === 'off') {
+      tiles.enabled = false;
+      if (tiles.status !== 'offline') {
+        tiles.status = 'offline';
+        tiles.error = '瓦片源设为 off';
+      }
+      return;
+    }
+    const view = gritTileView(state.track.points, box.width, box.height);
+    const layout = gritTileLayout(view);
+    const signature = `${view.z}|${view.u0.toFixed(9)}|${view.v0.toFixed(9)}|${view.k.toFixed(3)}`
+      + `|${view.width}x${view.height}|${tiles.source}`;
+    /* One batch per view, whatever it returned. A retry is explicit: re-entering the tab or
+     * changing the source calls `resetTiles()`. Without this an offline view would re-probe on
+     * every render — `loadTiles()` renders as it fails, and the render asks for tiles again. */
+    if (signature === tiles.signature) return;
+    tiles.signature = signature;
+    tiles.view = view;
+    tiles.layout = layout;
+    tiles.zoom = view.z;
+    if (!layout.length) {
+      tiles.status = 'offline';
+      tiles.error = '当前视野没有可用瓦片';
+      return;
+    }
+    void loadTiles(layout);
+  }
+
+  /** Back to "nothing loaded yet": used when the tab is re-opened or the source changes. */
+  function resetTiles() {
+    tiles.seq += 1;
+    tiles.status = 'idle';
+    tiles.error = '';
+    tiles.count = 0;
+    tiles.signature = '';
+    tiles.enabled = tiles.source !== 'off';
+  }
+
   function pushTrack(fit) {
     const position = state.track;
     if (position.status !== 'ready' || position.engine !== 'ready') return;
@@ -2634,23 +3478,32 @@ export function mount(root, ctx = {}) {
   function positionFooter() {
     const position = state.track;
     const summary = gritTrackSummary(position);
+    const source = position.source === 'live'
+      ? '数据源 BESTPOS #42（实时）'
+      : `数据源 ${MAP_FILE} / ${MAP_SD_FILE}`;
+    if (position.tab === 'satellite') {
+      /* The satellite line says what the base map *is*: imagery (with its zoom and provenance,
+       * "public substitute, not the original's source") or the vector fallback and why. */
+      const basemap = tiles.status === 'ready'
+        ? `底图：Web Mercator 影像 z${tiles.zoom} · ${tiles.layout.length} 块 · ${tiles.label}（公开源替代，非原版同源）`
+        : `底图：矢量网格（${tiles.status === 'loading' ? '影像加载中' : `影像不可用${tiles.error ? `：${tiles.error}` : ''}`}）`;
+      return `${basemap} · ${source} · ${summary.points} 点 · 长度 ${formatDistance(summary.lengthM)}`
+        + (summary.sigmaM > 0 ? ` · 1σ ${summary.sigmaM.toFixed(2)} m` : '');
+    }
     const engine = position.engine === 'ready'
       ? `引擎：LuciadRIA 2026.0（原版 Graph 包）· ${(stage.state.view && stage.state.view.reference) || 'EPSG:32662'} · WebGPU`
       : position.engine === 'failed'
         ? `引擎：自绘 SVG（Luciad 不可用：${position.engineError}）`
         : '引擎：正在启动 LuciadRIA（/geo/luciad-engine.js）…';
-    const source = position.source === 'live'
-      ? '数据源 BESTPOS #42（实时）'
-      : `数据源 ${MAP_FILE} / ${MAP_SD_FILE}`;
     return `${engine} · ${source} · ${summary.points} 点 · 长度 ${formatDistance(summary.lengthM)}`
       + (summary.sigmaM > 0 ? ` · 1σ ${summary.sigmaM.toFixed(2)} m` : '');
   }
 
-  /** Draw whichever state is true: engine frame, SVG fallback, or the sentence that says why not. */
+  /** Draw whichever state is true: engine frame, tiles, SVG graticule, or the sentence saying why. */
   function renderPosition() {
     const position = state.track;
     const summary = gritTrackSummary(position);
-    const reason = gritPositionReason({
+    const baseReason = gritPositionReason({
       tab: position.tab,
       status: position.status,
       error: position.error,
@@ -2660,31 +3513,37 @@ export function mount(root, ctx = {}) {
       lengthM: summary.lengthM,
     });
     const onMap = position.tab === 'map';
+    const onSatellite = position.tab === 'satellite';
     const engineLive = onMap && position.status === 'ready' && position.engine === 'ready';
+    /* The tile note is the Satellite tab's own honesty line: imagery z17 on screen, or the vector
+     * graticule plus the reason it is not imagery (offline, disabled, upstream refused). */
+    const reason = baseReason || (onSatellite && position.status === 'ready' ? gritTileNote(tiles) : '');
 
     if (posFrame) posFrame.hidden = !engineLive;
 
-    if (onMap && position.status === 'ready' && !engineLive) {
-      const box = positionBox();
-      if (box && posMap) {
-        posMap.hidden = false;
-        posMap.innerHTML = mapSvg({
-          points: position.points,
-          view: mapFit(position.points, box.width, box.height),
-          sigmaM: position.sigmaM,
-        }, box.width, box.height);
-      }
+    const box = onSatellite && position.status === 'ready' ? positionBox() : null;
+    if (box) ensureTiles(box);
+    const tilesLive = tileLayerActive();
+
+    if ((onMap || onSatellite) && position.status === 'ready' && !engineLive && !tilesLive && box && posMap) {
+      posMap.hidden = false;
+      posMap.innerHTML = mapSvg({
+        points: position.points,
+        view: mapFit(position.points, box.width, box.height),
+        sigmaM: position.sigmaM,
+      }, box.width, box.height);
     } else if (posMap) {
       posMap.hidden = true;
       posMap.innerHTML = '';
     }
+    paintTiles();
 
     if (posNote) {
       posNote.hidden = !reason;
       posNote.textContent = reason;
     }
     if (posFoot) {
-      posFoot.hidden = !(onMap && position.status === 'ready');
+      posFoot.hidden = !((onMap || onSatellite) && position.status === 'ready');
       posFoot.textContent = posFoot.hidden ? '' : positionFooter();
     }
   }
@@ -2771,7 +3630,8 @@ export function mount(root, ctx = {}) {
     ensureStage();
   }
 
-  /* ---- Map / Satellite tabs. Map is the stage; Satellite is honestly absent (no imagery offline). ---- */
+  /* ---- Map / Satellite tabs. Map is LuciadRIA (or its SVG fallback); Satellite is the XYZ tile
+   * layer described above, and falls back to the same SVG when the tiles cannot be had. ---- */
   const tabs = Array.from(root.querySelectorAll('[data-view]'));
   const onTab = (event) => {
     const view = event.currentTarget.getAttribute('data-view') === 'satellite' ? 'satellite' : 'map';
@@ -2780,7 +3640,10 @@ export function mount(root, ctx = {}) {
       tab.classList.toggle('is-active', on);
       tab.setAttribute('aria-selected', on ? 'true' : 'false');
     }
+    const changed = state.track.tab !== view;
     state.track.tab = view;
+    /* Re-entering Satellite is a retry: the operator may have plugged the network back in. */
+    if (view === 'satellite' && changed) resetTiles();
     renderPosition();
   };
   for (const tab of tabs) tab.addEventListener('click', onTab);
@@ -3152,6 +4015,11 @@ export function mount(root, ctx = {}) {
   const trigSource = root.querySelector('[data-el="trigSource"]');
   const displayRows = root.querySelector('[data-el="displayRows"]');
   const dispReset = root.querySelector('[data-el="dispReset"]');
+  const tileInput = root.querySelector('[data-el="tileInput"]');
+  const tileApply = root.querySelector('[data-el="tileApply"]');
+  const tileReset = root.querySelector('[data-el="tileReset"]');
+  const tileMsg = root.querySelector('[data-el="tileMsg"]');
+  const tileState = root.querySelector('[data-el="tileState"]');
   const mapClose = root.querySelector('[data-el="mapClose"]');
   const posGear = root.querySelector('[data-el="posGear"]');
   const addPoiBtn = root.querySelector('[data-el="addPoi"]');
@@ -3263,7 +4131,79 @@ export function mount(root, ctx = {}) {
           ? 'LuciadRIA 不可用，当前是自绘回退图：开关只写进舞台参数（回退图不随之变化）。'
           : 'LuciadRIA 正在启动：开关先存下来，舞台就绪时一并应用。';
     }
+    renderTileSettings();
   }
+
+  function tileMessageText(text, bad) {
+    if (!tileMsg) return;
+    tileMsg.hidden = !text;
+    tileMsg.textContent = text || '';
+    tileMsg.classList.toggle('is-bad', Boolean(bad));
+  }
+
+  /**
+   * The imagery row: which template is in force and what the last batch did. `''` means "the
+   * server's `GRIT_TILE_URL`", `off` means "no imagery at all" — never an empty field pretending
+   * to be a source.
+   */
+  function renderTileSettings() {
+    if (tileInput && document.activeElement !== tileInput) tileInput.value = tiles.source;
+    if (!tileState) return;
+    const where = tiles.source === 'off'
+      ? '影像已关闭（本机设置）'
+      : tiles.source
+        ? '本机模板（localStorage nas.grit.map.tiles.v1）'
+        : `服务端默认（GRIT_TILE_URL / 内置公开源 ${tiles.label}）`;
+    const status = tiles.status === 'ready'
+      ? `已加载 z${tiles.zoom}，${tiles.layout.length} 块`
+      : tiles.status === 'loading'
+        ? `正在加载 z${tiles.zoom}（${tiles.layout.length} 块）`
+        : tiles.status === 'offline'
+          ? `不可用：${tiles.error || '未知原因'} —— Satellite 页签已回退矢量网格`
+          : '切到 Satellite 页签后按当前视野加载';
+    tileState.textContent = `来源：${where} · ${status}`;
+  }
+
+  /** A template from the field → `tiles.source`. Returns false when the field cannot be used. */
+  function applyTileSource(raw) {
+    const text = String(raw === null || raw === undefined ? '' : raw).trim();
+    const template = gritTileTemplate(text);
+    if (!template && text) {
+      tileMessageText(`「${text}」不是可用的 XYZ 模板：需要 http(s) 与 {z}/{x}/{y}（TMS 用 {-y}）。`, true);
+      return false;
+    }
+    tiles.source = template; // '' = server default, 'off' = no imagery, else the template
+    tiles.enabled = tiles.source !== 'off';
+    /* A custom template is labelled by its own host; the server's label only describes its own. */
+    tiles.label = tiles.source
+      ? (gritTileHost(tiles.source) || '自定义源')
+      : (tiles.serverLabel || 'Esri World Imagery');
+    writeStore(GRIT_TILE_STORE_KEY, { source: tiles.source });
+    resetTiles();
+    renderTileSettings();
+    renderPosition();
+    return true;
+  }
+
+  const onTileApply = () => {
+    if (!tileInput) return;
+    if (!applyTileSource(tileInput.value)) return;
+    tileMessageText(
+      tiles.source === 'off'
+        ? '影像已关闭：Satellite 页签显示矢量网格（轨迹、POI、比例尺照旧）。'
+        : tiles.source
+          ? '已保存本机模板：瓦片经 /api/grit/tiles 代理请求并在服务端缓存。'
+          : `已清空：改用服务端 GRIT_TILE_URL（未设置时是公开源 ${tiles.label}）。`,
+      false,
+    );
+  };
+  const onTileReset = () => {
+    if (tileInput) tileInput.value = '';
+    if (!applyTileSource('')) return;
+    tileMessageText('已回到服务端默认源。', false);
+  };
+  if (tileApply) tileApply.addEventListener('click', onTileApply);
+  if (tileReset) tileReset.addEventListener('click', onTileReset);
 
   function setMapTab(tab) {
     mapTab = ['poi', 'triggers', 'display'].includes(tab) ? tab : 'poi';
@@ -3300,6 +4240,9 @@ export function mount(root, ctx = {}) {
     renderTriggers();
     renderDisplay();
     setMapTab(tab || mapTab);
+    if (searchedTiles && searchedTiles.invalid) {
+      tileMessageText(`?tiles=${searchedTiles.invalid} 不是有效模板（需要 http(s) 与 {z}/{x}/{y}），已按默认源。`, true);
+    }
     mapSheet.hidden = false;
   }
   function closeMapSheet() {
@@ -3591,6 +4534,22 @@ export function mount(root, ctx = {}) {
         note: posNote && !posNote.hidden ? posNote.textContent : '',
         frameHidden: Boolean(posFrame && posFrame.hidden),
         stage: stageStatus,
+        /* Satellite: which base map is on screen and what the last tile batch did. A screenshot run
+           asserts `tiles.status === 'ready'` (imagery) against `'offline'` (vector fallback) here
+           instead of guessing from pixels. */
+        tiles: {
+          enabled: tiles.enabled,
+          source: tiles.source,
+          label: tiles.label,
+          attribution: gritTileAttribution(tiles),
+          status: tiles.status,
+          error: tiles.error,
+          zoom: tiles.zoom,
+          count: tiles.status === 'ready' ? tiles.layout.length : 0,
+          painted: Boolean(posTiles && !posTiles.hidden),
+          overlay: Boolean(posOverlay && !posOverlay.hidden),
+          credit: posCredit && !posCredit.hidden ? posCredit.textContent : '',
+        },
         /* Map Settings: the local POI list and the Display set the panel believes it sent. A check
            can compare these with `stage.chrome` (the echo) instead of reading booleans off a PNG. */
         poi: { count: poiList.length, stored: true },
@@ -3603,6 +4562,8 @@ export function mount(root, ctx = {}) {
   root.__gritCleanup = () => {
     disposed = true;
     token += 1;
+    tiles.seq += 1;
+    tiles.cache.clear();
     stopLive();
     stage.stop();
     window.removeEventListener('resize', onResize);
@@ -3623,6 +4584,8 @@ export function mount(root, ctx = {}) {
     if (poiRowsEl) poiRowsEl.removeEventListener('click', onPoiRowsClick);
     if (displayRows) displayRows.removeEventListener('click', onDisplayClick);
     if (dispReset) dispReset.removeEventListener('click', onDisplayReset);
+    if (tileApply) tileApply.removeEventListener('click', onTileApply);
+    if (tileReset) tileReset.removeEventListener('click', onTileReset);
     if (mapClose) mapClose.removeEventListener('click', onMapClose);
     if (mapSheet) mapSheet.removeEventListener('click', onSheetBackdrop);
     if (posGear) posGear.removeEventListener('click', onPosGear);

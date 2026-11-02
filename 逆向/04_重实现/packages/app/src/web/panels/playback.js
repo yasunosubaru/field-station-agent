@@ -124,6 +124,9 @@ export const BAD_SOLUTIONS = ['INSUFFICIENT_OBS', 'NO_CONVERGENCE', 'INVALID_FIX
 /** `positionStatus.js:7` — accuracy order the original walks when picking the configured mode. */
 export const CONFIG_MODE_ORDER = ['RTK', 'PPP', 'PSRDIFF', 'SBAS'];
 
+/** localStorage key for the strip's `Show Events` switch (`deviceManagement.getPlaybackShowEvents`). */
+export const SHOW_EVENTS_KEY = 'nas.playback.showEvents';
+
 const TONE_RANK = { off: 0, good: 1, warn: 2, bad: 3 };
 
 /* ================================ helpers ================================= */
@@ -389,6 +392,86 @@ export function viewedText(ms) {
   const time = Number(ms);
   if (!Number.isFinite(time) || time <= 0) return '--';
   return new Date(time).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+/* --------------------------- event strip (§11.5 / D1) --------------------------- */
+
+/**
+ * The markers of the strip: one per event, at `time / duration` percent.
+ *
+ * Geometry is the original's (`controller/playback.js:1024-1029`):
+ * `per = (eventStart - captureStart) / total`, `left = calc(per% - 17px)` on a 16.67 px dot — i.e.
+ * **the marker is centred on the event's own time**. `#btn-event` carries one class per severity
+ * (`PoorEvent` red `#D0021B`, `ModerateEvent` amber, `GoodEvent` white) and `playback.js` only ever
+ * appends the non-`Good` ones, so a `Good` entry would be a marker the original never draws.
+ *
+ * @param {Array<object>} events the `/api/playback/events` list
+ * @param {number} duration capture length in seconds (the timeline's `durationMs / 1000`)
+ */
+export function eventMarkers(events, duration) {
+  const span = Number(duration);
+  if (!Number.isFinite(span) || span <= 0) return [];
+  const markers = [];
+  for (const event of Array.isArray(events) ? events : []) {
+    const time = Number(event?.time);
+    if (!Number.isFinite(time)) continue;
+    const frequency = Number(event?.frequency);
+    markers.push({
+      event,
+      time,
+      left: Math.min(Math.max(time / span, 0), 1) * 100,
+      severity: event?.severity === 'Poor' ? 'Poor' : 'Moderate',
+      frequency: Number.isFinite(frequency) ? frequency : null,
+    });
+  }
+  markers.sort((a, b) => a.left - b.left);
+  return markers;
+}
+
+/**
+ * The tooltip line, exactly as `playbackview.js:244-245` assembles it:
+ * `eventTime.replace("UTC", "") + __(description).replace("%1", freqValue)` →
+ * `"09:59:21 Interference is being detected at 1270Mhz."` (the clock has no `UTC` suffix left to
+ * remove because `getUTCTimeFormatOnly` is `HH:MM:SS UTC`, `controller/playback.js:608-613`).
+ */
+export function eventTooltipText(event) {
+  if (!event) return '';
+  const clock = utcClock(event.utc);
+  const sentence = String(event.detail ?? event.description ?? '');
+  return clock === '--:--:--' ? sentence : `${clock} ${sentence}`;
+}
+
+/**
+ * The line an empty strip shows. "No events" alone would read as "still loading", so the sentence
+ * names what the capture *did* offer — and when nothing was read at all, which three logs the strip
+ * would have used (`ITDETECTSTATUS` #2065, `RXSTATUS` #93, `RXSTATUSEVENT` #94).
+ */
+export function eventsEmptyNote(sources) {
+  const read = [sources?.itk, sources?.spoofing, sources?.rxstatusevent]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  const total = read.reduce((sum, value) => sum + value, 0);
+  return total > 0
+    ? `No events in this capture — ${total} event record${total === 1 ? '' : 's'} read, none above Good.`
+    : 'No events in this capture — no ITDETECTSTATUS (#2065), RXSTATUS (#93) spoofing or RXSTATUSEVENT (#94) record.';
+}
+
+/**
+ * The `data-event-count` toggle of `playbackview.js:198-203,268-271`: clicking the marker that is
+ * already open closes it (`-1`), clicking any other one opens that one. Nothing here moves the play
+ * head — the original's handler never calls `onProgressbarSeek` / `updateTimeOnMove`.
+ */
+export function nextEventSelection(current, clicked) {
+  const index = Number(clicked);
+  if (!Number.isInteger(index) || index < 0) return -1;
+  return Number(current) === index ? -1 : index;
+}
+
+/** `deviceManagement.getPlaybackShowEvents` — `true` unless the capture's own setting says otherwise. */
+export function showEventsFromStore(raw) {
+  const text = String(raw ?? '').trim().toLowerCase();
+  if (text === 'false' || text === '0' || text === 'off') return false;
+  return true;
 }
 
 /** The original's Speed <select> — `1x · 2x · 5x · 10x · 20x`. */
@@ -684,6 +767,14 @@ function template(speedOptions) {
       <div class="pb-fill" data-el="fill"><span class="pb-scrub" data-el="scrub"></span></div>
       <div class="pb-snippet" data-el="snippet" hidden></div>
       <div class="pb-ticks" data-el="ticks"></div>
+      <div class="pb-events" data-el="events" role="group" aria-label="Receiver events"></div>
+    </div>
+
+    <div class="pb-event-pop" data-el="eventPop" role="dialog" aria-label="Event" hidden>
+      <div class="pb-event-pop-arrow" aria-hidden="true"></div>
+      <p class="pb-event-pop-text" data-el="eventPopText"></p>
+      <p class="pb-event-pop-source" data-el="eventPopSource"></p>
+      <button class="pb-event-pop-close" type="button" data-el="eventPopClose" aria-label="Close">&times;</button>
     </div>
 
     <div class="pb-transport">
@@ -703,6 +794,10 @@ function template(speedOptions) {
       <div class="pb-transport-right">
         <label class="pb-label" for="pb-speed">Speed</label>
         <select class="pb-speed" id="pb-speed" data-el="speed" aria-label="Playback speed">${speedOptions}</select>
+        <label class="pb-events-switch">
+          <input type="checkbox" data-el="showEvents" checked>
+          <span class="pb-label">Show Events</span>
+        </label>
         <button class="pb-action" type="button" data-el="snippetBtn">Create Snippet</button>
       </div>
     </div>
@@ -793,6 +888,10 @@ export function mount(root, ctx = {}) {
     playing: false,
     raf: 0,
     last: 0,
+    /** `Show Events` (§3.2.4) — `true` unless the switch was turned off (`SHOW_EVENTS_KEY`). */
+    showEvents: showEventsFromStore(storage.get(SHOW_EVENTS_KEY)),
+    /** Index of the marker whose tooltip is pinned, `-1` when none (the original's `data-event-count`). */
+    selectedEvent: -1,
     preferPath: typeof ctx.capture === 'string' ? ctx.capture : '',
   };
 
@@ -809,6 +908,10 @@ export function mount(root, ctx = {}) {
       from: 0,
       to: 0,
       ready: false,
+      /** `/api/playback/events` — the event strip's markers (never invented: empty when none). */
+      events: [],
+      /** Records each event source offered, so the empty strip can say what was read. */
+      eventSources: null,
       /** frame index → RANGE record ordinal (-1 when that frame is not a RANGE record). */
       rangeOrdinal: [],
       /** RANGE ordinal → { counts: Map(system → Set(prn)), utc }. */
@@ -1294,12 +1397,12 @@ export function mount(root, ctx = {}) {
   }
 
   /**
-   * Record ticks under the scrub bar. The original paints *receiver events* here (red = error,
-   * amber = warning, white = status, `playbackcontrol.html` `.playback-events`), which come from
-   * event logs (RXSTATUSEVENTB & co.). No capture in `samples/` carries one, so this strip shows
-   * the records instead — one tick per captured record, coloured by message id. It is not the
-   * event strip and the manual's "Show Events" switch is therefore not implemented; see
-   * `04_Playback组件.md` §11.5.
+   * Record ticks under the scrub bar — one tick per captured record, coloured by message id.
+   *
+   * The **event** strip is the sibling `renderEvents()` below: the original paints receiver events
+   * there instead (red = error, amber = warning, `playbackcontrol.html:23` `.playback-events`),
+   * which the D1 work now feeds from the capture's own `ITDETECTSTATUS` / `RXSTATUS` /
+   * `RXSTATUSEVENT` records. Ticks stay because the record density is still worth seeing.
    */
   function renderTicks(file) {
     if (!file || !file.frames.length || !file.duration) {
@@ -1318,6 +1421,98 @@ export function mount(root, ctx = {}) {
       );
     }
     el.ticks.innerHTML = parts.join('');
+  }
+
+  /**
+   * The event strip of one capture (`/api/playback/events`).
+   *
+   * Markers are `<button>`s: the original's are `<div id="btn-event">` with a click handler
+   * (`playbackview.js:194-253`), and a keyboard-reachable element keeps that usable. Clicking one
+   * opens the tooltip and **does not move the play head** — measured on the original: the handler
+   * never calls `onProgressbarSeek` / `updateTimeOnMove`, it only shows `.pb-events`. Hover shows the
+   * same text without pinning it (the original has click-only; the hover is this page's addition,
+   * the manual's "Show Events" tooltip has to be discoverable).
+   */
+  function renderEvents(file) {
+    el.events.innerHTML = '';
+    el.events.hidden = !file || !state.showEvents;
+    el.showEvents.checked = state.showEvents;
+    if (!file || !state.showEvents) {
+      hideEventPop();
+      return;
+    }
+    if (!file.ready) {
+      el.events.innerHTML = '<span class="pb-events-note">Reading events…</span>';
+      return;
+    }
+    const markers = eventMarkers(file.events, file.duration);
+    if (!markers.length) {
+      // An empty strip says *why* it is empty; a blank row would read as "still loading".
+      el.events.innerHTML = `<span class="pb-events-note">${esc(eventsEmptyNote(file.eventSources))}</span>`;
+      return;
+    }
+    if (state.selectedEvent >= markers.length) state.selectedEvent = -1;
+    el.events.innerHTML = markers
+      .map((marker, index) => {
+        const event = marker.event;
+        const label = eventTooltipText(event);
+        const selected = state.selectedEvent === index;
+        return (
+          `<button type="button" class="pb-event pb-event-${esc(marker.severity.toLowerCase())}` +
+          `${selected ? ' is-selected' : ''}" data-role="event-marker" data-index="${index}" ` +
+          `style="left:${marker.left.toFixed(3)}%" ` +
+          `title="${esc(label)}" aria-label="${esc(label)}" aria-pressed="${selected}"></button>`
+        );
+      })
+      .join('');
+  }
+
+  /** The pinned tooltip. Its text is the original's line plus the record it came from. */
+  function showEventPop(index) {
+    const file = current();
+    if (!file) return;
+    const markers = eventMarkers(file.events, file.duration);
+    const marker = markers[index];
+    const node = el.events.querySelector(`[data-index="${index}"]`);
+    if (!marker || !node) {
+      hideEventPop();
+      return;
+    }
+    el.eventPopText.textContent = eventTooltipText(marker.event);
+    const ended = marker.event.endTime === null || marker.event.endTime === undefined;
+    el.eventPopSource.textContent =
+      `${marker.event.source} · ${clockText(marker.time)} → ` +
+      (ended ? 'still reported at the end' : clockText(marker.event.endTime));
+    el.eventPop.hidden = false;
+    const rect = node.getBoundingClientRect();
+    const width = el.eventPop.offsetWidth;
+    const height = el.eventPop.offsetHeight;
+    const left = Math.min(Math.max(rect.left + rect.width / 2 - width / 2, 8), window.innerWidth - width - 8);
+    const top = Math.max(rect.top - height - 10, 8);
+    el.eventPop.style.left = `${left}px`;
+    el.eventPop.style.top = `${top}px`;
+  }
+
+  function hideEventPop() {
+    el.eventPop.hidden = true;
+    for (const node of el.events.querySelectorAll('.pb-event')) {
+      node.classList.remove('is-selected');
+      node.setAttribute('aria-pressed', 'false');
+    }
+  }
+
+  /** Which marker a click selects — the original's `data-event-count` toggle, nothing else. */
+  function selectEvent(index) {
+    state.selectedEvent = nextEventSelection(state.selectedEvent, index);
+    // Repaint in place instead of rebuilding the strip: replacing the node under the cursor would
+    // fire a fresh `mouseover` and immediately re-open the tooltip the click just closed.
+    for (const node of el.events.querySelectorAll('[data-role="event-marker"]')) {
+      const active = Number(node.dataset.index) === state.selectedEvent;
+      node.classList.toggle('is-selected', active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+    if (state.selectedEvent >= 0) showEventPop(state.selectedEvent);
+    else hideEventPop();
   }
 
   function renderSnippet(file) {
@@ -1543,11 +1738,14 @@ export function mount(root, ctx = {}) {
     el.frameToggle.setAttribute('aria-expanded', 'false');
     el.frameBody.innerHTML = '';
     file.detailIndex = -1;
+    state.selectedEvent = -1;
+    hideEventPop();
     renderShell();
     renderPosition(file);
     renderDevice(file);
     renderSatellite(file);
     renderTicks(file);
+    renderEvents(file);
     el.start.textContent = utcClock(file.info?.startUtc);
     el.end.textContent = utcClock(file.info?.finishUtc);
     el.from.value = String(file.from ?? 0);
@@ -1595,13 +1793,17 @@ export function mount(root, ctx = {}) {
     closeDialog();
 
     try {
-      const [info, frames] = await Promise.all([
+      const [info, frames, events] = await Promise.all([
         api.get('/api/playback/info', { capture: path }),
         api.post('/api/playback/frames', { capture: path }),
+        // A capture with no event log answers `count: 0`; the page then shows its empty state.
+        api.get('/api/playback/events', { capture: path }).catch(() => null),
       ]);
       if (!state.alive) return;
       file.info = info;
       file.frames = frames.frames ?? [];
+      file.events = Array.isArray(events?.events) ? events.events : [];
+      file.eventSources = events?.sources ?? null;
       file.duration = (info.durationMs || 0) / 1000;
       file.time = 0;
       file.from = 0;
@@ -1639,6 +1841,7 @@ export function mount(root, ctx = {}) {
       stop();
       state.active = -1;
       el.ticks.innerHTML = '';
+      renderEvents(null);
       el.frameBody.hidden = true;
       el.snippet.hidden = true;
       alert('');
@@ -1669,6 +1872,9 @@ export function mount(root, ctx = {}) {
   let dragging = false;
   const onBarDown = (event) => {
     if (!current()) return;
+    // A marker sits on the bar: pressing it must not seek. Clicking one only opens its tooltip
+    // (``playbackview.js``:194-253 — the original's handler never calls `onProgressbarSeek`).
+    if (event.target.closest('[data-role="event-marker"]')) return;
     event.preventDefault();
     dragging = true;
     stop();
@@ -1687,6 +1893,9 @@ export function mount(root, ctx = {}) {
   const onBarKey = (event) => {
     const file = current();
     if (!file) return;
+    // The marker buttons live inside the bar; their own Enter/Space has to reach them, not the
+    // transport's play/pause.
+    if (event.target.closest('[data-role="event-marker"]')) return;
     const step = event.shiftKey ? 1 : 0.1;
     if (event.key === 'ArrowRight') {
       event.preventDefault();
@@ -1734,6 +1943,50 @@ export function mount(root, ctx = {}) {
     if (file) download(file, file.from, file.to);
   };
 
+  /* ---- event strip: hover preview, click pins (never seeks), Show Events switch ---- */
+
+  const onEventOver = (event) => {
+    const marker = event.target.closest('[data-role="event-marker"]');
+    if (!marker || state.selectedEvent >= 0) return;
+    showEventPop(Number(marker.dataset.index));
+  };
+  const onEventOut = (event) => {
+    if (!event.target.closest('[data-role="event-marker"]')) return;
+    if (state.selectedEvent >= 0) return; // a pinned tooltip stays until it is closed
+    el.eventPop.hidden = true;
+  };
+  const onEventClick = (event) => {
+    const marker = event.target.closest('[data-role="event-marker"]');
+    if (!marker) return;
+    // No `setTime` here on purpose: the original only opens the popup (`playbackview.js:194-253`).
+    event.preventDefault();
+    event.stopPropagation();
+    selectEvent(Number(marker.dataset.index));
+  };
+  const onEventFocus = (event) => {
+    const marker = event.target.closest('[data-role="event-marker"]');
+    if (marker && state.selectedEvent < 0) showEventPop(Number(marker.dataset.index));
+  };
+  const onEventBlur = (event) => {
+    if (event.target.closest('[data-role="event-marker"]') && state.selectedEvent < 0) {
+      el.eventPop.hidden = true;
+    }
+  };
+  const onEventPopClose = () => {
+    state.selectedEvent = -1;
+    hideEventPop();
+  };
+  const onShowEvents = () => {
+    state.showEvents = el.showEvents.checked;
+    state.selectedEvent = -1;
+    try {
+      storage.set(SHOW_EVENTS_KEY, state.showEvents ? 'true' : 'false');
+    } catch {
+      /* see defaultStorage() */
+    }
+    renderEvents(current());
+  };
+
   function toggleDock() {
     const open = el.drawer.hidden;
     el.drawer.hidden = !open;
@@ -1760,7 +2013,9 @@ export function mount(root, ctx = {}) {
     if (event.target === el.dialog) closeDialog();
   };
   const onDialogKey = (event) => {
-    if (event.key === 'Escape' && !el.dialog.hidden) closeDialog();
+    if (event.key !== 'Escape') return;
+    if (!el.dialog.hidden) closeDialog();
+    else if (!el.eventPop.hidden) onEventPopClose();
   };
   const onDialogClick = (event) => {
     const item = event.target.closest('[data-role="open-capture"]');
@@ -1886,6 +2141,13 @@ export function mount(root, ctx = {}) {
   el.helpPosition.addEventListener('click', onHelp);
   el.helpDevice.addEventListener('click', onHelp);
   el.helpSatellite.addEventListener('click', onHelp);
+  el.events.addEventListener('mouseover', onEventOver);
+  el.events.addEventListener('mouseout', onEventOut);
+  el.events.addEventListener('click', onEventClick);
+  el.events.addEventListener('focusin', onEventFocus);
+  el.events.addEventListener('focusout', onEventBlur);
+  el.eventPopClose.addEventListener('click', onEventPopClose);
+  el.showEvents.addEventListener('change', onShowEvents);
   document.addEventListener('keydown', onDialogKey);
   if (fileTabs) {
     fileTabs.addEventListener('click', onFileTabClick);
@@ -1928,6 +2190,13 @@ export function mount(root, ctx = {}) {
     el.helpPosition.removeEventListener('click', onHelp);
     el.helpDevice.removeEventListener('click', onHelp);
     el.helpSatellite.removeEventListener('click', onHelp);
+    el.events.removeEventListener('mouseover', onEventOver);
+    el.events.removeEventListener('mouseout', onEventOut);
+    el.events.removeEventListener('click', onEventClick);
+    el.events.removeEventListener('focusin', onEventFocus);
+    el.events.removeEventListener('focusout', onEventBlur);
+    el.eventPopClose.removeEventListener('click', onEventPopClose);
+    el.showEvents.removeEventListener('change', onShowEvents);
     document.removeEventListener('keydown', onDialogKey);
     if (fileTabs) {
       fileTabs.removeEventListener('click', onFileTabClick);
@@ -1943,6 +2212,7 @@ export function mount(root, ctx = {}) {
   renderPosition(null);
   renderDevice(null);
   renderSatellite(null);
+  renderEvents(null);
 
   /* Boot: read the capture list, then either show Recent Activity (§3.1) or open the capture the
    * shell has selected when there is nothing recent to show. */

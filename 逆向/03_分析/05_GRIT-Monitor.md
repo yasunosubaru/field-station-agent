@@ -1565,3 +1565,132 @@ GPSL2 / 195.3125 kHz / 512 点，最新网格上只有 4 条 sweep；同一页�
 新增 10 项（头时间、`textGroups` 首末、1024 点、FINAL/DETECT 判定、无二进制时按
 `name=` 取数、文本 DETECT 12 次 sweep 合并、来源说明）。
 
+---
+
+## 15. 重实现补记：Position Overview 的 Satellite 影像层（2026-11-02）
+
+Position Overview 有两个页签。**Map** 一直有画（LuciadRIA 共享舞台，引擎起不来时 `mapSvg()`
+自绘经纬网，理由写在瓦片上）；**Satellite** 此前老老实实写着"本构建离线、没有影像层"。这一节补的是
+后者：一条**可配置的 XYZ 瓦片层**，并把"这不是原版那张底图"刻在地图上。
+
+### 15.1 瓦片源：公开源替代，不是原版同源
+
+原版的底图是 **Google Maps**：`setUpMonitor.html` 用安装目录
+`Edie/{windows,linux}/configurationfile.node` 里的 secret key 注入
+`https://maps.googleapis.com/maps/api/js?key=<key>&v=3.56`，LuCIAD 路线再用
+`createGoogleMapsSession` 把它包成瓦片模型（§2.3，`[观察] luciadMapLayer.js:297-323`）。
+本仓库既没有那把 key，也不该拿别人的瓦片冒充同源，所以：
+
+- **默认源**：Esri World Imagery
+  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`
+  —— 注意是 `{z}/{y}/{x}`，**行在前**，与 OSM 的 `{z}/{x}/{y}` 不同（写错就是另一块地）；
+- **署名**：地图右上角常驻
+  `Imagery © Esri, Maxar, Earthstar Geographics, GIS User Community · 公开源替代（非原版同源）`，
+  页脚再写一次 `…（公开源替代，非原版同源）`。**换源就换署名**：用了自己的模板时，角标改成
+  `自定义 XYZ 瓦片源（<host>）· 公开源替代（非原版同源）` —— 不能给别人的瓦片挂 Esri 的名字
+  （单测钉住：自定义源的署名里不许出现 `Esri`）；
+- **覆盖顺序**：`?tiles=`（页面）＞ Map Settings ▸ Display ▸ Tile URL（`localStorage`
+  `nas.grit.map.tiles.v1`）＞ 服务端 `GRIT_TILE_URL` ＞ 内置默认；`off` / `vector` 关闭影像；
+- **key 不进仓库**：模板里可以写 `{key}`，值只从环境变量 `GRIT_TILE_KEY` 读，替换发生在服务端，
+  浏览器自始至终拿不到它；`packages/app/test/grit-tiles.test.ts` 有一条断言钉住"仓库里没有
+  key 字面量"。
+
+`GRIT_TILE_URL` 还支持 TMS 的 `{-y}`（`2^z-1-y`）与 `{s}` 分域名（a·b·c），这三件事各有单测。
+
+### 15.2 坐标：Web Mercator + 一个整数 zoom
+
+- 投影是 Web Mercator（EPSG:3857），纬度夹在 ±85.05112877980659（再往外 `tan` 就跑飞）。
+  正确性用公开参考值钉住：**柏林 (13.4, 52.5) 在 z12 就是 `12/2200/1343`**；
+- 视野由轨迹 bbox 决定（15 % 留白）：`k = min(w/du, h/dv)` 像素/整个世界单位，
+  `z = floor(log2(k/256))` 夹在 1…19，屏幕上一块瓦片画 `k/2^z`（256…512 px）；
+- 五点的样本轨迹跨 ~5 m，重合点会把视野压成单像素，所以给了一个**最小跨度** `1/2^17`
+  （赤道 ≈ 306 m）—— 实测 1210×293 的画框落在 **z17、294 px/瓦片**；
+- 叠加层（轨迹、顶点、起终点、1σ、POI、比例尺、指北针）由 `gritTileOverlaySvg()` 用**同一个**
+  `k/u0/v0` 画，顶点带 `data-lon` / `data-lat`。单测把它和 `gritProjectPoint()` 的像素逐点对齐：
+  矢量与影像共用一套变换，这是唯一没法"碰巧正确"的东西；
+- 瓦片**只按当前视野加载一次**：签名是 `z|u0|v0|k|宽x高|源`，改窗口大小或换页签会重算（命中
+  `tiles.cache` 的 `data:` URL），其余重绘不会重新请求。
+
+**没做**：拖拽/滚轮缩放。这个瓦片不是交互地图，视野与 `mapSvg()` 回退图一样由轨迹决定（原版由
+Google Maps 提供的那套交互，本构建没有对应物）。
+
+### 15.3 代理与缓存：断网先吃缓存
+
+浏览器不直连影像源，一律走 `/api/grit/tiles/{z}/{x}/{y}`：
+
+| 端点 | 作用 |
+|---|---|
+| `GET /api/grit/tiles/config` | `{enabled, label, host, attribution, cache:'disk', cacheRoot, reason}` —— 面板据此写署名、决定要不要试瓦片 |
+| `GET /api/grit/tiles/{z}/{x}/{y}` | 命中缓存 → `X-Grit-Tile-Source: cache`；取上游 → `…: upstream` + `X-Grit-Tile-Cache: stored`；失败 → **502 + JSON**（不挂起，`AbortSignal.timeout(8000)`） |
+| 同上 `?probe=1` | **永远 200 的 JSON 报告** `{ok, source:'cache'\|'upstream', type, bytes}` 或 `{ok:false, error}` |
+| 同上 `?src=<模板>` | 本页临时换源；校验 http(s)、必须含 `{z}/{x}/{y}`、拒本机/内网（`127.*`、`10.*`、`192.168.*`、`172.16-31.*`、`.local`），不让代理变成 SSRF 工具 |
+
+- 缓存目录默认 `<OS 临时目录>/nas-grit-tiles`（`GRIT_TILE_DIR` 可改），按 `{z}/{x}/{y}.{ext}`
+  存；扩展名来自上游 `Content-Type`（jpg/png/webp/gif/avif），读的时候逐个试。**不放仓库里**：
+  `04_重实现` 是 git 检出目录，瓦片缓存不该变成未跟踪文件；
+- 只缓存真正的图片：非图片类型、空 body、>2 MB 一律 502 且不落盘；写入走临时文件 + `rename`，
+  半个瓦片不会留在缓存里；
+- `?src=` 的模板进独立子目录 `src-<sha1 前 12 位>`，两个源不会混。
+
+**为什么要 probe**：Chromium 会把每一个失败的子资源请求记成 console error，**即使 JS 已经
+catch 住了**（实测：直接发 10 张必失败的 `<img>`/fetch，控制台 10 条 502）。所以面板先问一句
+`probe=1`（这是一次**报告**，它本身是 200），答案为否就根本不发图片请求 —— 断网时控制台干净。
+
+### 15.4 回退与提示（四态，各有各的话）
+
+| 状态 | 画面 | 说明行（`gritTileNote`） |
+|---|---|---|
+| `ready` | 影像 + 叠加层；右上角署名、右下角页脚写 `底图：Web Mercator 影像 z17 · 10 块 · Esri World Imagery（公开源替代，非原版同源）` | 空（不打扰） |
+| `loading` | 先画 `mapSvg()` 矢量网格，不空窗 | `正在加载影像瓦片（z=17，10 块，经 /api/grit/tiles 代理 + 本地缓存）…` |
+| `offline` | 矢量网格（同一份轨迹、同一套坐标） | `影像瓦片不可用（取瓦片失败：fetch failed）· 已回退矢量网格：轨迹、POI、比例尺都不依赖底图，离线照常显示。` |
+| 关闭 | 矢量网格 | `Satellite 影像已关闭（瓦片源设为 off 或 GRIT_TILE_URL 为空）· 当前是矢量网格…` |
+
+瓦片层的失败**不阻塞**轨迹、POI、触发：`renderPosition()` 先画轨迹的回退图，瓦片是它的后续；
+`tiles.status` 只影响底图这一层。页签重新进入会重试一次（网络可能已经回来）。
+
+### 15.5 实测（Playwright / Chromium 1706×1066，无接收机，无 WebGPU 依赖）
+
+| 运行 | 服务端 | 结果 | 截图（`…\Temp\opencode\agent-tiles\`） |
+|---|---|---|---|
+| 在线 | 默认 Esri | `tiles.status='ready'`、`z17`、10 块、`overlay.verts=5`、署名在右上角；**0 console error / 0 pageerror** | `online-satellite-page.png`、`online-satellite-map.png` |
+| 断网（上游不可达） | `GRIT_TILE_URL=https://tile.invalid/{z}/{y}/{x}.jpg`，缓存空 | `offline`、`painted=false`、`fallbackBasemap='graticule'`、说明行指向矢量回退；**0 / 0** | `offline-vector-page.png`、`offline-vector-map.png` |
+| 断网但缓存热 | 同上，缓存里已有那 10 块 | `ready`、10 块 —— **上游不可达照样出图**；**0 / 0** | `offline-cache-hit-page.png`、`offline-cache-hit-map.png` |
+| `?tiles=off` | 默认 Esri | `source='off'`、矢量网格、说明行"影像已关闭"；**0 / 0** | `query-tiles-off-*.png` |
+| `?tiles=<模板>` | 同一台服务器，模板为 Esri | `source=<模板>`、10 块、角标 `自定义 XYZ 瓦片源（server.arcgisonline.com）`、缓存写进 `src-2b6e54e90445/`；**0 / 0** | `custom-source-map.png` |
+| 设置项 | Map Settings ▸ Display ▸ Tile URL 填 `off` → Apply | `localStorage = {"source":"off"}`，切到 Satellite 立刻回退并提示；**0 / 0** | `settings-off-display-sheet.png`、`settings-off-off-map.png` |
+
+缓存实测（`%TEMP%\nas-grit-tiles-test`）：10 个文件、共 166 928 B，单块 15 831 B；
+同一块第二次请求 `X-Grit-Tile-Source: cache`，上游命中计数不再增加（单测用桩服务器计数验证）。
+`probe` 在缓存命中时回 `{"ok":true,"source":"cache","type":"image/jpeg","bytes":15831}`，
+上游不可达时回 `{"ok":false,"error":"取瓦片失败：fetch failed"}` —— 都是 **200**。
+
+两个只有跑起来才会发现的问题，都已修：
+
+1. **`grit-tile` 类名撞车**：瓦片图最初叫 `.grit-tile`，而看板瓦片就是
+   `.grit-tile{flex:0 0 392px; width:392px; height:375px; padding:15px 9px 9px 15px; box-sizing:border-box}`。
+   每块图被内边距裁掉 24 px，画面上就是 10 条 24 px 白缝（截图对得上：影像 270 px + 白 24 px，
+   槽位 294 px）。改名 `.grit-maptile` 并把 `padding/box-sizing` 显式归零；
+2. **幽灵按钮在白卡片上不可见**：`.grit-pop-btn.is-ghost` 是白字 + 透明白边，本来给深色弹层用；
+   放进 `#fcfcfc` 的 Map Settings 卡片就是隐形（"Reset to GRIT defaults" 一直如此）。现在只在
+   `.grit-sheet` 里改成 teal 描边。
+
+### 15.6 回归与"没做到"
+
+- 新增 `packages/app/test/grit-tiles.test.ts`（13 项）：模板/占位符（含 `{-y}`/`{s}`/`{key}`）、
+  Web Mercator 参考值与正反变换、视野与瓦片覆盖（四角不露底）、叠加层与影像同变换、四态说明行、
+  设置项与 `?tiles=` 解析、**面板模板能真的渲染**（模板字面量里一个反引号就是 mount 时的
+  ReferenceError，单测必需）、接线（类名不撞车、走代理、probe 先问）、代理缓存命中/上游不可达/
+  `off`/`?src=` 校验、署名随源切换。整套：**1169 项全绿**（改动前 1100；跑的时候别的会话还在
+  增删用例，数字会继续涨）。
+- 改动文件：`packages/app/src/web/panels/grit.js`、`grit.css`、
+  `packages/app/src/server.ts`（仅瓦片代理/缓存/配置三条路由 + 常量）、
+  `packages/app/test/grit-tiles.test.ts`、`packages/app/test/grit-position.test.ts`（Satellite
+  那条断言改了：画面由瓦片层负责，不再算到 Luciad 头上）。
+- **没做到**：
+  - 原版那张底图（Google Maps + 安装目录里的 key）没有复现，也不打算复现 —— 这里是公开源替代；
+  - 没有拖拽/缩放/旋转，视野固定为"装下整条轨迹"；也没有离线打包的瓦片（缓存只覆盖看过的范围）；
+  - 1σ 在样本那 5 m 轨迹的 z17 视野里只有 ~1.6 px（`radiusPx < 3` 不画），要看它得切回 Map；
+  - Esri World Imagery 的**使用条款**按公开源对待，仅供研究与内部演示；要商用就换成自己的
+    provider，把 `GRIT_TILE_URL` 指过去即可（key 用 `GRIT_TILE_KEY`）。
+
+

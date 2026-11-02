@@ -35,6 +35,7 @@ import {
 } from '../src/web/panels/graph.js';
 import {
   gritPositionReason,
+  gritTileNote,
   gritTrackFromBestpos,
   gritTrackFromCsv,
   gritTrackSummary,
@@ -177,11 +178,22 @@ test('每种非就绪状态都写明原因，绝不返回空白', () => {
   assert.equal(gritPositionReason({ status: 'ready', engine: 'ready' }), '');
 });
 
-test('Satellite 页签老实说没有影像，并指回 Map', () => {
-  const reason = gritPositionReason({ tab: 'satellite', status: 'ready', engine: 'ready' });
-  assert.match(reason, /影像/);
-  assert.match(reason, /离线/);
-  assert.match(reason, /Map/);
+test('Satellite 页签的画面交给瓦片层：引擎好坏不再决定这句话', () => {
+  /* 原来这里断言"本构建没有影像层"。D2 加了可配置 XYZ 瓦片后，页签的画面由 `gritTileNote()`
+   * 负责，`gritPositionReason()` 对 Satellite 只报数据状态，不再把引擎失败算到它头上。 */
+  assert.equal(gritPositionReason({ tab: 'satellite', status: 'ready', engine: 'ready' }), '');
+  assert.equal(
+    gritPositionReason({ tab: 'satellite', status: 'ready', engine: 'failed', engineError: 'no WebGPU' }),
+    '',
+    'Satellite 不用 Luciad，引擎失败与它无关',
+  );
+  assert.match(gritPositionReason({ tab: 'satellite', status: 'loading' }), /2D Trajectory\.csv/);
+
+  const offline = gritTileNote({ enabled: true, status: 'offline', error: 'HTTP 502 取瓦片失败' });
+  assert.match(offline, /影像瓦片不可用/);
+  assert.match(offline, /回退矢量网格/);
+  assert.match(gritTileNote({ enabled: false, status: 'idle' }), /矢量网格/);
+  assert.equal(gritTileNote({ enabled: true, status: 'ready' }), '');
 });
 
 /* ---------------- 4. the shared stage contract ---------------- */

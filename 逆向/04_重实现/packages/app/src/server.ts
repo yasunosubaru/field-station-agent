@@ -9,9 +9,10 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import {
   CONVERT_FORMATS,
@@ -47,7 +48,7 @@ import {
 import { LiveLink, type LiveTarget } from './live.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, readTextRecords, summarizeLogs } from './logs.ts';
-import { playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
+import { playbackEvents, playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
 import { GRAPH_CSV_DIR, graphData, listGraphCsv } from './graphcsv.ts';
 import {
   GraphCsvError,
@@ -59,6 +60,12 @@ import {
   type ExportProject,
 } from '../../graph/src/export-projects.ts';
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
+import {
+  GRIT_TILE_ATTRIBUTION,
+  GRIT_TILE_DEFAULT_URL,
+  gritTileTemplate,
+  gritTileUrl,
+} from './web/panels/grit.js';
 import {
   HttpError,
   SAMPLES_DIR,
@@ -309,6 +316,7 @@ function health() {
       '/api/playback/frames',
       '/api/playback/frame',
       '/api/playback/export',
+      '/api/playback/events',
       '/api/graph/projects',
       '/api/graph/files',
       '/api/graph/data',
@@ -318,8 +326,251 @@ function health() {
       '/api/live/connect',
       '/api/live/disconnect',
       '/api/live/command',
+      '/api/grit/tiles/config',
+      '/api/grit/tiles/{z}/{x}/{y}',
     ],
   };
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * GRIT Position Overview · Satellite imagery — tile proxy + disk cache
+ *
+ * The Satellite tab asks for `{z}/{x}/{y}` and gets bytes back. The browser never talks to the
+ * imagery host and never sees a key; a second look (or a session with no network) is answered
+ * from `GRIT_TILE_DIR`.
+ *
+ *   GRIT_TILE_URL   XYZ template — `{z}/{x}/{y}`, `{-y}` (TMS), `{s}`, `{key}`. `off` disables
+ *                   imagery. Default: Esri World Imagery, a **public** source. The original draws
+ *                   Google Maps with a key from the installed app's `configurationfile.node`
+ *                   (`03_分析/05_GRIT-Monitor.md` §2.3), which this build neither has nor may reuse,
+ *                   so the tile is a substitute and says so on the map.
+ *   GRIT_TILE_KEY   substituted into `{key}`; env only, never the repo.
+ *   GRIT_TILE_DIR   cache directory; default `<OS temp>/nas-grit-tiles` (kept out of the repo).
+ *
+ * A tile is cached only when it really is an image (content-type + non-empty + size cap), written
+ * through a temp file so a half-written tile can never be served. `?src=` lets the operator point
+ * one browser at another public source; it is validated (http(s), `{z}/{x}/{y}`, no loopback or
+ * private host) because fetching an arbitrary URL is the one thing a proxy must not do quietly.
+ * ------------------------------------------------------------------------------------------- */
+
+const GRIT_TILE_TIMEOUT_MS = 8000;
+const GRIT_TILE_MAX_BYTES = 2 * 1024 * 1024;
+/* Default cache: the OS temp tree, NOT the repo — `04_重实现` is a git checkout and a tile cache
+ * would otherwise show up as untracked files. `GRIT_TILE_DIR` moves it anywhere writable. */
+const GRIT_TILE_CACHE_DIR = process.env.GRIT_TILE_DIR && process.env.GRIT_TILE_DIR.trim()
+  ? resolve(process.env.GRIT_TILE_DIR.trim())
+  : join(tmpdir(), 'nas-grit-tiles');
+const GRIT_TILE_RAW = (process.env.GRIT_TILE_URL ?? '').trim();
+const GRIT_TILE_KEY = (process.env.GRIT_TILE_KEY ?? '').trim();
+/** `off` in the env means "no imagery", not "fall back to the default". */
+const GRIT_TILE_OFF = ['off', 'none', '0', 'false', 'disabled'].includes(GRIT_TILE_RAW.toLowerCase());
+const GRIT_TILE_UPSTREAM = GRIT_TILE_OFF
+  ? ''
+  : gritTileTemplate(GRIT_TILE_RAW) || GRIT_TILE_DEFAULT_URL;
+const TILE_EXTENSION_TYPE: Record<string, string> = {
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  avif: 'image/avif',
+};
+const TILE_TYPE_EXTENSION: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+};
+/** Only the label is guessed from the host; anything unknown is printed as its hostname. */
+const TILE_HOST_LABELS: Record<string, string> = {
+  'server.arcgisonline.com': 'Esri World Imagery',
+  'services.arcgisonline.com': 'Esri World Imagery',
+  'tile.openstreetmap.org': 'OpenStreetMap',
+  'a.tile.openstreetmap.org': 'OpenStreetMap',
+  'basemaps.cartocdn.com': 'CARTO',
+  'tiles.stadiamaps.com': 'Stadia Maps',
+};
+
+function tileHost(template: string): string {
+  if (!template) return '';
+  try {
+    return new URL(template.replace(/\{[^}]*\}/g, '0')).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function tileLabel(template: string): string {
+  const host = tileHost(template);
+  return TILE_HOST_LABELS[host] || host || 'XYZ 瓦片';
+}
+
+/** The cache lives in one folder, or one per overridden template — two sources never mix tiles. */
+function tileCacheDir(template: string | null): string {
+  if (!template) return GRIT_TILE_CACHE_DIR;
+  const hash = createHash('sha1').update(template).digest('hex').slice(0, 12);
+  return join(GRIT_TILE_CACHE_DIR, `src-${hash}`);
+}
+
+function readCachedTile(dir: string, z: number, x: number, y: number): { bytes: Buffer; type: string } | null {
+  for (const [ext, type] of Object.entries(TILE_EXTENSION_TYPE)) {
+    const file = join(dir, String(z), String(x), `${y}.${ext}`);
+    try {
+      if (!existsSync(file)) continue;
+      const info = statSync(file);
+      if (!info.isFile() || info.size === 0) continue;
+      return { bytes: readFileSync(file), type };
+    } catch {
+      /* an unreadable entry is a miss, not a reason to fail the request */
+    }
+  }
+  return null;
+}
+
+function writeCachedTile(dir: string, z: number, x: number, y: number, ext: string, bytes: Buffer): boolean {
+  try {
+    const folder = join(dir, String(z), String(x));
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, `${y}.${ext}`);
+    const temp = `${file}.${process.pid}.tmp`;
+    writeFileSync(temp, bytes);
+    renameSync(temp, file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `?src=` — an alternate public template, or a 400. Loopback and private hosts are refused. */
+function tileSourceOverride(raw: string | null): string | null {
+  if (raw === null || raw === '') return null;
+  const template = gritTileTemplate(raw);
+  if (!template || template === 'off') {
+    throw new HttpError(400, '瓦片模板不合法：需要 http(s) 地址与 {z}/{x}/{y} 占位符');
+  }
+  const host = tileHost(template);
+  const blocked = host === ''
+    || host === 'localhost'
+    || host === '0.0.0.0'
+    || host === '::1'
+    || host === '[::1]'
+    || host.endsWith('.local')
+    || host.endsWith('.internal')
+    || /^127\./.test(host)
+    || /^10\./.test(host)
+    || /^192\.168\./.test(host)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (blocked) throw new HttpError(400, `瓦片模板不能指向本机或内网（${host || '无法解析'}）`);
+  return template;
+}
+
+/** What the panel needs to label the layer: on/off, whose pixels, where the cache is. */
+function gritTileConfig() {
+  const template = GRIT_TILE_UPSTREAM;
+  return {
+    ok: true,
+    enabled: Boolean(template),
+    label: tileLabel(template),
+    host: tileHost(template),
+    attribution: GRIT_TILE_ATTRIBUTION,
+    publicSource: true,
+    proxy: '/api/grit/tiles/{z}/{x}/{y}',
+    cache: 'disk',
+    cacheRoot: GRIT_TILE_CACHE_DIR.split('\\').join('/'),
+    reason: template ? '' : 'GRIT_TILE_URL=off：影像已关闭',
+  };
+}
+
+/** One tile's bytes, from the cache or the upstream. Throws with the reason when there is none. */
+interface TileResult {
+  bytes: Buffer;
+  type: string;
+  source: 'cache' | 'upstream';
+  stored: boolean;
+}
+
+async function fetchTileBytes(template: string, dir: string, z: number, x: number, y: number): Promise<TileResult> {
+  const cached = readCachedTile(dir, z, x, y);
+  if (cached) return { ...cached, source: 'cache', stored: false };
+
+  const remote = gritTileUrl(template, { z, x, y }, { key: GRIT_TILE_KEY });
+  if (!remote) throw new Error('瓦片 URL 无法构造（模板里的 {key} 没有配置）');
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(remote, {
+      signal: AbortSignal.timeout(GRIT_TILE_TIMEOUT_MS),
+      headers: { Accept: 'image/*', 'User-Agent': `nas-reimpl/${VERSION} (GRIT tile cache)` },
+    });
+  } catch (error) {
+    throw new Error(`取瓦片失败：${(error as Error)?.message || String(error)}`);
+  }
+  if (!upstream.ok) throw new Error(`上游返回 HTTP ${upstream.status}`);
+  const type = String(upstream.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const ext = TILE_TYPE_EXTENSION[type];
+  const bytes = Buffer.from(await upstream.arrayBuffer());
+  if (!ext) throw new Error(`上游返回的不是影像（${type || 'unknown'}）`);
+  if (!bytes.byteLength) throw new Error('上游返回了空瓦片');
+  if (bytes.byteLength > GRIT_TILE_MAX_BYTES) throw new Error(`瓦片过大（${bytes.byteLength} B）`);
+  const stored = writeCachedTile(dir, z, x, y, ext, bytes);
+  return { bytes, type, source: 'upstream', stored };
+}
+
+async function handleGritTiles(url: URL, res: ServerResponse, method: string): Promise<void> {
+  const match = /^\/api\/grit\/tiles\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})$/.exec(url.pathname);
+  if (!match) throw new HttpError(400, '瓦片路径应为 /api/grit/tiles/{z}/{x}/{y}');
+  const z = Number(match[1]);
+  const x = Number(match[2]);
+  const y = Number(match[3]);
+  if (z > 22) throw new HttpError(400, 'z 超出 0..22');
+  const span = 2 ** z;
+  if (x >= span || y >= span) throw new HttpError(400, `x/y 超出 z=${z} 的范围`);
+
+  const override = tileSourceOverride(url.searchParams.get('src'));
+  const template = override || GRIT_TILE_UPSTREAM;
+  const dir = tileCacheDir(override);
+
+  /**
+   * `?probe=1` — "would this tile work?" as a 200 JSON answer.
+   *
+   * Without it, an offline build paints ten `<img>`-less fetches that each fail, and Chromium logs
+   * every failed subresource as a console error even when the JS handles it. The panel therefore
+   * asks first: this request is a *report*, it always succeeds, and only a positive answer is
+   * followed by the tile batch.
+   */
+  if (url.searchParams.get('probe') === '1') {
+    if (!template) {
+      sendJson(res, 200, { ok: false, source: 'off', error: '影像瓦片已关闭（GRIT_TILE_URL=off）' }, method);
+      return;
+    }
+    try {
+      const result = await fetchTileBytes(template, dir, z, x, y);
+      sendJson(res, 200, {
+        ok: true,
+        source: result.source,
+        type: result.type,
+        bytes: result.bytes.byteLength,
+      }, method);
+    } catch (error) {
+      sendJson(res, 200, { ok: false, error: (error as Error)?.message || String(error) }, method);
+    }
+    return;
+  }
+
+  if (!template) throw new HttpError(503, '影像瓦片已关闭（GRIT_TILE_URL=off）');
+
+  let result: TileResult;
+  try {
+    result = await fetchTileBytes(template, dir, z, x, y);
+  } catch (error) {
+    throw new HttpError(502, (error as Error)?.message || String(error));
+  }
+  sendBytes(res, 200, result.bytes, {
+    'Content-Type': result.type,
+    'Cache-Control': 'public, max-age=86400',
+    'X-Grit-Tile-Source': result.source,
+    ...(result.source === 'upstream' ? { 'X-Grit-Tile-Cache': result.stored ? 'stored' : 'unwritable' } : {}),
+  }, method);
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -664,6 +915,11 @@ async function handlePlaybackExport(req: IncomingMessage, res: ServerResponse, m
     'X-Playback-From': String(exported.from),
     'X-Playback-To': String(exported.to),
   }, method);
+}
+
+function handlePlaybackEvents(url: URL, res: ServerResponse, method: string): void {
+  const capture = resolveCapture(url.searchParams.get('capture'));
+  sendJson(res, 200, { ok: true, ...playbackEvents(capture) }, method);
 }
 
 /* ---------------- Graph projects (one export directory per project) ----------------
@@ -1290,6 +1546,10 @@ const server = createServer((req, res) => {
         await handlePlaybackExport(req, res, method, url);
         return;
       }
+      if (path === '/api/playback/events') {
+        handlePlaybackEvents(url, res, method);
+        return;
+      }
       if (path === '/api/graph/projects') {
         handleGraphProjects(res, method);
         return;
@@ -1304,6 +1564,14 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/graph/pdf') {
         handleGraphPdf(url, res, method);
+        return;
+      }
+      if (path === '/api/grit/tiles/config') {
+        sendJson(res, 200, gritTileConfig(), method);
+        return;
+      }
+      if (path.startsWith('/api/grit/tiles/')) {
+        await handleGritTiles(url, res, method);
         return;
       }
       if (path.startsWith('/api/')) {

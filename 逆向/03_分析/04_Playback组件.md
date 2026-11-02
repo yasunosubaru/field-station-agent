@@ -907,7 +907,7 @@ messages : 6 distinct
 | 3.2.4 后退 30 秒 | `playbackview.js:435 rewind(30*1000)` | `REWIND_SECONDS = 30`，钳到 0 | 一致 |
 | 3.2.4 重放整个文件 | 到末尾后 `.playControl.replay` | 到末尾后同一按钮变环形箭头、`aria-label="Replay"`，再点从 0 播 | 一致 |
 | 3.2.4 进度条 = 当前点 | `.progress-bar` + `#playbackprogressBlue` | 进度条 + 拖动手柄（鼠标拖、←/→ 0.1 s、Shift 1 s、Home/End、空格） | 一致（键盘步进为我们补充） |
-| 3.2.4 事件点（红/琥珀/白）与 Show Events 开关、点击弹事件详情 | `.playback-events` + `.show-events-toggle` + `#btn-event` 气泡，事件来自 `markEvents()`，即 RXSTATUSEVENTB 一类事件日志 | **未实现**：18 份抓包里一条事件日志都没有，进度条下方那排是我们自己的"报文刻度"（按 message id 上色），不是事件 | 缺（数据源不存在，标未取证） |
+| 3.2.4 事件点（红/琥珀/白）与 Show Events 开关、点击弹事件详情 | `.playback-events` + `.show-events-toggle` + `#btn-event` 气泡，事件来自 `markEvents()`，即 `events.js` 的事件引擎 | **已实现**（D1，详见 §11.5.6）：标记位置/颜色/`data-message`/`data-event-freq`/点击只开气泡不动播放头，逐条照原版；事件源换成抓包里真实存在的记录（`ITDETECTSTATUS` #2065 频谱检测为主） | 一致（**事件源不同**：18 份抓包没有原版那类事件日志，见 §11.5.6） |
 | 3.2.4 Create Snippet / Save Snippet | 琥珀选框 + 拖两端 + `onCreateSnippet/onSaveSnippet` | 进度条上的琥珀区间（由 From/To 秒数驱动）+ `Create Snippet`/`Download SBF` 直接导出 | 部分（交互不同，刻意差异 8） |
 
 ### 11.5.2 倍速两列
@@ -975,5 +975,88 @@ console / pageerror / 非 2xx：0
 | SPAN 值 | 需要 `INSPVAX (#1465)`，抓包里没有 |
 | Storage Usage | 需要 `FILESYSTEMCAPACITY (#2137)`，抓包里没有 |
 | Logging | 需要 LOGSTATUS / `LOGLIST (#5)`，抓包里没有 |
-| 事件点 / Show Events / 事件气泡 | 事件来自 RXSTATUSEVENTB 一类事件日志，18 份抓包都没有；进度条下那排是报文刻度，已改名说明，不冒充事件 |
+| 事件点 / Show Events / 事件气泡 | 原版的事件来自 RXSTATUSEVENTB 一类事件日志，18 份抓包一条都没有。D1 改成由抓包里真实存在的记录驱动（`ITDETECTSTATUS` #2065 的频谱检测 / `RXSTATUS` spoofing / `RXSTATUSEVENT` 的两句），**没有原版事件日志样本，行为按代码实现**，见 §11.5.6 |
 | Missing（卫星） | `b1` 有 SATVIS2（可见卫星的方位/高度），但"应当可见却没跟踪"的判据在手册与原版代码里没有可引用的定义，不做推测 |
+
+---
+
+## 11.5.6 事件条（D1，2026-11-02）
+
+### 原版语义（量出来的，不是猜的）
+
+| 项 | 出处 | 内容 |
+|---|---|---|
+| 带子的位置 | `playbackcontrol.html:23` | `.playback-events` 是进度条**下面一条独立的带子**（`display:flex; position:relative`），不画在进度条上 |
+| 一个事件一个元素 | `controller/playback.js:991-1071` `markEvents()` | `div`，`id="btn-event"`，`className = state + "Event"` |
+| 四个字段 | `:1019-1031` | `data-message` = `data-lang-…` 描述键；`data-event-freq` = 频率（**只有** ITK 事件带）；`time` = `HH:MM:SS UTC`（`:1031` → `getUTCTimeFormatOnly`，`controller/playback.js:608-613`）；`data-event-count` = 序号 |
+| 位置 | `:1024-1029` | `per = (Date.parse(start) - Date.parse(startTime)) / totalPlaybackTimeMsec`，`left = calc(per*100% - 17px)` → **标记以事件时间为中心**；`per < 0` 的**不 append**（不是钳到 0） |
+| 画哪些 | `:1013` | 只画 `state != "Good" && alive`；带子是 append-only（`:1032`），事件结束后标记留在原处 |
+| 事件对象 | `view/events/events.js:1736-1748` | `{startTime, state, alive, description, actualStr, endTime, freqValue}` —— 最小字段就是「时间 + 描述键 + 频率(可空) + 状态」 |
+| 颜色 | S:5288-5296 / 5358-5370 | 16.67 px 圆点；`PoorEvent` 红 `#D0021B`；`ModerateEvent` 琥珀警告图标；`GoodEvent` 白（原版从不画） |
+| 点击 | `playbackview.js:194-253` | **只开/关气泡**：气泡左右夹取（`:204-218`），正文 = `time.replace("UTC","") + __(message).replace("%1", freq)`（`:244-245`）；再点同一个收起（`:198-203`、`:326-331`），点别处 / 关闭按钮也收起（`:268-271`、`:332-341`）。**全程没有 `onProgressbarSeek` / `updateTimeOnMove`——播放头不动** |
+| `Show Events` | `playbackcontrol.html:91-97`，`playbackview.js:122-135` | 只切 `.playback-events` 的 `display` flex/none 与 `#btn-event` 显隐；默认 `true`（`deviceManagement.js:188-193`） |
+
+### 本重实现的事件源（都是抓包里的记录，没有一条是编的）
+
+`packages/app/src/playback.ts#playbackEvents` 把这些记录按接收机时间跑一遍和 `events.js` 一样的状态机：
+**某频率/某状态第一次出现 → 开一个事件；下一条不再报 → 闭合 `endTime`；同一频率之后再出现 → 新事件**
+（对应 `createEventInHandlerObject` 的 alive/false 两支，`events.js:1719-1734`）。
+
+| 源 | 报文 | 规则 | 级别 |
+|---|---|---|---|
+| ITK 干扰 | `ITDETECTSTATUS` (#2065)，**文本 `ITDETECTSTATUSA` 与二进制都读** | `view/src/config/events.ts#itkDetections`：只有 `SPECTRUMANALYSIS` 算检测（`STATISTICANALYSIS` 的 `parameter1` 是 5-8 的统计量，不是频率） | `Moderate`，`data-lang-itk-detected-at` |
+| Spoofing | `RXSTATUS` (#93) `spoofing == DETECTED`（`events.js:1536-1560`） | 实现完整，但**本批抓包解不出 `spoofing`**（layout 只有 `rx_error` / `status_words`）→ 永远空 | `Poor` |
+| `RXSTATUSEVENT` | #94 | 只收原版认的两句：`MODEL INVALID FOR THIS RECEIVER` / `INVALID AUTHORIZATION CODE`（`events.js:727-790`） | `Poor` |
+
+> b7 的 ITK 日志是**文本**（47 条 `#ITDETECTSTATUSA`，0 条二进制 #2065），而时间轴引擎只吃 SBF
+> （`timeline.ts` 把文本记录计入 `textFrames` 后跳过）。只读 `engine.frames` 会得到 0 条事件——
+> 这就是 §11.5 早先"18 份抓包一条事件都没有"的出处。文本记录自带 `week` / 毫秒，取时间不必靠邻居帧。
+
+### b7 实测（`live-20261031/b7-20261101.sbf`）
+
+47 条 ITDETECTSTATUS（25 STATISTICANALYSIS / 13 SPECTRUMANALYSIS / 9 空）、26 条 RXSTATUS、0 条 #94：
+
+| # | 频率 | 起点（秒） | UTC | 结束 |
+|---|---|---|---|---|
+| 1 | 1270 MHz | 18.697 | 09:59:21 | 24.697 |
+| 2 | 1269 MHz | 24.697 | 09:59:27 | 30.697 |
+| 3 | 1270 MHz | 59.697 | 10:00:02 | 抓包结束仍在报（`endTime = null`） |
+
+`/api/playback/events?capture=live-20261031/b7-20261101.sbf` → `count: 3`；
+`live-20261031/b1-20261101.sbf`（6 条 #2065，全是 STATISTICANALYSIS）与 `convert/clean-9600.gps` → `count: 0`。
+
+### 页面
+
+- 标记是 `<button>`（可 Tab / Enter），红=Poor、琥珀=Moderate，`left = time / duration`；
+- 悬停预览气泡，点击钉住（再点同一个 / 点关闭 / Esc 收起）；**点击不 seek**，
+  进度条的 `mousedown` 对 `[data-role="event-marker"]` 直接放行（否则会顺带跳播放头）；
+- `Show Events` 开关存 `localStorage["nas.playback.showEvents"]`，默认开；
+- 没事件时不是空白：一行说明「读了多少条记录、都不到 Good」，或者「这三条日志一条都没有」。
+
+### 实测 / 截图
+
+```
+[1] b7：3 个标记（30.295% / 40.017% / 96.727%），点中间那个 → 气泡
+    "09:59:27 Interference is being detected at 1269Mhz."
+    "ITDETECTSTATUS (#2065) · 0:24.697 → 0:30.697"，时钟仍 0:00.000（没 seek）
+[2] 再点同一个 → 气泡收起；点第 3 个 → 换成 10:00:02 那条；关闭按钮 / Esc 都能收
+[3] Show Events 关 → 带子 hidden，localStorage 写 "false"；打开 → 标记回来
+[4] b1 → 空态 "No events in this capture — 11 event records read, none above Good."
+console / pageerror：0
+```
+
+截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-playback-events\`
+（`d1-b7-tooltip.png` 整页、`d1-b7-strip-tooltip.png` 局部、`d1-b7-strip.png`、
+`d1-b7-strip-closeup.png`、`d1-b1-empty.png`、`d1-b1-empty-strip.png`）。
+
+测试：`packages/app/test/playback-events.test.ts` 12 条（b7 的 3 条事件与时间去重 / 频率不是带宽枚举 /
+b1 与 clean 的空态 / 标记数量与百分比 / tooltip 文案 / 点击只选中不 seek / Show Events 持久化 / 路由）。
+
+### 没做到 / 与原版不同
+
+| 项 | 说明 |
+|---|---|
+| **无原版样本** | 18 份抓包没有一条 `RXSTATUSEVENT`，也解不出 `spoofing`；红点（Poor）与白点（Good，原版本来就不画）都没有截屏可对。**行为按代码实现** |
+| 画的是整份抓包的事件 | 原版 `markEvents()` 在**装载时**跑一次（`controller/playback.js:869` 在 `updateStartEndTime` 里），当时还活着的事件才画。我们把整份抓包的事件起点都画出来，等价于原版把整份播完后带子累积的结果 |
+| 气泡定位 | 原版按 1912 px 窗口算（`playbackview.js:204-218`），我们用 `position:fixed` + 视口夹取；文本、颜色、开合逻辑一致 |
+| 活塞（snippet）与事件条并存 | 原版开 snippet 时会把 `.show-events` 藏起来（`playbackview.js:98-99`）；本页没做这个互斥 |

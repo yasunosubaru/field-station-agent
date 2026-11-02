@@ -650,6 +650,16 @@ body[data-page="grit"] .app-panel {
   color: rgba(255, 255, 255, 0.8);
   border-color: rgba(255, 255, 255, 0.32);
 }
+/* 幽灵按钮是为深色弹层写的；放进浅色的 Map Settings 卡片里就是白字白底（实测看不见）。
+ * 卡片内改成 teal 描边，弹层的样式不动。 */
+.grit-sheet .grit-pop-btn.is-ghost {
+  color: var(--grit-teal);
+  border-color: rgba(0, 81, 111, 0.4);
+  background: transparent;
+}
+.grit-sheet .grit-pop-btn.is-ghost:hover {
+  background: rgba(0, 81, 111, 0.08);
+}
 .grit-pop-note code {
   font-family: Consolas, "Cascadia Mono", monospace;
   font-size: 11px;
@@ -900,6 +910,70 @@ body[data-page="grit"] .app-panel {
 }
 .grit-pos-map[hidden],
 .grit-pos-frame[hidden] {
+  display: none;
+}
+/* Satellite: the XYZ tile layer and the vector overlay drawn on top of it. Both span the box and
+ * neither paints a background, so a tile that has not arrived shows the canvas colour, not paper. */
+.grit-pos-tiles,
+.grit-pos-overlay {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #d8dcd4;
+  overflow: hidden;
+}
+.grit-pos-overlay {
+  /* the SVG itself is transparent; it only draws graticule + track + HUD */
+  background: transparent;
+  pointer-events: none;
+}
+.grit-pos-tiles[hidden],
+.grit-pos-overlay[hidden] {
+  display: none;
+}
+.grit-pos-tiles .grit-maptile {
+  position: absolute;
+  display: block;
+  /* Named `grit-maptile`, not `grit-tile`: that class is the dashboard tile (392×375, padding
+   * 15/9/9/15, border-box) and would letterbox every image by 24 px. */
+  box-sizing: content-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  image-rendering: auto;
+}
+.grit-pos-overlay svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Provenance sits in the top-right corner: the bottom-left is the scale bar and the bottom-right
+ * the north arrow, and a credit must never be the thing that hides a measurement. */
+.grit-pos-credit {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  left: auto;
+  bottom: auto;
+  max-width: calc(100% - 150px);
+  margin: 0;
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.42);
+  color: #fff;
+  font-family: var(--grit-sans);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+  pointer-events: none;
+}
+.grit-pos-credit[hidden] {
   display: none;
 }
 .grit-pos-map svg {
@@ -1460,6 +1534,31 @@ body:not([data-page="grit"]) #tabs-list li.grit-appbar-add {
   border-color: var(--grit-teal);
   background: var(--grit-teal);
   color: #fff;
+}
+
+/* ---- Base Map · 影像瓦片（Satellite 页签的底图源）---- */
+.grit-tile-settings {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--grit-rule);
+}
+.grit-tile-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+.grit-tile-field {
+  min-width: 0;
+}
+.grit-tile-field .grit-poi-input {
+  width: 100%;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+}
+.grit-tile-form .grit-pop-btn {
+  white-space: nowrap;
 }
 
 /* ================================================================================================
