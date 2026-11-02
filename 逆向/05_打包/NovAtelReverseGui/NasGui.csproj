@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>NovAtelReverse</AssemblyName>
     <RootNamespace>NasGui</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -18,3 +18,4 @@
   </ItemGroup>
 
 </Project>
+

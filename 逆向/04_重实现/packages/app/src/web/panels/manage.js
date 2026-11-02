@@ -1798,9 +1798,7 @@ function template() {
 <div class="mg-list" data-el="list" hidden>
   <div class="mg-list-head">
     <h1 class="mg-list-title">All captures</h1>
-    <button type="button" class="mg-add-device" disabled
-            title="Add Device: this build reads captures from 逆向/00_来源/samples through the local API, it cannot talk to a receiver.">
-      <span class="mg-plus" aria-hidden="true"></span>Add Device</button>
+    <button type="button" class="mg-add-device" data-mode-action="connect" title="Add Device: open the live connection drawer (serial COM port or TCP bridge)."><span class="mg-plus" aria-hidden="true"></span>Add Device</button>
   </div>
   <p class="mg-list-note" data-el="listNote">Reading the capture list…</p>
   <div class="mg-list-grid" data-el="listCards"></div>
@@ -2721,7 +2719,8 @@ export function mount(root, ctx = {}) {
     if (!live.pollTimer) startLivePolling();
     if (live.status) termStatus(termStatusText(live.status));
     void termBackfill();
-    termEls.line?.focus();
+    if (live.connected) termEls.line?.focus();
+    else termEls.path?.focus();
   }
   /** Re-open the drawer after a long session: the newest slice of the ring buffer, newest last. */
   async function termBackfill() {
@@ -2837,8 +2836,8 @@ export function mount(root, ctx = {}) {
         `<span class="mg-filetab mg-filetab-live" title="${esc(title)}">` +
         `<span class="mg-filetab-name">${esc(label)}</span></span>` +
         '</span>' +
-        '<button type="button" class="mg-add-tab" disabled ' +
-        `title="${esc('Add Device: one live session per process; disconnect it in the mode strip first.')}">` +
+        '<button type="button" class="mg-add-tab" data-mode-action="connect" ' +
+        `title="${esc('Add Device: open the live connection drawer (serial COM port or TCP bridge).')}">` +
         '<span class="mg-plus" aria-hidden="true"></span>Add Device</button>';
       return;
     }
@@ -2850,8 +2849,8 @@ export function mount(root, ctx = {}) {
       `<span class="mg-filetab-name">${esc(short)} (0)</span></a>` +
       '<button type="button" class="mg-filetab-close" aria-label="Close file">&times;</button>' +
       '</span>' +
-      '<button type="button" class="mg-add-tab" disabled ' +
-      `title="${esc('Add Device: this build reads captures from the local API and cannot talk to a receiver.')}">` +
+      '<button type="button" class="mg-add-tab" data-mode-action="connect" ' +
+      `title="${esc('Add Device: open the live connection drawer (serial COM port or TCP bridge).')}">` +
       '<span class="mg-plus" aria-hidden="true"></span>Add Device</button>';
   }
 
@@ -4420,8 +4419,10 @@ export function mount(root, ctx = {}) {
 
   if (appTab) {
     appTab.addEventListener('click', onAppTabClick);
+    appTab.addEventListener('click', onModeAction);
   }
   el.listCards.addEventListener('click', onListClick);
+  el.list.addEventListener('click', onModeAction);
   el.device.addEventListener('click', onHelpClick);
   el.device.addEventListener('click', onMenuClick);
   el.device.addEventListener('click', onModeAction);
@@ -4458,6 +4459,7 @@ export function mount(root, ctx = {}) {
     state.alive = false;
     stopLivePolling();
     el.listCards.removeEventListener('click', onListClick);
+  el.list.removeEventListener('click', onModeAction);
     el.device.removeEventListener('click', onHelpClick);
     el.device.removeEventListener('click', onMenuClick);
     el.device.removeEventListener('click', onModeAction);
@@ -4482,6 +4484,7 @@ export function mount(root, ctx = {}) {
     stopResetTimer();
     if (appTab) {
       appTab.removeEventListener('click', onAppTabClick);
+      appTab.removeEventListener('click', onModeAction);
       appTab.remove();
     }
     if (offCapture) offCapture();
