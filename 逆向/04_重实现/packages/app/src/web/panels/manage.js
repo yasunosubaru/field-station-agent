@@ -897,6 +897,289 @@ export function trackingReasonText(tracking, metric) {
   );
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Device ▸ Restart / Factory Reset — the original's `view/deviceRestart/deviceRestart.js`
+ *
+ * The command strings are measured off the shipped code, not guessed:
+ *
+ *   Restart        GIII branch: `LOG  VERSIONB ONTIME 1\n` then `RESET\n` (deviceRestart.js:80-81;
+ *                  the double space is in the shipped literal). Every other model sends the *binary*
+ *                  `reset` command — messageId 18 (deviceRestart.js:96 → `genericConfig.sendCommand`
+ *                  → `NovatelIdConstants.commandsAndEnums.reset`). The ASCII spelling of message 18
+ *                  is `RESET` with no argument, which is what a `POST /api/live/command` line carries.
+ *   Factory Reset  binary `freset` — messageId 20 with one parameter, `target` = `STANDARD` (enum 0),
+ *                  a 4-byte ulong (deviceRestart.js:218-221; targets at
+ *                  `NovatelIdConstants.js:2078-2085`: STANDARD 0 · COMMAND 1 · GPSALMANAC 2 ·
+ *                  USER_ACCOUNTS 60). It never sends `FRESET OEM`; ASCII: `FRESET STANDARD`.
+ *   Erase NVM      the dialog's `#erase-nvm` box prepends the six `SOFTLOAD…` lines of
+ *                  `clearLUAData()` (deviceRestart.js:103-110) before either command. Mirrored in
+ *                  `resetCommands()`; this panel does not render that box.
+ *   Longhorn       `longhornResetFunc` builds a PIMTP frame through the native EDIE addon and
+ *                  re-opens the socket — not applicable to this build (no addon), and a Longhorn
+ *                  model is not reachable from a capture.
+ *
+ * The confirmation copy is the shipped English entry, verbatim (`languageSupport/en.js:951-957`),
+ * with `%1` — the original substitutes `<br> <br>` there:
+ *
+ *   RESTARTCONFIRMATION   "Restart Confirmation"
+ *   RECEIVERRESTART_1     "Receiver will be restarted. %1 Are you sure you wish to restart the device?"
+ *   FACTORY_RESET_CONIFRM "Factory Reset Confirmation"
+ *   FRESETMESSAGE         "A factory reset will revert the receiver back to factory default.%1 Are you sure you wish to reset the device?"
+ *
+ * Everything below is pure: the panel only renders it and posts the lines it returns. Restart needs
+ * an explicit confirmation click; Factory Reset starts disabled and stays disabled until the model
+ * the receiver itself reports (VERSION #37) is typed in. A reset is sent once: `resetObserve` has no
+ * retry transition, so a dropped link or a missed VERSION ends in `failed` and is shown, never re-sent.
+ * ------------------------------------------------------------------------------------------- */
+
+/** The one-shot read-back: `VERSIONB` is the log the original takes before a restart. */
+export const RESET_VERIFY_LINE = 'LOG VERSIONB ONCE';
+
+/** How long each phase may take, and then it is a failure — never a silent re-send. */
+export const RESET_TIMING = Object.freeze({ dropMs: 30000, reconnectMs: 60000, versionMs: 60000 });
+
+/** `deviceRestart.js:103-110` — sent *before* the reset when `#erase-nvm` is ticked. */
+export const CLEAR_LUA_LINES = Object.freeze([
+  'SOFTLOADRESET',
+  'SOFTLOADSREC "S0~P~M7QP,M7QPB,OEM718D,OEM718DC,OEM719,OEM719A,OEM719B,OEM719C,OEM719D,OEM719AC,OEM719BC,OEM719N,OEM729,OEM729R,OEM729C,OEM729RC,OEM7500,OEM7500C,OEM7600,OEM7600C,OEM7700,OEM7700C,OEM7720,OEM7720C,PIM7500,PIM7500C"',
+  'SOFTLOADSREC "S0~V~DEV-LOAD"',
+  'SOFTLOADSREC "S0~T~DATA1"',
+  'SOFTLOADSREC "S30900000000FFFFFFFFFA"',
+  'SOFTLOADCOMMIT',
+]);
+
+/** The note both dialogs print when there is no session — the POST would be refused, not queued. */
+export const NO_LINK_NOTE =
+  'No live link — `POST /api/live/command` answers “not connected”, so nothing would be sent. ' +
+  'Connect a receiver in Tools ▸ Terminal first.';
+
+/** `deviceRestart.js:20-290` in one table: command, copy, gate and timings per action. */
+export const RESET_ACTIONS = Object.freeze({
+  restart: Object.freeze({
+    key: 'restart',
+    menuLabel: 'Restart…',
+    command: 'RESET',
+    title: 'Restart Confirmation',
+    body: 'Receiver will be restarted.',
+    question: 'Are you sure you wish to restart the device?',
+    go: 'Restart device',
+    needsModel: false,
+    dropMs: 30000,
+  }),
+  factoryReset: Object.freeze({
+    key: 'factoryReset',
+    menuLabel: 'Factory Reset…',
+    command: 'FRESET STANDARD',
+    title: 'Factory Reset Confirmation',
+    body: 'A factory reset will revert the receiver back to factory default.',
+    question: 'Are you sure you wish to reset the device?',
+    go: 'Factory reset',
+    needsModel: true,
+    dropMs: 30000,
+  }),
+});
+
+/** The dialog copy for one action, or `null` for a key this build does not have. */
+export function resetCopy(kind) {
+  const action = RESET_ACTIONS[kind];
+  if (!action) return null;
+  return {
+    title: action.title,
+    body: action.body,
+    question: action.question,
+    command: action.command,
+    go: action.go,
+    needsModel: action.needsModel,
+  };
+}
+
+/** NovAtel model names are uppercase; the typed confirmation is compared case- and space-insensitively. */
+export function normalizeModel(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * The exact lines to post, in order. One line for both actions; `eraseNvm` adds the shipped
+ * `SOFTLOAD…` series in front (mirror only — the panel has no `#erase-nvm` box).
+ */
+export function resetCommands(kind, options = {}) {
+  const action = RESET_ACTIONS[kind];
+  if (!action) return [];
+  const lines = options.eraseNvm ? [...CLEAR_LUA_LINES] : [];
+  lines.push(action.command);
+  return lines;
+}
+
+/**
+ * May a command go out? `restart` needs the confirmation click; `factoryReset` needs the receiver's
+ * own model typed in, and is refused outright while the model is unknown — the token is never
+ * invented from a captured file.
+ */
+export function resetGate(kind, options = {}) {
+  const action = RESET_ACTIONS[kind];
+  const line = action ? action.command : '';
+  if (!action) return { ok: false, reason: `Unknown reset action “${kind}”.`, line, lines: [] };
+  const link = options.link;
+  if (!link || link.connected !== true) {
+    return { ok: false, reason: NO_LINK_NOTE, line, lines: [] };
+  }
+  if (action.needsModel) {
+    const model = normalizeModel(options.model);
+    if (!model) {
+      return {
+        ok: false,
+        reason:
+          'This receiver has not reported its model yet (VERSION #37), so there is nothing to type — ' +
+          'a factory reset cannot be confirmed and the button stays disabled.',
+        line,
+        lines: [],
+      };
+    }
+    if (normalizeModel(options.typed) !== model) {
+      return {
+        ok: false,
+        reason: `Type ${model} to confirm — the receiver reports that model, and nothing is sent until the two match.`,
+        line,
+        lines: [],
+      };
+    }
+  } else if (options.confirmed !== true) {
+    return { ok: false, reason: 'Restart still needs its confirmation button.', line, lines: [] };
+  }
+  return { ok: true, reason: '', line, lines: resetCommands(kind, options) };
+}
+
+/** Start the wait: `awaiting-drop` → (link down) → `awaiting-link` → (session back) → `awaiting-version` → `done`. */
+export function resetBegin(kind, options = {}) {
+  const action = RESET_ACTIONS[kind];
+  const at = Number(options.at) || 0;
+  if (!action) {
+    return {
+      kind,
+      phase: 'failed',
+      at,
+      sentAt: at,
+      deadline: at,
+      session: '',
+      expected: '',
+      model: '',
+      verified: false,
+      reason: `Unknown reset action “${kind}”.`,
+    };
+  }
+  return {
+    kind,
+    phase: 'awaiting-drop',
+    at,
+    sentAt: at,
+    deadline: at + action.dropMs,
+    /** `connectedAt` of the session the command went out on — a different one proves a new session. */
+    session: options.session ?? '',
+    expected: normalizeModel(options.model),
+    model: '',
+    verified: false,
+    reason: 'Command sent — waiting for the link to drop.',
+  };
+}
+
+/**
+ * One state step. `done` and `failed` are terminal: no event reopens them, which is what makes
+ * "a failure is never retried" a property of the machine and not of the caller.
+ */
+export function resetObserve(state, event = {}) {
+  if (!state || !state.phase) return state;
+  if (state.phase === 'done' || state.phase === 'failed') return state;
+  const at = Number(event.at) || state.at;
+  const next = { ...state, at };
+
+  if (event.type === 'link') {
+    const connected = event.connected === true;
+    const session = event.session ?? '';
+    if (next.phase === 'awaiting-drop') {
+      if (!connected) {
+        next.phase = 'awaiting-link';
+        next.deadline = at + RESET_TIMING.reconnectMs;
+        next.reason = 'Link down — waiting for the session to come back.';
+      } else if (session && next.session && session !== next.session) {
+        // A reboot finished between two polls: the drop was never sampled, the new session id is
+        // still proof that it happened.
+        next.phase = 'awaiting-version';
+        next.session = session;
+        next.deadline = at + RESET_TIMING.versionMs;
+        next.reason = 'A new session is open — reading VERSION (#37)…';
+      }
+    } else if (next.phase === 'awaiting-link' && connected) {
+      next.phase = 'awaiting-version';
+      next.session = session || next.session;
+      next.deadline = at + RESET_TIMING.versionMs;
+      next.reason = 'Reconnected — reading VERSION (#37)…';
+    }
+  } else if (event.type === 'version' && next.phase === 'awaiting-version') {
+    next.model = String(event.model ?? '');
+    next.verified = next.expected ? normalizeModel(next.model) === next.expected : Boolean(next.model);
+    next.phase = 'done';
+    next.reason = next.verified
+      ? `VERSION (#37) reads ${next.model || '—'}.`
+      : `VERSION (#37) reads ${next.model || '—'}, not ${next.expected} — check that this is the same receiver.`;
+  } else if (event.type === 'error') {
+    next.phase = 'failed';
+    next.reason = String(event.reason || 'The command could not be sent.');
+  } else if (event.type === 'tick' && at >= next.deadline) {
+    next.phase = 'failed';
+    next.reason = {
+      'awaiting-drop':
+        'Timed out: the link never dropped, so the receiver may not have restarted — nothing is retried.',
+      'awaiting-link':
+        'Timed out: the link dropped and did not come back — reconnect in Tools ▸ Terminal to read VERSION; nothing is retried.',
+      'awaiting-version':
+        'Timed out: the session came back but VERSION (#37) never arrived — nothing is retried.',
+    }[state.phase] ?? 'Timed out — nothing is retried.';
+  }
+  return next;
+}
+
+/** Phase → the line the dialog shows, with the tone its bar uses. */
+export function resetPhaseText(state) {
+  if (!state) return { tone: 'idle', text: '' };
+  const factory = state.kind === 'factoryReset';
+  switch (state.phase) {
+    case 'awaiting-drop':
+      return {
+        tone: 'busy',
+        text: 'Command sent — waiting for the link to drop (a restart closes the session).',
+      };
+    case 'awaiting-link':
+      return {
+        tone: 'busy',
+        text:
+          'Link down — the receiver is restarting. This dialog does not reconnect by itself: ' +
+          'reconnect in Tools ▸ Terminal and VERSION (#37) is read back here.',
+      };
+    case 'awaiting-version':
+      return {
+        tone: 'busy',
+        text: `Reconnected — asking the receiver for VERSION (#37) with “${RESET_VERIFY_LINE}”…`,
+      };
+    case 'done':
+      return {
+        tone: state.verified ? 'good' : 'warn',
+        text: factory
+          ? `Factory reset sent; VERSION (#37) reads ${state.model || '—'}. The read-back proves the ` +
+            'receiver came back — it does not prove every setting was cleared; check the configuration ' +
+            'pages for that.'
+          : state.verified
+            ? `Restarted — VERSION (#37) reads ${state.model || '—'} again.`
+            : `The link came back, but ${state.reason}`,
+      };
+    case 'failed':
+      return { tone: 'bad', text: `${state.reason} Nothing is retried automatically.` };
+    default:
+      return { tone: 'idle', text: '' };
+  }
+}
+
 /**
  * The black bar under the app bar. `Status` and `Configuration` are real pages in this build;
  * `Settings` carries the two shipped settings pages it has (General, Networking) and opens them in
@@ -950,6 +1233,10 @@ const MENU = [
       { key: 'deviceDetails', label: 'Device Details…', wired: true },
       { key: 'deviceExport', label: 'Storage…', wired: true },
       { key: 'deviceUpdate', label: 'Update…', wired: true },
+      /* §2.2.10 Device ▸ Restart / Factory Reset: the original's `deviceRestart.html` dialog pair,
+       * served here as the two fixed actions of this panel (same copy, same commands). */
+      { key: 'restart', label: RESET_ACTIONS.restart.menuLabel, wired: true },
+      { key: 'factoryReset', label: RESET_ACTIONS.factoryReset.menuLabel, wired: true },
     ],
   },
 ];
@@ -979,6 +1266,7 @@ export const DEVICE_PAGES = new Set(['deviceDetails', 'deviceExport', 'deviceUpd
  * the drawer groups it apart for that reason. `/api/config/pages` marks it `tools: true`.
  */
 export const TOOLS_PAGES = new Set(['interferenceToolkit']);
+
 /* Material-style glyphs, 24×24 viewBox, drawn with `currentColor` so the bar can dim the
  * unwired items. The gear is the same path the shell's app-bar settings icon uses
  * (`icons/menubar_settings.svg`). */
@@ -1584,6 +1872,33 @@ function template() {
       <pre class="mg-cfg-report" data-cfg="report" hidden></pre>
     </section>
   </div>
+</div>
+
+<div class="mg-reset" data-el="reset" role="dialog" aria-modal="true" aria-labelledby="mg-reset-title" hidden>
+  <div class="mg-reset-sheet">
+    <div class="mg-reset-head">
+      <span class="mg-reset-title" id="mg-reset-title" data-reset="title">Restart Confirmation</span>
+      <button type="button" class="mg-reset-close" data-reset="close" aria-label="Close">×</button>
+    </div>
+    <div class="mg-reset-body">
+      <p class="mg-reset-text" data-reset="body"></p>
+      <p class="mg-reset-question" data-reset="question"></p>
+      <div class="mg-reset-cmd">
+        <span class="mg-reset-cmd-label">Line sent</span>
+        <code data-reset="command">RESET</code>
+      </div>
+      <label class="mg-reset-type" data-reset="typeWrap" hidden>
+        <span class="mg-reset-type-label" data-reset="typeLabel">Type the receiver model to confirm</span>
+        <input class="mg-reset-input" type="text" data-reset="typed" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="mg-reset-state" data-reset="state" data-tone="idle"></p>
+      <p class="mg-reset-reason" data-reset="reason"></p>
+    </div>
+    <div class="mg-reset-actions">
+      <button type="button" class="mg-reset-btn mg-reset-btn-go" data-reset="go" disabled>Restart device</button>
+      <button type="button" class="mg-reset-btn mg-reset-btn-quiet" data-reset="cancel">Cancel</button>
+    </div>
+  </div>
 </div>`;
 }
 
@@ -1904,6 +2219,240 @@ export function mount(root, ctx = {}) {
     setCfgDisabled(fileEls.import, true);
   }
 
+  /* ---- Device ▸ Restart / Factory Reset (the original's `deviceRestart.js`) ----
+   *
+   * The dialog is the only place that sends these lines. `resetGate` decides whether it may, and
+   * `resetObserve` walks the wait afterwards; this block only posts what those two return and paints
+   * the answer — so the shipped command strings and the "no retry" rule are testable without a page.
+   */
+
+  const resetEls = {};
+  for (const node of root.querySelectorAll('[data-reset]')) resetEls[node.dataset.reset] = node;
+
+  const reset = {
+    kind: '',
+    /** `null` until a command is on the wire; then the `resetObserve` state. */
+    machine: null,
+    /** The model the receiver reported before the reset (VERSION #37) — the Factory Reset token. */
+    model: '',
+    typed: '',
+    /** The one-shot VERSION request goes out once per reset, never twice. */
+    verifySent: false,
+    timer: 0,
+  };
+
+  /** The current session in the shape `resetGate` / `resetObserve` take. */
+  function linkState() {
+    return { connected: live.connected, session: live.session, target: live.target };
+  }
+
+  /**
+   * VERSION #37 of the **live session** — the Factory Reset token. A capture's model is never used
+   * here: replay is not a receiver, and the token has to come from the thing being reset.
+   */
+  function liveModel() {
+    const entry = live.latest.get(VERSION_LOG);
+    return entry && entry.data && entry.data.kind === 'version' ? String(entry.data.model || '') : '';
+  }
+
+  function openResetDialog(kind) {
+    const copy = resetCopy(kind);
+    if (!el.reset || !copy) return;
+    stopResetTimer();
+    reset.kind = kind;
+    reset.machine = null;
+    reset.typed = '';
+    reset.verifySent = false;
+    reset.model = liveModel();
+    setText(resetEls.title, copy.title);
+    setText(resetEls.body, copy.body);
+    setText(resetEls.question, copy.question);
+    setText(resetEls.command, copy.command);
+    if (resetEls.typed) resetEls.typed.value = '';
+    if (resetEls.typeWrap) resetEls.typeWrap.hidden = !copy.needsModel;
+    if (resetEls.typeLabel && copy.needsModel) resetEls.typeLabel.textContent = resetTypeLabel();
+    el.reset.hidden = false;
+    renderReset();
+    if (copy.needsModel) resetEls.typed?.focus();
+  }
+
+  function resetTypeLabel() {
+    return reset.model
+      ? `Type the receiver’s model to confirm — ${reset.model}`
+      : 'Type the receiver’s model to confirm — the receiver has not reported it yet (VERSION #37)';
+  }
+
+  function closeResetDialog() {
+    if (el.reset) el.reset.hidden = true;
+    stopResetTimer();
+    reset.machine = null;
+  }
+
+  function startResetTimer() {
+    stopResetTimer();
+    reset.timer = setInterval(() => {
+      if (!reset.machine) {
+        stopResetTimer();
+        return;
+      }
+      if (reset.machine.phase === 'done' || reset.machine.phase === 'failed') {
+        stopResetTimer();
+        return;
+      }
+      const next = resetObserve(reset.machine, { type: 'tick', at: Date.now() });
+      if (next.phase !== reset.machine.phase) {
+        reset.machine = next;
+        renderReset();
+      }
+    }, 1000);
+  }
+
+  function stopResetTimer() {
+    if (reset.timer) {
+      clearInterval(reset.timer);
+      reset.timer = 0;
+    }
+  }
+
+  function renderReset() {
+    if (!resetEls.go) return;
+    const phase = reset.machine ? reset.machine.phase : '';
+    const finished = phase === 'done' || phase === 'failed';
+    const running = Boolean(reset.machine) && !finished;
+    resetEls.go.textContent = running
+      ? 'Sending…'
+      : finished
+        ? 'Close'
+        : RESET_ACTIONS[reset.kind]?.go ?? 'Send';
+    if (running) {
+      const progress = resetPhaseText(reset.machine);
+      setText(resetEls.state, progress.text);
+      if (resetEls.state) resetEls.state.dataset.tone = progress.tone;
+      setText(resetEls.reason, '');
+      resetEls.go.disabled = true;
+      if (resetEls.typed) resetEls.typed.disabled = true;
+      return;
+    }
+    if (resetEls.typed) resetEls.typed.disabled = false;
+    const gate = resetGate(reset.kind, {
+      link: linkState(),
+      model: reset.model,
+      typed: reset.typed,
+      confirmed: true,
+    });
+    resetEls.go.disabled = finished ? false : !gate.ok;
+    const answer = finished ? resetPhaseText(reset.machine) : { tone: 'idle', text: '' };
+    setText(resetEls.state, answer.text);
+    if (resetEls.state) resetEls.state.dataset.tone = answer.tone;
+    setText(resetEls.reason, finished ? '' : gate.reason);
+  }
+
+  /**
+   * One send, then the machine waits. The lines come from `resetGate`, so a Factory Reset cannot
+   * leave this function without the typed model — and nothing here loops back on failure.
+   */
+  async function sendReset() {
+    if (reset.machine) {
+      if (reset.machine.phase === 'done' || reset.machine.phase === 'failed') closeResetDialog();
+      return;
+    }
+    const gate = resetGate(reset.kind, {
+      link: linkState(),
+      model: reset.model,
+      typed: reset.typed,
+      confirmed: true,
+    });
+    if (!gate.ok) {
+      renderReset();
+      return;
+    }
+    reset.machine = resetBegin(reset.kind, {
+      at: Date.now(),
+      session: live.session,
+      model: reset.model,
+    });
+    reset.verifySent = false;
+    startResetTimer();
+    renderReset();
+    for (const line of gate.lines) {
+      try {
+        const status = await api.post('/api/live/command', { line });
+        if (status && status.lastError) {
+          reset.machine = resetObserve(reset.machine, {
+            type: 'error',
+            at: Date.now(),
+            reason: `The receiver refused “${line}”: ${status.lastError}`,
+          });
+          renderReset();
+          return;
+        }
+      } catch (error) {
+        reset.machine = resetObserve(reset.machine, {
+          type: 'error',
+          at: Date.now(),
+          reason: `POST /api/live/command failed for “${line}”: ${error.message}`,
+        });
+        renderReset();
+        return;
+      }
+    }
+  }
+
+  /** The panel's own 900 ms poll, fed into the wait: drop first, then a session, then VERSION. */
+  function feedResetLink() {
+    if (!reset.machine) {
+      /* An open dialog with nothing sent yet: a session may have appeared (or gone) while it sat
+       * there, and the button has to follow that. No command is ever sent from here. */
+      if (el.reset && !el.reset.hidden && reset.kind) renderReset();
+      return;
+    }
+    const before = reset.machine.phase;
+    const next = resetObserve(reset.machine, {
+      type: 'link',
+      connected: live.connected,
+      session: live.session,
+      at: Date.now(),
+    });
+    if (next.phase === before) return;
+    reset.machine = next;
+    if (next.phase === 'awaiting-version' && !reset.verifySent) {
+      reset.verifySent = true;
+      void sendVerifyLine();
+    }
+    renderReset();
+  }
+
+  /** `LOG VERSIONB ONCE` — the log the original takes before a restart, read once afterwards. */
+  async function sendVerifyLine() {
+    try {
+      await api.post('/api/live/command', { line: RESET_VERIFY_LINE });
+    } catch (error) {
+      if (!reset.machine) return;
+      reset.machine = resetObserve(reset.machine, {
+        type: 'error',
+        at: Date.now(),
+        reason: `VERSION read-back “${RESET_VERIFY_LINE}” could not be sent: ${error.message}`,
+      });
+      renderReset();
+    }
+  }
+
+  /** A VERSION record from the stream: the end of a reset wait, or the Factory Reset token. */
+  function feedResetVersion(model) {
+    if (!el.reset || el.reset.hidden) return;
+    if (!reset.machine) {
+      if (reset.kind !== 'factoryReset') return;
+      if (!model || normalizeModel(model) === normalizeModel(reset.model)) return;
+      reset.model = String(model);
+      if (resetEls.typeLabel) resetEls.typeLabel.textContent = resetTypeLabel();
+      renderReset();
+      return;
+    }
+    if (reset.machine.phase !== 'awaiting-version') return;
+    reset.machine = resetObserve(reset.machine, { type: 'version', model, at: Date.now() });
+    renderReset();
+  }
+
   /**
    * Everything the Status dashboard knows about the live link. `latest`/`ranges`/`satvis` are fed
    * incrementally from `/api/live/logs?after=<cursor>` so the device's one-shot VERSION record
@@ -2024,6 +2573,9 @@ export function mount(root, ctx = {}) {
         live.cursor = Number(page.cursor) || live.cursor;
         for (const entry of page.entries ?? []) {
           applyLiveEntry(entry);
+          if (entry.messageId === VERSION_LOG && entry.data?.kind === 'version') {
+            feedResetVersion(entry.data.model);
+          }
           if (term.open && !term.backfilling) termAppend(entry.ascii || `#${entry.messageId} ${entry.name} ${entry.time}`);
         }
       } catch (error) {
@@ -2035,6 +2587,7 @@ export function mount(root, ctx = {}) {
 
     live.connected = connected;
     termStatus(termStatusText(status));
+    feedResetLink();
 
     /* A session opened from the Terminal (or before this page mounted) takes over the dashboard. */
     if (connected && !state.open) {
@@ -3715,6 +4268,8 @@ export function mount(root, ctx = {}) {
     else if (TOOLS_PAGES.has(key)) void openConfigDrawer(key);
     else if (key === 'exportCfg') openDeviceModal('export');
     else if (key === 'importCfg') openDeviceModal('import');
+    else if (key === 'restart') openResetDialog('restart');
+    else if (key === 'factoryReset') openResetDialog('factoryReset');
   };
   const onConfigClick = (event) => {
     const node = event.target.closest('[data-config]');
@@ -3750,6 +4305,18 @@ export function mount(root, ctx = {}) {
       void parseCfg();
     };
     reader.readAsText(file);
+  };
+  const onResetClick = (event) => {
+    const node = event.target.closest('[data-reset]');
+    if (!node) return;
+    const action = node.dataset.reset;
+    if (action === 'close' || action === 'cancel') closeResetDialog();
+    else if (action === 'go') void sendReset();
+  };
+  const onResetInput = (event) => {
+    if (!event.target.matches('[data-reset="typed"]')) return;
+    reset.typed = event.target.value;
+    renderReset();
   };
   const onTermClick = (event) => {
     const button = event.target.closest('[data-term]');
@@ -3804,6 +4371,10 @@ export function mount(root, ctx = {}) {
     el.terminal.addEventListener('click', onTermClick);
     el.terminal.addEventListener('submit', onTermSubmit);
   }
+  if (el.reset) {
+    el.reset.addEventListener('click', onResetClick);
+    el.reset.addEventListener('input', onResetInput);
+  }
 
   let offCapture = null;
   if (typeof ctx.onCaptureChange === 'function') {
@@ -3836,6 +4407,11 @@ export function mount(root, ctx = {}) {
       el.terminal.removeEventListener('click', onTermClick);
       el.terminal.removeEventListener('submit', onTermSubmit);
     }
+    if (el.reset) {
+      el.reset.removeEventListener('click', onResetClick);
+      el.reset.removeEventListener('input', onResetInput);
+    }
+    stopResetTimer();
     if (appTab) {
       appTab.removeEventListener('click', onAppTabClick);
       appTab.remove();

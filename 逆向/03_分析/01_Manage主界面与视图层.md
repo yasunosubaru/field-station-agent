@@ -1563,3 +1563,108 @@ node --test --test-force-exit "packages/*/test/*.test.ts"   # 1014 项 / 1014 pa
 `01-warning-1.png`、`02-warning-restored-3.png`、`03-detect-none.png`、
 `04-detect-restored-all.png`、`05-spectral-period-500.png`、`06-spectral-restored-200.png`、
 `07-hdr-l1-cic3-rejected.png`、`08-bandpass-rejected.png`、`09-progfilter-rejected.png`。
+
+## 16. Device ▸ Restart / Factory Reset（B/A−B 补齐，2026-11-02，无接收机）
+
+原版这两个动作在 `view/deviceRestart/deviceRestart.js`，页面是 `deviceRestart.html`（"RESTART /
+DEVICE / FACTORY_RESET / NEED_HELP / ERASE_LUA" 五个 `data-lang-*`，加 `#restartBtn` / `#fresetBtn` /
+`#erase-nvm` 三个入口）。视图层早已有逐行对照的 `packages/view/src/config/deviceRestart.ts`（Longhorn
+分支、MarinePak LUA 状态机都在那里）；本轮补的是 **Manage 面板上的两个固定动作**，并把命令串、确认
+门槛、断线/超时等待做成纯函数，UI 只接线。
+
+### 16.1 原版到底发什么（量出来的，不是猜的）
+
+| 动作 | 原版路径 | 实际命令 |
+|---|---|---|
+| Restart（GIII） | `deviceRestart.js:78-86` | 先 `LOG  VERSIONB ONTIME 1\n`（注意 `LOG` 后两个空格，是 shipped 字面量），再 `RESET\n`；`loadingTime` 60000 |
+| Restart（其余机型） | `deviceRestart.js:96` → `genericConfig.sendCommand(...,'reset')` | **二进制** `reset`，messageId **18**（`NovatelIdConstants.commandsAndEnums.reset`），无参数；ASCII 拼法就是 `RESET` |
+| Factory Reset | `deviceRestart.js:218-221` → `'freset'` | **二进制** `freset`，messageId **20**，唯一参数 `target` = `STANDARD`（enum **0**，4 字节；该表另有 `COMMAND 1 / GPSALMANAC 2 / USER_ACCOUNTS 60`，原版**从不**发它们）。ASCII：`FRESET STANDARD`，没有第二个参数 |
+| Erase NVM（`#erase-nvm`） | `deviceRestart.js:103-110` | 两条命令**之前**追加六行：`SOFTLOADRESET`、`SOFTLOADSREC "S0~P~M7QP,…,PIM7500C"`、`SOFTLOADSREC "S0~V~DEV-LOAD"`、`SOFTLOADSREC "S0~T~DATA1"`、`SOFTLOADSREC "S30900000000FFFFFFFFFA"`、`SOFTLOADCOMMIT` |
+| Restart（Longhorn） | `deviceRestart.js:112-153` | `Edie.pimtpframer_api().getresetframe()` 的 PIMTP 帧 + 关连接/重连；**本机不适用**（无原生 addon，抓包里也没有 Longhorn 机型） |
+
+确认文案取自 shipped 英文词典 `view/languageSupport/en.js:951-957`，`%1` 是原版替换成 `<br> <br>`
+的段间距：
+
+- `RESTARTCONFIRMATION` = "Restart Confirmation"；`RECEIVERRESTART_1` = "Receiver will be restarted. %1 Are you sure you wish to restart the device?"
+- `FACTORY_RESET_CONIFRM` = "Factory Reset Confirmation"；`FRESETMESSAGE` = "A factory reset will revert the receiver back to factory default.%1 Are you sure you wish to reset the device?"
+
+面板把 `%1` 两侧拆成两段（陈述句 + 问句），**逐字**相同；测试直接从 `en.js` 里读这四条来比对，而不是
+在本文件里重打一遍。
+
+### 16.2 面板怎么接的
+
+`Device ▾` 菜单在 Update 之后多了两个固定叶子：**Restart…** / **Factory Reset…**（`RESET_ACTIONS` 提供
+文案），点开是同一个模态框 `mg-reset`（不是配置页，因为它不产生配置状态）。
+
+- 框里固定显示 **LINE SENT** 与将要发出的那一行（`RESET` / `FRESET STANDARD`），所以截图与测试都能
+  直接读到命令串；
+- **Restart**：命令按钮"Restart device"就是确认（等价原版 Yes/No 弹窗的 Yes），点一次发一次；
+- **Factory Reset**：按钮**默认 `disabled`**，输入框要求输入"接收机自己报的机型"（VERSION #37）。机型
+  还没到时按钮**永远**不亮——不拿抓包文件名或机型猜一个令牌；输入比较去空格、忽略大小写；
+- **无 live link**：两个动作都拒绝，并显示同一句 note ——`/api/live/command` 会回 "not connected"，
+  不是排队；
+- 发送后进状态机：`awaiting-drop`（等链路断）→ `awaiting-link`（等会话回来，**不自动重连**，要去
+  Terminal 连）→ `awaiting-version`（面板发一次 `LOG VERSIONB ONCE`）→ `done`；每段都有上限
+  （30 s / 60 s / 60 s），到点即 `failed` 并写明是哪一段超时；
+- **失败不重试**：`resetObserve` 没有 retry 转移，`done` / `failed` 是终态；测试把 tick / link / version /
+  error 逐个打到终态上，状态不变。
+
+回读为什么用 `LOG VERSIONB ONCE`：`VERSIONB` 正是原版在重启**前**订阅的那条日志
+（`deviceRestart.js:80`），但 `ONTIME 1` 会留下一条持续日志，所以回读用套件自己的 `LOG … ONCE`
+一次性形式，取 #37 解码出的 `model` 与重启前的机型比对（不同机型会标 warn，不会假装成功）。
+
+### 16.3 改动与判据
+
+- `packages/app/src/web/panels/manage.js`：`RESET_ACTIONS` / `RESET_TIMING` / `CLEAR_LUA_LINES` /
+  `NO_LINK_NOTE` / `RESET_VERIFY_LINE`、`resetCopy`、`normalizeModel`、`resetCommands`、`resetGate`、
+  `resetBegin`、`resetObserve`、`resetPhaseText`（全部纯函数）+ 菜单两项 + `mg-reset` 模态框 + 接线
+  （`openResetDialog` / `sendReset` / `feedResetLink` / `feedResetVersion`，`livePoll` 把自身的连接
+  状态与 VERSION #37 喂给状态机）。
+- `packages/app/src/web/panels/manage.css`：`.mg-reset*`（复用 `.mg-cfg` 的 560 px 模态尺度，确认
+  按钮只在 gate 打开后转成错误色）。
+- `packages/app/test/manage-restart.test.ts`（新，22 项）：两条命令串与"没有第二个参数"、erase 六行、
+  文案与 `en.js` 逐字比对、Restart 确认门槛、Factory Reset 四种拒绝（无机型 / 空 / 错 / 前缀）与
+  正确解锁、无 link 的 note、drop→重连→VERSION 全流程、机型不一致、两次轮询之间完成的快速重启、
+  三段各自超时、POST 被拒即失败、终态不可复活、回读行是 `LOG VERSIONB ONCE`、菜单与"只有 gate
+  能给命令行"的接线断言。
+
+```powershell
+cd 逆向\04_重实现
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 1214 项 / 1214 pass / 0 fail（含本轮 22）
+```
+
+全量：一次 `1214 / 1214 pass / 0 fail`。再次全量时命中了仓库里已知的偶发项
+`session.test.ts:237`（心跳计数 `8 !== 2`，见 §15.6 记录过的同一条），单独跑
+`packages/session` 为 11/11 全过；`manage*` 两次全量均为绿。中途还出现过 17 项 `pdf-unicode` /
+`graph-pdf` 红（`pdf.ts` 的 `ReferenceError: tileCacheDir is not defined`），那是同一工作区另一个
+任务的中间态，与本轮文件无关，其改完后即消失。
+
+### 16.4 端到端（无接收机）
+
+用一个**普通 TCP socket**（不是接收机、不是抓包）当链路，面板 Terminal 连上去后：
+
+| 检查 | 结果 |
+|---|---|
+| live 链路上点 Restart 前的按钮 | 可用（`goDisabled: false`） |
+| 点一次之后 `POST /api/live/command` | **恰好一条** `{"line":"RESET"}` |
+| socket 实际收到的字节 | `RESET\r\n` |
+| 对话框状态 | "Command sent — waiting for the link to drop…"，按钮变灰、`data-tone=busy` |
+| 同一链路上 Factory Reset（机型未知） | 按钮仍 `disabled`，原因："has not reported its model yet (VERSION #37)…"；输入 `OEM729` **不**解锁；**没有发出任何 `FRESET`** |
+| console / pageerror | 0 / 0 |
+
+截图 `%TEMP%\opencode\agent-restart\`：`01-device-menu.png`（Device ▾ 里两个新叶子）、
+`02-restart-confirm.png`（Restart 确认框，抓包回放模式 → 无 link 的 note，按钮灰）、
+`03-factory-reset-confirm.png`（确认框 + 机型输入框，仍灰）、
+`04-restart-sent.png`（TCP 测试链路上发送后，等链路断开）、
+`05-factory-reset-live-no-model.png`（有 link 但机型未知，仍灰）。
+
+### 16.5 本轮没做到
+
+1. **Factory Reset 没有在真机上执行**——本机没有测试机，只验证了命令串、确认门槛和 UI。真机上要验
+   `FRESET STANDARD` 的 `<OK` 与重启，以及恢复后配置页是否真的回到默认值。
+2. **`#erase-nvm` 没有画进对话框**：`resetCommands(kind, { eraseNvm: true })` 已按原版量出六行并有
+   测试，但面板没有那个勾选框（原版 `ERASE_LUA` 属于 MarinePak 的 LUA 清除，风险更高）。
+3. **Longhorn 分支**只在视图层 `deviceRestart.ts` 里镜像；本面板没有原生 addon，不做 PIMTP 帧。
+4. **断线后不自动重连**：与服务端 `LiveLink` 的既有行为一致（没有 auto-reconnect），所以对话框只能
+   提示去 Terminal 重连再回读 VERSION；如果将来加上重连，`feedResetLink` 已经按"新会话 id"识别，
+   不需要改状态机。

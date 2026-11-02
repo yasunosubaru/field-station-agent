@@ -1869,6 +1869,203 @@ body[data-page="manage"] #tabs-list li.mg-filetabs:not([hidden]) {
   overflow-wrap: anywhere;
 }
 
+/* --------------------------------------- Device ▸ Restart / Factory Reset ----------- */
+/* The original's `deviceRestart.html` dialog is a 560 × 280 popup on the tab; here it is the same
+ * modal sheet as the `.cfg` pair, so the two destructive actions cannot be mistaken for a page. */
+.manage-panel .mg-reset {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.manage-panel .mg-reset[hidden] {
+  display: none;
+}
+
+.manage-panel .mg-reset-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 94vw);
+  background: #ffffff;
+  border: 1px solid #6d6d6d;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+}
+
+.manage-panel .mg-reset-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px;
+  background: #2b2b2b;
+  color: #ffffff;
+  font-family: var(--mg-semi);
+  font-size: 14px;
+}
+
+.manage-panel .mg-reset-close {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.manage-panel .mg-reset-body {
+  padding: 14px 16px 10px;
+  font-family: var(--mg-sans);
+  font-size: 13px;
+  color: #262626;
+}
+
+.manage-panel .mg-reset-text,
+.manage-panel .mg-reset-question {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.manage-panel .mg-reset-question {
+  font-family: var(--mg-semi);
+}
+
+.manage-panel .mg-reset-cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 7px 10px;
+  background: #f4f4f4;
+  border: 1px solid #dcdcdc;
+}
+
+.manage-panel .mg-reset-cmd-label {
+  color: var(--mg-ink-60);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.manage-panel .mg-reset-cmd code {
+  font-family: var(--mg-mono, "Consolas", monospace);
+  font-size: 13px;
+  color: #005170;
+}
+
+.manage-panel .mg-reset-type {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--mg-ink-60);
+}
+
+.manage-panel .mg-reset-type[hidden] {
+  display: none;
+}
+
+.manage-panel .mg-reset-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #c4c4c4;
+  font-family: var(--mg-mono, "Consolas", monospace);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.manage-panel .mg-reset-input:disabled {
+  background: #f4f4f4;
+  color: #8a8a8a;
+}
+
+.manage-panel .mg-reset-state {
+  margin: 0 0 8px;
+  font-family: var(--mg-semi);
+  font-size: 12.5px;
+  line-height: 18px;
+  color: #555555;
+}
+
+.manage-panel .mg-reset-state[data-tone="busy"] {
+  color: var(--mg-teal);
+}
+
+.manage-panel .mg-reset-state[data-tone="good"] {
+  color: #417605;
+}
+
+.manage-panel .mg-reset-state[data-tone="warn"] {
+  color: #8a4b00;
+}
+
+.manage-panel .mg-reset-state[data-tone="bad"] {
+  color: #a00214;
+}
+
+.manage-panel .mg-reset-reason {
+  margin: 0;
+  color: #8a4b00;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.manage-panel .mg-reset-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.manage-panel .mg-reset-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--mg-teal);
+  background: #ffffff;
+  color: var(--mg-teal);
+  font-family: var(--mg-semi);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.manage-panel .mg-reset-btn:hover:not(:disabled) {
+  background: var(--mg-teal);
+  color: #ffffff;
+}
+
+.manage-panel .mg-reset-btn:disabled {
+  border-color: #c4c4c4;
+  color: #a2a2a2;
+  cursor: not-allowed;
+}
+
+/* The one action that destroys state carries the error colour, and it only lights up once its
+ * gate is open (a live link, plus the typed model for a factory reset). */
+.manage-panel .mg-reset-btn-go:not(:disabled) {
+  border-color: #a00214;
+  color: #a00214;
+}
+
+.manage-panel .mg-reset-btn-go:hover:not(:disabled) {
+  background: #a00214;
+  color: #ffffff;
+}
+
+.manage-panel .mg-reset-btn-quiet {
+  border-color: #a2a2a2;
+  color: #555555;
+}
+
+.manage-panel .mg-reset-btn-quiet:hover:not(:disabled) {
+  background: #555555;
+  color: #ffffff;
+}
+
 /* =============================================================================
  * 10. §2.3.4 … §2.3.12 tiles — Ports, Logging, PPP Corrections, Radio, ALIGN, SPAN and
  *     Satellite Tracking.
