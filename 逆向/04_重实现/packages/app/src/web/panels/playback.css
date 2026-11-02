@@ -1974,3 +1974,34 @@ body[data-page="playback"] #tabs-list li.pb-filetabs:not([hidden]) {
   line-height: 17px;
   text-align: center;
 }
+
+/* --------------------------------------------------------------------------------------------
+ * Dark odds and ends the token flip cannot reach: the sky-plot legend block is painted #ddd,
+ * the dock button's label is black, and the sky disc mirrors .mg-sky-disc in manage.css.
+ * ------------------------------------------------------------------------------------------ */
+body.darkMode .playback-panel .tracked-legends {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+body.darkMode .playback-panel .tracked-legends p {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .playback-panel .pb-dock-btn,
+body.darkMode .playback-panel .pb-dock-btn span {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .playback-panel .pb-sky-disc {
+  fill: #2a2a2a;
+  stroke: rgba(255, 255, 255, 0.6);
+}
+
+
+/* The dock is a dark floating control in both themes; its label used shell.css `span` black. */
+.playback-panel .pb-dock-btn span,
+.playback-panel .pb-dock-btn .pb-caret {
+  color: inherit;
+}
+

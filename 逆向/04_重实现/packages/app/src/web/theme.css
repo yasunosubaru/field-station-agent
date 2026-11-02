@@ -43,6 +43,13 @@ body.darkMode .receiver-count span {
   color: RGBA(255, 255, 255, 0.87); /* S:23247 */
 }
 
+/* Every other span follows its parent instead of the light-only `span { color: #000 }` in
+ * shell.css. `inherit`, not white: a span inside a light card (a dialog, the Convert card) must
+ * stay dark, which is exactly what made the old blanket white rule unreadable. */
+body.darkMode span {
+  color: inherit;
+}
+
 /* S:23279-23281 轨道 / S:23287-23291 滑块（滑块本身两套主题都是 RGB(155,155,155)） */
 body.darkMode ::-webkit-scrollbar {
   width: 8px;
@@ -350,6 +357,22 @@ body.darkMode .playback-panel {
   --nas-teal-dark: RGB(60, 170, 200); /* S:24377-24381 */
 }
 
+/* playback.css reads its own token names (`--pb-*`), so the block above never reached it: the
+ * tiles were painted dark by the rule below while their text stayed `rgba(0,0,0,.87)` — the
+ * Playback dashboard was black text on #2e2e2e (2026-11-02 report). Keep the two token sets in
+ * step. */
+body.darkMode .playback-panel {
+  --pb-ink: RGBA(255, 255, 255, 0.87);
+  --pb-ink-60: RGBA(255, 255, 255, 0.6);
+  --pb-ink-38: RGBA(255, 255, 255, 0.38);
+  --pb-rule: RGBA(255, 255, 255, 0.16);
+  --pb-surface: RGBA(255, 255, 255, 0.08);
+  --pb-band: #1b1b1b;
+  --pb-band-rule: #3d3d3d;
+  --pb-teal: RGB(60, 170, 200);
+  --pb-teal-dark: RGB(60, 170, 200);
+}
+
 /* 卡片 / 面板框：浅色 #FCFCFC + 1px #005170（S:3928-3934 / S:3866）
  * → 深色 RGBA(255,255,255,0.12) + 1px #27A0BF（S:23415-23418） */
 body.darkMode .manage-panel .tile,
@@ -507,3 +530,64 @@ body.darkMode .playback-panel .player {
 body.darkMode .theme-toggle {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4.2'/><path d='M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6'/></svg>");
 }
+
+/* ============================================================================================
+ * Dark-mode gaps found by the contrast audit (2026-11-02). Each selector is a literal colour in
+ * a panel stylesheet that the token flip cannot reach.
+ * ========================================================================================== */
+
+/* Manage — Ports tile: the state accents were the light-theme greens/reds. */
+body.darkMode .manage-panel .mg-port-state[data-tone="good"] { color: #8fd15a; }
+body.darkMode .manage-panel .mg-port-state[data-tone="bad"] { color: #ff8089; }
+body.darkMode .manage-panel .mg-port-state[data-tone="warn"] { color: #f5b95a; }
+
+/* Convert — the file header and "Output Settings" sit on the dark page, not on the white card. */
+body.darkMode .convertLayout .file-label,
+body.darkMode .convertLayout .single-file-name,
+body.darkMode .convertLayout .size-colon,
+body.darkMode .convertLayout .single-file-size,
+body.darkMode .convertLayout .output-title {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+/* GRIT — the Map/Satellite switch is painted white, the tile tools stayed black, and the
+ * mitigation toggle keeps the light-theme teal on a dark tile. */
+body.darkMode .grit-page .grit-pos-tab {
+  background: #1b1b1b;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: #4a4a4a;
+}
+
+body.darkMode .grit-page .grit-pos-tab.is-active {
+  background: #00516f;
+  color: #ffffff;
+  border-color: #27a0bf;
+}
+
+body.darkMode .grit-page .grit-poi-btn {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .grit-page .grit-mitigation-toggle {
+  color: #7fd4ee;
+}
+
+
+/* Manage — Tracking tab's constellation chips keep the light background. */
+body.darkMode .manage-panel .mg-track-const,
+body.darkMode .manage-panel .mg-track-metric {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #4a4a4a;
+}
+
+/* Convert — panel stylesheets load after theme.css, so match one level deeper. */
+body.darkMode .convertLayout .size-group .single-file-size {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+
+/* .single-file-size carries color: var(--cv-ink) !important; the header sits on the dark page. */
+body.darkMode .convertLayout .single-file-size {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
