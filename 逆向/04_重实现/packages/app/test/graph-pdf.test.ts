@@ -14,6 +14,9 @@
  *  - the chart names and the project's six comment fields are findable in the uncompressed content
  *    streams (text is not encrypted or compressed, so a plain search must succeed);
  *  - a fixed `generatedAt` gives the same bytes twice, and the file stays well under 200 KB;
+ *  - the page map, the cover's `Message Summary` (read from `DataSummary.json`, the four messages
+ *    the plots use, in the original's order) and page 2's Esri basemap — embedded JPEG tiles when
+ *    the network is reachable, an explicit fallback sentence when it is not;
  *  - `pdftotext` on the file we write puts the same titles on the same page as `pdftotext` on the
  *    original (skipped when poppler is not installed);
  *  - the HTTP route returns the same document with `application/pdf` and a `.pdf` disposition.
@@ -35,8 +38,12 @@ import {
   graphPdfFileName,
   graphPdfOrder,
   graphPdfReport,
+  messageSummaryRows,
+  PDF_BASEMAP_ATTRIBUTION,
   PDF_CHARTS_PER_PAGE,
   PDF_PAGE,
+  PDF_TILE_CACHE_ENV,
+  pdfTileCacheDir,
 } from '../src/pdf.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -92,6 +99,11 @@ function latin1(bytes: Buffer): string {
   return bytes.toString('latin1');
 }
 
+/** A content stream escapes `(`, `)` and `\`; compare what a reader would see. */
+function readable(page: string): string {
+  return page.replace(/\\([()\\])/g, '$1');
+}
+
 test('the report is a valid PDF 1.4 with the original page map and exact xref offsets', () => {
   const bytes = document_();
   const text = latin1(bytes);
@@ -129,7 +141,9 @@ test('the report is a valid PDF 1.4 with the original page map and exact xref of
   assert.equal(pages, expected, 'one information page, then two charts per sheet');
   assert.match(text, new RegExp(`/Type /Pages /Kids \\[[^\\]]+\\] /Count ${expected} >>`), 'page tree count');
 
-  const streams = [...text.matchAll(/stream\n([\s\S]*?)\nendstream/g)];
+  // Content streams begin with `BT` (the header wordmark); basemap tiles are JPEG streams and must
+  // not be counted as pages.
+  const streams = [...text.matchAll(/stream\n(BT [\s\S]*?)\nendstream/g)];
   assert.equal(streams.length, pages, 'every page has one content stream');
   const all = streams.map((match) => match[1]).join('\n');
   for (const source of SOURCES) {
@@ -140,7 +154,9 @@ test('the report is a valid PDF 1.4 with the original page map and exact xref of
   }
   assert.ok(all.includes('(clean.gps)'), 'the data file name comes from the CSV comments');
 
-  assert.ok(bytes.length < 200_000, `document is small enough to download (${bytes.length} B)`);
+  // A vector-only report is ~137 KB; page 2's nine Esri tiles add ~130 KB of JPEG, so the ceiling
+  // is 400 KB — still a download, and smaller than the original's own 348 KB export.
+  assert.ok(bytes.length < 400_000, `document is small enough to download (${bytes.length} B)`);
   assert.equal(PDF_PAGE.width, 842, 'A4 landscape, the same page box the suite used');
   assert.equal(PDF_CHARTS_PER_PAGE, 2, 'two charts per sheet, as the original prints them');
   assert.equal(text.includes(`/MediaBox [0 0 ${PDF_PAGE.width} ${PDF_PAGE.height}]`), true);
@@ -164,9 +180,9 @@ test('one chart still gets its own information page, and the file name is the pr
 
 /* ---------------- the report's layout (read back from the content streams) ---------------- */
 
-/** One string per page, in page order — the pages are the only objects with a `stream`. */
+/** One string per page, in page order — content streams start with `BT`; tile streams are JPEG. */
 function pageStreams(bytes: Uint8Array): string[] {
-  return [...Buffer.from(bytes).toString('latin1').matchAll(/stream\n([\s\S]*?)\nendstream/g)]
+  return [...Buffer.from(bytes).toString('latin1').matchAll(/stream\n(BT [\s\S]*?)\nendstream/g)]
     .map((match) => match[1]);
 }
 
@@ -286,10 +302,14 @@ test('each card has its title, axis labels, legend and y-axis unit', () => {
   // Legend chip for the plotted column.
   assert.ok(heightPage.includes('(Height)'));
 
-  // The Overview track joins the fixes and says the original printed a map instead.
+  // The Overview track joins the fixes; page 2 carries the basemap or says why it could not.
   const track = pageWith('Trajectory Plot');
-  assert.match(track, /5 fixes joined into a track/, 'the track says what it is');
-  assert.match(track, /no basemap is embedded/, 'and that there is no basemap');
+  assert.match(track, /5 fixes from 2D Trajectory\.csv joined into a track/, 'the track says what it is');
+  assert.ok(
+    /Esri World Imagery basemap, zoom \d+/.test(track) || /basemap off - vector track only/.test(track)
+      || /failed \(curl exit \d+\)/.test(track),
+    'and whether it sits on a basemap or why it does not',
+  );
   assert.ok((track.match(/ l /g) ?? []).length >= 4, 'the fixes are joined by a polyline');
 });
 
@@ -300,7 +320,106 @@ test('a wide CSV keeps its card inside the point budget and says what it dropped
   assert.ok(vertices < 4_000, `the page is decimated, not every one of the 7 326 samples (${vertices})`);
   assert.match(page, /every \d+th sample drawn/, 'the page says the stride it used');
   assert.match(page, /\(\+ \d+ more\)/, 'the legend counts the columns it could not name');
-  assert.ok(REPORT.bytes.byteLength < 200_000, `the report is a download (${REPORT.bytes.byteLength} B)`);
+  assert.ok(REPORT.bytes.byteLength < 400_000, `the report is a download (${REPORT.bytes.byteLength} B)`);
+});
+
+/* ---------------- page 1's Message Summary and page 2's basemap ---------------- */
+
+/** The artefact the original's cover table is computed from. */
+const DATA_SUMMARY = JSON.parse(
+  readFileSync(join(SAMPLES_DIR, 'graph', 'project', 'DataSummary.json'), 'utf8'),
+) as unknown;
+
+test('the cover prints the original Message Summary, row for row', () => {
+  // The row set and order are the original's own algorithm (only the messages the plots consume),
+  // not "every key of Messages": PORTSTATS and RAWEPHEM have counts but no chart.
+  assert.deepEqual(messageSummaryRows(DATA_SUMMARY), [
+    { name: 'BESTPOS', count: 5 },
+    { name: 'RANGE', count: 100 },
+    { name: 'HWMONITOR', count: 1 },
+    { name: 'RXSTATUS', count: 4 },
+  ]);
+
+  const cover = PAGES[0];
+  assert.ok(cover.includes('(Message Summary)'), 'heading');
+  assert.ok(cover.includes('(Message Name)'), 'the original column label');
+  assert.ok(cover.includes('(Message Count)'), 'and its count column');
+  let previous = -1;
+  for (const [name, count] of [['BESTPOS', '5'], ['RANGE', '100'], ['HWMONITOR', '1'], ['RXSTATUS', '4']] as const) {
+    const at = cover.indexOf(`(${name})`);
+    assert.ok(at > previous, `${name} is printed after the previous row`);
+    previous = at;
+    assert.ok(cover.includes(`(${count})`), `${name} carries its count ${count}`);
+  }
+  assert.equal(cover.includes('PORTSTATS'), false, 'an unplotted message is not listed');
+  assert.equal(cover.includes('RAWEPHEM'), false, 'an unplotted message is not listed');
+  // The table sits in the cover's right column, above the chart summary, as the original orders them.
+  assert.ok(cover.indexOf('(Message Summary)') < cover.indexOf('(Chart Summary)'));
+});
+
+test('no DataSummary.json omits the table instead of inventing counts', () => {
+  const report = graphPdfReport(ORDERED, { generatedAt: GENERATED, dataSummary: null, basemap: 'vector' });
+  const cover = pageStreams(report.bytes)[0];
+  assert.equal(cover.includes('(Message Summary)'), false, 'no heading, no table');
+  assert.equal(cover.includes('(BESTPOS)'), false, 'no counts');
+  assert.ok(cover.includes('no DataSummary.json for this project'), 'the omission is stated');
+});
+
+test('page 2 carries Esri World Imagery tiles, or says why it fell back', () => {
+  const text = latin1(Buffer.from(REPORT.bytes));
+  const page = PAGES[1];
+  if (REPORT.basemap) {
+    const { zoom, tiles } = REPORT.basemap;
+    assert.equal(REPORT.basemap.provider, 'Esri World Imagery');
+    assert.ok(zoom >= 3 && zoom <= 19, `plausible zoom ${zoom}`);
+    assert.ok(tiles >= 1 && tiles <= 9, `${tiles} tiles`);
+    assert.equal(REPORT.basemap.attribution, PDF_BASEMAP_ATTRIBUTION);
+    // Every tile is a JPEG XObject and is drawn, in order.
+    assert.equal((text.match(/\/Subtype \/Image/g) ?? []).length, tiles, 'one image object per tile');
+    assert.equal((text.match(/\/Filter \/DCTDecode/g) ?? []).length, tiles, 'all JPEG');
+    assert.match(text, /\/XObject << \/Im1 \d+ 0 R/, 'the page names its images');
+    for (let at = 1; at <= tiles; at++) assert.ok(page.includes(`/${`Im${at}`} Do`), `tile ${at} is drawn`);
+    assert.ok(page.includes('Imagery \\251 Esri, Maxar, Earthstar Geographics'), 'the attribution is on the map');
+    assert.match(page, /Esri World Imagery basemap, zoom \d+/, 'the card says what the basemap is');
+    assert.ok(!page.includes('no basemap'), 'not the fallback');
+  } else {
+    assert.ok(REPORT.basemapNote.length > 0, 'the report records why');
+    assert.equal(text.includes('/DCTDecode'), false, 'no image objects at all');
+    assert.ok(readable(page).includes(REPORT.basemapNote), 'the card prints the reason');
+    assert.ok(!page.includes('Esri World Imagery basemap'), 'no basemap sentence');
+  }
+  // The track itself is always drawn, basemap or not.
+  assert.match(page, /5 fixes from 2D Trajectory\.csv joined into a track/);
+});
+
+test('basemap: vector skips the network and keeps the plain lat/lon frame', () => {
+  const report = graphPdfReport(ORDERED, { generatedAt: GENERATED, basemap: 'vector' });
+  const text = latin1(Buffer.from(report.bytes));
+  assert.equal(report.basemap, null);
+  assert.equal(report.basemapNote, 'basemap off - vector track only');
+  assert.equal(text.includes('/DCTDecode'), false, 'no JPEG');
+  assert.equal(text.includes('/XObject'), false, 'no image resources');
+  assert.equal(text.includes('Esri, Maxar, Earthstar Geographics'), false, 'no attribution without a map');
+  const pages = pageStreams(report.bytes);
+  assert.ok(pages[1].includes('basemap off - vector track only'), 'page 2 says it');
+  assert.ok(readable(pages[0]).includes('no basemap (basemap off - vector track only)'), 'and so does the cover');
+  assert.ok(pages[0].includes('(Message Summary)'), 'the cover table is unaffected');
+});
+
+test('the tile cache stays outside the repository and is configurable', () => {
+  const saved = process.env[PDF_TILE_CACHE_ENV];
+  try {
+    process.env[PDF_TILE_CACHE_ENV] = join(tmpdir(), 'app-pdf-tile-env');
+    assert.equal(pdfTileCacheDir(), join(tmpdir(), 'app-pdf-tile-env'), 'the environment variable wins');
+    assert.equal(pdfTileCacheDir({ tileCacheDir: join(tmpdir(), 'explicit') }), join(tmpdir(), 'explicit'), 'an option wins over it');
+  } finally {
+    if (saved === undefined) delete process.env[PDF_TILE_CACHE_ENV];
+    else process.env[PDF_TILE_CACHE_ENV] = saved;
+  }
+  const fallback = pdfTileCacheDir();
+  assert.ok(fallback.endsWith('nas-pdf-tiles'), `default cache directory: ${fallback}`);
+  assert.ok(fallback.startsWith(tmpdir()), 'under the OS temp directory');
+  assert.equal(fallback.startsWith(resolve(here, '..', '..', '..')), false, 'never inside the repository');
 });
 
 /* ---------------- measured against the original PDF ---------------- */
@@ -484,4 +603,28 @@ test('the panel downloads the route instead of opening the print dialog', () => 
   assert.match(panel, /\/api\/graph\/pdf\?project=/, 'the export asks the route for the project');
   assert.match(panel, /async function exportPdf\(/, 'and it is an async download, not a print');
   assert.match(panel, /else if \(kind === 'pdf'\) void exportPdf\(\)/, 'Export ▸ PDF is wired to it');
+});
+
+/**
+ * The real offline path, not the `basemap: 'vector'` switch: point the cache at an existing *file*
+ * so `mkdir` fails and the fetch cannot even start. Declared last on purpose — one failure marks
+ * the basemap off for the rest of this process (the memo that keeps a dead network from costing
+ * eight seconds per page), so every earlier test must already have built its documents.
+ */
+test('an unusable tile cache falls back with the reason on the card', () => {
+  const blocker = join(tmpdir(), `app-pdf-tile-blocker-${process.pid}`);
+  writeFileSync(blocker, 'not a directory');
+  try {
+    const report = graphPdfReport(ORDERED, { generatedAt: GENERATED, tileCacheDir: blocker });
+    assert.equal(report.basemap, null, 'no tiles were embedded');
+    assert.match(report.basemapNote, /cannot create the tile cache/, 'the cause is named');
+    const text = latin1(Buffer.from(report.bytes));
+    assert.equal(text.includes('/DCTDecode'), false, 'nothing to embed');
+    const pages = pageStreams(report.bytes);
+    assert.ok(readable(pages[1]).includes(report.basemapNote), 'page 2 prints it');
+    assert.match(pages[1], /5 fixes from 2D Trajectory\.csv joined into a track/, 'the vector track is still there');
+    assert.ok(pages[0].includes('(Message Summary)'), 'the cover is unaffected');
+  } finally {
+    rmSync(blocker, { force: true });
+  }
 });

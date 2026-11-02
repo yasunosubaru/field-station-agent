@@ -15,10 +15,20 @@
  * page 1       `<project> Report` centred
  *              Report Information   Generated Date
  *              Project Information  the six comment fields, same spellings as the CSVs
+ *              Message Summary      `Message Name` / `Message Count`, read from the project's
+ *                                   `DataSummary.json` and ordered exactly like the original:
+ *                                   `getPlotUsedLogInstances(PlotSummary, Messages)` keeps the
+ *                                   messages the plots actually consume, in first-use order
+ *                                   (`BESTPOS 5 / RANGE 100 / HWMONITOR 1 / RXSTATUS 4` for
+ *                                   `clean`). With no `DataSummary.json` the table is omitted and
+ *                                   the cover says so — a count is never invented.
  *              Chart Summary        one row per CSV: chart, section, rows, series, min, max, mean, page
- * page 2       `Trajectory Plot` on its own: the overview track, redrawn as a vector polyline from
- *              `2D Trajectory.csv`. The original prints a Leaflet tile image here; a screenshot is
- *              not allowed to stand in for it, so the same fixes are drawn as a track instead.
+ * page 2       `Trajectory Plot` on its own: an **Esri World Imagery** tile basemap under the
+ *              overview track. Tiles come from the public ArcGIS REST endpoint, are cached on disk
+ *              (`<os temp>/nas-pdf-tiles`, `NAS_PDF_TILE_CACHE` to move it) and go into the PDF as
+ *              JPEG `/DCTDecode` XObjects, clipped to the plot box. When the network is down the
+ *              same fixes are drawn on the plain lat/lon frame and the card says what failed —
+ *              a screenshot is never used, and no map is ever faked.
  * page 3..     **two chart cards per sheet**, in the original's own grouping — measured, not
  *              guessed (`pdftotext -layout` page by page):
  *                `PVT`   Position Type + Position Status
@@ -36,14 +46,14 @@
  * The page count is therefore `1 + 1 + ceil(rest / 2)` — eight for the 12-CSV `clean` project,
  * the number the original prints (`1/8` … `8/8`).
  *
- * What is **not** copied, because the data is not here: the original's `Message Summary` table
- * (BESTPOS 5, RANGE 100 …) needs `DataSummary.json`, which no route serves, so inventing counts
- * would be dishonest; its legend chips (`All`, `GPS L1`) are interactive filters, and a static PDF
- * has nothing to filter. The charts are redrawn from the CSVs — nothing is a screenshot, and no
- * number is made up: a chart whose column cannot be read says so on the page.
+ * What is **not** copied, because the data is not here: the original's legend chips (`All`,
+ * `GPS L1`) are interactive filters, and a static PDF has nothing to filter. The charts are
+ * redrawn from the CSVs — nothing is a screenshot, and no number is made up: a chart whose column
+ * cannot be read says so on the page.
  *
- * Everything is ASCII by default and uncompressed: the object table is written in a fixed order,
- * every string can be found with a plain text search, and the `xref` holds exact byte offsets — the
+ * Everything is ASCII (bar the `©` in the map attribution, a single WinAnsi byte) and
+ * uncompressed: the object table is written in a fixed order, every string can be found with a
+ * plain text search, and the `xref` holds exact byte offsets — the
  * test reads them back and checks that each one really points at its `N 0 obj`. ASCII text uses the
  * base-14 `Helvetica` / `Helvetica-Bold` referenced by name (`/WinAnsiEncoding`), never embedded.
  *
@@ -59,6 +69,11 @@
  * column of a wide table); this one exists so the **app** can serve a download with its own layout
  * (header/footer chrome, two charts per sheet, the chart summary table on the cover).
  */
+
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 
 import {
   CJK_FONT_OBJECTS,
@@ -77,6 +92,7 @@ import {
   type PdfFontOptions,
   type TrueTypeFace,
 } from '../../graph/src/pdf-font.ts';
+import { SAMPLES_DIR } from './paths.ts';
 
 /** A4 landscape, in points — the page box the suite's own report was printed at. */
 export const PDF_PAGE = { width: 842, height: 595 } as const;
@@ -113,6 +129,20 @@ export interface GraphPdfOptions extends PdfFontOptions {
    * a path → that file only; `null` → never embed (forced old behaviour: non-ASCII becomes `?`).
    */
   cjkFontPath?: string | null;
+  /**
+   * Page 2's basemap. `'auto'` (the default) fetches Esri World Imagery tiles and caches them on
+   * disk; `'vector'` skips the network entirely and draws the plain lat/lon frame, which is also
+   * what any fetch failure falls back to.
+   */
+  basemap?: 'auto' | 'vector';
+  /** Tile cache directory; default `NAS_PDF_TILE_CACHE`, else `<os temp>/nas-pdf-tiles`. */
+  tileCacheDir?: string;
+  /**
+   * The project's `DataSummary.json`, parsed. `undefined` → look for it beside the project's
+   * `.gpf` in `samples/graph/project/`; `null` → never read one (the cover then says the Message
+   * Summary is omitted). A summary is never synthesised from the CSVs.
+   */
+  dataSummary?: unknown;
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -287,6 +317,187 @@ function xAxis(file: CsvFile): { kind: 'time' | 'index'; values: number[]; base:
 }
 
 /* ------------------------------------------------------------------------------------------------
+ * Message Summary — the original's cover table, computed from `DataSummary.json`
+ *
+ * The original does **not** print every entry of `Messages`. Its tile calls
+ * `getPlotUsedLogInstances(PlotSummary, Messages)`: walk the plot summary in tab order, keep the
+ * messages the charts actually consume (`filterByPriority` drops the ones a lower-priority sibling
+ * shadows), then keep those that carry a count. For `clean` that is exactly
+ * `BESTPOS 5 / RANGE 100 / HWMONITOR 1 / RXSTATUS 4`; `PORTSTATS` and `RAWEPHEM` have counts but no
+ * plot, and the original leaves them out. The same algorithm is ported here, so the rows and their
+ * order are the artefact's own, not a guess.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** The Graph tabs the original walks when it collects plot logs (`GRAPH_GROUPS_TABS`). */
+const GRAPH_GROUPS_TABS = ['GOS', 'PVT', 'Heading_Attitude', 'Tracking_Measurements', 'Receiver_Status'];
+
+/** `projects/DataSummary.json` is looked for under this file name. */
+export const DATA_SUMMARY_FILE = 'DataSummary.json';
+
+interface MessageRow {
+  name: string;
+  count: number;
+}
+
+type MessageSummary = { rows: MessageRow[]; source: string } | { omitted: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** `getUsedLogsForCharts`: every log name a chart object mentions, in first-use order. */
+function usedLogsForCharts(plotSummary: Record<string, unknown>): string[] {
+  const logs = new Set<string>();
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (isRecord(value)) {
+      for (const [key, child] of Object.entries(value)) {
+        if (child && typeof child === 'object') walk(child);
+        else logs.add(key);
+      }
+    }
+  };
+  for (const [key, value] of Object.entries(plotSummary)) {
+    if (GRAPH_GROUPS_TABS.includes(key)) walk(value);
+  }
+  return [...logs];
+}
+
+/** `highRankingLogNames`: the log(s) with the smallest count, or with the smallest numeric key. */
+function topNames(record: Record<string, unknown>): Set<string> {
+  let valueMin: number | null = null;
+  let valueNames: string[] = [];
+  let keyMin: number | null = null;
+  let keyNames: string[] = [];
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === 'number') {
+      if (valueMin === null || value < valueMin) {
+        valueMin = value;
+        valueNames = [key];
+      } else if (value === valueMin) valueNames.push(key);
+    } else if (typeof value === 'string' && !Number.isNaN(Number(key))) {
+      const numeric = Number(key);
+      if (keyMin === null || numeric < keyMin) {
+        keyMin = numeric;
+        keyNames = [key];
+      } else if (numeric === keyMin) keyNames.push(key);
+    }
+  }
+  return new Set([...valueNames, ...keyNames]);
+}
+
+function collectGnssLogs(section: Record<string, unknown>, top: Set<string>, all: Set<string>): void {
+  let list = section.GNSS;
+  if (!isRecord(list) || Object.keys(list).length === 0) list = section.INS;
+  if (!isRecord(list)) return;
+  for (const [key, value] of Object.entries(list)) {
+    if (isRecord(value)) {
+      if (Object.values(value).some((item) => typeof item === 'number')) {
+        for (const [nestedKey, nestedValue] of Object.entries(value)) {
+          if (typeof nestedValue === 'number') all.add(nestedKey);
+        }
+        for (const name of topNames(value)) top.add(name);
+        continue;
+      }
+    }
+    if (typeof value === 'string') all.add(value);
+    else if (typeof value === 'number') all.add(key);
+  }
+  const ranked = Object.entries(list).some(([key, value]) => typeof value === 'number'
+    || (!Number.isNaN(Number(key)) && typeof value === 'string'));
+  if (ranked) for (const name of topNames(list)) top.add(name);
+}
+
+function collectRemainingLogs(value: unknown, top: Set<string>, all: Set<string>): void {
+  if (!isRecord(value)) return;
+  if (value.GNSS || value.INS) return;
+  const entries = Object.entries(value);
+  const ranked = entries.some(([key, child]) => typeof child === 'number'
+    || (!Number.isNaN(Number(key)) && typeof child === 'string'));
+  if (ranked) {
+    for (const [key, child] of entries) {
+      if (typeof child === 'string') all.add(child);
+      else if (typeof child === 'number') all.add(key);
+    }
+    for (const name of topNames(value)) top.add(name);
+  }
+  for (const child of Object.values(value)) collectRemainingLogs(child, top, all);
+}
+
+/** `filterByPriority`: keep a log when it is unshadowed, or when it won its section. */
+function filterByPriority(plotSummary: Record<string, unknown>, logList: string[]): string[] {
+  const top = new Set<string>();
+  const all = new Set<string>();
+  for (const section of Object.values(plotSummary)) {
+    if (!isRecord(section)) continue;
+    collectGnssLogs(section, top, all);
+    collectRemainingLogs(section, top, all);
+  }
+  if (top.size === 0 && all.size === 0) return logList;
+  return logList.filter((log) => !all.has(log) || top.has(log));
+}
+
+/** The rows the original's `Message Summary` table prints, in its order. */
+export function messageSummaryRows(data: unknown): MessageRow[] {
+  if (!isRecord(data)) return [];
+  const messages = data.Messages;
+  const plotSummary = data.PlotSummary;
+  if (!isRecord(messages)) return [];
+  if (!isRecord(plotSummary)) return [];
+  const rows: MessageRow[] = [];
+  for (const name of filterByPriority(plotSummary, usedLogsForCharts(plotSummary))) {
+    const count = messages[name];
+    if (typeof count === 'number' && Number.isFinite(count)) rows.push({ name, count });
+  }
+  return rows;
+}
+
+/**
+ * The project's summary: `options.dataSummary` when given, else `DataSummary.json` beside the
+ * project's `.gpf` (how the shipped `clean` sample keeps it), the CSV comment's project directory,
+ * or `export/<project>/`. Nothing is derived from the CSVs themselves.
+ */
+function resolveMessageSummary(
+  project: string,
+  comments: Record<string, string>,
+  override: unknown,
+): MessageSummary {
+  if (override === null) return { omitted: 'no DataSummary.json for this project' };
+  const candidates: Array<{ path: string; guard?: string }> = [];
+  const recorded = comments['Project Directory'];
+  if (recorded) candidates.push({ path: join(recorded, DATA_SUMMARY_FILE) });
+  candidates.push({ path: join(SAMPLES_DIR, 'graph', 'export', project, DATA_SUMMARY_FILE) });
+  const projectRoot = join(SAMPLES_DIR, 'graph', 'project');
+  candidates.push({
+    path: join(projectRoot, DATA_SUMMARY_FILE),
+    guard: join(projectRoot, `${project}.gpf`),
+  });
+
+  let data: unknown = override;
+  let source = 'options.dataSummary';
+  if (data === undefined) {
+    for (const candidate of candidates) {
+      try {
+        if (candidate.guard && !existsSync(candidate.guard)) continue;
+        if (!statSync(candidate.path).isFile()) continue;
+        data = JSON.parse(readFileSync(candidate.path, 'utf8'));
+        source = candidate.path;
+        break;
+      } catch {
+        /* a missing or unreadable summary is not an error: the table is simply omitted */
+      }
+    }
+  }
+  if (data === undefined) return { omitted: 'no DataSummary.json for this project' };
+  const rows = messageSummaryRows(data);
+  if (!rows.length) return { omitted: 'DataSummary.json lists no plotted messages' };
+  return { rows, source };
+}
+
+/* ------------------------------------------------------------------------------------------------
  * Content-stream primitives
  * ---------------------------------------------------------------------------------------------- */
 
@@ -331,10 +542,28 @@ function literal(text: string): string {
     if (char === '(') out += '\\(';
     else if (char === ')') out += '\\)';
     else if (char === '\\') out += '\\\\';
+    else if (char in WINANSI_EXTRA) out += WINANSI_EXTRA[char];
     else if (code < 32 || code > 126) out += '?';
     else out += char;
   }
   return `(${out})`;
+}
+
+/**
+ * The few characters above ASCII that the base-14 faces still draw through
+ * `/WinAnsiEncoding`: their octal escape, so a run of them stays on `F1`/`F2` instead of pulling in
+ * the whole CJK TrueType face for one glyph. `©` is the only one this writer needs (the Esri
+ * attribution on page 2's map).
+ */
+const WINANSI_EXTRA: Record<string, string> = { '\u00A9': '\\251' };
+
+/** True when every character is ASCII or one of {@link WINANSI_EXTRA}. */
+function isWinAnsiText(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code > 0x7f && !(char in WINANSI_EXTRA)) return false;
+  }
+  return true;
 }
 
 function round(value: number): string {
@@ -349,7 +578,7 @@ function round(value: number): string {
  * two metrics never disagree about where a string ends.
  */
 function advance(value: string, size: number): number {
-  const cjk = cjkTextWidth(value, size);
+  const cjk = isWinAnsiText(value) ? null : cjkTextWidth(value, size);
   if (cjk !== null) return cjk;
   let em = 0;
   for (const char of value) {
@@ -381,7 +610,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
  * usable face is marked degraded here, so the cover can say `?` was substituted.
  */
 function cjkFaceFor(value: string): TrueTypeFace | null {
-  if (!hasNonAscii(value)) return null;
+  if (!hasNonAscii(value) || isWinAnsiText(value)) return null;
   const face = embeddedFace();
   if (!face) markCjkDegraded();
   return face;
@@ -711,8 +940,7 @@ function geomapModel(file: CsvFile, spec: ChartSpec): GeomapModel {
     track: overview && points.length > 1,
     note: points.length
       ? overview
-        ? `${points.length} fixes joined into a track - the original prints a Leaflet map here; `
-          + 'no basemap is embedded, so this is the same fixes on a plain lat/lon frame'
+        ? `${points.length} fixes from 2D Trajectory.csv joined into a track`
         : `${points.length} fixes${track ? '' : ' - all samples share one position, so this is a dot, not a track'}`
       : 'no Latitude / Longitude column in this CSV',
   };
@@ -977,6 +1205,319 @@ function legend(entries: Array<{ label: string; colour: string }>, x: number, y:
   return out;
 }
 
+/* ------------------------------------------------------------------------------------------------
+ * Page 2's basemap: Esri World Imagery raster tiles, fetched through curl and cached on disk
+ *
+ * The original's page 2 is a Leaflet map. A screenshot is not allowed to stand in for it, so the
+ * tiles themselves are pulled from the same public service Leaflet would use, cached outside the
+ * repository and embedded as JPEG (`/DCTDecode`) XObjects under the track. Everything is
+ * all-or-nothing: if one tile cannot be fetched the page falls back to the plain lat/lon frame and
+ * the card says what failed. No tile is ever fabricated, and no image is ever a screenshot.
+ *
+ * The fetch is synchronous (`spawnSync` + the `curl` every Windows 10+ ships) because the PDF
+ * writer is a pure function and its callers — the HTTP route included — are unchanged. The cache
+ * makes the second request free, and a single failure disables the basemap for the rest of the
+ * process instead of retrying on every page.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Where the tiles come from; `{z}/{y}/{x}` is the ArcGIS REST order, not `{x}/{y}`. */
+export const PDF_TILE_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
+/** The graphic the report prints — `©` is WinAnsi 0xA9, written as an octal escape below. */
+export const PDF_BASEMAP_ATTRIBUTION = 'Imagery \u00A9 Esri, Maxar, Earthstar Geographics';
+/** Environment variable that moves the on-disk tile cache (default `<os temp>/nas-pdf-tiles`). */
+export const PDF_TILE_CACHE_ENV = 'NAS_PDF_TILE_CACHE';
+
+const TILE_PIXELS = 256;
+/** Ceiling on embedded tiles: a 3 × 3 block is ~100 KB of JPEG, a 5 × 5 would bloat the download. */
+const MAX_TILES = 9;
+/** A track that never moves (the `clean` fixes are one point) still gets a ~240 m window. */
+const MIN_MAP_SPAN = 0.0022;
+/** Beyond this the bbox is more than one tile per point of resolution; step the zoom down. */
+const MAX_TILE_SPAN_PX = 900;
+
+interface EmbeddedImage {
+  data: Uint8Array;
+  width: number;
+  height: number;
+  /** JPEG components: 1 = greyscale, 3 = RGB (Esri serves RGB). */
+  components: number;
+}
+
+interface BasemapPlan {
+  kind: 'tiles';
+  zoom: number;
+  bounds: { lonMin: number; lonMax: number; latMin: number; latMax: number };
+  tiles: Array<EmbeddedImage & { x: number; y: number }>;
+  cacheDir: string;
+  attribution: string;
+}
+
+interface BasemapNone {
+  kind: 'none';
+  reason: string;
+}
+
+type Basemap = BasemapPlan | BasemapNone;
+
+/** Copies of what a page draws, in the order the content stream names them (`Im1`, `Im2` …). */
+interface ImageSink {
+  images: EmbeddedImage[];
+  add(image: EmbeddedImage): string;
+}
+
+function imageSink(): ImageSink {
+  const images: EmbeddedImage[] = [];
+  return {
+    images,
+    add(image) {
+      images.push(image);
+      return `Im${images.length}`;
+    },
+  };
+}
+
+/** Web Mercator, normalised to `0..1` from the north edge — the projection the tiles use. */
+function mercatorY(latitude: number): number {
+  const clamped = Math.max(-85.0511, Math.min(85.0511, latitude));
+  const radians = (clamped * Math.PI) / 180;
+  return (1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2;
+}
+
+function worldPixels(zoom: number): number {
+  return TILE_PIXELS * 2 ** zoom;
+}
+
+function lonToWorld(lon: number, zoom: number): number {
+  return ((lon + 180) / 360) * worldPixels(zoom);
+}
+
+function latToWorld(lat: number, zoom: number): number {
+  return mercatorY(lat) * worldPixels(zoom);
+}
+
+function worldToLon(px: number, zoom: number): number {
+  return (px / worldPixels(zoom)) * 360 - 180;
+}
+
+function worldToLat(py: number, zoom: number): number {
+  const n = Math.PI - (2 * Math.PI * py) / worldPixels(zoom);
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+/** Tile cache directory: option → environment → `<os temp>/nas-pdf-tiles`, never the repo. */
+export function pdfTileCacheDir(options: GraphPdfOptions = {}): string {
+  const configured = options.tileCacheDir ?? process.env[PDF_TILE_CACHE_ENV];
+  if (typeof configured === 'string' && configured.trim()) return configured.trim();
+  return join(tmpdir(), 'nas-pdf-tiles');
+}
+
+/** Width / height / components from a JPEG's SOF marker, so the PDF dictionary is never guessed. */
+function jpegInfo(data: Uint8Array): { width: number; height: number; components: number } {
+  let at = 2;
+  while (at + 9 < data.length) {
+    if (data[at] !== 0xff) {
+      at += 1;
+      continue;
+    }
+    const marker = data[at + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      at += 2;
+      continue;
+    }
+    if (marker === 0xda) break; // start of scan: no SOF follows
+    const length = (data[at + 2] << 8) | data[at + 3];
+    const isFrame = marker >= 0xc0 && marker <= 0xcf
+      && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isFrame) {
+      return {
+        height: (data[at + 5] << 8) | data[at + 6],
+        width: (data[at + 7] << 8) | data[at + 8],
+        components: data[at + 9],
+      };
+    }
+    if (length <= 0) break;
+    at += 2 + length;
+  }
+  return { width: TILE_PIXELS, height: TILE_PIXELS, components: 3 };
+}
+
+let curlUsable: boolean | null = null;
+/** One failure is remembered: the basemap is off for this process instead of retried per page. */
+let tileFailure: string | null = null;
+const tileMemory = new Map<string, Uint8Array | null>();
+
+function readTileFile(file: string): Uint8Array | null {
+  try {
+    const data = new Uint8Array(readFileSync(file));
+    if (data.length > 1024 && data[0] === 0xff && data[1] === 0xd8) return data;
+  } catch {
+    /* not cached yet */
+  }
+  return null;
+}
+
+/** One tile: disk cache first, then `curl`. `null` on any failure, with {@link tileFailure} set. */
+function fetchTile(zoom: number, x: number, y: number, cacheDir: string): Uint8Array | null {
+  const file = join(cacheDir, String(zoom), String(x), `${y}.jpg`);
+  if (tileMemory.has(file)) {
+    const remembered = tileMemory.get(file) ?? null;
+    if (remembered) return remembered;
+  }
+  const cached = readTileFile(file);
+  if (cached) {
+    tileMemory.set(file, cached);
+    return cached;
+  }
+  if (tileFailure) return null;
+
+  if (curlUsable === null) {
+    const probe = spawnSync('curl', ['--version'], { encoding: 'utf8', windowsHide: true });
+    curlUsable = !probe.error && probe.status === 0;
+  }
+  if (!curlUsable) {
+    tileFailure = 'curl is not installed';
+    return null;
+  }
+
+  const partial = `${file}.${process.pid}.${tileMemory.size}.part`;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+  } catch (error) {
+    tileFailure = `cannot create the tile cache: ${(error as Error).message}`;
+    return null;
+  }
+  const url = `${PDF_TILE_URL}/${zoom}/${y}/${x}`;
+  const result = spawnSync('curl', [
+    '-sS', '-f', '-L',
+    '--connect-timeout', '4', '--max-time', '8',
+    '-A', 'packages-app-pdf/1.0 (report writer)',
+    '-o', partial, url,
+  ], { encoding: 'utf8', timeout: 15_000, windowsHide: true });
+
+  if (result.error) {
+    tileFailure = `curl could not run: ${result.error.message}`;
+    try { unlinkSync(partial); } catch { /* nothing to remove */ }
+    return null;
+  }
+  if (result.status !== 0) {
+    tileFailure = `tile ${zoom}/${y}/${x} failed (curl exit ${result.status})`;
+    try { unlinkSync(partial); } catch { /* nothing to remove */ }
+    return null;
+  }
+  const downloaded = readTileFile(partial);
+  if (!downloaded) {
+    tileFailure = `tile ${zoom}/${y}/${x} was not a JPEG`;
+    try { unlinkSync(partial); } catch { /* nothing to remove */ }
+    return null;
+  }
+  try {
+    renameSync(partial, file);
+  } catch {
+    /* another process won the race; the bytes are the same image either way */
+    try { unlinkSync(partial); } catch { /* nothing to remove */ }
+  }
+  tileMemory.set(file, downloaded);
+  return downloaded;
+}
+
+/** The window page 2 shows: the fixes' own bbox, padded to a readable size and a little margin. */
+function basemapBounds(model: GeomapModel): BasemapPlan['bounds'] {
+  const centreLon = (model.lonMin + model.lonMax) / 2;
+  const centreLat = (model.latMin + model.latMax) / 2;
+  const halfLon = Math.max((model.lonMax - model.lonMin) / 2, MIN_MAP_SPAN / 2) * 1.12;
+  const halfLat = Math.max((model.latMax - model.latMin) / 2, MIN_MAP_SPAN / 2) * 1.12;
+  return {
+    lonMin: centreLon - halfLon,
+    lonMax: centreLon + halfLon,
+    latMin: Math.max(-85.05, centreLat - halfLat),
+    latMax: Math.min(85.05, centreLat + halfLat),
+  };
+}
+
+/** Largest zoom whose tile block stays within {@link MAX_TILES} and the resolution ceiling. */
+function chooseZoom(bounds: BasemapPlan['bounds']): number {
+  for (let zoom = 19; zoom >= 3; zoom -= 1) {
+    const x0 = Math.floor(lonToWorld(bounds.lonMin, zoom) / TILE_PIXELS);
+    const x1 = Math.floor(lonToWorld(bounds.lonMax, zoom) / TILE_PIXELS);
+    const y0 = Math.floor(latToWorld(bounds.latMax, zoom) / TILE_PIXELS);
+    const y1 = Math.floor(latToWorld(bounds.latMin, zoom) / TILE_PIXELS);
+    const span = lonToWorld(bounds.lonMax, zoom) - lonToWorld(bounds.lonMin, zoom);
+    if (span <= MAX_TILE_SPAN_PX && (x1 - x0 + 1) * (y1 - y0 + 1) <= MAX_TILES) return zoom;
+  }
+  return 3;
+}
+
+/** Decide and fetch the map; every tile must arrive or the whole layer is dropped. */
+function planBasemap(model: GeomapModel, options: GraphPdfOptions): Basemap {
+  if (options.basemap === 'vector') return { kind: 'none', reason: 'basemap off - vector track only' };
+  const bounds = basemapBounds(model);
+  const zoom = chooseZoom(bounds);
+  const cacheDir = pdfTileCacheDir(options);
+  const x0 = Math.floor(lonToWorld(bounds.lonMin, zoom) / TILE_PIXELS);
+  const x1 = Math.floor(lonToWorld(bounds.lonMax, zoom) / TILE_PIXELS);
+  const y0 = Math.floor(latToWorld(bounds.latMax, zoom) / TILE_PIXELS);
+  const y1 = Math.floor(latToWorld(bounds.latMin, zoom) / TILE_PIXELS);
+  const tiles: BasemapPlan['tiles'] = [];
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      const data = fetchTile(zoom, x, y, cacheDir);
+      if (!data) {
+        return { kind: 'none', reason: tileFailure ?? `tile ${zoom}/${y}/${x} unavailable` };
+      }
+      tiles.push({ ...jpegInfo(data), data, x, y });
+    }
+  }
+  return {
+    kind: 'tiles',
+    zoom,
+    bounds,
+    tiles,
+    cacheDir,
+    attribution: PDF_BASEMAP_ATTRIBUTION,
+  };
+}
+
+/**
+ * The tile layer, clipped to the plot box and drawn under everything else. The box shows the
+ * padded bbox; each tile is placed between its own mercator edges, so a 2 × 3 block lands exactly
+ * where Leaflet would put it. (The track itself is drawn on a linear lat/lon frame; over a few
+ * hundred metres the two projections differ by less than a tenth of a point.)
+ */
+function basemapLayer(box: Box, plan: BasemapPlan, sink: ImageSink): string[] {
+  const bounds = plan.bounds;
+  const normX = (lon: number) => (lon + 180) / 360;
+  const normY = (lat: number) => mercatorY(lat);
+  const spanX = Math.max(1e-12, normX(bounds.lonMax) - normX(bounds.lonMin));
+  const spanY = Math.max(1e-12, normY(bounds.latMin) - normY(bounds.latMax));
+  const px = (lon: number) => box.left + ((normX(lon) - normX(bounds.lonMin)) / spanX) * (box.right - box.left);
+  const py = (lat: number) => box.top + ((normY(lat) - normY(bounds.latMax)) / spanY) * (box.bottom - box.top);
+
+  const out: string[] = [
+    'q',
+    `${round(box.left)} ${round(top(box.bottom))} ${round(box.right - box.left)} ${round(box.bottom - box.top)} re W n`,
+  ];
+  for (const tile of plan.tiles) {
+    const west = worldToLon(tile.x * TILE_PIXELS, plan.zoom);
+    const east = worldToLon((tile.x + 1) * TILE_PIXELS, plan.zoom);
+    const north = worldToLat(tile.y * TILE_PIXELS, plan.zoom);
+    const south = worldToLat((tile.y + 1) * TILE_PIXELS, plan.zoom);
+    const name = sink.add(tile);
+    out.push(
+      `q ${round(px(east) - px(west))} 0 0 ${round(py(south) - py(north))} `
+      + `${round(px(west))} ${round(top(py(south)))} cm /${name} Do Q`,
+    );
+  }
+  out.push('Q');
+
+  // The attribution the service asks for, on a dark plate so it reads over any imagery.
+  const label = plan.attribution;
+  const plate = advance(label, 5.5) + 8;
+  out.push(rect(box.right - plate - 2, box.bottom - 12, plate, 9, '0.12 0.13 0.14'));
+  out.push(textRight(box.right - 6, box.bottom - 5, 5.5, false, '0.95 0.96 0.97', label));
+  return out;
+}
+
 /* ---------------- pages ---------------- */
 
 interface Chrome {
@@ -1022,7 +1563,8 @@ function infoPage(
   fields: InfoField[],
   context: Chrome,
   pageOf: ReadonlyMap<string, number>,
-  overviewPage: number,
+  summary: MessageSummary,
+  overviewNote: string,
   fontNote: string = FONT_NOTE_ASCII,
 ): string {
   const rows = charts.filter((chart) => !chart.lone);
@@ -1048,10 +1590,40 @@ function infoPage(
   y += 12;
   out.push(text(MARGIN, y, 11.5, true, RULE, 'Project Information'));
   y += 18;
+  // The Message Summary shares this band instead of pushing the chart table off the sheet: the
+  // original prints it under Project Information, where a one-column report has room for it.
+  const summaryX = 520;
+  const valueWidth = 'rows' in summary ? summaryX - 12 - (MARGIN + 130) : WIDTH - MARGIN - 140;
   for (const field of fields) {
     out.push(text(MARGIN + 6, y, 9, true, INK, field.label));
-    out.push(text(MARGIN + 130, y, 9, false, INK, fit(field.value || '--', WIDTH - MARGIN - 140, 9)));
+    out.push(text(MARGIN + 130, y, 9, false, INK, fit(field.value || '--', valueWidth, 9)));
     y += 14;
+  }
+
+  let summaryY = 98;
+  if ('rows' in summary) {
+    out.push(text(summaryX, summaryY, 11.5, true, RULE, 'Message Summary'));
+    summaryY += 18;
+    out.push(text(summaryX + 6, summaryY, 7.5, true, MUTED, 'Message Name'));
+    out.push(textRight(WIDTH - MARGIN, summaryY, 7.5, true, MUTED, 'Message Count'));
+    summaryY += 6;
+    out.push(rule(summaryX, summaryY, WIDTH - MARGIN, summaryY, 0.6, GRID));
+    summaryY += 12;
+    const room = Math.max(0, Math.floor((272 - summaryY) / 14) + 1);
+    const shown = summary.rows.slice(0, room);
+    for (const row of shown) {
+      out.push(text(summaryX + 6, summaryY, 8, false, INK, fit(row.name, WIDTH - MARGIN - summaryX - 60, 8)));
+      out.push(textRight(WIDTH - MARGIN, summaryY, 8, false, INK, String(row.count)));
+      summaryY += 14;
+    }
+    if (summary.rows.length > shown.length) {
+      out.push(text(summaryX + 6, summaryY, 6.5, false, MUTED, `+ ${summary.rows.length - shown.length} more`));
+    }
+  } else {
+    out.push(text(summaryX, 98, 7, false, MUTED, fit(
+      `${summary.omitted} - Message Summary omitted, no counts are shown`,
+      WIDTH - MARGIN - summaryX, 7,
+    )));
   }
 
   y += 12;
@@ -1115,12 +1687,8 @@ function infoPage(
     out.push(text(MARGIN + 720, y, 8, false, INK, String(pageOf.get(file.name) ?? '--')));
     y += 12;
   });
-  if (overviewPage > 0 && y <= HEIGHT - 46) {
-    out.push(text(MARGIN + 6, y + 6, 7.5, false, MUTED, fit(
-      `page ${overviewPage}: Trajectory Plot - the same 2D Trajectory.csv fixes joined into a track `
-      + '(the original prints a Leaflet tile image there; no basemap is embedded)',
-      WIDTH - 2 * MARGIN - 12, 7.5,
-    )));
+  if (overviewNote && y <= HEIGHT - 46) {
+    out.push(text(MARGIN + 6, y + 6, 7.5, false, MUTED, fit(overviewNote, WIDTH - 2 * MARGIN - 12, 7.5)));
   }
   return out.join('\n');
 }
@@ -1137,6 +1705,8 @@ interface Chart {
   model: ChartModel;
   /** The Overview track: page 2 of the original holds this one chart and nothing else. */
   lone: boolean;
+  /** Page 2's Esri basemap: planned (and fetched) once, or the reason there is none. */
+  basemap?: Basemap;
 }
 
 /**
@@ -1196,7 +1766,7 @@ function cardHeading(chart: Chart, area: Box): string[] {
  * One chart card: frame, title, plot, legend and a note line. `area` is the whole card, so the
  * plot box shrinks to whatever the sheet leaves it — a lone track card gets the full page.
  */
-function card(chart: Chart, area: Box, legendRows: number): string[] {
+function card(chart: Chart, area: Box, legendRows: number, sink: ImageSink): string[] {
   const out: string[] = [];
   const { file, model } = chart;
   const inner = area.right - area.left;
@@ -1210,6 +1780,10 @@ function card(chart: Chart, area: Box, legendRows: number): string[] {
     top: area.top + 26,
     bottom: area.bottom - 84,
   };
+  // The basemap goes down first, clipped to the plot box; axes and the track sit on top of it.
+  if (model.kind === 'geomap' && chart.basemap?.kind === 'tiles') {
+    out.push(...basemapLayer(box, chart.basemap, sink));
+  }
   out.push(...frame(box, model, { showY: true }));
   if (model.kind === 'line') out.push(...lines(box, model));
   else if (model.kind === 'category') out.push(...bands(box, model));
@@ -1224,6 +1798,12 @@ function card(chart: Chart, area: Box, legendRows: number): string[] {
   if (entries.length) out.push(...legend(entries, area.left + 10, box.bottom + 38, inner - 20, legendRows));
 
   const notes: string[] = [];
+  if (model.kind === 'geomap' && chart.basemap) {
+    notes.push(chart.basemap.kind === 'tiles'
+      ? `Esri World Imagery basemap, zoom ${chart.basemap.zoom}, ${plural(chart.basemap.tiles.length, 'tile')}`
+        + ` (cached in ${chart.basemap.cacheDir})`
+      : chart.basemap.reason);
+  }
   if (model.note) notes.push(model.note);
   if (model.kind === 'line' && model.series.length && file.rows.length > 1) {
     const total = model.series.reduce((sum, item) => sum + item.points.length, 0);
@@ -1253,8 +1833,9 @@ function sheetPage(
   context: Chrome,
   page: number,
   startSection: string,
-): { stream: string; section: string } {
+): { stream: string; section: string; images: EmbeddedImage[] } {
   const out: string[] = [];
+  const sink = imageSink();
   const sources = [...new Set(sheet.map((chart) => chart.file.name))];
   out.push(...chrome(context, page, `source: ${sources.join(' + ')}`));
 
@@ -1275,11 +1856,11 @@ function sheetPage(
       out.push(text(MARGIN, y + 12, 9, true, RULE, chart.spec.section));
       y += SECTION_HEIGHT;
     }
-    out.push(...card(chart, { left: MARGIN, right: WIDTH - MARGIN, top: y, bottom: y + cardHeight }, legendRows));
+    out.push(...card(chart, { left: MARGIN, right: WIDTH - MARGIN, top: y, bottom: y + cardHeight }, legendRows, sink));
     y += cardHeight + SHEET_GAP;
   });
 
-  return { stream: out.join('\n'), section };
+  return { stream: out.join('\n'), section, images: sink.images };
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -1295,7 +1876,13 @@ function appendFontObject(objects: Array<string | { dictionary: string; data: Ui
   objects[object.number] = object.body;
 }
 
-function assemble(title: string, generatedAt: string, streams: string[], face: TrueTypeFace | null): Uint8Array {
+function assemble(
+  title: string,
+  generatedAt: string,
+  streams: string[],
+  face: TrueTypeFace | null,
+  pageImages: ReadonlyArray<readonly EmbeddedImage[]>,
+): Uint8Array {
   const pages: string[] = [];
   let next = 6; // 1 catalog, 2 page tree, 3 info, 4 F1, 5 F2
   const pageNumber: number[] = [];
@@ -1311,6 +1898,8 @@ function assemble(title: string, generatedAt: string, streams: string[], face: T
   const fontResources = fontParts
     ? `/F1 4 0 R /F2 5 0 R /F3 ${fontParts.type0} 0 R`
     : '/F1 4 0 R /F2 5 0 R';
+  // Basemap tiles follow the fonts; every page keeps the plain /ProcSet unless it draws one.
+  const imageNumbers = streams.map((_stream, index) => (pageImages[index] ?? []).map(() => next++));
 
   const objects: Array<string | { dictionary: string; data: Uint8Array }> = [];
   objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
@@ -1318,7 +1907,7 @@ function assemble(title: string, generatedAt: string, streams: string[], face: T
   objects[3] = [
     '<< /Title ' + (pdfUnicodeString(title) ?? literal(title)),
     '/Creator (packages/app pdf)',
-    // The producer names the embedded face, exactly like the graph writer does.
+    // The producer names the embedded face and the basemap, exactly like the graph writer does.
     '/Producer ' + (fontParts && face
       ? `(packages/app hand-written PDF 1.4, embedded ${face.name} for non-ASCII text)` : '(packages/app hand-written PDF 1.4)'),
     `/CreationDate (${pdfDate(generatedAt)})`,
@@ -1327,13 +1916,28 @@ function assemble(title: string, generatedAt: string, streams: string[], face: T
   objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
   objects[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
   streams.forEach((stream, index) => {
+    const xobjects = imageNumbers[index].map((number, at) => `/Im${at + 1} ${number} 0 R`).join(' ');
+    const resources = xobjects
+      ? `/Resources << /Font << ${fontResources} >> /XObject << ${xobjects} >> /ProcSet [/PDF /Text /ImageC] >> `
+      : `/Resources << /Font << ${fontResources} >> /ProcSet [/PDF /Text] >> `;
     objects[pageNumber[index]] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE.width} ${PDF_PAGE.height}] `
-      + `/Resources << /Font << ${fontResources} >> /ProcSet [/PDF /Text] >> `
-      + `/Contents ${contentsNumber[index]} 0 R >>`;
+      + `${resources}/Contents ${contentsNumber[index]} 0 R >>`;
     objects[contentsNumber[index]] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
   if (fontParts) for (const object of fontParts.objects) appendFontObject(objects, object);
+  imageNumbers.forEach((numbers, page) => {
+    const images = pageImages[page] ?? [];
+    numbers.forEach((number, at) => {
+      const image = images[at];
+      const colour = image.components === 1 ? '/DeviceGray' : '/DeviceRGB';
+      objects[number] = {
+        dictionary: `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} `
+          + `/ColorSpace ${colour} /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.data.length} >>`,
+        data: image.data,
+      };
+    });
+  });
 
   const chunks: Buffer[] = [];
   const offsets: number[] = [];
@@ -1372,6 +1976,17 @@ function assemble(title: string, generatedAt: string, streams: string[], face: T
   return new Uint8Array(Buffer.concat(chunks));
 }
 
+export interface GraphPdfBasemap {
+  provider: 'Esri World Imagery';
+  zoom: number;
+  /** Tiles embedded as `/DCTDecode` images (one per 256 px block). */
+  tiles: number;
+  /** Where the JPEGs were read from / written to. */
+  cacheDir: string;
+  bounds: { lonMin: number; lonMax: number; latMin: number; latMax: number };
+  attribution: string;
+}
+
 export interface GraphPdfReport {
   bytes: Uint8Array;
   /** 1 information page + one sheet per pair of charts (the Overview track has a sheet alone). */
@@ -1386,6 +2001,10 @@ export interface GraphPdfReport {
    * the cover keeps the real spelling.
    */
   project: string;
+  /** Page 2's basemap when it was embedded; `null` when the page fell back to the vector track. */
+  basemap: GraphPdfBasemap | null;
+  /** Why page 2 has no basemap (`basemap off`, `curl exit 28`, …); `''` when it has one. */
+  basemapNote: string;
 }
 
 /** Build the document once and report what it contains (used by the HTTP route's headers). */
@@ -1420,15 +2039,41 @@ export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptio
     const end = fields[4].value === '--' ? '?' : fields[4].value;
     const title = options.title ?? `${project === 'graph' ? 'Graph' : project} Report`;
     const context: Chrome = { project, generatedAt, range: `${start} .. ${end}`, pages };
+    const summary = resolveMessageSummary(project, first, options.dataSummary);
+    // Page 2's map is planned once, before any page is drawn: the tiles are embedded by `assemble`.
+    const overviewChart = charts.find((chart) => chart.lone);
+    if (overviewChart && overviewChart.model.kind === 'geomap') {
+      overviewChart.basemap = planBasemap(overviewChart.model, options);
+    }
+    const basemap = overviewChart?.basemap;
+    const basemapInfo: GraphPdfBasemap | null = basemap?.kind === 'tiles'
+      ? {
+        provider: 'Esri World Imagery',
+        zoom: basemap.zoom,
+        tiles: basemap.tiles.length,
+        cacheDir: basemap.cacheDir,
+        bounds: basemap.bounds,
+        attribution: basemap.attribution,
+      }
+      : null;
+    const overviewNote = !overviewChart || overviewPage <= 0
+      ? ''
+      : basemap?.kind === 'tiles'
+        ? `page ${overviewPage}: Trajectory Plot - the 2D Trajectory.csv track over `
+          + `${plural(basemap.tiles.length, 'Esri World Imagery tile')} (zoom ${basemap.zoom})`
+        : `page ${overviewPage}: Trajectory Plot - the 2D Trajectory.csv track on a plain lat/lon frame; `
+          + `no basemap (${basemap?.reason ?? 'not planned'})`;
 
     // The cover can be the only page with non-ASCII text (project name, directory), so it is drawn
     // once to learn what the footer must say and once with that sentence. The probe only adds
     // glyphs to the same maps, so the second render is the one that is kept.
-    const streams = [infoPage(charts, fields, context, pageOf, overviewPage, FONT_NOTE_ASCII)];
+    const streams = [infoPage(charts, fields, context, pageOf, summary, overviewNote, FONT_NOTE_ASCII)];
+    const imagesByPage: EmbeddedImage[][] = [];
     let section = '';
     sheets.forEach((sheet, index) => {
       const page = sheetPage(sheet, context, index + 2, section);
       streams.push(page.stream);
+      imagesByPage[index + 1] = page.images;
       section = page.section;
     });
 
@@ -1436,14 +2081,16 @@ export function graphPdfReport(sources: GraphPdfSource[], options: GraphPdfOptio
     const fontNote = embedded && face
       ? embeddedFontNote(face)
       : cjkUsedDegraded() ? FONT_NOTE_DEGRADED : FONT_NOTE_ASCII;
-    streams[0] = infoPage(charts, fields, context, pageOf, overviewPage, fontNote);
+    streams[0] = infoPage(charts, fields, context, pageOf, summary, overviewNote, fontNote);
 
     return {
-      bytes: assemble(title, generatedAt, streams, embedded ? face : null),
+      bytes: assemble(title, generatedAt, streams, embedded ? face : null, imagesByPage),
       pages,
       charts: charts.length,
       fileName: graphPdfFileName(project),
       project: asciiHeaderValue(project),
+      basemap: basemapInfo,
+      basemapNote: basemap?.kind === 'none' ? basemap.reason : '',
     };
   } finally {
     endPdfFont();

@@ -63,11 +63,9 @@ function latin1(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('latin1');
 }
 
-/** Content streams only — the embedded font file is binary and must not be searched as text. */
+/** Content streams only — they begin with `BT`; basemap tiles are JPEG and must not be searched. */
 function streams(bytes: Uint8Array): string[] {
-  return [...latin1(bytes).matchAll(/stream\n([\s\S]*?)\nendstream/g)]
-    .map((match) => match[1])
-    .filter((stream) => !stream.includes('\u0000'));
+  return [...latin1(bytes).matchAll(/stream\n(BT [\s\S]*?)\nendstream/g)].map((match) => match[1]);
 }
 
 test('a pure-ASCII report embeds no font and keeps the original page map', () => {
@@ -89,11 +87,29 @@ test('a pure-ASCII report embeds no font and keeps the original page map', () =>
   assert.equal(report.charts, CHART_COUNT, 'the Overview track plus one chart per CSV');
   assert.ok(text.includes('(13 charts - hand-written PDF 1.4'), 'the cover counts the charts');
   // The card titles live in the content streams as plain literals, page by page.
-  const pages = [...text.matchAll(/stream\n([\s\S]*?)\nendstream/g)].map((match) => match[1]);
+  const pages = [...text.matchAll(/stream\n(BT [\s\S]*?)\nendstream/g)].map((match) => match[1]);
   assert.equal(pages.length, PAGE_COUNT, 'one stream per page');
   assert.match(pages[1], /\(Trajectory Plot\)/, 'page 2 is the Overview track');
   // The CSVs here are in file-name order, so name no title: every sheet after page 2 holds two.
   assert.equal((pages[2].match(/\/F2 13 Tf/g) ?? []).length, 2, 'page 3 holds two chart cards');
+
+  // The cover's Message Summary is the original's table — read from `DataSummary.json`, never guessed.
+  for (const literal of ['(Message Summary)', '(Message Name)', '(Message Count)', '(BESTPOS)', '(RANGE)',
+    '(HWMONITOR)', '(RXSTATUS)']) {
+    assert.ok(pages[0].includes(literal), `cover prints ${literal}`);
+  }
+  assert.equal(pages[0].includes('PORTSTATS'), false, 'only the plotted messages are listed');
+
+  // Page 2's basemap is embedded JPEG tiles, or the card says why there is none.
+  if (report.basemap) {
+    assert.ok(text.includes('/Filter /DCTDecode'), 'tiles are JPEG XObjects');
+    assert.match(pages[1], /\/Im1 Do/, 'page 2 draws them under the track');
+    assert.ok(pages[1].includes('Imagery \\251 Esri, Maxar, Earthstar Geographics'), 'with the attribution');
+  } else {
+    assert.ok(report.basemapNote.length > 0, 'a reason is recorded');
+    assert.ok(pages[1].replace(/\\([()\\])/g, '$1').includes(report.basemapNote), 'and printed on the card');
+    assert.equal(text.includes('/DCTDecode'), false, 'nothing embedded');
+  }
 });
 
 test('the face being available does not change an ASCII document', () => {
