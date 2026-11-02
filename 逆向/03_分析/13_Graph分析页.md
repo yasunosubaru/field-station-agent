@@ -577,12 +577,10 @@ curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
 
 ### 11.3 与原版不一致 / 本地实现（不声称 1:1）
 
-1. **持久化介质**：原版写工程 `.gpf`（`FlagsInitialState`，关窗握手 `@16246025`）。本构建现在
-   **两半都实现了**，但还没有接上：文件读写在本仓库 Node 侧（`readProjectFlags` /
-   `writeProjectFlags`，见 11.2），面板通过 `/graph/flags` 读写它；**这条 HTTP 路由本轮没有加**
-   （`packages/app/src/server.ts` 不在本轮改动范围内），所以面板探测到 404 就停在本机
-   `localStorage`——现有三个 export 工程目录也都没有 `.gpf`。字段名、形状、恢复规则
-   （`newFlagId = max(id)+1`）与原版一致；一旦服务端补上该路由，面板无需再改。
+1. **持久化介质**：原版写工程 `.gpf`（`FlagsInitialState`，关窗握手 `@16246025`）。本构建两半都实现
+   并接上了：文件读写在本仓库 Node 侧（`readProjectFlags` / `writeProjectFlags`，见 11.2），面板通过
+   `/api/graph/flags` 读写它；工程目录没有 `.gpf` 时，**第一次保存会按 §11.5 的规则生成一个**，
+   之后由它接管。字段名、形状、恢复规则（`newFlagId = max(id)+1`）与原版一致。
 2. **点击跳转**：原版点击标记/列表行是选中并打开编辑，**不移动播放头**；这里“点击跳到该时间”
    是本地加的（任务要求），列表按钮 `title` 与本节都标了“本地”。
 3. **“在当前 playhead 加”**：原版只有右键 / 地图点选 / 弹窗；`ADD_FLAG_TS` 文案在包里定义但
@@ -603,17 +601,22 @@ curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
 GPS↔ms 往返、`flagOffsetSeconds`（无 GPS 头返回 `null`）、每工程一桶 + save/load + 切工程不串 +
 坏 JSON/无 storage、`.gpf` 形状读取 + `newFlagId = max(id)+1`。
 
-`.gpf` 持久化（D5）另有 **18 项**：
+`.gpf` 持久化（D5 + B/E1）另有 **31 项**：
 
-- `packages/graph/test/gpf-flags.test.ts`（8 项）：`<key>.gpf` → `<name>.gpf` → 目录里唯一
+- `packages/graph/test/gpf-flags.test.ts`（16 项）：`<key>.gpf` → `<name>.gpf` → 目录里唯一
   `.gpf` 的解析；复制 `clean.gpf` 后写→读回、去掉 `FlagsInitialState` 与原文件**逐字节相同**、
   二次写入不变；2 空格/LF/CRLF/BOM/四空格/结尾换行都照原样；坏 JSON/坏 `FlagsInitialState`
-  只报告不改写；两个工程互不影响；非对象文本 `mergeGpfFlags` 返回 `null`。
-- `packages/app/test/graph-gpf.test.ts`（10 项）：浏览器侧与 Node 侧 `mergeGpfFlags` 在
+  只报告不改写；两个工程互不影响；非对象文本 `mergeGpfFlags` 返回 `null`；**§11.5 的创建规则**
+  （checksum 算法在 `clean.gpf` 上复算一致、字段来源、键集合是 `clean.gpf` 的子集、
+  `PlotSummary` 按页签分组、空列表 / 无时间窗 / 目录里已有认不出的 `.gpf` 都不建、
+  坏 `project.json` 不改写）。
+- `packages/app/test/graph-gpf.test.ts`（15 项）：浏览器侧与 Node 侧 `mergeGpfFlags` 在
   `clean.gpf` 与 5 种文件形态上**逐字节一致**；临时工程写 flags 后经 `createFlagStore`
-  "重开"恢复、其它键逐字不变、保存 POST 到 `/graph/flags`；没有 `.gpf`（或服务端没有该路由、
-  或 api 抛错）时只走 `localStorage`、切工程不串、坏 JSON/无 storage 不炸；服务端说
-  `.gpf` 存在但没有 flags 时恢复成空而不是回退。
+  "重开"恢复、其它键逐字不变、保存 POST 到 `/graph/flags`；没有 `.gpf` 时第一次**带标记**的保存
+  问一次"要不要建"（服务端拒了就只留 `localStorage`，不重复问；空列表的保存不消耗这一次机会）；**
+  真起 `server.ts` 走 HTTP**：`GET` 报 `gpf:false` → `POST` 一个标记 → `created:true` + 文件落盘 +
+  checksum 可复算 → `GET` 读回同一份标记 → 再 `POST` 字节不变 → 清空列表仍写文件（不删）；
+  未装样本的工程（`csv`）投空列表不会生成文件；不存在的工程 404。切工程不串、坏 JSON/无 storage 不炸。
 
 实测（Playwright，1600×1000，`node packages/app/src/server.ts --port 7799`，b1 的
 `2D Trajectory.csv`，28 s）：
@@ -640,6 +643,101 @@ D5 复跑（2026-11-02，`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-graph
 - console errors **0**、pageerror **0**；
 - 截图：`flags-panel-tooltip.png`（面板列表 + 标记 tooltip）、`flags-panel-full.png`（整页，
   面板含时间/偏移/坐标/评论/颜色/眼睛/垃圾桶）、`flags-switch-clean.png`（切工程后 `(0/10)`）。
+
+
+
+截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-gpfcreate\`，1600×1000）：
+`gpf-created-b1.png`（b1 加第一个标记，`Flags (1/10)`，此前的 `GET` 是 `gpf:false`）、
+`gpf-after-refresh.png`（**清空 localStorage 后**刷新：标记与评论从新建的 `b1.gpf` 读回来）、
+`gpf-other-project-clean.png`（切到 clean 仍是 `(0/10)`，没有串）。
+
+### 11.5 工程没有 `.gpf` 时：第一次保存创建它（B/E1）
+
+D5 只做到"有 `.gpf` 就读写，没有就 `localStorage`"，而三个 export 目录（`csv` / `b1` /
+`heading`）都没有 `.gpf`，所以标记一直没落到工程文件上。现在补上创建。两条路里选的是**前者**：
+**照 `clean.gpf` 的骨架写一份真文件**，而不是"只写 flags 的私有记录"。
+
+**创建规则**
+
+- **骨架**：键与键序照 `00_来源/samples/graph/project/clean.gpf`（一份真能打开的工程文件），
+  代码里是常量，不依赖运行时能不能找到样本目录。创建出来的顶层键是 `clean.gpf` 的**子集** +
+  `FlagsInitialState`——测试直接钉住"不发明字段"。
+- **文件名**：`<projectDirectory>/<basename(projectDirectory)>.gpf`，原版 `getGpfFilePath()`
+  `@538881` 的原式；也就是 `export/b1/` → `b1.gpf`，`export/csv/` → `csv.gpf`。
+- **写盘形态**：`JSON.stringify(data, null, 2)`，LF，无结尾换行（原版 `writeFile`
+  `JSON.stringify({...data, checksum}, null, 2)` 同形）。
+
+| 字段 | 值从哪来 | 依据 |
+|---|---|---|
+| `PageRoute` | `"/process"` | 打开后直接进 Pre-process 页 |
+| `projectDirectory` | 工程目录（绝对路径） | — |
+| `filePath` | `project.json` 的 `capture`；没有就 `""` | 原版是原始日志路径 |
+| `filename` | CSV 的 `#Data File Name:` → `project.json.dataFileName` → `""` | — |
+| `fileTimeline.StartTime/EndTime` | CSV 的 `#Start Time(GPS)` / `#End Time(GPS)`，按 **GPS 毫秒** `(week*604800 + s)*1000` | `clean.gpf` 的 `1477384697350` 正是 `2442,463097.350` 的 GPS 毫秒（不是 epoch ms） |
+| `updatedProjSummary.DataInfo` | `{Duration: End−Start, EndTime, FileSize, StartTime}` | `DataInfo.StartTime/EndTime` 驱动播放头 `@554827` |
+| `DataInfo.FileSize` | `stat(capture)` 的真实字节数；读不到就 `0` | `clean.gpf` 的 `270864` = `convert\clean-9600.gps` 的大小 |
+| `updatedProjSummary.Messages` | `project.json` 的 `messages`（导出工具自己解出的帧计数），按名字排序 | — |
+| `TotalLogInstances` | `Messages` 之和 | `clean.gpf`：`5+1+1+100+8+4 = 119` |
+| `updatedProjSummary.PlotSummary` | 只列**本工程真的有的 CSV**，`{图表名: {消息: 1}}`；分组按**页签**（`CPU Usage` 归 `Receiver_Status`，虽然它画的是 `BESTPOS`） | `clean.gpf` 里每张图的值都是 `1`（"这张图有序列"，不是记录数）；页签归属同 `html.ts#SECTIONS` |
+| `InputValidation` / `Percentage` / `ValidationCode` / `api` | `0` / `100` / `0` / `"FileValidation"` | 原版"处理完成、校验通过"的状态（`validateGpsDataInFile`，`ValidationCode 0 = SUCCESS`） |
+| `currentTimeStamp` / `isPlaying` / `editedStart` / `editedEnd` | `0` / `false` / `0` / `0` | 播放位置与裁剪区间的默认值 |
+| `FlagsInitialState` | 这次保存的 `{allFlags, isFlagsPanelOpen}` | — |
+| `checksum` | 见下 | — |
+
+**故意不写的字段**（写了就是编）：
+
+- `DataSummary` / `GOSMetaPath`：它们指向的 `DataSummary.json`、`GOS/*.db` 在 export 目录里
+  根本不存在；而 `updatedProjSummary` 已经让 `fetchDataSummary` `@549299` 不走 `DataSummary`。
+- `PersistenceInfo`：这是**用户**的图块布局；`@602242` 显示没有它时 Graph 会用
+  `getSupportedChartsList(PlotSummary)` + `frameNewPersistenceObj` 自己搭一份。
+- `projectName` / `projectDescription`：`clean.gpf` 里没有这两个键；Graph 的工程名就是
+  `basename(projectDirectory)`（`updateGPFRecentActivity` `@550800`）。
+
+**校验和不是猜的**：`addChecksum` / `verifyChecksum` `@549299` ——
+`SHA-256(JSON.stringify(去掉 checksum 的对象) + "GAA170P4468F1218")`，小写 hex；**键序参与哈希**，
+所以写入永远不重排键。对 `clean.gpf` 复算得到它自己存着的
+`8827df04…9e6fff`（测试里独立写了一遍算法，不是拿自己的输出自证）。已有 `.gpf` 的写入也
+**re-sign**（`writeProjectFlags(..., {resign: true})`），否则原版打开会判 `INVALID_GPF_FILE`
+——这是 D5 留下的一个真缺陷，本轮一并修掉；纯 `mergeGpfFlags` 的默认行为不变（只动那一个块）。
+
+**什么时候写、什么时候不写**
+
+| 情况 | 行为 |
+|---|---|
+| 目录里没有 `.gpf`，这次保存**带标记** | 创建，返回 `created: true` / `gpf: true` |
+| 目录里没有 `.gpf`，这次保存是空列表 | 不创建（`no-gpf`）；面板自己也会存 `isFlagsPanelOpen`，那次保存不算"第一次" |
+| CSV 里读不到任何可用时间窗（没有 `#Start/#End`、没有带 GPS 时间的行、`project.json` 也没有） | 不创建（`no-data`），路由回 `gpf:false`，前端继续 `localStorage` |
+| 目录里已有两个及以上认不出的 `.gpf` | 不猜、不建第三个（`no-gpf`） |
+| 已有 `.gpf` 但 JSON 坏了 | 一律不覆盖（`bad-json`），前端回退 `localStorage` |
+| 写盘 | 先写临时文件再 `rename`，崩了也不会留半个文件 |
+
+**顺手修的两处（都在 `/api/graph/flags`）**
+
+1. POST 原来只读 `?project=`，而面板的 `api.post(path, body)` **带不了查询串**（`web/index.html`）
+   ——于是所有工程的标记都会被写进**默认**工程（`csv`）的 `.gpf`。现在 `body.project` 生效，
+   `?project=` 仍然优先。
+2. `GET /api/graph/flags?project=`（空值）原来落到 500 分支（`GraphCsvError` 没被转成
+   `HttpError`）：现在返回 `{ok:true, gpf:false}`（"面板还没选工程"），POST 空 `project` 返回 400。
+
+**边界（明说）**：这**不是**"原版能画出图"的工程。export 目录里只有 CSV，没有 Process 页要读的
+`GDS`/`GOS` 数据库，所以 12 张图无法重建。这里保证的是**工程文件本身**：结构、时间窗、
+消息计数、图表清单、标记与 checksum 都是真的，`validateGPF`（JSON + 校验和）能通过；
+"原版打开后能画出那 12 张图"没有验证，也不声称。
+
+**实测**（`node packages/app/src/server.ts --port 7811`，Playwright 1600×1000，`?map=canvas`）：
+
+- b1 加第一个标记 → `POST /api/graph/flags` `200` `{ok:true, gpf:true, created:true,
+  path: …/export/b1/b1.gpf}`；磁盘上 3021 B，`checksum` 复算一致，`DataInfo`
+  `{StartTime:1477491827100, EndTime:1477491855151, Duration:28051, FileSize:2758111}`，
+  `Messages` 25 条 / `TotalLogInstances 1321`，`PlotSummary` 三组（PVT 7 张、接收机 3 张、
+  跟踪 3 张）；
+- **清空 `localStorage`** 再刷新 → `GET ?project=b1` → `gpf:true`，标记与评论原样回到面板
+  （`Flags (1/10)`，tooltip 带评论），刷新后 `localStorage` 仍是 `null`——即恢复来自 `.gpf`；
+- 切到 clean（`csv`）仍是 `(0/10)`，`GET ?project=csv` 是 `gpf:false`（没有顺手给 clean 造文件）；
+- console errors **0**、pageerror **0**。
+- 截图：`gpf-created-b1.png`、`gpf-after-refresh.png`、`gpf-other-project-clean.png`
+  （`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-gpfcreate\`）。跑完把生成的
+  `export/b1/b1.gpf` 删掉，样本目录保持原样（`git status` 里不留文件）。
 
 
 
@@ -849,19 +947,28 @@ Position update,1477391600000.000000,1477391605000.000000,1,1.000000
 | 分节标题全篇只印一次，且允许落在两张卡之间 | `sheetPage()` 的 `headings[]` + 传入传出的 `section` |
 | 页脚 `source:` 列出该页全部 CSV（`a.csv + b.csv`） | `sheetPage()` |
 | 封面的 `Chart Summary` 的 `Page` 列改成**图实际所在页**（不再是 `行号 + 1`），并加一行说明第 2 页是哪张 | `infoPage()` / `pageOf` |
+| 封面的 `Message Summary`：读 `samples/graph/project/DataSummary.json`，按原版算法只列"图表真的用到"的报文，`Message Name / Message Count` 两列，顺序与原版一致 | `messageSummaryRows()`、`resolveMessageSummary()`、`infoPage()` |
+| 第 2 页底图：Esri World Imagery 瓦片（JPEG `/DCTDecode` XObject，裁到绘图框内，画在轨迹之下），磁盘缓存 | `planBasemap()`、`basemapLayer()`、`fetchTile()`、`assemble()` |
+| 瓦片拉不到 / `basemap: 'vector'`：回退经纬度矢量框，卡片底部写明原因 | `card()` 的 `notes`、`report.basemapNote` |
 | 报告头 `pages = 1 + 1 + ceil(其余 / 2)`，`charts = 1 + N` | `graphPdfReport()` |
 
 图表仍然**矢量绘制**（折线 / 色带 / 方块 / 区间条），没有一处截图；坐标轴、图例、点数预算
 （`PDF_POINT_BUDGET`）、中文按需嵌入（`pdf-font.ts`）全部沿用。
 
-`Trajectory Plot` 的取法：原版那张是瓦片地图，本仓库不允许拿截图顶替，也没有底图；于是把
-`2D Trajectory.csv` 的同一批定位点按 CSV 顺序连成轨迹线、画在同一套经纬度框上，卡片底部写明
-"原版这里是 Leaflet 地图，本文件不嵌底图"。页脚与封面都点名它来自哪一份 CSV。
+`Trajectory Plot` 的取法：底下是**真瓦片**（不是截图）。按 `2D Trajectory.csv` 的 bbox 选 zoom
+（干净样本 5 个点不动，窗口补到 0.0022°≈240 m），从
+`server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`
+用 `curl` 同步取、按 `{z}/{x}/{y}.jpg` 缓存在 `<os temp>/nas-pdf-tiles`（`NAS_PDF_TILE_CACHE`
+可改），以 JPEG `/DCTDecode` 嵌进 PDF；轨迹线与定位点画在瓦片之上，右下角印
+`Imagery © Esri, Maxar, Earthstar Geographics`（`©` 走 WinAnsi 0xA9 的八进制 `\251`，
+仍用 base-14，不会为这一个字拉进 CJK 字体）。任一瓦片失败 → 整层放弃、回退矢量框，
+卡片底部写 `tile … failed (curl exit N)`（或 `basemap off - vector track only`），不贴假图。
 
 ### 13.3 实测
 
 ```
-node --test --test-force-exit "packages/*/test/*.test.ts"   # 1132 / 1132（并行任务也在加，基线 1100）
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 1216 / 1217；另一次全量 1215/1215
+# 唯一红的是 packages/session 的 heartbeat 计时用例（并行负载下偶发），单跑 11/11 过，与 PDF 无关
 ```
 
 固定时钟（`generatedAt: '2026/10/30 21:00:00'`）构建 clean：
@@ -871,38 +978,79 @@ node --test --test-force-exit "packages/*/test/*.test.ts"   # 1132 / 1132（并�
 | `pdfinfo` | `Pages: 8`、842 × 595 pt、`Title: clean Report` |
 | `pdftotext -layout` 逐页 | 与原版 13.1 表**逐页一致**：p2 `Trajectory Plot`；p3 `Position Type, Position Status`；p4 `Position SD, Solution Statistics`；p5 `2D Trajectory, Height`；p6 `GNSS Signal Strength, Satellites and Signals`；p7 `Tracking Time, Receiver Status`；p8 `CPU Usage, HW Monitor Status` |
 | 分节标题 | p2 `Trajectory Plot`、p3 `PVT`、p6 `Tracking & Measurements`、p7 `Receiver Status`（在两张卡之间），其余页无 |
-| 字节 | **136 773 B**（旧"一图一页"137 644 B 量级，仍 < 200 KB）。**旧的纯 ASCII 字节变了，这是本次预期的改动**：版式变了就不该再钉哈希 |
-| b1（13 份 CSV） | `X-PDF-Pages: 9`、`X-PDF-Charts: 14`（1 信息 + 1 轨迹 + 7 页两图） |
+| 封面 `Message Summary` | `Message Name / Message Count`，四行 `BESTPOS 5 / RANGE 100 / HWMONITOR 1 / RXSTATUS 4` — 与原版逐行同序；`PORTSTATS`、`RAWEPHEM` 有计数但不进图，原版不印，这里也不印 |
+| 第 2 页底图 | Esri World Imagery，**zoom 18，9 块 256×256 JPEG**，`pdfimages -list` 9 行 `jpeg rgb`，`x-ppi 47 / y-ppi 101`；右下角署名 `Imagery © Esri, Maxar, Earthstar Geographics`（`pdftotext -enc UTF-8` 原样取回） |
+| 字节 | **269 575 B**（其中瓦片 ≈126 KB；矢量回退 137 375 B；原版 348 419 B）。**旧的纯 ASCII 字节变了，这是本次预期的改动** |
+| b1（13 份 CSV） | `X-PDF-Pages: 9`、`X-PDF-Charts: 14`（1 信息 + 1 轨迹 + 7 页两图），5 299 367 B（含 SimHei 字体），第 2 页同样有 9 块 z18 瓦片 |
+
+瓦片缓存：`C:\Users\SunCh\AppData\Local\Temp\nas-pdf-tiles\{z}\{x}\{y}.jpg`；`NAS_PDF_TILE_CACHE`
+改目录，`options.tileCacheDir` 优先。缓存命中时同一份输入两次构建字节相同（有测试钉住）。
 
 测试（都在 `packages/app/test/`）：
 
-- `graph-pdf.test.ts`（15 项，新增/改写 4 项）：页数按 `1 + 1 + ceil(N/2)` 算并等于 8；用 13 pt
+- `graph-pdf.test.ts`（21 项，新增 6 项）：页数按 `1 + 1 + ceil(N/2)` 算并等于 8；用 13 pt
   粗体的内容流读出**每页图表标题序列**，逐页 `deepEqual` 原版分组；9 pt 粗体读出分节标题；
-  封面 `Page` 列 = 真实页；另外**真跑 `pdftotext -layout`**：先证明 §13.1 那张表确实是原版
-  `clean.pdf` 印的，再证明我方 PDF 每页标题的出现顺序与原版相同、`pdfinfo` 也是 8 页
-  （没装 poppler 时该用例 skip）。
-- `pdf-unicode.test.ts`（7 项）：删掉"纯 ASCII 逐字节等于旧 writer"的 SHA-256 断言，换成
-  "不嵌任何字体 + 8 页 / 13 图 / p2 是轨迹页 / p3 两张卡"；中文嵌入、`pdftotext` 取回
+  封面 `Page` 列 = 真实页；封面 `Message Summary` 逐行同序且不含未进图报文；`dataSummary: null`
+  时整表省略并写明原因；第 2 页有瓦片（`/DCTDecode` 数量 = 瓦片数、`/ImN Do` 逐个画、署名）
+  或明确回退；`basemap: 'vector'` 不碰网络；真实失败路径（缓存目录指向一个文件 → `mkdir`
+  失败）回退并把原因印在卡片上；缓存默认在 OS 临时目录、环境变量与 option 都可改。另外**真跑
+  `pdftotext -layout`** 对照原版逐页标题顺序，`pdfinfo` 也是 8 页（没装 poppler 时 skip）。
+- `pdf-unicode.test.ts`（7 项）：纯 ASCII 不嵌字体 + 8 页 / 13 图 / p2 是轨迹页 / p3 两张卡，
+  封面 `Message Summary` 四行齐全，第 2 页有瓦片或有回退说明；中文嵌入、`pdftotext` 取回
   `野外台站` / `C:\测试\项目`、降级路径照旧。
-- `graph-projects.test.ts`：b1 的两行数字 13/14 → 14/9（**边界外的一处改动**，见 §13.5）。
+- `graph-projects.test.ts`：b1 的两行数字 13/14 → 14/9（**边界外的一处改动**，见 §13.6）。
 
-截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdflayout\`）：`ours-1..8.png`（我方
-8 页，100 dpi）、`orig-1..8.png`（原版同页，80 dpi），可逐页对看。
+截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfmap\`）：`clean-page-1.png`（封面，
+含 Message Summary）、`clean-page-2.png`（z18 底图 + 轨迹点 + 署名）、`b1-ours.pdf`、
+`clean-vector.pdf`（回退样本）。
 
 ### 13.4 与原版仍不一致（明说）
 
-1. **第 2 页不是地图**：没有底图、没有缩放控件、没有 Leaflet 的 `Legend/Single Point` 面板；
-   只有同一批定位点连成的矢量轨迹。
+1. **底图是静态瓦片**：没有 Leaflet 的缩放控件、比例尺和 `Legend / Single Point` 面板；
+   zoom 是按轨迹 bbox 算的（clean 与 b1 都是 z18），原版导出时瓦片根本没加载（印出来是
+   一整块黑底 + 蓝点）。瓦片按 1:1 嵌入、绘图框裁剪，不重采样。
 2. **卡片内装潢简化**：原版图例前有勾选框（`☑`）、页眉有 HEXAGON / NovAtel 商标、卡片是
    圆角 + 阴影；本文件只有直角边框、彩块图例、纯文字页眉。
 3. **坐标轴范围不同**：原版 `2D Trajectory` 固定 40–180°E / 15–50°N，本实现按数据自适应
-   （`114.3527…` 那一小段），所以点/线的位置不可逐像素比。
-4. **`Message Summary` 表仍缺**（原版第 1 页有 `BESTPOS 5 / RANGE 100 / HWMONITOR 1 /
-   RXSTATUS 4`）：需要 `DataSummary.json`，没有路由提供，编一份计数就是造假。
-5. **页数跟着数据走**：原版 8 页是因为它只有 12 张 CSV 图 + 1 张轨迹；b1 有 13 张，于是 9 页。
+   （`114.3527…` 那一小段；轨迹不动时补到 ≈240 m），所以点/线的位置不可逐像素比。
+4. **署名里的 `©` 是 WinAnsi 单字节**（`\251`），不走 CJK 嵌入字体：这份文档仍是
+   `base-14 Helvetica, no embedded fonts`。三个版权方名字完整。
+5. **`Message Summary` 放在封面右栏**（原版在 `Project Information` 下方）：本 writer 还多印
+   一张原版没有的 `Chart Summary`，右栏让两张表都留在同一页。**字段（`Message Name` /
+   `Message Count`）与行序（BESTPOS / RANGE / HWMONITOR / RXSTATUS）与原版一致。**
+6. **页数跟着数据走**：原版 8 页是因为它只有 12 张 CSV 图 + 1 张轨迹；b1 有 13 张，于是 9 页。
    想永远 8 页只能丢图，不做。
 
-### 13.5 边界
+### 13.5 `Message Summary` 的行是怎么选出来的
+
+原版不是把 `DataSummary.json` 的 `Messages` 全表印上去，而是只印**图表真的用到**的报文。
+`01_解包/Graph/out/renderer/assets/index-*.js` 里那段瓦片代码是：
+
+```
+plotLogs = getPlotUsedLogInstances(PlotSummary, Messages)
+        = filterByPriority(PlotSummary, getUsedLogsForCharts(PlotSummary))
+            .filter(log => Messages[log] !== undefined)
+```
+
+- `getUsedLogsForCharts` 只遍历 `GRAPH_GROUPS_TABS = [GOS, PVT, Heading_Attitude,
+  Tracking_Measurements, Receiver_Status]`，按首次出现收集报文名（`Position View` 不在其中）；
+- `filterByPriority` 再按“每个 section 里计数最小的那个报文优先”剔除被兄弟掩盖的条目；
+- 最后只保留 `Messages` 里有计数的。
+
+`clean` 的 `DataSummary.json` 里 `Messages` 有 6 条，但 `PORTSTATS`、`RAWEPHEM` 没进任何图，
+所以原版只印 4 行。本实现逐函数移植（`usedLogsForCharts` / `topNames` /
+`collectGnssLogs` / `collectRemainingLogs` / `filterByPriority` / `messageSummaryRows`），
+用同一份 `DataSummary.json` 得到 **BESTPOS 5 / RANGE 100 / HWMONITOR 1 / RXSTATUS 4**，
+行序也与原版一致（测试 `deepEqual` 钉住）。
+
+数据从哪来：`options.dataSummary` → CSV 注释里的 `Project Directory` →
+`export/<project>/DataSummary.json` → `samples/graph/project/DataSummary.json`
+（仅当旁边有 `<project>.gpf`，`clean` 就是这种布局）。**找不到就不印表**：封面右栏写
+`no DataSummary.json for this project - Message Summary omitted, no counts are shown`，
+绝不从 CSV 里反推计数。b1 没有 `DataSummary.json`（只有 `export/b1/project.json`，
+不在本任务的数据源里），所以 b1 的封面就是这条省略说明。
+
+### 13.6 边界
 
 只改了 `packages/app/src/pdf.ts`、`packages/app/test/graph-pdf.test.ts`、
 `packages/app/test/pdf-unicode.test.ts` 与本文；`packages/graph/**`、`packages/protocol/**`、

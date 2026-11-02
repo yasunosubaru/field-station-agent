@@ -1047,32 +1047,66 @@ function handleGraphData(url: URL, res: ServerResponse, method: string): void {
  *
  * The original Graph keeps its markers in the project's `.gpf` (`FlagsInitialState`), not in
  * browser storage. This route is the server half of `graph.js#createFlagStore`: `gpf:false` means
- * the project has no `.gpf` and the panel stays on `localStorage`; `gpf:true` with `flags:null`
- * means the file exists but has no `FlagsInitialState` yet (an empty store, not a fallback).
- * A write never creates a `.gpf` and never overwrites an unreadable one.
+ * the project has no `.gpf` **and one could not be created**, so the panel stays on `localStorage`;
+ * `gpf:true` with `flags:null` means the file exists but has no `FlagsInitialState` yet (an empty
+ * store, not a fallback).
+ *
+ * A write never overwrites an unreadable `.gpf`, and a project that has none gets one created from
+ * its own measurements (`writeProjectFlags(..., {create: true})` — see `export-projects.ts`). The
+ * created file is re-signed (`resign: true`) because Graph rejects a project whose checksum no
+ * longer matches (`INVALID_GPF_FILE`, `index-B86bHcCD.js` @549299).
  */
 async function handleGraphFlags(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
   if (method !== 'GET' && method !== 'POST') throw new HttpError(405, '/api/graph/flags 只接受 GET / POST');
   const url = new URL(req.url ?? '/', 'http://localhost');
-  const project = graphProjectOrThrow(url.searchParams.get('project'));
-  if (method === 'GET') {
-    const read = readProjectFlags(project);
-    if (!read) {
-      sendJson(res, 200, { ok: true, gpf: false }, method);
+  try {
+    if (method === 'GET') {
+      // An empty/missing `?project=` is "the panel has no project selected yet", not "give me the
+      // default project": reading flags is cheap, but answering with `clean`'s markers while the
+      // panel shows another project is exactly the cross-project leak this route must not have.
+      const wanted = normaliseFlagProject(url.searchParams.get('project'));
+      if (wanted === null) {
+        sendJson(res, 200, { ok: true, gpf: false }, method);
+        return;
+      }
+      const read = readProjectFlags(graphProjectOrThrow(wanted));
+      if (!read) {
+        sendJson(res, 200, { ok: true, gpf: false }, method);
+        return;
+      }
+      sendJson(res, 200, { ok: true, gpf: true, flags: read.flags, ...(read.error ? { error: read.error } : {}) }, method);
       return;
     }
-    sendJson(res, 200, { ok: true, gpf: true, flags: read.flags, ...(read.error ? { error: read.error } : {}) }, method);
-    return;
+
+    const body = await readJsonBody(req);
+    // The panel cannot put a query string on a POST (`api.post(path, body)` in `web/index.html`), so
+    // the project named in the body is what the write is for — reading only `?project=` would silently
+    // write every project's markers into the **default** project's `.gpf`. `?project=` still wins.
+    const wanted = normaliseFlagProject(
+      url.searchParams.get('project') ?? (typeof body.project === 'string' ? body.project : null),
+    );
+    if (wanted === null) throw new HttpError(400, 'project 不能为空');
+    const project = graphProjectOrThrow(wanted);
+    const write = writeProjectFlags(project, body.flags as never, { create: true, resign: true });
+    sendJson(res, 200, {
+      ok: write.ok,
+      // `no-gpf` / `no-data`: there is no project file and none was created — the panel must keep its
+      // own `localStorage` store. Everything else means "a `.gpf` owns this project's flags".
+      gpf: write.reason !== 'no-gpf' && write.reason !== 'no-data',
+      ...(write.created ? { created: true } : {}),
+      ...(write.path ? { path: write.path } : {}),
+      ...(write.reason ? { reason: write.reason } : {}),
+      ...(write.error ? { error: write.error } : {}),
+    }, method);
+  } catch (error) {
+    rethrowGraphError(error);
   }
-  const body = await readJsonBody(req);
-  const write = writeProjectFlags(project, body.flags as never);
-  sendJson(res, 200, {
-    ok: write.ok,
-    gpf: write.reason !== 'no-gpf',
-    ...(write.path ? { path: write.path } : {}),
-    ...(write.reason ? { reason: write.reason } : {}),
-    ...(write.error ? { error: write.error } : {}),
-  }, method);
+}
+
+/** `?project=` / `body.project` → the name to resolve, or `null` when the caller named none. */
+function normaliseFlagProject(raw: string | null | undefined): string | null {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  return value ? value : null;
 }
 
 /**

@@ -24,7 +24,10 @@
  *                       recorded verbatim so a re-export reproduces it (see `range-charts.ts`)
  *
  * A `project.json` sidecar records the derived metadata and the exact command, so the provenance
- * of the CSVs travels with them.
+ * of the CSVs travels with them. That sidecar is also the material from which the first flag save
+ * writes the project's `.gpf` (`writeProjectFlags(..., {create: true})` in `src/export-projects.ts`):
+ * this tool does not create a `.gpf` itself, because a project file is only worth writing once it
+ * carries something (the markers) and only the panel can decide that.
  *
  * Usage (from `逆向/04_重实现`):
  *

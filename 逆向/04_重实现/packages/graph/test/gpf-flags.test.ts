@@ -11,15 +11,19 @@
  *     other key of the file is byte-for-byte what it was (key order included);
  *  3. the rest of the file's *shape* survives too — 2-space indentation, LF/CRLF, BOM, trailing
  *     newline — because the text is re-serialised with the input's own formatting;
- *  4. nothing is written when there is no `.gpf` (the caller falls back to `localStorage`), or when
- *     the `.gpf` is not parsable (it is user data; a broken file is reported, never replaced);
- *  5. two projects never share flags, and writing the same state twice is a no-op.
+ *  4. nothing is written when there is no `.gpf` (the caller falls back to `localStorage`) unless
+ *     `create` is asked for, or when the `.gpf` is not parsable (it is user data; a broken file is
+ *     reported, never replaced);
+ *  5. two projects never share flags, and writing the same state twice is a no-op;
+ *  6. **B/E1** — the first save of a project without a `.gpf` creates one from the project's own
+ *     measurements, with Graph's checksum, and the next read comes back through the `.gpf`.
  *
  *   node --test --test-force-exit "packages/graph/test/gpf-flags.test.ts"
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
@@ -28,7 +32,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  gpfChecksum,
   mergeGpfFlags,
+  plotSummaryOfCsvs,
   projectGpfPath,
   readProjectFlags,
   resolveExportProject,
@@ -336,4 +342,271 @@ test('一次写入只增一个顶层键，checksum 等字段一个字节都不�
   assert.ok(checksumLines[0].startsWith(checksum), 'checksum 的值逐字不变（只多了一个语法逗号）');
   assert.ok(merged.indexOf(checksum) < merged.indexOf('"FlagsInitialState"'), '新块在最后，checksum 未被顶掉');
   assert.ok(existsSync(CLEAN_GPF));
+});
+
+/* ---------------- 6. creating the `.gpf` on the first save (B/E1) ----------------
+ *
+ * A project directory that never had a `.gpf` used to be `localStorage`-only forever. Now the first
+ * save that carries a marker writes one — from this project's own measurements, with Graph's own
+ * checksum — so the next read is a `.gpf` read. What is pinned here:
+ *
+ *  - the file name Graph itself uses (`<dir>/<basename(dir)>.gpf`), 2-space + no trailing newline;
+ *  - every field that is filled comes from the CSVs' `#` comments / `project.json` / `stat(capture)`,
+ *    and no key is invented (the set is a subset of `clean.gpf`'s);
+ *  - `checksum` is the real algorithm: recomputing it on the shipped `clean.gpf` reproduces the
+ *    stored value, and on a freshly created file it matches what `verifyChecksum` would compute;
+ *  - nothing is created from an empty marker list, from a project with no readable GPS window, or
+ *    next to a `.gpf` this layer cannot attribute to the project.
+ */
+
+/** The six `#` lines a real Graph export carries, plus two rows. */
+const HEADER_CSV = [
+  '#Project Name:          clean',
+  '#Project Directory:    C:\\Users\\SunCh\\AppData\\Local\\Temp\\gs\\clean',
+  '#Data File Name:      clean.gps',
+  '#Start Time(GPS):      2442,463097.350',
+  '#End Time(GPS):        2442,463102.300',
+  '#Duration:                   00:00:04',
+  'timestamp (GPS week sec),Height',
+  '2442  463098.000,1.000000',
+  '2442  463102.300,2.000000',
+  '',
+].join('\r\n');
+
+/** An export project with a full CSV header and, optionally, the `project.json` sidecar. */
+function makeExportProject(
+  root: string,
+  key: string,
+  options: { csv?: string; sidecar?: unknown; capture?: string } = {},
+): ExportProject {
+  const dir = join(root, key);
+  mkdirSync(join(dir, 'csv'), { recursive: true });
+  writeFileSync(join(dir, 'csv', 'Height.csv'), options.csv ?? HEADER_CSV, 'utf8');
+  if (options.sidecar !== undefined) {
+    writeFileSync(
+      join(dir, 'project.json'),
+      typeof options.sidecar === 'string' ? options.sidecar : JSON.stringify(options.sidecar, null, 2),
+      'utf8',
+    );
+  }
+  const { project } = resolveExportProject(root, key);
+  assert.ok(project, `${key} 应当被认成工程`);
+  return project;
+}
+
+/** `verifyChecksum` @549299, spelled out: SHA-256 of the file without `checksum`, plus the salt. */
+function checksumOf(text: string): string {
+  const data = JSON.parse(text) as Record<string, unknown>;
+  const { checksum: _stored, ...rest } = data;
+  return createHash('sha256').update(JSON.stringify(rest) + 'GAA170P4468F1218', 'utf8').digest('hex');
+}
+
+test('checksum 算法与真文件对得上：clean.gpf 的 checksum 复算后一致', () => {
+  const text = readFileSync(CLEAN_GPF, 'utf8');
+  const stored = (JSON.parse(text) as { checksum: string }).checksum;
+  assert.equal(gpfChecksum(JSON.parse(text) as Record<string, unknown>), stored);
+  assert.equal(checksumOf(text), stored, '独立写一遍算法也一致（不是拿自己的输出自证）');
+});
+
+test('PlotSummary 按页签分组，不按消息分：CPU Usage 归 Receiver_Status（与 clean.gpf 一致）', () => {
+  const summary = plotSummaryOfCsvs([
+    'Height.csv', 'CPU Usage.csv', 'GNSS Signal Strength.csv', 'Azimuth.csv', 'Velocity.csv', 'missing.csv',
+  ]);
+  assert.deepEqual(summary, {
+    PVT: { Height: { BESTPOS: 1 }, Velocity: { BESTVEL: 1 } },
+    Receiver_Status: { 'CPU Usage': { BESTPOS: 1 } },
+    Heading_Attitude: { 'INS Orientation Azimuth': { insattitude_azimuth: 1 } },
+    Tracking_Measurements: { Primary: { 'GNSS Signal Strength': { RANGE: 1 } } },
+  });
+  assert.equal('2D Trajectory' in (summary.PVT as object), false, '没有这份 CSV 就没有这张图');
+});
+
+test('无 .gpf 的工程：首次保存创建 .gpf，字段全部来自本工程，读回来是同一份 flags', () => {
+  const root = mkdtempSync(join(tmpdir(), 'graph-gpf-create-'));
+  try {
+    const capture = join(root, 'clean.gps');
+    writeFileSync(capture, Buffer.alloc(1234, 7));
+    const project = makeExportProject(root, 'clean', {
+      sidecar: {
+        projectName: 'clean',
+        dataFileName: 'clean.gps',
+        capture,
+        startTime: '2442,463097.350',
+        endTime: '2442,463102.300',
+        messages: { RANGE: 100, BESTPOS: 5 },
+      },
+    });
+    assert.equal(projectGpfPath(project), null, '起点确实没有 .gpf');
+
+    const flags = flagState(2);
+    const write = writeProjectFlags(project, flags, { create: true });
+    assert.equal(write.ok, true, write.error);
+    assert.equal(write.created, true);
+    // `getGpfFilePath()` @538881：<projectDirectory>/<basename(projectDirectory)>.gpf
+    assert.equal(write.path, join(project.directory, 'clean.gpf'));
+    assert.equal(existsSync(write.path!), true);
+
+    const created = JSON.parse(readFileSync(write.path!, 'utf8')) as Record<string, unknown>;
+    assert.equal(created.PageRoute, '/process');
+    assert.equal(created.projectDirectory, project.directory);
+    assert.equal(created.filename, 'clean.gps');
+    assert.equal(created.filePath, capture);
+    assert.deepEqual(created.fileTimeline, { StartTime: 1477384697350, EndTime: 1477384702300 });
+    const summary = created.updatedProjSummary as Record<string, any>;
+    assert.deepEqual(summary.DataInfo, {
+      Duration: 4950, EndTime: 1477384702300, FileSize: 1234, StartTime: 1477384697350,
+    }, '时间窗来自 CSV 的 #Start/#End Time(GPS)（GPS 毫秒），FileSize 来自 capture 的实际大小');
+    assert.deepEqual(summary.Messages, { BESTPOS: 5, RANGE: 100 }, 'Messages 按名字排序，取自 project.json');
+    assert.equal(created.TotalLogInstances, 105, 'TotalLogInstances = Messages 之和（clean.gpf 的 119 就是这么来的）');
+    assert.deepEqual(summary.PlotSummary, { PVT: { Height: { BESTPOS: 1 } } }, '只有存在的 CSV 才进 PlotSummary');
+    assert.equal(created.DataSummary, undefined, '不写指向不存在文件的 DataSummary');
+    assert.equal(created.GOSMetaPath, undefined, '不写不存在的 GOS 路径');
+    assert.equal(created.PersistenceInfo, undefined, '布局状态由 Graph 自己从 PlotSummary 重建（@602242）');
+
+    // 缩进/结尾与 Graph 的 writeFile 一致：2 空格，没有结尾换行。
+    const text = readFileSync(write.path!, 'utf8');
+    assert.equal(text.split('\n')[1].startsWith('  "'), true);
+    assert.equal(/\n$/.test(text), false);
+    assert.equal(text.startsWith('\uFEFF'), false);
+
+    // checksum 真的能被 verifyChecksum 复算出来。
+    assert.equal(created.checksum, checksumOf(text));
+
+    // 读回来 = 写进去的 flags；身份也从"没有 .gpf"变成"由 .gpf 管辖"。
+    const read = readProjectFlags(project);
+    assert.ok(read);
+    assert.equal(read.path, write.path);
+    assert.equal(read.error, undefined);
+    assert.deepEqual(read.flags, { allFlags: flags.allFlags, isFlagsPanelOpen: true });
+
+    // 再写一次同样的状态：字节稳定（不重排、不长大、checksum 不变）。
+    const again = writeProjectFlags(project, flags, { create: true, resign: true });
+    assert.equal(again.ok, true);
+    assert.equal(readFileSync(write.path!, 'utf8'), text);
+
+    // 换一份 flags：只有 FlagsInitialState 和 checksum 动。
+    const changed = writeProjectFlags(project, flagState(3, false), { resign: true });
+    assert.equal(changed.ok, true);
+    const after = readFileSync(write.path!, 'utf8');
+    const keysBefore = Object.keys(JSON.parse(text));
+    const keysAfter = Object.keys(JSON.parse(after));
+    assert.deepEqual(keysAfter, keysBefore, '键集合与顺序不变');
+    assert.equal((JSON.parse(after) as any).checksum, checksumOf(after), '改完 flags 的 checksum 仍是有效值');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('创建的 .gpf 不发明字段：顶层键是 clean.gpf 的子集 + FlagsInitialState', () => {
+  const root = mkdtempSync(join(tmpdir(), 'graph-gpf-create-keys-'));
+  try {
+    const project = makeExportProject(root, 'clean');
+    const write = writeProjectFlags(project, flagState(1), { create: true });
+    assert.equal(write.ok, true, write.error);
+    const allowed = new Set([...Object.keys(JSON.parse(readFileSync(CLEAN_GPF, 'utf8'))), 'FlagsInitialState']);
+    const keys = Object.keys(JSON.parse(readFileSync(write.path!, 'utf8')));
+    assert.deepEqual(keys.filter((key) => !allowed.has(key)), [], '没有一个 clean.gpf 里没有的顶层键');
+    assert.ok(keys.includes('FlagsInitialState') && keys.includes('checksum'));
+    // `clean.gpf` 也没有 projectName/projectDescription：工程名就是目录名（@550800）。
+    assert.ok(!keys.includes('projectName') && !keys.includes('projectDescription'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('已有 .gpf + resign：只有 FlagsInitialState 与 checksum 变，checksum 复算一致', () => {
+  const root = mkdtempSync(join(tmpdir(), 'graph-gpf-resign-'));
+  try {
+    const original = readFileSync(CLEAN_GPF, 'utf8');
+    const project = makeProject(root, 'clean', original);
+    const path = join(project.directory, 'clean.gpf');
+
+    const write = writeProjectFlags(project, flagState(2), { resign: true });
+    assert.equal(write.ok, true);
+    const merged = readFileSync(path, 'utf8');
+    assert.notEqual(merged, original);
+    const data = JSON.parse(merged) as Record<string, unknown>;
+    assert.deepEqual(data.FlagsInitialState, { allFlags: flagState(2).allFlags, isFlagsPanelOpen: true });
+    assert.equal(data.checksum, checksumOf(merged), '写进去的 checksum 能被 verifyChecksum 复算');
+    assert.notEqual(data.checksum, (JSON.parse(original) as any).checksum, '确实是重新签的');
+
+    // 除了 FlagsInitialState 与 checksum，别的键一格都没动。
+    const before = JSON.parse(original) as Record<string, unknown>;
+    for (const key of Object.keys(before)) {
+      if (key === 'checksum') continue;
+      assert.deepEqual(data[key], before[key], `${key} 不变`);
+    }
+    // 缩进/换行/结尾仍随原文件。
+    assert.equal(merged.split('\n')[1].startsWith('  "'), true);
+    assert.equal(/\n$/.test(merged), /\n$/.test(original));
+    assert.equal(withoutFlags(merged).replace(/^ {2}"checksum": .*$/m, ''), original.replace(/^ {2}"checksum": .*$/m, ''));
+
+    // 两台"实现"对同一份输入给出同一个 checksum：不是拿自己签署自己。
+    const viaMerge = mergeGpfFlags(original, flagState(2), { resign: true })!;
+    assert.equal(viaMerge, merged);
+    assert.equal((JSON.parse(viaMerge) as any).checksum, checksumOf(viaMerge));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('空 flags 不建文件；没有可用时间窗（no-data）也不建，文件一个都不多', () => {
+  const root = mkdtempSync(join(tmpdir(), 'graph-gpf-create-refuse-'));
+  try {
+    const empty = makeExportProject(join(root, 'empty'), 'clean');
+    assert.deepEqual(writeProjectFlags(empty, { allFlags: [], isFlagsPanelOpen: false }, { create: true }), {
+      ok: false, reason: 'no-gpf',
+    }, '没有标记可存时不往工程目录里丢文件');
+    assert.deepEqual(readdirSync(empty.directory).sort(), ['csv']);
+
+    // CSV 里既没有 #Start/#End 注释，也没有带 GPS 时间的行 → 不凭空造时间窗。
+    const timeless = makeExportProject(join(root, 'timeless'), 'noTime', {
+      csv: '#Project Name:          noTime\r\ntimestamp (GPS week sec),Height\r\n,1.0\r\n',
+      sidecar: { messages: { BESTPOS: 1 } },
+    });
+    const refused = writeProjectFlags(timeless, flagState(1), { create: true });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.reason, 'no-data');
+    assert.equal(refused.path, undefined, '连路径都不给，调用方据此回退 localStorage');
+    assert.deepEqual(readdirSync(timeless.directory).sort(), ['csv', 'project.json']);
+
+    // 目录里已有一个本层认不出来的 .gpf（两个互不相关）：不猜、不建第三个。
+    const many = makeExportProject(join(root, 'many'), 'dup');
+    writeFileSync(join(many.directory, 'a.gpf'), '{}');
+    writeFileSync(join(many.directory, 'b.gpf'), '{}');
+    assert.deepEqual(writeProjectFlags(many, flagState(1), { create: true }), { ok: false, reason: 'no-gpf' });
+    assert.deepEqual(readdirSync(many.directory).sort(), ['a.gpf', 'b.gpf', 'csv']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('坏 project.json 不被改写，也不阻止创建：缺的字段就留空/0，不编', () => {
+  const root = mkdtempSync(join(tmpdir(), 'graph-gpf-create-sidecar-'));
+  try {
+    const project = makeExportProject(root, 'broken', { sidecar: '{ not json' });
+    const sidecarPath = join(project.directory, 'project.json');
+
+    const write = writeProjectFlags(project, flagState(1), { create: true });
+    assert.equal(write.ok, true, write.error);
+    assert.equal(readFileSync(sidecarPath, 'utf8'), '{ not json', '坏 sidecar 原样留着');
+
+    const created = JSON.parse(readFileSync(write.path!, 'utf8')) as Record<string, any>;
+    assert.equal(created.filename, 'clean.gps', 'sidecar 坏了也有 CSV 的 #Data File Name 兜底');
+    assert.equal(created.filePath, '', 'sidecar 坏时不知道 capture 路径，就留空而不是编一个');
+    assert.deepEqual(created.updatedProjSummary.Messages, {});
+    assert.equal(created.TotalLogInstances, 0);
+    // 时间窗仍来自 CSV 注释（那是工程自己的数据，不依赖 sidecar）。
+    assert.deepEqual(created.fileTimeline, { StartTime: 1477384697350, EndTime: 1477384702300 });
+
+    // 已经存在的坏 .gpf 仍然一律不覆盖——create 也不例外。
+    const brokenGpf = makeExportProject(join(root, 'badgpf'), 'clean', { csv: HEADER_CSV });
+    writeFileSync(join(brokenGpf.directory, 'clean.gpf'), '{ nope');
+    const refused = writeProjectFlags(brokenGpf, flagState(1), { create: true });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.reason, 'bad-json');
+    assert.equal(readFileSync(join(brokenGpf.directory, 'clean.gpf'), 'utf8'), '{ nope');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

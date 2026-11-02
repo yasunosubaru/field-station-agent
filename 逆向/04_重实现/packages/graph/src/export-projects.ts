@@ -19,8 +19,13 @@
  * test `graph-projects.test.ts` compares them file by file for the default project.
  */
 
-import { readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync,
+} from 'node:fs';
 import { basename, extname, isAbsolute, join, relative } from 'node:path';
+
+import { CSV_CHARTS } from './csv.ts';
 
 const MAX_CACHED_FILES = 16;
 const TABLE_ROWS = 20;
@@ -465,6 +470,24 @@ export function projectCsvText(project: ExportProject, rawName: unknown): string
  * A `.gpf` is user data. Nothing here rewrites a file it could not parse — a corrupt `.gpf` is
  * reported, never replaced — and writes go through a temporary file + rename so a crash mid-write
  * cannot leave a half-file behind.
+ *
+ * **Creating one (B/E1).** A project directory that never had a `.gpf` used to fall back to
+ * `localStorage` forever. `writeProjectFlags(project, flags, {create: true})` now writes a **new**
+ * `.gpf` instead, on the first save that actually carries a marker:
+ *
+ *   - the skeleton is the one a real project file has (every key and its order taken from the
+ *     shipped `00_来源/samples/graph/project/clean.gpf`; see `buildProjectGpf`), filled only with
+ *     values measured from **this** project (its CSVs' `#` comments, its `project.json` sidecar,
+ *     the capture's size) — nothing is invented;
+ *   - `checksum` is computed with Graph's own algorithm (`addChecksum`/`verifyChecksum` @549299:
+ *     SHA-256 of `JSON.stringify(file without checksum) + "GAA170P4468F1218"`), so `validateGPF`
+ *     accepts the file;
+ *   - what it deliberately does **not** claim: a runnable Process page. There is no `GOS`/`GDS`
+ *     database next to these exports, so the charts cannot be redrawn — see
+ *     `03_分析/13_Graph分析页.md §11.4`.
+ *
+ * An empty marker list creates nothing (`no-gpf`): with nothing to store there is no reason to put
+ * a file in the user's project directory, and "no flags" already means "empty store".
  */
 
 /** `FlagsInitialState` — the only part of a `.gpf` this layer owns. */
@@ -484,7 +507,7 @@ export interface ProjectGpfFlags {
 }
 
 /** Why a flag write did not happen. */
-export type ProjectGpfWriteReason = 'no-gpf' | 'invalid' | 'unreadable' | 'bad-json' | 'write-failed';
+export type ProjectGpfWriteReason = 'no-gpf' | 'no-data' | 'invalid' | 'unreadable' | 'bad-json' | 'write-failed';
 
 export interface ProjectGpfWrite {
   ok: boolean;
@@ -494,6 +517,27 @@ export interface ProjectGpfWrite {
   error?: string;
   /** The bytes that were written (for tests and for a caller that wants to serve them). */
   text?: string;
+  /** `true` when this call created the file (it did not exist before). */
+  created?: boolean;
+}
+
+/** Options for `writeProjectFlags`. Both default to off, i.e. D5's "only touch an existing file". */
+export interface ProjectGpfWriteOptions {
+  /**
+   * Create `<projectDirectory>/<basename(projectDirectory)>.gpf` when the project has none.
+   *
+   * Refused (`no-gpf`) for an empty `allFlags` and when the directory already holds a `.gpf` this
+   * layer could not attribute to the project — one file is never guessed into existence next to
+   * another one.
+   */
+  create?: boolean;
+  /**
+   * Recompute `checksum` the way Graph's `addChecksum` does (`@549299`) after merging the flags.
+   *
+   * Off by default so a pure flag edit changes only `FlagsInitialState`; the HTTP route turns it on
+   * because Graph refuses a file whose checksum no longer matches (`INVALID_GPF_FILE`).
+   */
+  resign?: boolean;
 }
 
 /**
@@ -550,8 +594,15 @@ function parseGpf(text: string): Record<string, unknown> | null {
  * line endings, BOM and trailing newline are re-applied from the input, and key order is the parser's
  * (an existing `FlagsInitialState` keeps its position, a new one is appended last — which is also what
  * Graph's own writer does with a fresh key).
+ *
+ * `options.resign` also refreshes `checksum` (`gpfChecksum`), which is the only other byte that may
+ * change then. Off by default: a plain D5 write touches that one block and nothing else.
  */
-export function mergeGpfFlags(text: string, flags: GpfFlagState): string | null {
+export function mergeGpfFlags(
+  text: string,
+  flags: GpfFlagState,
+  options: { resign?: boolean } = {},
+): string | null {
   const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
   const body = bom ? text.slice(1) : text;
   const data = parseGpf(body);
@@ -559,13 +610,14 @@ export function mergeGpfFlags(text: string, flags: GpfFlagState): string | null 
   const newline = body.includes('\r\n') ? '\r\n' : '\n';
   const indent = /^\{\r?\n([ \t]+)"/.exec(body)?.[1] ?? '  ';
   const trailingNewline = /\r?\n$/.test(body);
-  const next = {
+  const merged: Record<string, unknown> = {
     ...data,
     FlagsInitialState: {
       allFlags: Array.isArray(flags?.allFlags) ? flags.allFlags : [],
       isFlagsPanelOpen: !!flags?.isFlagsPanelOpen,
     },
   };
+  const next = options.resign ? withGpfChecksum(merged) : merged;
   let out = JSON.stringify(next, null, indent);
   if (newline === '\r\n') out = out.replace(/\n/g, '\r\n');
   return bom + out + (trailingNewline ? newline : '');
@@ -596,17 +648,352 @@ export function readProjectFlags(project: ExportProject): ProjectGpfFlags | null
   return { path, flags: { allFlags: raw.allFlags, isFlagsPanelOpen: !!raw.isFlagsPanelOpen } };
 }
 
+/* ---------------- creating the project's `.gpf` (B/E1) ----------------
+ *
+ * Measured, not guessed (`index-B86bHcCD.js`):
+ *
+ *   file name   `getGpfFilePath()` @538881   `join(projectDirectory, basename(projectDirectory) + ".gpf")`
+ *   checksum    `addChecksum` @549299        `JSON.stringify({...data, checksum: SHA-256(JSON.stringify(data) + "GAA170P4468F1218")}, null, 2)`
+ *               `verifyChecksum` @549299     hashes everything except `checksum` and compares
+ *   layout      @602242                      `PersistenceInfo` is optional: when absent Graph builds the
+ *                                            chart layout itself from `PlotSummary` (`getSupportedChartsList`)
+ *   markers     @554827 (`setStoreDefaults`) reads `FlagsInitialState` and rebuilds `newFlagId`
+ *   window      @554827                      `DataInfo.StartTime` / `EndTime` drive the playhead
+ *
+ * So a new file takes the *skeleton of the shipped working project* (`clean.gpf`, every key and its
+ * order) and fills only the fields this build can measure:
+ *
+ *   projectDirectory / fileTimeline / updatedProjSummary / TotalLogInstances / filename  ← this project
+ *   updatedProjSummary.DataInfo    ← the CSVs' `#Start Time(GPS)` / `#End Time(GPS)` (GPS ms, the
+ *                                    same scale `clean.gpf` uses: `(week*604800 + s) * 1000`), and
+ *                                    `FileSize` from `stat(capture)` when `project.json` names one
+ *   updatedProjSummary.Messages    ← `project.json` (the export tool's own decode counts)
+ *   updatedProjSummary.PlotSummary ← one entry per **CSV that exists here**, grouped by the tab the
+ *                                    chart sits under (`PLOT_GROUP`; `CPU Usage` plots `BESTPOS` but
+ *                                    belongs to `Receiver_Status`), `{ [title]: { [msg]: 1 } }`
+ *                                    (`1` is what every chart entry in `clean.gpf` holds — it says
+ *                                    "this chart has a series", not "this many records")
+ *   FlagsInitialState              ← the markers being saved
+ *   checksum                       ← `addChecksum`'s algorithm, so `validateGPF` accepts it
+ *
+ * Dropped on purpose, because writing them would be a claim we cannot support:
+ *
+ *   `DataSummary` / `GOSMetaPath`  the files they point at (`DataSummary.json`, `GOS/*.db`) do not
+ *                                  exist next to an export; `updatedProjSummary` makes Graph skip the
+ *                                  first (`fetchDataSummary` @549299)
+ *   `PersistenceInfo`              per-user tile layout; Graph rebuilds it from `PlotSummary` @602242
+ *   `projectName` / `projectDescription`
+ *                                  `clean.gpf` has neither — Graph names a project by the basename of
+ *                                  `projectDirectory` (`updateGPFRecentActivity` @550800)
+ *
+ * **Not claimed**: that the original can *draw* the project. These export directories carry CSVs, not
+ * the `GOS`/`GDS` databases the Process page reads, so the charts cannot be rebuilt — only the project
+ * file, its timeline and its markers are correct. See `03_分析/13_Graph分析页.md §11.4`.
+ */
+
+/** `STATIC_KEY` @549299 — the literal Graph appends to the JSON before hashing. */
+export const GPF_CHECKSUM_SALT = 'GAA170P4468F1218';
+
+/**
+ * Graph's `.gpf` checksum: SHA-256 of `JSON.stringify(everything except checksum) + salt`.
+ *
+ * Key **order** is part of the hash (it is `JSON.stringify` of the parsed object), which is why the
+ * writer never reorders a file's keys. On the shipped `clean.gpf` this reproduces the stored
+ * `checksum` byte for byte — the test `gpf-flags.test.ts` pins exactly that.
+ */
+export function gpfChecksum(data: Record<string, unknown>): string {
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'checksum') continue;
+    rest[key] = value;
+  }
+  return createHash('sha256').update(JSON.stringify(rest) + GPF_CHECKSUM_SALT, 'utf8').digest('hex');
+}
+
+/** `{...data, checksum}` with `checksum` where the file already had it (else appended last). */
+function withGpfChecksum(data: Record<string, unknown>): Record<string, unknown> {
+  const checksum = gpfChecksum(data);
+  const out: Record<string, unknown> = {};
+  let placed = false;
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'checksum') {
+      out.checksum = checksum;
+      placed = true;
+    } else {
+      out[key] = value;
+    }
+  }
+  if (!placed) out.checksum = checksum;
+  return out;
+}
+
+/** The `project.json` sidecar `packages/graph/tools/export-sbf-project.ts` writes next to the CSVs. */
+interface ProjectSidecar {
+  dataFileName?: string;
+  capture?: string;
+  startTime?: string;
+  endTime?: string;
+  messages?: Record<string, number>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** `<project>/project.json`, else `<project>/csv/project.json`; a corrupt one is **ignored**, never rewritten. */
+function readProjectSidecar(project: ExportProject): ProjectSidecar | null {
+  for (const path of [join(project.directory, 'project.json'), join(project.csvDirectory, 'project.json')]) {
+    let text: string;
+    try {
+      text = readFileSync(path, 'utf8');
+    } catch {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
+    } catch {
+      return null;
+    }
+    if (!isRecord(parsed)) return null;
+    const pick = (raw: unknown) => (typeof raw === 'string' && raw.trim() ? raw.trim() : undefined);
+    const messages: Record<string, number> = {};
+    if (isRecord(parsed.messages)) {
+      for (const [name, count] of Object.entries(parsed.messages)) {
+        if (typeof count === 'number' && Number.isFinite(count) && count >= 0) messages[name] = Math.trunc(count);
+      }
+    }
+    return {
+      dataFileName: pick(parsed.dataFileName),
+      capture: pick(parsed.capture),
+      startTime: pick(parsed.startTime),
+      endTime: pick(parsed.endTime),
+      messages,
+    };
+  }
+  return null;
+}
+
+/** `"2442,463097.350"` / `"2442 463097.350"` → Graph's ms scale (`(week*604800 + s) * 1000`), or `null`. */
+export function gpsCommentMs(cell: string): number | null {
+  const normalised = String(cell ?? '').replace(/,/g, ' ').trim();
+  if (!normalised) return null;
+  const seconds = parseGpsCell(normalised);
+  return seconds === null ? null : Math.round(seconds * 1000);
+}
+
+/**
+ * Chart → the `PlotSummary` group it belongs to, i.e. **the tab it appears under** (not the message
+ * that feeds it — `CPU Usage` plots `BESTPOS` but sits in Receiver Status). Taken from the shipped
+ * `clean.gpf` (`PVT` / `Receiver_Status` / `Tracking_Measurements`) plus the three
+ * `Heading & Attitude` charts, whose group name comes from `export-sbf-project.ts#plotSummaryOf`.
+ */
+const PLOT_GROUP: Record<string, 'PVT' | 'Heading_Attitude' | 'Tracking_Measurements' | 'Receiver_Status'> = {
+  '2D Trajectory': 'PVT',
+  Height: 'PVT',
+  Velocity: 'PVT',
+  'Position SD': 'PVT',
+  'Position Status': 'PVT',
+  'Position Type': 'PVT',
+  'Solution Statistics': 'PVT',
+  'CPU Usage': 'Receiver_Status',
+  'HW Monitor Status': 'Receiver_Status',
+  'Receiver Status': 'Receiver_Status',
+  'Tracking Time': 'Tracking_Measurements',
+  'GNSS Signal Strength': 'Tracking_Measurements',
+  'Satellites and Signals': 'Tracking_Measurements',
+  Azimuth: 'Heading_Attitude',
+  'Roll and Pitch': 'Heading_Attitude',
+  'SPAN Filter Updates': 'Heading_Attitude',
+};
+
+/**
+ * `PlotSummary` for a project, built from the CSVs that are actually here: a chart exists iff its
+ * export does. The value `1` is copied from `clean.gpf` (every chart entry there is `1`).
+ */
+export function plotSummaryOfCsvs(csvNames: string[]): Record<string, unknown> {
+  const present = new Set(csvNames.map((name) => name.toLowerCase()));
+  const summary: Record<string, unknown> = {};
+  const tracking: Record<string, Record<string, number>> = {};
+  for (const spec of CSV_CHARTS) {
+    if (!present.has(`${spec.title}.csv`.toLowerCase())) continue;
+    const section = PLOT_GROUP[spec.title] ?? 'PVT';
+    const entry = { [spec.plot?.message ?? spec.message]: 1 };
+    if (section === 'Tracking_Measurements') {
+      tracking[spec.plot?.title ?? spec.title] = entry;
+      continue;
+    }
+    const target = (summary[section] as Record<string, Record<string, number>> | undefined) ?? {};
+    target[spec.plot?.title ?? spec.title] = entry;
+    summary[section] = target;
+  }
+  if (Object.keys(tracking).length) summary.Tracking_Measurements = { Primary: tracking };
+  return summary;
+}
+
+/**
+ * Where a new `.gpf` would go: `<dir>/<basename(dir)>.gpf` (`getGpfFilePath` @538881).
+ *
+ * `null` when the directory already holds a `.gpf` that `projectGpfPath` could not attribute to this
+ * project (two unrelated files) — a third one would only make the ambiguity worse.
+ */
+export function projectGpfCreatePath(project: ExportProject): string | null {
+  let entries: string[];
+  try {
+    entries = readdirSync(project.directory).filter((file) => extname(file).toLowerCase() === '.gpf');
+  } catch {
+    return null;
+  }
+  if (entries.length) return null;
+  const name = basename(project.directory);
+  if (!name || name === '.' || name === '..') return null;
+  return join(project.directory, `${name}.gpf`);
+}
+
+/**
+ * A **new** `.gpf` for this project, or `null` when there is nothing honest to put in it.
+ *
+ * `null` means "one of the measurements is missing": no CSV at all, or no readable time window
+ * (neither `#Start Time(GPS)`/`#End Time(GPS)` in the CSVs nor a timestamped row, nor a
+ * `project.json`). Writing a file with a made-up window would make the playhead lie.
+ */
+export function buildProjectGpf(project: ExportProject, flags: GpfFlagState): string | null {
+  const names = csvNamesIn(project.csvDirectory);
+  if (!names.length) return null;
+  let first: ParsedCsv;
+  try {
+    first = readCsv(project.csvDirectory, names[0]);
+  } catch {
+    // The CSV vanished between the directory listing and the read: nothing measured, nothing written.
+    return null;
+  }
+  const comments = commentsOf(first);
+  const sidecar = readProjectSidecar(project);
+
+  let startMs = gpsCommentMs(comments.startTime) ?? gpsCommentMs(sidecar?.startTime ?? '');
+  let endMs = gpsCommentMs(comments.endTime) ?? gpsCommentMs(sidecar?.endTime ?? '');
+  if (startMs === null || endMs === null) {
+    const stamped = first.timeColumnIndex >= 0
+      ? first.rows
+        .map((row) => parseGpsCell(row[first.timeColumnIndex] ?? ''))
+        .filter((value): value is number => value !== null)
+        .map((seconds) => Math.round(seconds * 1000))
+      : [];
+    if (stamped.length) {
+      startMs = startMs ?? stamped[0];
+      endMs = endMs ?? stamped[stamped.length - 1];
+    }
+  }
+  if (startMs === null || endMs === null) return null;
+  if (endMs < startMs) [startMs, endMs] = [endMs, startMs];
+  // The CSV window is `[start, end)`, so a one-record project still has a non-zero duration.
+  if (endMs === startMs) endMs = startMs + 1;
+
+  const dataFileName = comments.dataFileName || sidecar?.dataFileName || '';
+  const capturePath = sidecar?.capture && isAbsolute(sidecar.capture) ? sidecar.capture : '';
+  let fileSize = 0;
+  if (capturePath) {
+    try {
+      const info = statSync(capturePath);
+      if (info.isFile()) fileSize = info.size;
+    } catch {
+      /* the capture has been moved/removed: FileSize stays 0 rather than a guess */
+    }
+  }
+
+  const messages: Record<string, number> = {};
+  const sidecarMessages = sidecar?.messages ?? {};
+  for (const name of Object.keys(sidecarMessages).sort((a, b) => a.localeCompare(b, 'en'))) {
+    messages[name] = sidecarMessages[name];
+  }
+  const totalLogInstances = Object.values(messages).reduce((sum, count) => sum + count, 0);
+
+  const data: Record<string, unknown> = {
+    PageRoute: '/process',
+    projectDirectory: project.directory,
+    filePath: capturePath,
+    filename: dataFileName,
+    fileTimeline: { StartTime: startMs, EndTime: endMs },
+    updatedProjSummary: {
+      DataInfo: {
+        Duration: endMs - startMs,
+        EndTime: endMs,
+        FileSize: fileSize,
+        StartTime: startMs,
+      },
+      ReceiverInfo: { signalinfo: null, version: null },
+      Messages: messages,
+      PlotSummary: plotSummaryOfCsvs(names),
+    },
+    InputValidation: 0,
+    Percentage: 100,
+    TotalLogInstances: totalLogInstances,
+    ValidationCode: 0,
+    api: 'FileValidation',
+    currentTimeStamp: 0,
+    isPlaying: false,
+    editedStart: 0,
+    editedEnd: 0,
+    FlagsInitialState: {
+      allFlags: Array.isArray(flags?.allFlags) ? flags.allFlags : [],
+      isFlagsPanelOpen: !!flags?.isFlagsPanelOpen,
+    },
+  };
+  return JSON.stringify(withGpfChecksum(data), null, 2);
+}
+
+/** temp file + rename: a crash cannot leave a truncated `.gpf` behind. */
+function writeGpfFile(path: string, text: string): { ok: true } | { ok: false; error: string } {
+  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(temp, text, 'utf8');
+    renameSync(temp, path);
+  } catch (error) {
+    try {
+      unlinkSync(temp);
+    } catch {
+      /* the temp file never existed */
+    }
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+  return { ok: true };
+}
+
 /**
  * Write `FlagsInitialState` into the project's `.gpf`, leaving every other field alone.
  *
  * Refuses (`ok: false` + `reason`) when the project has no `.gpf` (`no-gpf` — the caller falls back to
- * its own store), when the input is not `{allFlags: []}` (`invalid`), or when the existing file cannot
- * be read/parsed (`unreadable` / `bad-json`) — a `.gpf` is user data and a broken one is never
- * overwritten with a shorter, lossy version.
+ * its own store; with `options.create` an empty marker list is refused for the same reason), when the
+ * input is not `{allFlags: []}` (`invalid`), when the existing file cannot be read/parsed
+ * (`unreadable` / `bad-json`) — a `.gpf` is user data and a broken one is never overwritten with a
+ * shorter, lossy version — or when a new file could not be filled with measured values (`no-data`).
  */
-export function writeProjectFlags(project: ExportProject, flags: GpfFlagState): ProjectGpfWrite {
-  const path = projectGpfPath(project);
-  if (!path) return { ok: false, reason: 'no-gpf' };
+export function writeProjectFlags(
+  project: ExportProject,
+  flags: GpfFlagState,
+  options: ProjectGpfWriteOptions = {},
+): ProjectGpfWrite {
+  const existing = projectGpfPath(project);
+  if (!existing) {
+    if (!options.create) return { ok: false, reason: 'no-gpf' };
+    if (!isGpfFlagState(flags)) return { ok: false, reason: 'invalid', error: 'flags 必须是 {allFlags: [...]}' };
+    // Nothing to store yet: an empty marker list is the same thing an empty `localStorage` bucket is,
+    // and creating a project file for it would put a file in the user's directory for no reason.
+    if (!flags.allFlags.length) return { ok: false, reason: 'no-gpf' };
+    const path = projectGpfCreatePath(project);
+    if (!path) return { ok: false, reason: 'no-gpf' };
+    const text = buildProjectGpf(project, flags);
+    if (text === null) {
+      return { ok: false, reason: 'no-data', error: '工程缺少可用的时间窗（CSV 里没有 GPS 时间），不凭空造 .gpf' };
+    }
+    // A `.gpf` that appeared between the probe and here is somebody else's file: leave it alone.
+    if (existsSync(path)) return { ok: false, path, reason: 'unreadable', error: `${path} 在写入前已存在` };
+    const written = writeGpfFile(path, text);
+    if (!written.ok) return { ok: false, path, reason: 'write-failed', error: written.error };
+    return { ok: true, path, text, created: true };
+  }
+
+  const path = existing;
   if (!isGpfFlagState(flags)) return { ok: false, path, reason: 'invalid', error: 'flags 必须是 {allFlags: [...]}' };
 
   let text: string;
@@ -615,22 +1002,12 @@ export function writeProjectFlags(project: ExportProject, flags: GpfFlagState): 
   } catch (error) {
     return { ok: false, path, reason: 'unreadable', error: error instanceof Error ? error.message : String(error) };
   }
-  const merged = mergeGpfFlags(text, flags);
+  const merged = mergeGpfFlags(text, flags, { resign: options.resign });
   if (merged === null) return { ok: false, path, reason: 'bad-json', error: `${path} 不是合法的 .gpf JSON` };
   if (merged === text) return { ok: true, path, text };
 
-  // temp file + rename: a crash cannot leave a truncated `.gpf` behind.
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    writeFileSync(temp, merged, 'utf8');
-    renameSync(temp, path);
-  } catch (error) {
-    try {
-      unlinkSync(temp);
-    } catch {
-      /* the temp file never existed */
-    }
-    return { ok: false, path, reason: 'write-failed', error: error instanceof Error ? error.message : String(error) };
-  }
+  const written = writeGpfFile(path, merged);
+  if (!written.ok) return { ok: false, path, reason: 'write-failed', error: written.error };
   return { ok: true, path, text: merged };
 }
+

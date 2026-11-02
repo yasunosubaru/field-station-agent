@@ -54,8 +54,9 @@
  *             trash + restore, hover tooltip (flag #, GPS time, lat/lon/height, comment) and
  *             click-to-seek. Store shape, limit, duplicate window and trash states are the
  *             original's (`MAX_FLAGS` @1410884, `flags` slice @191475); persistence is the
- *             project's `.gpf` (`FlagsInitialState`) when the server can serve one, `localStorage`
- *             otherwise — see `createFlagStore`.
+ *             project's `.gpf` (`FlagsInitialState`) when the server can serve one — including the
+ *             `.gpf` it creates on the first save of a project that never had one — and
+ *             `localStorage` otherwise. See `createFlagStore`.
  *             Click-to-seek and the panel's Add button are **local** conveniences, not measured
  *             original interactions.
  *
@@ -124,8 +125,8 @@ const SPEEDS = [1, 2, 5, 10];
  * note it is **`color`/`description`**, not `colour`/`comment`. `timeCaptured` is the original's
  * millisecond timestamp. The same shape is persisted per project: the project's `.gpf` when it has
  * one (`createFlagStore` + `/graph/flags`), and `localStorage` under `flagStorageKey(projectKey)`
- * otherwise — which is every project in this build, none of whose export directories carries a
- * `.gpf`.
+ * otherwise. A project that never had a `.gpf` gets one on its first save (the server writes it from
+ * the project's own CSVs and `project.json`), so the `.gpf` owns the project from then on.
  *
  * `timeBase` is a **local addition** (the original always has an absolute project time): `'gps'`
  * means `timeCaptured` is a real epoch ms derived from the CSV's `#Start Time(GPS)`, `'elapsed'`
@@ -443,15 +444,17 @@ export function saveFlagState(storage, projectKey, state) {
  *
  *   - two pure functions over the **file text** (`parseGpfFlags` / `mergeGpfFlags`), which is what a
  *     `.gpf` is (`03_分析/06_Graph应用-附录/E_GPF项目文件结构.md`), and
- *   - `createFlagStore`, which asks `/graph/flags` for the project's `.gpf` and keeps using
- *     `localStorage` whenever that project has none (or the route is not there, which is the normal
- *     case in this build — see `03_分析/13_Graph分析页.md §11.3`).
+ *   - `createFlagStore`, which asks `/graph/flags` for the project's `.gpf`. When that project has
+ *     none, the first save asks the server to create one — the panel stays on `localStorage` for the
+ *     paint, and follows the answer (`gpf:true`) from then on. A server without the route, or a
+ *     project the server cannot fill honestly, keeps exactly the old `localStorage` behaviour — see
+ *     `03_分析/13_Graph分析页.md §11.3`.
  *
  * Nothing about a broken `.gpf` may break the panel: unparsable text is reported as `ok: false` and
  * the caller stays on `localStorage`.
  */
 
-/** The route the server would use for `<project>/.gpf` flags; absent today, so the probe falls back. */
+/** The route that carries a project's `.gpf` flags (`/api` + this, as `/api/health` lists it). */
 export const FLAG_GPF_ROUTE = '/graph/flags';
 
 /**
@@ -523,22 +526,28 @@ function flagProjectKey(projectKey) {
  *   `hydrate(key)`   async; asks `/api/health` **once** whether `/api/graph/flags` exists, and only
  *                    then `GET /graph/flags?project=<key>` → `{gpf: true, flags: FlagsInitialState}`
  *                    when that project's `.gpf` owns the flags; `null` keeps what `load` gave
- *   `save(key, s)`   `localStorage` + (once `hydrate` said this project is `.gpf`-backed) a
- *                    fire-and-forget `POST /graph/flags`, so a failed write cannot throw into the UI
+ *   `save(key, s)`   `localStorage` + a fire-and-forget `POST /graph/flags`, so a failed write cannot
+ *                    throw into the UI. The answer decides who owns the project from then on:
+ *                    `gpf:true` (the file existed, or `created:true` — the server wrote one from the
+ *                    project's own measurements) means later saves go to the `.gpf`; `gpf:false`
+ *                    means it stays a `localStorage`-only project, and the creation is not retried.
+ *                    A save with **no marker in it** (the panel also persists `isFlagsPanelOpen`)
+ *                    never consumes that one creation attempt.
  *   `isGpfBacked(k)` whether the current state of `k` came from a `.gpf`
  *
  * The route is discovered through `/api/health`'s `endpoints` instead of by calling it and eating a
- * 404: a 404 is a console error in the browser, and this panel must stay at zero. This build's
- * server does not list the route (it has no `.gpf` handler yet), so every project here stays on
- * `localStorage` — exactly the behaviour before this change. A negative answer is cached per project
- * for the session, so a project without a `.gpf` costs one request, not one per save. With no `api`
- * (or one that throws) the store is exactly the old `localStorage` behaviour.
+ * 404: a 404 is a console error in the browser, and this panel must stay at zero. A creation POST is
+ * sent **at most once per project per session** (a project whose CSVs carry no GPS window never gets
+ * a file, and re-asking on every keystroke would be noise). With no `api` (or one that throws) the
+ * store is exactly the old `localStorage` behaviour.
  */
 export function createFlagStore(options = {}) {
   const storage = options.storage || null;
   const api = options.api || null;
   /** projectKey → true when `/graph/flags` said that project's `.gpf` carries the flags. */
   const backed = new Map();
+  /** Projects this session already asked the server to create a `.gpf` for (success or not). */
+  const attempted = new Set();
   /** `null` = not asked yet, `true`/`false` = the server's answer for this session. */
   let routeAvailable = null;
 
@@ -597,13 +606,30 @@ export function createFlagStore(options = {}) {
   function save(projectKey, state) {
     const key = flagProjectKey(projectKey);
     const local = saveFlagState(storage, key, state);
-    if (api && typeof api.post === 'function' && backed.get(key) === true) {
-      try {
-        const request = api.post(FLAG_GPF_ROUTE, { project: key, flags: serializeFlagState(state) });
-        if (request && typeof request.then === 'function') request.then(() => {}, () => {});
-      } catch {
-        /* the .gpf write is best-effort; localStorage already has the state */
+    if (!api || typeof api.post !== 'function') return local;
+    const payload = serializeFlagState(state);
+    if (backed.get(key) === true) {
+      // Known `.gpf` project: every save is mirrored into the file.
+    } else if (routeAvailable === true && !attempted.has(key) && payload.allFlags.length > 0) {
+      // No `.gpf` yet — this POST is the "create it on first save" request, and only a save that
+      // actually carries a marker is worth creating a project file for. An empty store (the panel
+      // also persists `isFlagsPanelOpen` on its own) must not burn the one attempt.
+      attempted.add(key);
+    } else {
+      // The server answered `gpf:false`, never advertised the route, or there is nothing to store yet:
+      // `localStorage` only, and the next save with a marker still gets its one creation attempt.
+      return local;
+    }
+    try {
+      const request = api.post(FLAG_GPF_ROUTE, { project: key, flags: payload });
+      if (request && typeof request.then === 'function') {
+        request.then((body) => {
+          // `gpf:true` = the file exists now (created or already there): it owns the flags from here.
+          if (body && body.gpf === true) backed.set(key, true);
+        }, () => {});
       }
+    } catch {
+      /* the .gpf write is best-effort; localStorage already has the state */
     }
     return local;
   }
