@@ -14,7 +14,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,4 +55,15 @@ test('every panel that ships a dark palette keeps its ink light', () => {
     assert.ok(match, `${file}: dark palette block`);
     assert.match(match[1], /rgba\(255,\s*255,\s*255,\s*0\.87\)/, `${file}: light ink`);
   }
+});
+
+test('the Configuration drawer follows the shell theme', () => {
+  const configHttp = readFileSync(join(here, '..', 'src', 'config-http.ts'), 'utf8');
+  assert.match(configHttp, /syncTheme/, 'the embed script reads the parent theme');
+  assert.match(configHttp, /classList\.contains\('darkMode'\)/, 'it looks at the parent body class');
+  assert.match(configHttp, /MutationObserver/, 'a toggle while the page is open is followed');
+  assert.match(configHttp, /href="\/config-dark.css"/, 'the page links the dark sheet');
+  assert.ok(existsSync(join(web, 'config-dark.css')), 'config-dark.css is shipped');
+  const server = readFileSync(join(here, '..', 'src', 'server.ts'), 'utf8');
+  assert.match(server, /'\/config-dark\.css'/, 'the server serves it');
 });

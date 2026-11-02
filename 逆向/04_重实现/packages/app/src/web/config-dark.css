@@ -1,0 +1,111 @@
+/* -------------------------------------------------------------------------------------------
+ * Dark theme for the Configuration drawer.
+ *
+ * The pages inside the drawer are the suite's own shipped markup plus its own style.css, which
+ * already carries the original's `.darkMode ...` section (~1400 rules): setting `body.darkMode`
+ * (done by the embed script, copied from the shell) darkens most of it. This file fills the gaps:
+ * the pieces this build adds (the session note, the Interference Toolkit block) and the shipped
+ * widgets whose colour is a literal that the dark section missed.
+ * ----------------------------------------------------------------------------------------- */
+
+body.darkMode {
+  background: #121212;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+/* Literal-coloured text that the shipped dark section does not reach. Class rules in style.css
+ * (`.darkMode .x`) are more specific and still win. */
+body.darkMode :is(p, li, label, td, th, span, h1, h2, h3, h4, dd, dt, legend):not(.btn) {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+/* Notes this build appends to a page. */
+body.darkMode .config-session-note,
+body.darkMode .config-page-note,
+body.darkMode .config-readonly-note,
+body.darkMode .portconfig-note,
+body.darkMode .itk-readonly-note {
+  background: #3a2a12;
+  color: #ffe0b2;
+  border-left-color: #d98500;
+}
+
+/* GNSS step 4: the polarity switch is two list items. */
+body.darkMode .gnss-polarity li.active,
+body.darkMode li.active {
+  background: #14384a;
+  color: #ffffff;
+}
+
+/* ---- Interference Toolkit: this build's own read-only block ------------------------------- */
+
+body.darkMode .itk-readonly-section,
+body.darkMode .itk-table-wrap,
+body.darkMode .itk-table,
+body.darkMode .itk-detections {
+  background: transparent;
+}
+
+body.darkMode .itk-title,
+body.darkMode .itk-config-item,
+body.darkMode .itk-config-value,
+body.darkMode .itk-config-source,
+body.darkMode .itk-config-missing,
+body.darkMode .itk-detection-summary,
+body.darkMode .itk-write-help,
+body.darkMode .itk-no-detections,
+body.darkMode .itk-not-detected {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .itk-table th {
+  background: #1b1b1b;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+body.darkMode .itk-table td {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.darkMode .itk-table tr:nth-child(odd) td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.darkMode .itk-command-reply {
+  background: #14262e;
+  color: #cfe8f3;
+  border-left-color: #27a0bf;
+}
+
+body.darkMode .itk-command-reply[data-itk-reply-error] {
+  background: #2e1416;
+  color: #ffc9cf;
+  border-left-color: #ff5d6c;
+}
+
+body.darkMode .itk-last-command {
+  color: #d6d6d6;
+}
+
+body.darkMode .itk-write-group {
+  background: #1b1b1b;
+  border-color: #3d3d3d;
+}
+
+/* The wizard's teal buttons keep dark labels in both themes; the sheet behind them is dark. */
+body.darkMode .btn.darkBtn {
+  color: #06181f;
+}
+
+/* Tables and panels the shipped markup paints white. */
+body.darkMode table,
+body.darkMode .table {
+  background: transparent;
+}
+
+body.darkMode tr,
+body.darkMode td,
+body.darkMode th {
+  border-color: rgba(255, 255, 255, 0.14);
+}

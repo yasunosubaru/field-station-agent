@@ -1372,6 +1372,7 @@ const server = createServer((req, res) => {
       }
       if (path === '/shell.css' || path === '/icons.css' || path === '/theme.css' || path === '/theme.js'
         || path === '/home.css'
+        || path === '/config-dark.css'
         || path.startsWith('/home/')
         || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')
         || path.startsWith('/geo/')) {

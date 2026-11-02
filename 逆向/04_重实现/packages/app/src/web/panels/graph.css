@@ -1622,3 +1622,62 @@ body.darkMode .graph-panel .gp-picker {
   border-color: #3d3d3d;
 }
 
+
+/* ---- the project editor ---------------------------------------------------------------- */
+body.darkMode .graph-panel .gp-stage {
+  background: #121212;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+/* Charts are drawn as SVG with dark fills for the original light stage. */
+body.darkMode .graph-panel .gp-chart svg text {
+  fill: rgba(255, 255, 255, 0.8) !important;
+}
+
+body.darkMode .graph-panel .gp-chart svg line {
+  stroke: rgba(255, 255, 255, 0.16) !important;
+}
+
+body.darkMode .graph-panel .gp-chart svg path.domain {
+  stroke: rgba(255, 255, 255, 0.35) !important;
+}
+
+body.darkMode .graph-panel .gp-legend {
+  background: #1b1b1b;
+  border-color: #3d3d3d;
+}
+
+body.darkMode .graph-panel .gp-legend * {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .graph-panel .gp-dock {
+  background: #161616;
+  border-color: #3d3d3d;
+}
+
+body.darkMode .graph-panel .gp-dock * {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .graph-panel .gp-timeline {
+  background: #101010;
+}
+
+/* Marker labels sit on the (light) map tiles, not on the dark stage. */
+body.darkMode .graph-panel .gp-map-marker-label {
+  color: #212121;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+
+/* The map overlay keeps the light-theme ink: it draws on light tiles, not on the dark stage. */
+body.darkMode .graph-panel .gp-map-svg svg text {
+  fill: rgba(0, 0, 0, 0.55) !important;
+}
+
+body.darkMode .graph-panel .gp-map-svg svg line,
+body.darkMode .graph-panel .gp-map-svg svg path {
+  stroke: rgba(0, 0, 0, 0.25);
+}
+

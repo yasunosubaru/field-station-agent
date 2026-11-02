@@ -245,6 +245,31 @@ function bodyOf(name: string): string {
 
 const CLIENT_SCRIPT = `
 (function () {
+  /* Follow the shell's theme. The drawer's iframe is same-origin, so the parent's <body> class is
+   * readable; a MutationObserver keeps it in step when the user flips the toggle while a page is
+   * open. The shipped style.css carries the original's own \`.darkMode\` rules, so setting the
+   * class is most of the work. */
+  function syncTheme() {
+    var dark = false;
+    try {
+      dark = !!(window.parent && window.parent.document.body
+        && window.parent.document.body.classList.contains('darkMode'));
+    } catch (error) {
+      dark = false;
+    }
+    document.body.classList.toggle('darkMode', dark);
+  }
+  syncTheme();
+  try {
+    new MutationObserver(syncTheme).observe(window.parent.document.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  } catch (error) {
+    /* cross-origin (a detached preview): light is the safe default */
+  }
+  window.addEventListener('DOMContentLoaded', syncTheme);
+
   var page = document.body.getAttribute('data-config-page');
   function pathOf(el) {
     /* Position inside #shell, which is exactly the subtree the server keeps: an id-less control
@@ -481,6 +506,7 @@ export function configPageDocument(name: string, options: { connected?: boolean 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
 ${links}
+<link rel="stylesheet" href="/config-dark.css">
 <style>
 ${extra}
 </style></head>
