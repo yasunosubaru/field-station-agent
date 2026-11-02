@@ -116,8 +116,8 @@ node packages/graph/tools/export-sbf-project.ts `
   再按该工程重取文件列表与默认 CSV，然后进工作区；
   不清缓存的话，PVT 会拿"同名文件"的旧缓存继续画上一套数据（两个工程的 12 个文件名完全相同）；
 - `fetchData()` 的缓存键与请求都带工程：`/api/graph/data?file=…&project=…`；
-- Export ▸ PDF 传工程 key（`/api/graph/pdf?project=b1`），服务端按该工程出 PDF（b1 是 14 页：
-  1 页信息 + 13 页图）。
+- Export ▸ PDF 传工程 key（`/api/graph/pdf?project=b1`），服务端按该工程出 PDF（b1 是 9 页：
+  1 页信息 + 1 页 `Trajectory Plot` + 13 张图两两一页；两图一页的版式见 §13）。
 
 ## 5 实测
 
@@ -195,13 +195,13 @@ Graph 并不直接画 `BESTVEL` 的字段，而是把 `horizontal_speed` + `grou
 
 ### 8.2 13 份全量对比（我方重导 vs `export-broad/csv/`）
 
-用 `packages/graph/tools/export-sbf-project.ts --capture …/broad-clean.gps --name broad` 导出到临时目录，
-逐行比对（`META-ONLY` = 数据行逐字节相同，只是 5 行项目信息不同）：
+用 `packages/graph/tools/export-sbf-project.ts --capture …/broad-clean.gps --name broad --mean-order=0,17,16,9,14`
+导出到临时目录，逐行比对（`META-ONLY` = 数据行逐字节相同，只是 5 行项目信息不同）：
 
 | 结果 | 文件 |
 |---|---|
-| **`META-ONLY`（数据行逐字节相同）12 份** | `2D Trajectory`、`CPU Usage`、`Position SD`、`Position Status`、`Position Type`、`Satellites and Signals`、`Solution Statistics`、`Tracking Time`、`Velocity`、**`Height`**、**`HW Monitor Status`**、**`Receiver Status`** |
-| `DATA-DIFF` **1 份** | `GNSS Signal Strength`：60 个逐卫星列与全部 1199×61 个数值都相同，**只剩 3 个 `_Mean` 列的排列**（见 §8.2.4） |
+| **`META-ONLY`（数据行逐字节相同）13 份** | `2D Trajectory`、`CPU Usage`、`Position SD`、`Position Status`、`Position Type`、`Satellites and Signals`、`Solution Statistics`、`Tracking Time`、`Velocity`、`Height`、`HW Monitor Status`、`Receiver Status`、**`GNSS Signal Strength`** |
+| `DATA-DIFF` **0 份** | —（`GNSS Signal Strength` 的 3 个 `_Mean` 列靠显式记录的 `meanOrder` 归位，见 §8.2.4） |
 
 - 这 5 行项目信息为什么必然不同（我方没有 `.gpf`）：`#Project Directory:`（输出目录）、
   `#Data File Name:`（`broad-clean.gps` vs 原版的 `broad.gps`）、
@@ -257,7 +257,7 @@ INSERT OR IGNORE INTO "…
   `Ethernet Not Connected` / `RF Calibration Data Present` 都到 `…604996`。`clean` 的 5 行全是这种
   （都到 `1477384700900`），所以旧规则在 `clean` 上看不出错。
 
-#### 8.2.4 `GNSS Signal Strength` 的 3 个 `_Mean` 列：**推不出规则，本轮不改**
+#### 8.2.4 `GNSS Signal Strength` 的 3 个 `_Mean` 列：**推不出规则，改为显式记录**
 
 | 数据集 | GPS `_Mean` 顺序（signal 号） |
 |---|---|
@@ -286,11 +286,21 @@ PRN 序、计数/均值序、哈希桶序）在两份输入上都会给出同样
 最可能的解释是原版在 `_Mean` 这一侧的插入序不来自数据（并行/分块建表），属于**跨会话不可复现的
 观测**；`Signals_*` 侧两份输入顺序恒定，不受影响。
 
-因此 `range-charts.ts` 的 `MEAN_ORDER` **保持抄 `clean` 的观测序**（这是现有设计：`06_Graph应用.md
-§11.6`、`13_Graph列序分析.md §6` 都写明"换输入会退化"），`broad` 这三个列名因此与原版不同。
-**没有**为了过对比把 `broad` 的顺序硬写进表里——那只会把"一个已知未解项"伪装成"已解"。
-`packages/graph/test/broad-parity.test.ts` 用一个专门的用例把这件事钉死：按列名对齐后
-**1199 行 × 61 格全部相同**，差异只有这 3 个列名的排列，且 `clean` 的 14 列顺序不得变化。
+因此 `_Mean` 顺序在重实现里是**显式元数据**，不是推导出来的规则：
+
+| 层 | 形状 | 说明 |
+|---|---|---|
+| `GraphProject` | `meanOrder?: number[]` | `(system, signal)` 编码成 `system*32+signal`，按**观测到的列序**排；GPS 是 system 0，所以 GPS 部分读起来就是 signal 号 |
+| CLI | `--mean-order=0,17,16,9,14` | `packages/graph/tools/export-sbf-project.ts`；写进 `<out>/project.json` 的 `meanOrder` 与 `command`，重导时不带参数也会从 sidecar 读回 |
+| 渲染 | `range-charts.ts#signalGroups` | 有 `meanOrder` 时按它排（列出的组在前、其余组保持内置顺序），无则完全走原来的 `MEAN_ORDER`（= `clean` 的观测序） |
+
+`broad` 那次导出记录的是 `0,17,16,9,14`，于是 **13/13 逐字节相同**（此前只有 12/13）。这不是"把规则
+猜出来了"：同一份 `broad` 输入**不传** `meanOrder` 仍然给出 `clean` 的顺序，`GNSS Signal Strength`
+仍只差那 3 个列名——两个方向都在 `packages/graph/test/broad-parity.test.ts` 里钉住，另有
+`packages/graph/test/mean-order.test.ts` 覆盖编码、CLI、sidecar 往返与"只换列不动值"。
+
+`clean` / `b1` 的导出不带 `meanOrder`，行为与改动前逐字节相同；`MEAN_ORDER` 表本身没有为 `broad`
+改动过一行。文档口径：**这是"记录某一次导出的观测序"，不是通用规则**，换输入不会自动变对。
 
 #### 8.2.5 `clean` / `b1` 的回归
 
@@ -554,15 +564,25 @@ curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
   打开面板；列表可点击跳转、隐藏/显示、移入回收站、改色，回收站里 Restore / Empty trash；
   时间轴标记悬停出 tooltip（`flag #n`、GPS 时间、lat/lon/高度、评论），与原版 tooltip 的三行
   一致（`FlagsList` `@13821924`）。
-- **持久化**：`localStorage`，键 `nas.graph.flags.v1::<projectKey>`，值是 `FlagsInitialState`
-  的两个字段；切工程换桶，刷新/重开按工程恢复。原版是 `.gpf`（见 11.3）。
+- **持久化**：工程目录里有 `.gpf` 时读/写它的 `FlagsInitialState`（`packages/graph/src/
+  export-projects.ts` 的 `readProjectFlags` / `writeProjectFlags`：只动这一个键，其它键、键序、
+  缩进、换行、BOM、结尾换行与 `checksum` 全部原样保留；坏 JSON 只报告、绝不覆盖）；没有 `.gpf`
+  时回退 `localStorage`，键 `nas.graph.flags.v1::<projectKey>`，切工程换桶。面板侧
+  `createFlagStore({storage, api})` 先用 `localStorage` 出首屏，再异步做一次能力探测
+  （`/api/health` 的 `endpoints` 里有没有 `/api/graph/flags`；直接打一个不存在的路由会在浏览器
+  里留下 404 console error，所以不用"试错"），有则 `GET /graph/flags?project=` 换成 `.gpf` 的
+  `FlagsInitialState` 并改由 `POST` 保存；等待期间用户若改过 flags，以本地为准回写 `.gpf`。
 - **上限/重复/回收站/恢复限制**与原版同一条判定：`FLAG_LIMIT = 10`、
   `FLAG_DUPLICATE_WINDOW_MS = 1000`；恢复先查上限、再查重复（顺序同原版 tooltip）。
 
 ### 11.3 与原版不一致 / 本地实现（不声称 1:1）
 
-1. **持久化介质**：原版写工程 `.gpf`（`FlagsInitialState`，关窗握手 `@16246025`）；本构建没有
-   `.gpf` 解析，改存 `localStorage`，仍按工程分桶。字段名与形状照抄，**介质不同**。
+1. **持久化介质**：原版写工程 `.gpf`（`FlagsInitialState`，关窗握手 `@16246025`）。本构建现在
+   **两半都实现了**，但还没有接上：文件读写在本仓库 Node 侧（`readProjectFlags` /
+   `writeProjectFlags`，见 11.2），面板通过 `/graph/flags` 读写它；**这条 HTTP 路由本轮没有加**
+   （`packages/app/src/server.ts` 不在本轮改动范围内），所以面板探测到 404 就停在本机
+   `localStorage`——现有三个 export 工程目录也都没有 `.gpf`。字段名、形状、恢复规则
+   （`newFlagId = max(id)+1`）与原版一致；一旦服务端补上该路由，面板无需再改。
 2. **点击跳转**：原版点击标记/列表行是选中并打开编辑，**不移动播放头**；这里“点击跳到该时间”
    是本地加的（任务要求），列表按钮 `title` 与本节都标了“本地”。
 3. **“在当前 playhead 加”**：原版只有右键 / 地图点选 / 弹窗；`ADD_FLAG_TS` 文案在包里定义但
@@ -583,6 +603,18 @@ curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
 GPS↔ms 往返、`flagOffsetSeconds`（无 GPS 头返回 `null`）、每工程一桶 + save/load + 切工程不串 +
 坏 JSON/无 storage、`.gpf` 形状读取 + `newFlagId = max(id)+1`。
 
+`.gpf` 持久化（D5）另有 **18 项**：
+
+- `packages/graph/test/gpf-flags.test.ts`（8 项）：`<key>.gpf` → `<name>.gpf` → 目录里唯一
+  `.gpf` 的解析；复制 `clean.gpf` 后写→读回、去掉 `FlagsInitialState` 与原文件**逐字节相同**、
+  二次写入不变；2 空格/LF/CRLF/BOM/四空格/结尾换行都照原样；坏 JSON/坏 `FlagsInitialState`
+  只报告不改写；两个工程互不影响；非对象文本 `mergeGpfFlags` 返回 `null`。
+- `packages/app/test/graph-gpf.test.ts`（10 项）：浏览器侧与 Node 侧 `mergeGpfFlags` 在
+  `clean.gpf` 与 5 种文件形态上**逐字节一致**；临时工程写 flags 后经 `createFlagStore`
+  "重开"恢复、其它键逐字不变、保存 POST 到 `/graph/flags`；没有 `.gpf`（或服务端没有该路由、
+  或 api 抛错）时只走 `localStorage`、切工程不串、坏 JSON/无 storage 不炸；服务端说
+  `.gpf` 存在但没有 flags 时恢复成空而不是回退。
+
 实测（Playwright，1600×1000，`node packages/app/src/server.ts --port 7799`，b1 的
 `2D Trajectory.csv`，28 s）：
 
@@ -598,6 +630,16 @@ GPS↔ms 往返、`flagOffsetSeconds`（无 GPS 头返回 `null`）、每工程�
 截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-flags\`）：
 `flags-timeline-tooltip.png`（4 个标记 + tooltip + `(4/10)`）、`flags-panel-list.png`
 （面板列表：时间/偏移/坐标/评论/颜色/眼睛/垃圾桶）、`flags-panel-full.png`（整页）。
+
+D5 复跑（2026-11-02，`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-graphmeta\`，
+独立 Chromium、`?map=canvas` 绕开 headless 无 WebGPU 的 Luciad 报错）：
+
+- 右键时间轴 4 个点 + Add Flag → `(4/10)`、时间轴 4 个标记，`flag #1` 带评论
+  `antenna moved — check cabling`；刷新后仍 `(4/10)`（`nas.graph.flags.v1::b1` 782 B）；
+  切到 `clean` 为 `(0/10)`，切回 b1 仍 4 个 —— 不串；
+- console errors **0**、pageerror **0**；
+- 截图：`flags-panel-tooltip.png`（面板列表 + 标记 tooltip）、`flags-panel-full.png`（整页，
+  面板含时间/偏移/坐标/评论/颜色/眼睛/垃圾桶）、`flags-switch-clean.png`（切工程后 `(0/10)`）。
 
 
 
@@ -761,5 +803,111 @@ Position update,1477391600000.000000,1477391605000.000000,1,1.000000
 2. **PDF 的页序表没改**（`packages/app/src/pdf.ts` 的 `CHART_SPECS` 不在本任务边界内）：
    三份新 CSV 仍会各出一页，但按"未知文件"走兜底（标题=文件名、折线），
    排在已知图表之后，不是原版 Heading & Attitude 的位置。
+   （§13 之后它们不再"各出一页"，而是按两图一页排版，但兜底路径与标题不变。）
 3. `HEADING2` / `DUALANTENNAALIGN` 不进图是**照原版照抄**的结果；哪天原版给它们加了图，
    这里要跟着改（证据表在 §12.3）。
+
+## 13 PDF 版式对齐原版：信息页 + 两图一页（D6）
+
+**问题**：`packages/app/src/pdf.ts` 原来**一份 CSV 一页**（`1 + N`）。原版
+`00_来源/samples/graph/export/clean.pdf` 是 **8 页**，页脚 `1/8 … 8/8`；一比一对照时页码、
+页内图数、分节位置全都对不上。
+
+### 13.1 先量原版（`pdftotext -layout` + `pdftoppm`）
+
+`pdfinfo`：`Pages: 8`、`Page size: 841.92 x 594.96 pts (A4)` 横向、`Creator: Chromium`、
+`Producer: Skia/PDF m146`。逐页（`\f` 分页符）量到的分组：
+
+| 页 | 分节标题（蓝色） | 页内图表（自上而下） | 图数 |
+|---|---|---|---|
+| 1 | — | 信息页：`Report Information` / `Project Information` / `Message Summary` | 0 |
+| 2 | `Trajectory Plot` | Trajectory Plot（整幅地图卡） | **1** |
+| 3 | `PVT` | Position Type / Position Status | 2 |
+| 4 | — | Position SD / Solution Statistics | 2 |
+| 5 | — | 2D Trajectory / Height | 2 |
+| 6 | `Tracking & Measurements` | GNSS Signal Strength / Satellites and Signals | 2 |
+| 7 | `Receiver Status`（**印在两张卡之间**） | Tracking Time / Receiver Status | 2 |
+| 8 | — | CPU Usage / HW Monitor Status | 2 |
+
+13 张图 = 1 + 2×6。所以原版**不是严格两图一页**：第 2 页只有一张，而且那张是 Overview 的
+`Trajectory Plot`（Leaflet 地图，导出时瓦片没加载，印出来是一整块黑底 + 一个蓝色定位点 +
+`Single Point` 图例）。第 7 页是"分节标题落在页中间"的实例：`Tracking Time` 属
+`Tracking & Measurements`，`Receiver Status` 另起一节，标题紧贴在第二张卡上方。
+
+页面几何：页眉 `Graph` 左、右侧项目/日期/GPS 区间；页脚左边 `source:`、右边 `N/8`；
+每张图外面一个浅蓝灰边框的卡片，卡片内是标题 + 绘图区 + 图例（`All` 复选框 + 彩块 + 列名，
+换行继续）。第 6–8 页的图例要换到第二行（`GNSS Signal Strength` 12 项、`HW Monitor Status`
+10 项），卡片高度得固定留出两行图例的位置。
+
+### 13.2 本重实现（`packages/app/src/pdf.ts`）
+
+| 改动 | 落点 |
+|---|---|
+| 新增 `TRAJECTORY_PLOT`（`section`/`title` 都是 `Trajectory Plot`，`overview: true`），由 `2D Trajectory.csv` 现算，**独占第 2 页** | `TRAJECTORY_PLOT`、`chartsOf()`、`paginate()`、`PDF_CHARTS_PER_PAGE = 2` |
+| 每页最多两张卡：高度 = `(556 − 44 − 分节标题 × 20 − 卡间距) / 卡数`，所以一张卡的页（第 2 页、`?file=` 单图）自动占满整页 | `sheetPage()` |
+| 卡片：`strokeRect()` 边框 + 13 pt 标题 + 右上角行数/序列/最小最大均值 + 绘图区 + 图例（最多两行）+ 底部说明 | `card()`、`cardHeading()` |
+| 分节标题全篇只印一次，且允许落在两张卡之间 | `sheetPage()` 的 `headings[]` + 传入传出的 `section` |
+| 页脚 `source:` 列出该页全部 CSV（`a.csv + b.csv`） | `sheetPage()` |
+| 封面的 `Chart Summary` 的 `Page` 列改成**图实际所在页**（不再是 `行号 + 1`），并加一行说明第 2 页是哪张 | `infoPage()` / `pageOf` |
+| 报告头 `pages = 1 + 1 + ceil(其余 / 2)`，`charts = 1 + N` | `graphPdfReport()` |
+
+图表仍然**矢量绘制**（折线 / 色带 / 方块 / 区间条），没有一处截图；坐标轴、图例、点数预算
+（`PDF_POINT_BUDGET`）、中文按需嵌入（`pdf-font.ts`）全部沿用。
+
+`Trajectory Plot` 的取法：原版那张是瓦片地图，本仓库不允许拿截图顶替，也没有底图；于是把
+`2D Trajectory.csv` 的同一批定位点按 CSV 顺序连成轨迹线、画在同一套经纬度框上，卡片底部写明
+"原版这里是 Leaflet 地图，本文件不嵌底图"。页脚与封面都点名它来自哪一份 CSV。
+
+### 13.3 实测
+
+```
+node --test --test-force-exit "packages/*/test/*.test.ts"   # 1132 / 1132（并行任务也在加，基线 1100）
+```
+
+固定时钟（`generatedAt: '2026/10/30 21:00:00'`）构建 clean：
+
+| 项 | 结果 |
+|---|---|
+| `pdfinfo` | `Pages: 8`、842 × 595 pt、`Title: clean Report` |
+| `pdftotext -layout` 逐页 | 与原版 13.1 表**逐页一致**：p2 `Trajectory Plot`；p3 `Position Type, Position Status`；p4 `Position SD, Solution Statistics`；p5 `2D Trajectory, Height`；p6 `GNSS Signal Strength, Satellites and Signals`；p7 `Tracking Time, Receiver Status`；p8 `CPU Usage, HW Monitor Status` |
+| 分节标题 | p2 `Trajectory Plot`、p3 `PVT`、p6 `Tracking & Measurements`、p7 `Receiver Status`（在两张卡之间），其余页无 |
+| 字节 | **136 773 B**（旧"一图一页"137 644 B 量级，仍 < 200 KB）。**旧的纯 ASCII 字节变了，这是本次预期的改动**：版式变了就不该再钉哈希 |
+| b1（13 份 CSV） | `X-PDF-Pages: 9`、`X-PDF-Charts: 14`（1 信息 + 1 轨迹 + 7 页两图） |
+
+测试（都在 `packages/app/test/`）：
+
+- `graph-pdf.test.ts`（15 项，新增/改写 4 项）：页数按 `1 + 1 + ceil(N/2)` 算并等于 8；用 13 pt
+  粗体的内容流读出**每页图表标题序列**，逐页 `deepEqual` 原版分组；9 pt 粗体读出分节标题；
+  封面 `Page` 列 = 真实页；另外**真跑 `pdftotext -layout`**：先证明 §13.1 那张表确实是原版
+  `clean.pdf` 印的，再证明我方 PDF 每页标题的出现顺序与原版相同、`pdfinfo` 也是 8 页
+  （没装 poppler 时该用例 skip）。
+- `pdf-unicode.test.ts`（7 项）：删掉"纯 ASCII 逐字节等于旧 writer"的 SHA-256 断言，换成
+  "不嵌任何字体 + 8 页 / 13 图 / p2 是轨迹页 / p3 两张卡"；中文嵌入、`pdftotext` 取回
+  `野外台站` / `C:\测试\项目`、降级路径照旧。
+- `graph-projects.test.ts`：b1 的两行数字 13/14 → 14/9（**边界外的一处改动**，见 §13.5）。
+
+截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdflayout\`）：`ours-1..8.png`（我方
+8 页，100 dpi）、`orig-1..8.png`（原版同页，80 dpi），可逐页对看。
+
+### 13.4 与原版仍不一致（明说）
+
+1. **第 2 页不是地图**：没有底图、没有缩放控件、没有 Leaflet 的 `Legend/Single Point` 面板；
+   只有同一批定位点连成的矢量轨迹。
+2. **卡片内装潢简化**：原版图例前有勾选框（`☑`）、页眉有 HEXAGON / NovAtel 商标、卡片是
+   圆角 + 阴影；本文件只有直角边框、彩块图例、纯文字页眉。
+3. **坐标轴范围不同**：原版 `2D Trajectory` 固定 40–180°E / 15–50°N，本实现按数据自适应
+   （`114.3527…` 那一小段），所以点/线的位置不可逐像素比。
+4. **`Message Summary` 表仍缺**（原版第 1 页有 `BESTPOS 5 / RANGE 100 / HWMONITOR 1 /
+   RXSTATUS 4`）：需要 `DataSummary.json`，没有路由提供，编一份计数就是造假。
+5. **页数跟着数据走**：原版 8 页是因为它只有 12 张 CSV 图 + 1 张轨迹；b1 有 13 张，于是 9 页。
+   想永远 8 页只能丢图，不做。
+
+### 13.5 边界
+
+只改了 `packages/app/src/pdf.ts`、`packages/app/test/graph-pdf.test.ts`、
+`packages/app/test/pdf-unicode.test.ts` 与本文；`packages/graph/**`、`packages/protocol/**`、
+`packages/view/**`、`packages/app/src/web/**`、`server.ts` 未动。
+
+**一处越界**：`packages/app/test/graph-projects.test.ts` 里 b1 的
+`X-PDF-Pages / X-PDF-Charts` 两行（14 → 9、13 → 14）。它断言的就是本任务的产物，不改必然红；
+只动这两行数字，别的没碰。

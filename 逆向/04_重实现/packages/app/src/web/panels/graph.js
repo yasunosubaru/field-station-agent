@@ -53,8 +53,9 @@
  *             area (at that x) or by Add Flag on the playhead, with a comment, colour, hide/show,
  *             trash + restore, hover tooltip (flag #, GPS time, lat/lon/height, comment) and
  *             click-to-seek. Store shape, limit, duplicate window and trash states are the
- *             original's (`MAX_FLAGS` @1410884, `flags` slice @191475); persistence is per project
- *             in `localStorage` because this build has no `.gpf` — see `flagStorageKey`.
+ *             original's (`MAX_FLAGS` @1410884, `flags` slice @191475); persistence is the
+ *             project's `.gpf` (`FlagsInitialState`) when the server can serve one, `localStorage`
+ *             otherwise — see `createFlagStore`.
  *             Click-to-seek and the panel's Add button are **local** conveniences, not measured
  *             original interactions.
  *
@@ -121,8 +122,10 @@ const SPEEDS = [1, 2, 5, 10];
  *
  * A flag is `{id, timeCaptured(ms), color, latitude, longitude, height, description, state}` —
  * note it is **`color`/`description`**, not `colour`/`comment`. `timeCaptured` is the original's
- * millisecond timestamp; this build has no `.gpf`, so the same shape is persisted per project in
- * `localStorage` under `flagStorageKey(projectKey)`.
+ * millisecond timestamp. The same shape is persisted per project: the project's `.gpf` when it has
+ * one (`createFlagStore` + `/graph/flags`), and `localStorage` under `flagStorageKey(projectKey)`
+ * otherwise — which is every project in this build, none of whose export directories carries a
+ * `.gpf`.
  *
  * `timeBase` is a **local addition** (the original always has an absolute project time): `'gps'`
  * means `timeCaptured` is a real epoch ms derived from the CSV's `#Start Time(GPS)`, `'elapsed'`
@@ -431,6 +434,181 @@ export function saveFlagState(storage, projectKey, state) {
   } catch {
     return false;
   }
+}
+
+/* ---------------- flags in the project `.gpf` (D5) ----------------
+ *
+ * The original stores the markers in the project file (`FlagsInitialState` @16246801, written on
+ * close @16247254). This panel cannot touch the disk itself, so the `.gpf` half is:
+ *
+ *   - two pure functions over the **file text** (`parseGpfFlags` / `mergeGpfFlags`), which is what a
+ *     `.gpf` is (`03_分析/06_Graph应用-附录/E_GPF项目文件结构.md`), and
+ *   - `createFlagStore`, which asks `/graph/flags` for the project's `.gpf` and keeps using
+ *     `localStorage` whenever that project has none (or the route is not there, which is the normal
+ *     case in this build — see `03_分析/13_Graph分析页.md §11.3`).
+ *
+ * Nothing about a broken `.gpf` may break the panel: unparsable text is reported as `ok: false` and
+ * the caller stays on `localStorage`.
+ */
+
+/** The route the server would use for `<project>/.gpf` flags; absent today, so the probe falls back. */
+export const FLAG_GPF_ROUTE = '/graph/flags';
+
+/**
+ * `.gpf` text → `{ok, present, state}`.
+ *
+ * `present` is "the file carries a `FlagsInitialState`"; `ok: false` is "this is not a JSON object /
+ * `allFlags` is not an array", in which case `state` is the empty store and the caller must not write
+ * the file back.
+ */
+export function parseGpfFlags(text) {
+  const empty = { ok: false, present: false, state: emptyFlagState() };
+  if (typeof text !== 'string') return empty;
+  let data;
+  try {
+    data = JSON.parse(text.replace(/^\uFEFF/, ''));
+  } catch {
+    return empty;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return empty;
+  const raw = data.FlagsInitialState;
+  if (raw === undefined || raw === null) return { ok: true, present: false, state: emptyFlagState() };
+  if (typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.allFlags)) {
+    return { ok: false, present: false, state: emptyFlagState() };
+  }
+  return { ok: true, present: true, state: restoreFlagState({ FlagsInitialState: raw }) };
+}
+
+/**
+ * Replace `FlagsInitialState` in a `.gpf` **text**, keeping every other byte.
+ *
+ * Indentation, line endings, BOM, trailing newline and key order are re-applied from the input, so
+ * `mergeGpfFlags(original, flags)` differs from `original` only by that one block. Returns `null` for
+ * anything that is not a JSON object — the caller must not write then.
+ *
+ * Mirrored by `mergeGpfFlags` in `packages/graph/src/export-projects.ts` (same rules, Node side); the
+ * two are compared against each other in `packages/app/test/graph-gpf.test.ts` on the shipped
+ * `clean.gpf`.
+ */
+export function mergeGpfFlags(text, state) {
+  if (typeof text !== 'string') return null;
+  const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const body = bom ? text.slice(1) : text;
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const newline = body.includes('\r\n') ? '\r\n' : '\n';
+  const indentMatch = /^\{\r?\n([ \t]+)"/.exec(body);
+  const indent = indentMatch ? indentMatch[1] : '  ';
+  const trailingNewline = /\r?\n$/.test(body);
+  const next = { ...data, FlagsInitialState: serializeFlagState(state) };
+  let out = JSON.stringify(next, null, indent);
+  if (newline === '\r\n') out = out.replace(/\n/g, '\r\n');
+  return bom + out + (trailingNewline ? newline : '');
+}
+
+function flagProjectKey(projectKey) {
+  return String(projectKey == null ? '' : projectKey).trim();
+}
+
+/**
+ * The flag store the panel uses: `localStorage` always, plus the project's `.gpf` when the server can
+ * reach one.
+ *
+ *   `load(key)`      sync, from `localStorage` (first paint must not wait on a request)
+ *   `hydrate(key)`   async; asks `/api/health` **once** whether `/api/graph/flags` exists, and only
+ *                    then `GET /graph/flags?project=<key>` → `{gpf: true, flags: FlagsInitialState}`
+ *                    when that project's `.gpf` owns the flags; `null` keeps what `load` gave
+ *   `save(key, s)`   `localStorage` + (once `hydrate` said this project is `.gpf`-backed) a
+ *                    fire-and-forget `POST /graph/flags`, so a failed write cannot throw into the UI
+ *   `isGpfBacked(k)` whether the current state of `k` came from a `.gpf`
+ *
+ * The route is discovered through `/api/health`'s `endpoints` instead of by calling it and eating a
+ * 404: a 404 is a console error in the browser, and this panel must stay at zero. This build's
+ * server does not list the route (it has no `.gpf` handler yet), so every project here stays on
+ * `localStorage` — exactly the behaviour before this change. A negative answer is cached per project
+ * for the session, so a project without a `.gpf` costs one request, not one per save. With no `api`
+ * (or one that throws) the store is exactly the old `localStorage` behaviour.
+ */
+export function createFlagStore(options = {}) {
+  const storage = options.storage || null;
+  const api = options.api || null;
+  /** projectKey → true when `/graph/flags` said that project's `.gpf` carries the flags. */
+  const backed = new Map();
+  /** `null` = not asked yet, `true`/`false` = the server's answer for this session. */
+  let routeAvailable = null;
+
+  function load(projectKey) {
+    return loadFlagState(storage, projectKey);
+  }
+
+  function gpfBacked(projectKey) {
+    return backed.get(flagProjectKey(projectKey)) === true;
+  }
+
+  /** Does this server expose `/api/graph/flags`? One `/api/health` call, cached, never a 404. */
+  async function hasRoute() {
+    if (routeAvailable !== null) return routeAvailable;
+    if (!api || typeof api.get !== 'function') {
+      routeAvailable = false;
+      return false;
+    }
+    try {
+      const body = await api.get('/health');
+      const endpoints = body && Array.isArray(body.endpoints) ? body.endpoints : [];
+      routeAvailable = endpoints.includes(`/api${FLAG_GPF_ROUTE}`);
+    } catch {
+      routeAvailable = false;
+    }
+    return routeAvailable;
+  }
+
+  async function hydrate(projectKey) {
+    if (!(await hasRoute())) return null;
+    const key = flagProjectKey(projectKey);
+    if (backed.get(key) === false) return null;
+    try {
+      const body = await api.get(FLAG_GPF_ROUTE, { project: key });
+      if (!body || body.gpf !== true) {
+        backed.set(key, false);
+        return null;
+      }
+      // `body.flags == null` means ".gpf exists, no markers yet" — an empty store, not a fallback.
+      if (body.flags == null) {
+        backed.set(key, true);
+        return emptyFlagState();
+      }
+      if (typeof body.flags !== 'object' || !Array.isArray(body.flags.allFlags)) {
+        backed.set(key, false);
+        return null;
+      }
+      backed.set(key, true);
+      return restoreFlagState({ FlagsInitialState: body.flags });
+    } catch {
+      backed.set(key, false);
+      return null;
+    }
+  }
+
+  function save(projectKey, state) {
+    const key = flagProjectKey(projectKey);
+    const local = saveFlagState(storage, key, state);
+    if (api && typeof api.post === 'function' && backed.get(key) === true) {
+      try {
+        const request = api.post(FLAG_GPF_ROUTE, { project: key, flags: serializeFlagState(state) });
+        if (request && typeof request.then === 'function') request.then(() => {}, () => {});
+      } catch {
+        /* the .gpf write is best-effort; localStorage already has the state */
+      }
+    }
+    return local;
+  }
+
+  return { load, save, hydrate, isGpfBacked: gpfBacked };
 }
 
 const TABS = [
@@ -2124,6 +2302,8 @@ export function mount(root, ctx) {
     flagTrash: false,
     flagDraft: null,
     flagHintTimer: 0,
+    /** Bumped on every flag mutation, so a late `.gpf` answer cannot undo the user's edit. */
+    flagVersion: 0,
   };
 
   /* ---- small UI helpers ---- */
@@ -3667,6 +3847,8 @@ export function mount(root, ctx) {
   /* ---- flags: store ⇄ timeline, panel and tooltip ---- */
 
   const flagStorage = browserStorage();
+  // `localStorage` for every project; the project's `.gpf` takes over when the server can serve it.
+  const flagStore = createFlagStore({ storage: flagStorage, api });
 
   /**
    * `#Start Time(GPS)` of the CSV on screen, in absolute GPS seconds. `null` when the file has no
@@ -3728,9 +3910,10 @@ export function mount(root, ctx) {
     ].filter(Boolean).join(' · ');
   }
 
-  /** Every mutation lands here: one write to the project's bucket, then one repaint. */
+  /** Every mutation lands here: one write to the project's bucket (and `.gpf`), then one repaint. */
   function commitFlags() {
-    saveFlagState(flagStorage, state.projectKey, state.flags);
+    state.flagVersion += 1;
+    flagStore.save(state.projectKey, state.flags);
     renderFlags();
   }
 
@@ -3752,7 +3935,7 @@ export function mount(root, ctx) {
     const next = !!open;
     if (state.flags.isFlagsPanelOpen !== next) {
       state.flags = { ...state.flags, isFlagsPanelOpen: next };
-      saveFlagState(flagStorage, state.projectKey, state.flags);
+      flagStore.save(state.projectKey, state.flags);
     }
     if (el.flagsPanel) el.flagsPanel.hidden = !next;
     const toggle = root.querySelector('[data-act="flags"]');
@@ -3768,11 +3951,46 @@ export function mount(root, ctx) {
   /** A project owns its flags; `b1` and `clean` never see each other's list. */
   function loadFlagsForProject(projectKey) {
     state.flagProject = projectKey == null ? '' : String(projectKey);
-    state.flags = loadFlagState(flagStorage, state.flagProject);
+    state.flags = flagStore.load(state.flagProject);
     state.flagTrash = false;
     state.flagDraft = null;
+    state.flagVersion = 0;
     setFlagsPanel(!!state.flags.isFlagsPanelOpen);
     renderFlags();
+    hydrateFlagsFromProject(state.flagProject);
+  }
+
+  /**
+   * Upgrade the flags to the project's `.gpf` when the server can serve one.
+   *
+   * The first paint is already done from `localStorage`, so this can be a plain background request.
+   * It only applies when the answer still belongs to the project on screen — a fast switch must not
+   * paint another project's markers. If the user added/edited a flag while the request was in
+   * flight, the local list wins and is written to the `.gpf` instead of being replaced by the
+   * file's older copy.
+   */
+  function hydrateFlagsFromProject(projectKey) {
+    const key = projectKey == null ? '' : String(projectKey);
+    const version = state.flagVersion;
+    let pending;
+    try {
+      pending = flagStore.hydrate(key);
+    } catch {
+      return;
+    }
+    if (!pending || typeof pending.then !== 'function') return;
+    pending.then((gpfState) => {
+      if (!gpfState || !state.alive) return;
+      if (String(state.flagProject) !== key) return;
+      if (state.flagVersion !== version) {
+        flagStore.save(key, state.flags);
+        return;
+      }
+      state.flags = gpfState;
+      state.flagTrash = false;
+      setFlagsPanel(!!state.flags.isFlagsPanelOpen);
+      renderFlags();
+    }, () => {});
   }
 
   function syncFlagProject() {
@@ -4360,7 +4578,7 @@ ${svgMarkup}
   root.__graphCleanup = () => {
     state.alive = false;
     stopPlayback();
-    saveFlagState(flagStorage, state.projectKey, state.flags);
+    flagStore.save(state.projectKey, state.flags);
     if (state.flagHintTimer) window.clearTimeout(state.flagHintTimer);
     state.flagHintTimer = 0;
     root.removeEventListener('click', onRootClick);

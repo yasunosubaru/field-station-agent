@@ -19,6 +19,9 @@
  *   PlotSummary         one entry per chart **whose message actually occurs in the capture**,
  *                       counted from the capture — the same rule R17 applies to a real `.gpf`
  *                       (a `Heading & Attitude` chart counts every INS log that can feed it)
+ *   meanOrder           only when `--mean-order=` is given (or a previous `project.json` in the
+ *                       output directory already recorded one): the observed `_Mean` column order,
+ *                       recorded verbatim so a re-export reproduces it (see `range-charts.ts`)
  *
  * A `project.json` sidecar records the derived metadata and the exact command, so the provenance
  * of the CSVs travels with them.
@@ -29,9 +32,13 @@
  *     --capture ../00_来源/samples/live-20261031/b1-20261101.sbf \
  *     --out ../00_来源/samples/graph/export/b1 \
  *     --name b1
+ *
+ *   # broad: record the `_Mean` order that export actually showed
+ *   node packages/graph/tools/export-sbf-project.ts --capture … --out … --name broad \
+ *     --mean-order=0,17,16,9,14
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,6 +51,48 @@ interface Args {
   capture: string;
   out: string;
   name: string;
+  /** Explicit `_Mean` order recorded for this export (`GraphProject.meanOrder`), when given. */
+  meanOrder?: number[];
+}
+
+/** `GraphProject.meanOrder` ids are `system * 32 + signal`, so 255 is the largest one. */
+export const MEAN_ORDER_MAX = 255;
+
+/**
+ * `--mean-order=0,17,16,9,14` → `[0, 17, 16, 9, 14]`.
+ *
+ * The numbers are `system * 32 + signal` ids in **observed column order** (GPS is system 0, so a
+ * GPS-only list reads as plain signal numbers). A stray `;`/space is accepted as a separator and a
+ * repeated id is dropped rather than reordered, because the value is a recorded observation, not a
+ * sort key the caller should have to normalise.
+ */
+export function parseMeanOrder(raw: string, source = '--mean-order'): number[] {
+  const parts = String(raw).split(/[,;\s]+/).filter(Boolean);
+  if (!parts.length) throw new Error(`${source} 为空；示例 --mean-order=0,17,16,9,14`);
+  const out: number[] = [];
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) throw new Error(`${source} 里的 “${part}” 不是非负整数`);
+    const id = Number(part);
+    if (id > MEAN_ORDER_MAX) throw new Error(`${source} 里的 ${id} 超出 0..${MEAN_ORDER_MAX}（system*32+signal）`);
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** `meanOrder` already recorded in `<out>/project.json` (a previous export of the same project). */
+function sidecarMeanOrder(outDir: string): number[] | undefined {
+  const path = resolve(outDir, 'project.json');
+  if (!existsSync(path)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error(`${path} 不是合法 JSON，无法读取其中的 meanOrder`);
+  }
+  const raw = (parsed as { meanOrder?: unknown } | null)?.meanOrder;
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) throw new Error(`${path} 的 meanOrder 必须是数字数组`);
+  return parseMeanOrder(raw.join(','), `${path} 的 meanOrder`);
 }
 
 function parseArgs(argv: string[]): Args {
@@ -58,9 +107,10 @@ function parseArgs(argv: string[]): Args {
   const capture = values.capture;
   const out = values.out;
   if (!capture || !out) {
-    throw new Error('用法：node packages/graph/tools/export-sbf-project.ts --capture <文件> --out <导出目录> [--name <工程名>]');
+    throw new Error('用法：node packages/graph/tools/export-sbf-project.ts --capture <文件> --out <导出目录> [--name <工程名>] [--mean-order=0,17,16,9,14]');
   }
-  return { capture, out, name: values.name || basename(out) };
+  const meanOrder = values['mean-order'] === undefined ? undefined : parseMeanOrder(values['mean-order']);
+  return { capture, out, name: values.name || basename(out), meanOrder };
 }
 
 /** Chart message → the `PlotSummary` section Graph files it under, in the original's layout. */
@@ -130,7 +180,10 @@ export function dataInfoOf(records: CaptureRecord[]): DataInfo {
   return { StartTime: start, EndTime: endTime, Duration: endTime - start, FileSize: 0 };
 }
 
-export function projectFromCapture(capture: Capture, options: { name: string; outDir: string; capturePath: string }): GraphProject {
+export function projectFromCapture(
+  capture: Capture,
+  options: { name: string; outDir: string; capturePath: string; meanOrder?: number[] },
+): GraphProject {
   const dataInfo = dataInfoOf(capture.records);
   const projectDirectory = resolve(options.outDir).replace(/\//g, '\\');
   const messages: Record<string, number> = {};
@@ -147,6 +200,8 @@ export function projectFromCapture(capture: Capture, options: { name: string; ou
     dataInfo,
     plotSummary: plotSummaryOf(capture),
     messages,
+    // Only stamped when the caller records one — `clean` / `b1` exports must stay byte-identical.
+    ...(options.meanOrder && options.meanOrder.length ? { meanOrder: [...options.meanOrder] } : {}),
   };
 }
 
@@ -197,11 +252,15 @@ function main(): void {
   const raw = loadCapture(capturePath);
   if (!raw.records.length) throw new Error(`${capturePath} 没有解码出任何记录`);
   const { capture, dropped } = cleanCapture(raw);
-  const project = projectFromCapture(capture, { name: args.name, outDir, capturePath });
+  // A recorded order from this project's own sidecar is metadata of the project, not of this run.
+  const meanOrder = args.meanOrder ?? sidecarMeanOrder(outDir);
+  const project = projectFromCapture(capture, { name: args.name, outDir, capturePath, meanOrder });
 
   mkdirSync(outDir, { recursive: true });
   const written = writeCsv(project, capture, outDir);
 
+  const command = `node packages/graph/tools/export-sbf-project.ts --capture ${args.capture} --out ${args.out} --name ${args.name}`
+    + (meanOrder && meanOrder.length ? ` --mean-order=${meanOrder.join(',')}` : '');
   const sidecar = {
     projectName: project.projectName,
     projectDirectory: project.projectDirectory,
@@ -216,13 +275,15 @@ function main(): void {
       .filter((spec) => (spec.sourceMessages ?? [spec.message]).some((name) => capture.byName(name).length))
       .map((spec) => spec.title),
     csv: written.map((path) => basename(path)),
-    command: `node packages/graph/tools/export-sbf-project.ts --capture ${args.capture} --out ${args.out} --name ${args.name}`,
+    command,
+    ...(meanOrder && meanOrder.length ? { meanOrder } : {}),
   };
   writeFileSync(resolve(outDir, 'project.json'), JSON.stringify(sidecar, null, 2) + '\n', 'utf8');
 
   console.log(`${project.projectName}: ${written.length} 份 CSV → ${resolve(outDir, 'csv')}`);
   for (const path of written) console.log(`  ${basename(path)}`);
   console.log(`时间窗 ${sidecar.startTime} – ${sidecar.endTime}（${sidecar.duration}）`);
+  if (meanOrder && meanOrder.length) console.log(`_Mean 列序按记录 ${meanOrder.join(',')}`);
   if (dropped.length) console.log(`跳过 ${dropped.length} 帧损坏记录：${dropped.map((item) => `${item.name}@${item.gpsMs}`).join(', ')}`);
 }
 

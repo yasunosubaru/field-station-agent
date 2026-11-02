@@ -82,6 +82,19 @@ export interface GraphProject {
   /** The plot summary that decides which charts exist (R17). */
   plotSummary: PlotSummary;
   messages: Record<string, number>;
+  /**
+   * Explicit `_Mean` column order **recorded for this one export**, when it is known.
+   *
+   * The order of `GNSS Signal Strength`'s `_Mean` block is not a function of the capture
+   * (`03_分析/13_Graph分析页.md §8.2.4`): the same capture shape produced `0 9 17 16 14` in `clean`
+   * and `0 17 16 9 14` in `broad`. Rather than "derive" a rule that does not exist, a project may
+   * carry the observed order as **data**. Each entry is one `(system, signal)` group encoded as
+   * `system * 32 + signal` — GPS has system 0, so a GPS-only list reads as plain signal numbers.
+   *
+   * Absent (the normal case) means "use the built-in `MEAN_ORDER` table", i.e. the `clean`
+   * observation; every pre-existing export stays byte-identical.
+   */
+  meanOrder?: number[];
 }
 
 /** Flatten `DataSummary.json` into the `.gpf`, never overwriting a key the `.gpf` already has. */

@@ -19,7 +19,7 @@
  * test `graph-projects.test.ts` compares them file by file for the default project.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative } from 'node:path';
 
 const MAX_CACHED_FILES = 16;
@@ -448,4 +448,189 @@ export function projectGraphData(project: ExportProject, rawName: unknown, colum
 /** The six `#` comment lines + body of one CSV, as `/api/graph/pdf` needs them. */
 export function projectCsvText(project: ExportProject, rawName: unknown): string {
   return readCsv(project.csvDirectory, assertSafeCsvName(rawName)).text;
+}
+
+/* ---------------- Flags in the project's `.gpf` (D5) ----------------
+ *
+ * Graph keeps the Pre-process timeline markers in the project file:
+ *
+ *   `FlagsInitialState: {allFlags, isFlagsPanelOpen}`   `index-B86bHcCD.js` @16246801, written on
+ *                                                       close @16247254
+ *
+ * This build's panel (`packages/app/src/web/panels/graph.js`) has no `.gpf` writer of its own, so the
+ * file-level half lives here: locate the project's `.gpf`, read `FlagsInitialState`, and write it back
+ * **without touching anything else in the file** (key order, indentation, line endings, BOM and the
+ * trailing newline are all preserved; `checksum` and every other key stay exactly as they were).
+ *
+ * A `.gpf` is user data. Nothing here rewrites a file it could not parse — a corrupt `.gpf` is
+ * reported, never replaced — and writes go through a temporary file + rename so a crash mid-write
+ * cannot leave a half-file behind.
+ */
+
+/** `FlagsInitialState` — the only part of a `.gpf` this layer owns. */
+export interface GpfFlagState {
+  allFlags: unknown[];
+  isFlagsPanelOpen: boolean;
+}
+
+/** What `readProjectFlags` found: the path, plus either the flags or why there are none. */
+export interface ProjectGpfFlags {
+  /** Absolute path of the `.gpf` that owns the flags. */
+  path: string;
+  /** `FlagsInitialState` as stored, or `null` when the file has none (or has a broken one). */
+  flags: GpfFlagState | null;
+  /** Set when the file exists but its `FlagsInitialState` could not be used. */
+  error?: string;
+}
+
+/** Why a flag write did not happen. */
+export type ProjectGpfWriteReason = 'no-gpf' | 'invalid' | 'unreadable' | 'bad-json' | 'write-failed';
+
+export interface ProjectGpfWrite {
+  ok: boolean;
+  /** Absolute path that was written (absent when there is no `.gpf` at all). */
+  path?: string;
+  reason?: ProjectGpfWriteReason;
+  error?: string;
+  /** The bytes that were written (for tests and for a caller that wants to serve them). */
+  text?: string;
+}
+
+/**
+ * The project's `.gpf`: `<dir>/<key>.gpf`, else `<dir>/<name>.gpf`, else the only `*.gpf` in it.
+ *
+ * A project directory with several `.gpf` files and none named after the project is ambiguous, so it
+ * resolves to `null` rather than picking one at random.
+ *
+ * `project.name` comes from the CSV's `#Project Name:` comment, i.e. from file content, so it is only
+ * used as a **bare file name**: anything with a separator, a drive letter or `.`/`..` is skipped. The
+ * last fallback is a `readdir()` entry, which is always a bare name.
+ */
+export function projectGpfPath(project: ExportProject): string | null {
+  const named = [...new Set([project.key, project.name])]
+    .map((name) => String(name ?? '').trim())
+    .filter((name) => name && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !/^[a-zA-Z]:/.test(name))
+    .map((name) => join(project.directory, `${name}.gpf`));
+  for (const path of named) {
+    try {
+      if (statSync(path).isFile()) return path;
+    } catch {
+      /* keep looking */
+    }
+  }
+  let entries: string[];
+  try {
+    entries = readdirSync(project.directory).filter((file) => extname(file).toLowerCase() === '.gpf');
+  } catch {
+    return null;
+  }
+  entries.sort((a, b) => a.localeCompare(b, 'en'));
+  return entries.length === 1 ? join(project.directory, entries[0]) : null;
+}
+
+function isGpfFlagState(value: unknown): value is GpfFlagState {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as GpfFlagState).allFlags);
+}
+
+/** Parse a `.gpf`, or `null` when the text is not a JSON object. */
+function parseGpf(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text.replace(/^\uFEFF/, ''));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Replace `FlagsInitialState` in a `.gpf` **text**, keeping every other byte.
+ *
+ * `null` means "this is not a JSON object" — the caller must not write anything then. The indentation,
+ * line endings, BOM and trailing newline are re-applied from the input, and key order is the parser's
+ * (an existing `FlagsInitialState` keeps its position, a new one is appended last — which is also what
+ * Graph's own writer does with a fresh key).
+ */
+export function mergeGpfFlags(text: string, flags: GpfFlagState): string | null {
+  const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const body = bom ? text.slice(1) : text;
+  const data = parseGpf(body);
+  if (!data) return null;
+  const newline = body.includes('\r\n') ? '\r\n' : '\n';
+  const indent = /^\{\r?\n([ \t]+)"/.exec(body)?.[1] ?? '  ';
+  const trailingNewline = /\r?\n$/.test(body);
+  const next = {
+    ...data,
+    FlagsInitialState: {
+      allFlags: Array.isArray(flags?.allFlags) ? flags.allFlags : [],
+      isFlagsPanelOpen: !!flags?.isFlagsPanelOpen,
+    },
+  };
+  let out = JSON.stringify(next, null, indent);
+  if (newline === '\r\n') out = out.replace(/\n/g, '\r\n');
+  return bom + out + (trailingNewline ? newline : '');
+}
+
+/**
+ * `FlagsInitialState` of a project's `.gpf`, or `null` when the project has no `.gpf`.
+ *
+ * A `.gpf` that is present but unparsable comes back as `{path, flags: null, error}` instead of
+ * throwing, because "no flags" and "broken project file" are both normal states in the UI.
+ */
+export function readProjectFlags(project: ExportProject): ProjectGpfFlags | null {
+  const path = projectGpfPath(project);
+  if (!path) return null;
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    return { path, flags: null, error: error instanceof Error ? error.message : String(error) };
+  }
+  const data = parseGpf(text);
+  if (!data) return { path, flags: null, error: `${path} 不是合法的 .gpf JSON` };
+  const raw = data.FlagsInitialState;
+  if (raw === undefined || raw === null) return { path, flags: null };
+  if (!isGpfFlagState(raw)) {
+    return { path, flags: null, error: `${path} 的 FlagsInitialState 缺少 allFlags 数组` };
+  }
+  return { path, flags: { allFlags: raw.allFlags, isFlagsPanelOpen: !!raw.isFlagsPanelOpen } };
+}
+
+/**
+ * Write `FlagsInitialState` into the project's `.gpf`, leaving every other field alone.
+ *
+ * Refuses (`ok: false` + `reason`) when the project has no `.gpf` (`no-gpf` — the caller falls back to
+ * its own store), when the input is not `{allFlags: []}` (`invalid`), or when the existing file cannot
+ * be read/parsed (`unreadable` / `bad-json`) — a `.gpf` is user data and a broken one is never
+ * overwritten with a shorter, lossy version.
+ */
+export function writeProjectFlags(project: ExportProject, flags: GpfFlagState): ProjectGpfWrite {
+  const path = projectGpfPath(project);
+  if (!path) return { ok: false, reason: 'no-gpf' };
+  if (!isGpfFlagState(flags)) return { ok: false, path, reason: 'invalid', error: 'flags 必须是 {allFlags: [...]}' };
+
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    return { ok: false, path, reason: 'unreadable', error: error instanceof Error ? error.message : String(error) };
+  }
+  const merged = mergeGpfFlags(text, flags);
+  if (merged === null) return { ok: false, path, reason: 'bad-json', error: `${path} 不是合法的 .gpf JSON` };
+  if (merged === text) return { ok: true, path, text };
+
+  // temp file + rename: a crash cannot leave a truncated `.gpf` behind.
+  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(temp, merged, 'utf8');
+    renameSync(temp, path);
+  } catch (error) {
+    try {
+      unlinkSync(temp);
+    } catch {
+      /* the temp file never existed */
+    }
+    return { ok: false, path, reason: 'write-failed', error: error instanceof Error ? error.message : String(error) };
+  }
+  return { ok: true, path, text: merged };
 }

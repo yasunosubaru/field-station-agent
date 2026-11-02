@@ -31,6 +31,12 @@
  *   `std::unordered_map` model that was tested (FNV-1a / libstdc++ hashing, bucket counts 2..97,
  *   both bucket-iteration conventions); see `03_分析/06_Graph应用.md §11.6`. A signal that is not in
  *   these tables is appended in enum-rank order.
+ * - **One export may override the `_Mean` order explicitly.** Because the sample proves the order
+ *   is *not* a function of the capture (`clean` `0 9 17 16 14` vs `broad` `0 17 16 9 14` on
+ *   structurally identical input — `03_分析/13_Graph分析页.md §8.2.4`), a `GraphProject` may carry
+ *   `meanOrder` (`system * 32 + signal` ids, in observed order). When present those groups come
+ *   first in exactly that order and every other group keeps the built-in order behind them; when
+ *   absent nothing changes. This records *one export's observation*, it is not a general rule.
  */
 
 import type { Capture, CaptureRecord } from './capture.ts';
@@ -201,7 +207,12 @@ export function satelliteColumns(project: GraphProject, capture: Capture): Satel
 }
 
 /** `(system, signal)` groups present in the window, in the given observed order. */
-function signalGroups(project: GraphProject, capture: Capture, order: Record<string, string[]>): { system: number; signal: number; name: string }[] {
+function signalGroups(
+  project: GraphProject,
+  capture: Capture,
+  order: Record<string, string[]>,
+  meanOrder?: number[],
+): { system: number; signal: number; name: string }[] {
   const present = new Map<string, { system: number; signal: number; name: string; rank: number }>();
   for (const record of rangeRecords(project, capture)) {
     for (const obs of obsOf(record)) {
@@ -222,7 +233,33 @@ function signalGroups(project: GraphProject, capture: Capture, order: Record<str
     const [ib] = position(b.name, b.system);
     return ia - ib || a.rank - b.rank;
   });
+
+  // `meanOrder` is a **recorded observation** of one export, so it is applied as a stable partition
+  // on top of the table order above: the listed groups come first, in the listed order, and every
+  // unlisted group keeps the row it already had.
+  if (!meanOrder || meanOrder.length === 0) {
+    return groups.map(({ system, signal, name }) => ({ system, signal, name }));
+  }
+  const explicit = new Map<number, number>();
+  meanOrder.forEach((id, index) => {
+    if (Number.isInteger(id) && !explicit.has(id)) explicit.set(id, index);
+  });
+  const explicitRank = (group: { system: number; signal: number }) => {
+    const index = explicit.get(meanOrderId(group.system, group.signal));
+    return index === undefined ? Number.MAX_SAFE_INTEGER : index;
+  };
+  groups.sort((a, b) => explicitRank(a) - explicitRank(b));
   return groups.map(({ system, signal, name }) => ({ system, signal, name }));
+}
+
+/**
+ * `(system, signal)` → the id a `GraphProject.meanOrder` entry uses.
+ *
+ * GPS is system 0, so a GPS-only list reads as ordinary signal-type numbers (`0 17 16 9 14`); the
+ * other constellations are offset by 32 per system. 255 is the largest value (system 7, signal 31).
+ */
+export function meanOrderId(system: number, signal: number): number {
+  return system * 32 + signal;
 }
 
 /** `Tracking Time` columns: `lock_time` per satellite-signal, six fixed decimals. */
@@ -255,7 +292,7 @@ export function gnssSignalStrengthColumns(project: GraphProject, capture: Captur
       },
     };
   });
-  for (const group of signalGroups(project, capture, MEAN_ORDER)) {
+  for (const group of signalGroups(project, capture, MEAN_ORDER, project.meanOrder)) {
     columns.push({
       header: `${group.name}_Mean`,
       format: 'fixed6',
