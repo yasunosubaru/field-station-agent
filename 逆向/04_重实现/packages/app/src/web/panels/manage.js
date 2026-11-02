@@ -1891,6 +1891,10 @@ function template() {
         <span class="mg-reset-type-label" data-reset="typeLabel">Type the receiver model to confirm</span>
         <input class="mg-reset-input" type="text" data-reset="typed" autocomplete="off" spellcheck="false">
       </label>
+      <label class="mg-reset-erase" data-reset="eraseWrap" hidden>
+        <input type="checkbox" data-reset="eraseNvm">
+        <span>Erase NVM (the shipped SOFTLOAD… series runs before the command; this is the original's #erase-nvm)</span>
+      </label>
       <p class="mg-reset-state" data-reset="state" data-tone="idle"></p>
       <p class="mg-reset-reason" data-reset="reason"></p>
     </div>
@@ -2236,6 +2240,8 @@ export function mount(root, ctx = {}) {
     /** The model the receiver reported before the reset (VERSION #37) — the Factory Reset token. */
     model: '',
     typed: '',
+    /** The original's `#erase-nvm`: prepend the shipped SOFTLOAD lines (factory reset only). */
+    eraseNvm: false,
     /** The one-shot VERSION request goes out once per reset, never twice. */
     verifySent: false,
     timer: 0,
@@ -2262,6 +2268,7 @@ export function mount(root, ctx = {}) {
     reset.kind = kind;
     reset.machine = null;
     reset.typed = '';
+    reset.eraseNvm = false;
     reset.verifySent = false;
     reset.model = liveModel();
     setText(resetEls.title, copy.title);
@@ -2270,6 +2277,8 @@ export function mount(root, ctx = {}) {
     setText(resetEls.command, copy.command);
     if (resetEls.typed) resetEls.typed.value = '';
     if (resetEls.typeWrap) resetEls.typeWrap.hidden = !copy.needsModel;
+    if (resetEls.eraseWrap) resetEls.eraseWrap.hidden = !copy.needsModel;
+    if (resetEls.eraseNvm) resetEls.eraseNvm.checked = false;
     if (resetEls.typeLabel && copy.needsModel) resetEls.typeLabel.textContent = resetTypeLabel();
     el.reset.hidden = false;
     renderReset();
@@ -2324,6 +2333,10 @@ export function mount(root, ctx = {}) {
       : finished
         ? 'Close'
         : RESET_ACTIONS[reset.kind]?.go ?? 'Send';
+    if (resetEls.command && reset.kind) {
+      const lines = resetCommands(reset.kind, { eraseNvm: reset.eraseNvm });
+      setText(resetEls.command, lines.length > 1 ? lines.join(' → ') : lines[0] ?? '');
+    }
     if (running) {
       const progress = resetPhaseText(reset.machine);
       setText(resetEls.state, progress.text);
@@ -2338,6 +2351,7 @@ export function mount(root, ctx = {}) {
       link: linkState(),
       model: reset.model,
       typed: reset.typed,
+      eraseNvm: reset.eraseNvm,
       confirmed: true,
     });
     resetEls.go.disabled = finished ? false : !gate.ok;
@@ -2360,6 +2374,7 @@ export function mount(root, ctx = {}) {
       link: linkState(),
       model: reset.model,
       typed: reset.typed,
+      eraseNvm: reset.eraseNvm,
       confirmed: true,
     });
     if (!gate.ok) {
@@ -4314,6 +4329,11 @@ export function mount(root, ctx = {}) {
     else if (action === 'go') void sendReset();
   };
   const onResetInput = (event) => {
+    if (event.target.matches('[data-reset="eraseNvm"]')) {
+      reset.eraseNvm = Boolean(event.target.checked);
+      renderReset();
+      return;
+    }
     if (!event.target.matches('[data-reset="typed"]')) return;
     reset.typed = event.target.value;
     renderReset();
