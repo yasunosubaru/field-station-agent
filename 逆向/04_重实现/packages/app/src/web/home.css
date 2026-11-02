@@ -1,0 +1,217 @@
+/* -------------------------------------------------------------------------------------------
+ * My Applications — the suite's landing page.
+ *
+ * Metrics come from the shipped view/css/style.css (S:3047-3120, S:3236, S:15430):
+ * card 184x240, radius 8, the 1/2/5 px shadow stack, icon 104x104 at 40 px, title 18 px bold,
+ * "N Active Connections" 14 px at rgba(0,0,0,.6), heading 34 px, Add application 36 px #00516F.
+ * The artwork is the suite's own (view/images/new_*icon.png + GraphingLogo.png); GRIT's launcher
+ * icon is not a loose file in the shipped tree, so it was cut from the original's own window.
+ * ----------------------------------------------------------------------------------------- */
+
+.home-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.home-view[hidden],
+.nas-body[hidden],
+.tabs-view-data[hidden] {
+  display: none;
+}
+
+.home-inner {
+  max-width: 1016px;
+  margin: 0 auto;
+  padding: 0 0 56px;
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 60px;
+  margin-bottom: 38px;
+}
+
+.home-title {
+  margin: 0;
+  font-family: OpenSans-Regular, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 36px;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.home-add-app {
+  position: relative;
+  height: 36px;
+  padding: 0 18px 0 36px;
+  border: 0;
+  border-radius: 4px 0 0 0;
+  background: #00516f;
+  color: #ffffff;
+  font-family: OpenSans-Bold, "Segoe UI", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1.25px;
+  cursor: pointer;
+}
+
+.home-add-app:hover {
+  background: #00658a;
+}
+
+.home-add-plus {
+  position: absolute;
+  left: 12px;
+  top: 1px;
+  font-size: 25px;
+  font-weight: 400;
+}
+
+.home-add-note {
+  margin: -22px 0 30px;
+  padding: 10px 12px;
+  max-width: 760px;
+  background: #fff4e5;
+  border-left: 3px solid #d98500;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4a3200;
+}
+
+.home-add-note[hidden] {
+  display: none;
+}
+
+.home-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.home-card {
+  position: relative;
+  display: block;
+  width: 184px;
+  height: 240px;
+  padding: 0;
+  box-sizing: border-box;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px rgba(0, 0, 0, 0.14),
+    0 1px 10px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.home-card:hover {
+  background: rgba(173, 68, 29, 0.05);
+  border-color: rgba(173, 68, 29, 0.87);
+}
+
+.home-card-icon {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  display: block;
+  width: 104px;
+  height: 104px;
+  margin: 0;
+  transform: translateX(-50%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.home-icon-manage {
+  background-image: url("/assets/images/new_s&micon.png");
+}
+
+.home-icon-playback {
+  background-image: url("/assets/images/new_playbackicon.png");
+}
+
+.home-icon-convert {
+  background-image: url("/assets/images/new_converticon.png");
+}
+
+.home-icon-grit {
+  background-image: url("/home/grit-icon.png");
+}
+
+.home-icon-graph {
+  background-image: url("/assets/images/GraphingLogo.png");
+}
+
+.home-card-name {
+  position: absolute;
+  top: 144px;
+  left: 0;
+  right: 0;
+  padding-top: 16px;
+  font-family: Akkurat-Regular, OpenSans-Bold, "Segoe UI", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.home-card-sub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 21px;
+  font-family: OpenSans-Regular, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 24px;
+  letter-spacing: 0.25px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 1080px) {
+  .home-inner {
+    padding: 0 24px 40px;
+  }
+
+  .home-head {
+    padding-top: 32px;
+    margin-bottom: 24px;
+  }
+}
+
+/* Dark mode: the shell turns text white (theme.css `body.darkMode span`), so the tiles need a
+ * surface that is still a surface. The original's dark theme keeps the same card geometry. */
+body.darkMode .home-view {
+  background: #121212;
+}
+
+body.darkMode .home-title,
+body.darkMode .home-card-name {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .home-card {
+  background: #1e1e1e;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+body.darkMode .home-card:hover {
+  background: rgba(173, 68, 29, 0.18);
+  border-color: rgba(173, 68, 29, 0.87);
+}
+
+body.darkMode .home-card-sub {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+body.darkMode .home-add-note {
+  background: #3a2a12;
+  color: #ffe0b2;
+}
+

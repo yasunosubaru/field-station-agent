@@ -1371,6 +1371,8 @@ const server = createServer((req, res) => {
         return;
       }
       if (path === '/shell.css' || path === '/icons.css' || path === '/theme.css' || path === '/theme.js'
+        || path === '/home.css'
+        || path.startsWith('/home/')
         || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')
         || path.startsWith('/geo/')) {
         handleWebFile(path.slice(1), res, method);
