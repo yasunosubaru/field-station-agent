@@ -1566,3 +1566,59 @@ button.gp-mapbtn:focus-visible {
 .gp-tl-switch[aria-checked="true"] .gp-tl-knob {
   left: 18px;
 }
+
+/* ================================================================================================
+ * Dark mode — Graph.
+ *
+ * The landing ("My Projects" home) is a white sheet with white cards; the editor below it already
+ * paints its own dark timeline. Flip the home surfaces and the palette tokens, then let the
+ * contrast audit catch the rest.
+ * ============================================================================================== */
+body.darkMode .graph-panel {
+  --gp-ink: rgba(255, 255, 255, 0.87);
+  --gp-ink-60: rgba(255, 255, 255, 0.6);
+  --gp-rule: rgba(255, 255, 255, 0.16);
+  background: #121212;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .graph-panel .gp-home-title,
+body.darkMode .graph-panel .gp-home-blurb {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .graph-panel .gp-home-recent {
+  color: #7fd4ee;
+}
+
+body.darkMode .graph-panel .gp-card {
+  background: #1e1e1e;
+  border-color: #3d3d3d;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .graph-panel .gp-card * {
+  color: inherit;
+}
+
+body.darkMode .graph-panel .gp-btn-light,
+body.darkMode .graph-panel .gp-mapbtn {
+  background: #242424;
+  color: #9fe0f5;
+  border-color: #4a4a4a;
+}
+
+body.darkMode .graph-panel .gp-export-menu {
+  background: #1e1e1e;
+  border-color: #3d3d3d;
+}
+
+body.darkMode .graph-panel .gp-export-item {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body.darkMode .graph-panel .gp-picker {
+  background: #1b1b1b;
+  border-color: #3d3d3d;
+}
+

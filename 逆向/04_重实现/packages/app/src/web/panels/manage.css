@@ -327,7 +327,7 @@
 .manage-panel .mg-badge-warn {
   background: var(--mg-warn);
   border: 1px solid var(--mg-warn);
-  color: var(--mg-ink);
+  color: #3a2a00;
 }
 
 .manage-panel .mg-badge-bad {

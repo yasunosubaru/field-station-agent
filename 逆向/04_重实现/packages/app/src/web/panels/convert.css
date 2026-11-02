@@ -1329,3 +1329,65 @@
     padding-right: 12px;
   }
 }
+
+/* ================================================================================================
+ * Dark mode — Convert.
+ *
+ * convert.css keeps its own `--cv-*` palette and paints its panels #fff, so the dark block that
+ * only set `--nas-*` never reached it. Flip the palette and the five surfaces; text inside the
+ * screens then follows the tokens.
+ * ============================================================================================== */
+body.darkMode .convertLayout {
+  --cv-ink: rgba(255, 255, 255, 0.87);
+  --cv-ink-60: rgba(255, 255, 255, 0.6);
+  --cv-ink-38: rgba(255, 255, 255, 0.38);
+  --cv-rule: rgba(255, 255, 255, 0.16);
+  --cv-grey: rgba(255, 255, 255, 0.08);
+  --cv-teal: #27a0bf;
+  --cv-teal-hover: #3aa8c6;
+  --cv-teal-text: #7fd4ee;
+  --cv-frame: #27a0bf;
+  --cv-disabled: #7a7a7a;
+  background: #121212;
+}
+
+body.darkMode .convertLayout .convert-screens,
+body.darkMode .convertLayout .convert-preview,
+body.darkMode .convertLayout .notice,
+body.darkMode .convertLayout .btnsRow.convert-actions {
+  background: #1b1b1b;
+}
+
+body.darkMode .convertLayout .btnsRow.convert-actions {
+  border-top-color: #3d3d3d;
+}
+
+body.darkMode .convertLayout .notice {
+  border-left-color: #27a0bf;
+}
+
+/* Buttons are white with dark labels in the light theme. */
+body.darkMode .convertLayout button,
+body.darkMode .convertLayout .btn {
+  background: #242424;
+  color: rgba(255, 255, 255, 0.87);
+  border-color: #4a4a4a;
+}
+
+body.darkMode .convertLayout button:hover:not(:disabled),
+body.darkMode .convertLayout .btn:hover:not(:disabled) {
+  background: #2f2f2f;
+  border-color: #27a0bf;
+}
+
+body.darkMode .convertLayout .messageRow:hover,
+body.darkMode .convertLayout .message-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+
+body.darkMode .convertLayout .message-settings-tab {
+  background: #1b1b1b;
+  border-color: #3d3d3d;
+}
+

@@ -436,7 +436,7 @@
 .playback-panel .pb-badge-warn {
   background: var(--pb-amber);
   border: 1px solid var(--pb-amber);
-  color: var(--pb-ink);
+  color: #3a2a00;
 }
 
 .playback-panel .pb-badge-bad {
