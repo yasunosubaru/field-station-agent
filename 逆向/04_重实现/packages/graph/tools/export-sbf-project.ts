@@ -283,6 +283,20 @@ function main(): void {
   };
   writeFileSync(resolve(outDir, 'project.json'), JSON.stringify(sidecar, null, 2) + '\n', 'utf8');
 
+  /**
+   * `DataSummary.json` — the artifact Graph's own PDF reads for its `Message Summary`. Its four
+   * top-level keys are exactly the sample's (`DataInfo`, `PlotSummary`, `ReceiverInfo`, `Messages`);
+   * everything here is derived from this capture (no counts are invented). `PlotSummary` is the
+   * same object that feeds the CSVs; `Messages` is the capture's own histogram.
+   */
+  const dataSummary = {
+    DataInfo: project.dataInfo,
+    PlotSummary: project.plotSummary,
+    ReceiverInfo: { signalinfo: null, version: null },
+    Messages: project.messages,
+  };
+  writeFileSync(resolve(outDir, 'DataSummary.json'), JSON.stringify(dataSummary, null, 2) + '\n', 'utf8');
+
   console.log(`${project.projectName}: ${written.length} 份 CSV → ${resolve(outDir, 'csv')}`);
   for (const path of written) console.log(`  ${basename(path)}`);
   console.log(`时间窗 ${sidecar.startTime} – ${sidecar.endTime}（${sidecar.duration}）`);

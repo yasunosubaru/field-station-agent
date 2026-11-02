@@ -1590,40 +1590,38 @@ function infoPage(
   y += 12;
   out.push(text(MARGIN, y, 11.5, true, RULE, 'Project Information'));
   y += 18;
-  // The Message Summary shares this band instead of pushing the chart table off the sheet: the
-  // original prints it under Project Information, where a one-column report has room for it.
-  const summaryX = 520;
-  const valueWidth = 'rows' in summary ? summaryX - 12 - (MARGIN + 130) : WIDTH - MARGIN - 140;
   for (const field of fields) {
     out.push(text(MARGIN + 6, y, 9, true, INK, field.label));
-    out.push(text(MARGIN + 130, y, 9, false, INK, fit(field.value || '--', valueWidth, 9)));
+    out.push(text(MARGIN + 130, y, 9, false, INK, fit(field.value || '--', WIDTH - 2 * MARGIN - 140, 9)));
     y += 14;
   }
-
-  let summaryY = 98;
+  // The original prints Message Summary under Project Information, in the same single column.
+  y += 12;
   if ('rows' in summary) {
-    out.push(text(summaryX, summaryY, 11.5, true, RULE, 'Message Summary'));
-    summaryY += 18;
-    out.push(text(summaryX + 6, summaryY, 7.5, true, MUTED, 'Message Name'));
-    out.push(textRight(WIDTH - MARGIN, summaryY, 7.5, true, MUTED, 'Message Count'));
-    summaryY += 6;
-    out.push(rule(summaryX, summaryY, WIDTH - MARGIN, summaryY, 0.6, GRID));
-    summaryY += 12;
-    const room = Math.max(0, Math.floor((272 - summaryY) / 14) + 1);
+    out.push(text(MARGIN, y, 11.5, true, RULE, 'Message Summary'));
+    y += 18;
+    out.push(text(MARGIN + 6, y, 7.5, true, MUTED, 'Message Name'));
+    out.push(textRight(WIDTH - MARGIN, y, 7.5, true, MUTED, 'Message Count'));
+    y += 6;
+    out.push(rule(MARGIN, y, WIDTH - MARGIN, y, 0.6, GRID));
+    y += 12;
+    const room = Math.max(0, Math.floor((HEIGHT - 100 - y) / 14) + 1);
     const shown = summary.rows.slice(0, room);
     for (const row of shown) {
-      out.push(text(summaryX + 6, summaryY, 8, false, INK, fit(row.name, WIDTH - MARGIN - summaryX - 60, 8)));
-      out.push(textRight(WIDTH - MARGIN, summaryY, 8, false, INK, String(row.count)));
-      summaryY += 14;
+      out.push(text(MARGIN + 6, y, 8, false, INK, fit(row.name, WIDTH - 2 * MARGIN - 60, 8)));
+      out.push(textRight(WIDTH - MARGIN, y, 8, false, INK, String(row.count)));
+      y += 14;
     }
     if (summary.rows.length > shown.length) {
-      out.push(text(summaryX + 6, summaryY, 6.5, false, MUTED, `+ ${summary.rows.length - shown.length} more`));
+      out.push(text(MARGIN + 6, y, 6.5, false, MUTED, `+ ${summary.rows.length - shown.length} more`));
+      y += 10;
     }
   } else {
-    out.push(text(summaryX, 98, 7, false, MUTED, fit(
+    out.push(text(MARGIN, y, 7, false, MUTED, fit(
       `${summary.omitted} - Message Summary omitted, no counts are shown`,
-      WIDTH - MARGIN - summaryX, 7,
+      WIDTH - 2 * MARGIN, 7,
     )));
+    y += 12;
   }
 
   y += 12;
@@ -1685,7 +1683,7 @@ function infoPage(
     // The page the chart is drawn on, not its position in the table: the Overview track takes the
     // first sheet, so a CSV's card is one page further along than "row + 1".
     out.push(text(MARGIN + 720, y, 8, false, INK, String(pageOf.get(file.name) ?? '--')));
-    y += 12;
+    y += 10;
   });
   if (overviewNote && y <= HEIGHT - 46) {
     out.push(text(MARGIN + 6, y + 6, 7.5, false, MUTED, fit(overviewNote, WIDTH - 2 * MARGIN - 12, 7.5)));

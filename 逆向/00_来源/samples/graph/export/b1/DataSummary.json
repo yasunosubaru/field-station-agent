@@ -1,0 +1,88 @@
+{
+  "DataInfo": {
+    "StartTime": 1477491827100,
+    "EndTime": 1477491855151,
+    "Duration": 28051,
+    "FileSize": 0
+  },
+  "PlotSummary": {
+    "PVT": {
+      "2D Trajectory": {
+        "BESTPOS": 51
+      },
+      "Height": {
+        "BESTPOS": 51
+      },
+      "Velocity": {
+        "BESTVEL": 25
+      },
+      "Position Status": {
+        "BESTPOS": 51
+      },
+      "Position Type": {
+        "BESTPOS": 51
+      },
+      "Position SD": {
+        "BESTPOS": 51
+      },
+      "Solution Statistics": {
+        "BESTPOS": 51
+      },
+      "CPU Usage": {
+        "BESTPOS": 51
+      },
+      "HW Monitor Status": {
+        "HWMONITOR": 7
+      }
+    },
+    "Receiver_Status": {
+      "Receiver Status": {
+        "RXSTATUS": 5
+      }
+    },
+    "Tracking_Measurements": {
+      "Primary": {
+        "Tracking Time": {
+          "RANGE": 530
+        },
+        "GNSS Signal Strength": {
+          "RANGE": 530
+        },
+        "Satellites and Signals": {
+          "RANGE": 530
+        }
+      }
+    }
+  },
+  "ReceiverInfo": {
+    "signalinfo": null,
+    "version": null
+  },
+  "Messages": {
+    "VERSION": 1,
+    "RANGE": 530,
+    "MODELFEATURES": 1,
+    "SERIALCONFIG": 3,
+    "IONUTC": 1,
+    "RXSTATUS": 5,
+    "GPSEPHEM": 32,
+    "GALEPHEMERIS": 27,
+    "BDSEPHEMERIS": 39,
+    "GLOEPHEMERIS": 12,
+    "BESTPOS": 51,
+    "RAWEPHEM": 34,
+    "RXCONFIG": 278,
+    "ITPSDFINAL": 127,
+    "PSRDOP": 13,
+    "SATVIS2": 24,
+    "ITDETECTSTATUS": 6,
+    "TIME": 6,
+    "ITPSDDETECT": 50,
+    "BESTVEL": 25,
+    "BESTXYZ": 25,
+    "TRACKSTAT": 12,
+    "BESTSATS": 5,
+    "PORTSTATS": 7,
+    "HWMONITOR": 7
+  }
+}
