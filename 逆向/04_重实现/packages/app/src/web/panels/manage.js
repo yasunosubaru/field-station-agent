@@ -1004,6 +1004,19 @@ export function normalizeModel(value) {
  * The exact lines to post, in order. One line for both actions; `eraseNvm` adds the shipped
  * `SOFTLOAD…` series in front (mirror only — the panel has no `#erase-nvm` box).
  */
+/**
+ * The `/api/live/connect` body for an `/api/live/status` target string. The status string is
+ * `tcp://host:port` / `udp://host:port` or `COM10 @ 115200`; anything else returns `null`.
+ */
+export function resetReconnectBody(target) {
+  const text = String(target ?? '').trim();
+  let match = /^(tcp|udp):\/\/(.+):(\d+)$/.exec(text);
+  if (match) return { kind: match[1], host: match[2], port: Number(match[3]) };
+  match = /^(.+?) @ (\d+)$/.exec(text);
+  if (match) return { kind: 'serial', path: match[1], baud: Number(match[2]) };
+  return null;
+}
+
 export function resetCommands(kind, options = {}) {
   const action = RESET_ACTIONS[kind];
   if (!action) return [];
@@ -2244,12 +2257,39 @@ export function mount(root, ctx = {}) {
     eraseNvm: false,
     /** The one-shot VERSION request goes out once per reset, never twice. */
     verifySent: false,
+    /** Auto-reconnect after the drop: one attempt at a time, retried every few seconds. */
+    reconnecting: false,
+    nextReconnect: 0,
     timer: 0,
   };
 
   /** The current session in the shape `resetGate` / `resetObserve` take. */
   function linkState() {
     return { connected: live.connected, session: live.session, target: live.target };
+  }
+
+  /**
+   * The `/api/live/connect` body for the link that just dropped. `/api/live/status` gives a display
+   * string (`tcp://host:port`, `COM10 @ 115200`), so parse it back; `null` when it is not one of the
+   * two shapes this panel opens.
+   */
+  function reconnectTarget() {
+    return resetReconnectBody(live.target);
+  }
+
+  /** After a Restart drops the link, open it again once every 3 s until the state machine moves on. */
+  async function reconnectAfterReset() {
+    if (reset.reconnecting) return;
+    reset.reconnecting = true;
+    reset.nextReconnect = Date.now() + 3000;
+    const body = reconnectTarget();
+    try {
+      if (body) await api.post('/api/live/connect', body);
+    } catch {
+      /* the next tick tries again; the state machine's own deadline still bounds the wait */
+    } finally {
+      reset.reconnecting = false;
+    }
   }
 
   /**
@@ -2270,6 +2310,8 @@ export function mount(root, ctx = {}) {
     reset.typed = '';
     reset.eraseNvm = false;
     reset.verifySent = false;
+    reset.reconnecting = false;
+    reset.nextReconnect = 0;
     reset.model = liveModel();
     setText(resetEls.title, copy.title);
     setText(resetEls.body, copy.body);
@@ -2307,6 +2349,11 @@ export function mount(root, ctx = {}) {
       if (reset.machine.phase === 'done' || reset.machine.phase === 'failed') {
         stopResetTimer();
         return;
+      }
+      if (reset.machine.phase === 'awaiting-link'
+        && Date.now() >= reset.nextReconnect
+        && !reset.reconnecting) {
+        void reconnectAfterReset();
       }
       const next = resetObserve(reset.machine, { type: 'tick', at: Date.now() });
       if (next.phase !== reset.machine.phase) {
@@ -2387,6 +2434,7 @@ export function mount(root, ctx = {}) {
       model: reset.model,
     });
     reset.verifySent = false;
+    reset.nextReconnect = 0;
     startResetTimer();
     renderReset();
     for (const line of gate.lines) {

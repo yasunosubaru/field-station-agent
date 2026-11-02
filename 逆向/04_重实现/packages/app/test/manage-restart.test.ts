@@ -42,6 +42,7 @@ import {
   resetGate,
   resetObserve,
   resetPhaseText,
+  resetReconnectBody,
 } from '../src/web/panels/manage.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -409,4 +410,18 @@ test('the factory-reset token comes from the live session, never from a capture'
   const body = (source.split('function liveModel()')[1] ?? '').split('\n  }')[0];
   assert.ok(body.includes('live.latest.get(VERSION_LOG)'), 'reads the live VERSION record');
   assert.ok(!body.includes('state.version'), 'a replayed capture cannot supply the token');
+});
+
+test('auto-reconnect parses the two status-target shapes and refuses anything else', () => {
+  assert.deepEqual(resetReconnectBody('tcp://100.120.149.8:4002'), {
+    kind: 'tcp', host: '100.120.149.8', port: 4002,
+  });
+  assert.deepEqual(resetReconnectBody('udp://127.0.0.1:3001'), {
+    kind: 'udp', host: '127.0.0.1', port: 3001,
+  });
+  assert.deepEqual(resetReconnectBody('COM10 @ 115200'), {
+    kind: 'serial', path: 'COM10', baud: 115200,
+  });
+  assert.equal(resetReconnectBody(''), null);
+  assert.equal(resetReconnectBody('something else'), null);
 });
