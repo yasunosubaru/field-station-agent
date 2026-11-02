@@ -2313,3 +2313,164 @@ body[data-page="manage"] #tabs-list li.mg-filetabs:not([hidden]) {
   text-align: right;
   white-space: nowrap;
 }
+
+/* -------------------------------------------------------------------------------------------
+ * Add Device — the original shows a list of device tiles (name / model / type / port) and an
+ * Add button; this is the same sheet, filled from the machine's real ports by /api/ports.
+ * ----------------------------------------------------------------------------------------- */
+.manage-panel .mg-adddev-sheet {
+  width: min(900px, 94vw);
+}
+
+.mg-adddev-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 20px;
+  padding: 16px;
+  overflow: auto;
+}
+
+@media (max-width: 780px) {
+  .mg-adddev-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.mg-adddev-h {
+  margin: 0 0 10px;
+  font-family: var(--mg-semi);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--mg-ink);
+}
+
+.mg-adddev-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mg-adddev-bar .mg-adddev-h {
+  margin: 0;
+}
+
+.mg-adddev-note {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #4a4a4a;
+}
+
+.mg-adddev-list {
+  display: grid;
+  gap: 10px;
+  max-height: 46vh;
+  padding-right: 4px;
+  overflow: auto;
+}
+
+.mg-adddev-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--mg-ink);
+  background: #fbfbfb;
+  border: 1px solid #b9b9b9;
+  cursor: pointer;
+}
+
+.mg-adddev-tile:hover {
+  background: #f1f8fb;
+  border-color: #005170;
+}
+
+.mg-adddev-tile.is-active {
+  background: #e8f3f8;
+  border-color: #005170;
+  box-shadow: inset 0 0 0 1px #005170;
+}
+
+.mg-adddev-tile-name {
+  font-family: var(--mg-semi);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.mg-adddev-tile-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mg-adddev-tile-row > span:first-child {
+  flex: 0 0 100px;
+  color: #5c5c5c;
+}
+
+.mg-adddev-empty {
+  margin: 0;
+  padding: 14px 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #4a3200;
+  background: #fff4e5;
+  border-left: 3px solid #d98500;
+}
+
+.mg-adddev-rows {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+
+.mg-adddev-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: #444;
+}
+
+.mg-adddev-field input {
+  height: 27px;
+  padding: 0 6px;
+  font-family: var(--mg-sans);
+  font-size: 13px;
+  color: #111;
+  background: #fff;
+  border: 1px solid #9a9a9a;
+}
+
+.mg-adddev-manual-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mg-adddev-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f4f4f4;
+  border-top: 1px solid #d5d5d5;
+}
+
+.mg-adddev-status {
+  font-size: 12.5px;
+  color: #333;
+}
+
+.mg-adddev-foot-actions {
+  display: flex;
+  gap: 8px;
+}
+

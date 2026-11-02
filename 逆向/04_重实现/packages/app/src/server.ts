@@ -46,6 +46,7 @@ import {
   refreshConfigPage,
 } from './config-http.ts';
 import { LiveLink, type LiveTarget } from './live.ts';
+import { listSerialPorts } from './ports.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, readTextRecords, summarizeLogs } from './logs.ts';
 import { playbackEvents, playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
@@ -325,6 +326,7 @@ function health() {
       '/api/graph/flags',
       '/api/graph/pdf',
       '/api/live/status',
+      '/api/ports',
       '/api/live/logs',
       '/api/live/connect',
       '/api/live/disconnect',
@@ -1412,7 +1414,14 @@ const server = createServer((req, res) => {
         handleRecords(url, res, method);
         return;
       }
-      if (path === '/api/live/status') {
+      if (path === '/api/ports') {
+    /* The Add Device dialog's list: real ports on this machine, with the name Device Manager
+     * shows. `refresh=1` skips the short cache so a cable plugged in a second ago appears. */
+    const force = url.searchParams.get('refresh') === '1';
+    sendJson(res, 200, { ok: true, ...(await listSerialPorts(force)) }, method);
+    return;
+  }
+  if (path === '/api/live/status') {
         sendJson(res, 200, { ok: true, ...liveLink().status() }, method);
         return;
       }

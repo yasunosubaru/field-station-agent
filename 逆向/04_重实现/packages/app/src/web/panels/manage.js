@@ -1835,6 +1835,49 @@ function template() {
   </form>
 </div>
 
+<div class="mg-cfg mg-adddev" data-el="adddev" role="dialog" aria-modal="true" aria-label="Add Device" hidden>
+  <div class="mg-cfg-sheet mg-adddev-sheet">
+    <div class="mg-cfg-head">
+      <span class="mg-cfg-title">Add Device</span>
+      <button type="button" class="mg-cfg-close" data-adddev="close" aria-label="Close">×</button>
+    </div>
+    <div class="mg-adddev-body">
+      <section class="mg-adddev-found">
+        <div class="mg-adddev-bar">
+          <h2 class="mg-adddev-h">Receivers on this machine</h2>
+          <button type="button" class="mg-cfg-btn mg-cfg-btn-quiet" data-adddev="refresh">Scan again</button>
+        </div>
+        <p class="mg-adddev-note" data-adddev="note">Scanning serial ports…</p>
+        <div class="mg-adddev-list" data-adddev="list"></div>
+      </section>
+      <section class="mg-adddev-manual">
+        <h2 class="mg-adddev-h">Connect by address</h2>
+        <div class="mg-adddev-rows">
+          <label class="mg-adddev-field"><span>Serial port</span>
+            <input type="text" data-adddev="path" placeholder="COM10" spellcheck="false"></label>
+          <label class="mg-adddev-field"><span>Baud</span>
+            <input type="text" data-adddev="baud" value="115200" spellcheck="false"></label>
+          <label class="mg-adddev-field"><span>TCP / UDP host</span>
+            <input type="text" data-adddev="host" placeholder="192.168.1.20" spellcheck="false"></label>
+          <label class="mg-adddev-field"><span>Port</span>
+            <input type="text" data-adddev="port" placeholder="3001" spellcheck="false"></label>
+        </div>
+        <div class="mg-adddev-manual-actions">
+          <button type="button" class="mg-cfg-btn" data-adddev="manual">Connect</button>
+          <button type="button" class="mg-cfg-btn mg-cfg-btn-quiet" data-adddev="udp">UDP</button>
+        </div>
+      </section>
+    </div>
+    <div class="mg-adddev-foot">
+      <span class="mg-adddev-status" data-adddev="status"></span>
+      <div class="mg-adddev-foot-actions">
+        <button type="button" class="mg-cfg-btn mg-cfg-btn-quiet" data-adddev="terminal">Terminal</button>
+        <button type="button" class="mg-cfg-btn" data-adddev="add" disabled>Add Device</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="mg-config" data-el="config" role="dialog" aria-label="Configuration" hidden>
   <div class="mg-config-head">
     <span class="mg-config-title" data-config="title">Configuration</span>
@@ -2678,18 +2721,33 @@ export function mount(root, ctx = {}) {
     const body = path
       ? { kind: 'serial', path, baud: Number(termEls.baud?.value) || 115200 }
       : { kind: 'tcp', host: (termEls.host?.value ?? '').trim() || '127.0.0.1', port: Number(termEls.port?.value) || 3001 };
+    await connectLive(body, (line) => {
+      term.lines = [];
+      termAppend(line);
+    });
+  }
+
+  /**
+   * The one place a live session is opened. `report` prints a line where the caller shows text
+   * (the Terminal's output, the Add Device dialog's status), so both doors behave the same and a
+   * failure is never silent.
+   */
+  async function connectLive(body, report) {
+    const say = typeof report === 'function' ? report : () => {};
     try {
       const status = await api.post('/api/live/connect', body);
-      term.lines = [];
-      termAppend(`Connected to ${status.target}`);
       live.session = status.connectedAt || '';
       live.cursor = 0;
       live.everConnected = true;
       live.dismissed = false;
       resetLiveData();
       void livePoll();
+      if (!live.pollTimer) startLivePolling();
+      say(`Connected to ${status.target}`);
+      return status;
     } catch (error) {
-      termAppend(`Connect failed: ${error.message}`);
+      say(`Connect failed: ${error.message}`);
+      return null;
     }
   }
   async function termDisconnect() {
@@ -2702,6 +2760,171 @@ export function mount(root, ctx = {}) {
       termAppend(`Disconnect failed: ${error.message}`);
     }
   }
+  /* ---- Add Device: the original's device list, filled from the machine's real ports ---- */
+
+  const adddev = { open: false, loading: false, list: null, selected: null, busy: false, status: '' };
+  const adddevEls = {};
+  for (const node of root.querySelectorAll('[data-adddev]')) adddevEls[node.dataset.adddev] = node;
+
+  function adddevSync() {
+    const ports = adddev.list?.ports ?? [];
+    const selected = ports.find((port) => port.path === adddev.selected);
+    if (adddevEls.note) {
+      if (adddev.loading) adddevEls.note.textContent = 'Scanning serial ports…';
+      else if (!adddev.list) adddevEls.note.textContent = 'No scan yet.';
+      else if (ports.length === 0) adddevEls.note.textContent = adddev.list.reason || 'No serial port found on this machine.';
+      else adddevEls.note.textContent = `${ports.length} serial port${ports.length === 1 ? '' : 's'} found. Pick one, then Add Device.`;
+    }
+    if (adddevEls.status) adddevEls.status.textContent = adddev.status;
+    if (adddevEls.add) {
+      adddevEls.add.disabled = adddev.busy || !selected;
+      adddevEls.add.textContent = selected ? `Add ${selected.path}` : 'Add Device';
+    }
+  }
+
+  function adddevRenderList() {
+    const listEl = adddevEls.list;
+    if (!listEl) return;
+    if (adddev.loading) {
+      listEl.innerHTML = '<p class="mg-adddev-empty">Scanning…</p>';
+      return;
+    }
+    const ports = adddev.list?.ports ?? [];
+    if (ports.length === 0) {
+      listEl.innerHTML =
+        '<p class="mg-adddev-empty">Nothing to add yet. When the receiver is powered and its USB ' +
+        'cable is in, its COM port appears here after <strong>Scan again</strong>.</p>';
+      return;
+    }
+    listEl.innerHTML = ports.map((port) => {
+      const active = adddev.selected === port.path ? ' is-active' : '';
+      const name = port.friendlyName || port.path;
+      return '<button type="button" class="mg-adddev-tile' + active + '" data-adddev-pick="' + esc(port.path) + '">' +
+        `<span class="mg-adddev-tile-name">${esc(name)}</span>` +
+        '<span class="mg-adddev-tile-row"><span>Type</span><span>Serial</span></span>' +
+        `<span class="mg-adddev-tile-row"><span>Port</span><span>${esc(port.path)}</span></span>` +
+        (port.manufacturer
+          ? `<span class="mg-adddev-tile-row"><span>Manufacturer</span><span>${esc(port.manufacturer)}</span></span>`
+          : '') +
+        '</button>';
+    }).join('');
+  }
+
+  async function scanPorts(force) {
+    adddev.loading = true;
+    adddevRenderList();
+    adddevSync();
+    try {
+      const list = await api.get('/api/ports', force ? { refresh: 1 } : undefined);
+      if (!state.alive) return;
+      adddev.list = list;
+      if (!list.ports?.some((port) => port.path === adddev.selected)) adddev.selected = null;
+    } catch (error) {
+      adddev.list = { available: false, ports: [], reason: `Port scan failed: ${error.message}` };
+    } finally {
+      adddev.loading = false;
+      adddevRenderList();
+      adddevSync();
+    }
+  }
+
+  function openAddDevice() {
+    if (!el.adddev) return;
+    adddev.open = true;
+    adddev.status = '';
+    adddevLoad();
+    el.adddev.hidden = false;
+    adddevRenderList();
+    adddevSync();
+    void scanPorts(true);
+  }
+
+  /* The address fields survive a restart: retyping COM10/115200 every time is how a port gets
+   * mistyped. Only the fields, never the session. */
+  const ADDDEV_KEY = 'nas-adddev';
+
+  function adddevLoad() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(ADDDEV_KEY) || '{}');
+      if (saved.path && adddevEls.path) adddevEls.path.value = saved.path;
+      if (saved.baud && adddevEls.baud) adddevEls.baud.value = saved.baud;
+      if (saved.host && adddevEls.host) adddevEls.host.value = saved.host;
+      if (saved.port && adddevEls.port) adddevEls.port.value = saved.port;
+    } catch {
+      /* a corrupt value is not worth an error: the fields just stay empty */
+    }
+  }
+
+  function adddevSave() {
+    try {
+      localStorage.setItem(ADDDEV_KEY, JSON.stringify({
+        path: (adddevEls.path?.value ?? '').trim(),
+        baud: (adddevEls.baud?.value ?? '').trim(),
+        host: (adddevEls.host?.value ?? '').trim(),
+        port: (adddevEls.port?.value ?? '').trim(),
+      }));
+    } catch {
+      /* private mode: nothing to remember */
+    }
+  }
+
+  function closeAddDevice() {
+    adddev.open = false;
+    if (el.adddev) el.adddev.hidden = true;
+  }
+
+  async function adddevConnect(body, label) {
+    if (adddev.busy) return;
+    adddev.busy = true;
+    adddev.status = `Connecting to ${label}…`;
+    adddevSync();
+    const status = await connectLive(body, (line) => {
+      adddev.status = line;
+      adddevSync();
+    });
+    adddev.busy = false;
+    if (status) {
+      adddev.status = `Connected: ${status.target}`;
+      closeAddDevice();
+      render();
+    }
+    adddevSync();
+  }
+
+  const onAddDeviceClick = (event) => {
+    const pick = event.target.closest('[data-adddev-pick]');
+    if (pick && el.adddev?.contains(pick)) {
+      adddev.selected = pick.dataset.adddevPick;
+      adddevRenderList();
+      adddevSync();
+      return;
+    }
+    const node = event.target.closest('[data-adddev]');
+    if (!node || !el.adddev?.contains(node)) return;
+    const action = node.dataset.adddev;
+    const baud = Number(adddevEls.baud?.value) || 115200;
+    if (action === 'close') closeAddDevice();
+    else if (action === 'refresh') void scanPorts(true);
+    else if (action === 'terminal') {
+      closeAddDevice();
+      termOpen();
+    } else if (action === 'add') {
+      if (!adddev.selected) return;
+      adddevSave();
+      void adddevConnect({ kind: 'serial', path: adddev.selected, baud }, `${adddev.selected} @ ${baud}`);
+    } else if (action === 'manual' || action === 'udp') {
+      const path = (adddevEls.path?.value ?? '').trim();
+      const host = (adddevEls.host?.value ?? '').trim();
+      const port = Number(adddevEls.port?.value) || 3001;
+      adddevSave();
+      if (path) void adddevConnect({ kind: 'serial', path, baud }, `${path} @ ${baud}`);
+      else if (!host) {
+        adddev.status = 'Enter a serial port (COM10) or a TCP host and port.';
+        adddevSync();
+      } else void adddevConnect({ kind: action === 'udp' ? 'udp' : 'tcp', host, port }, `${host}:${port}`);
+    }
+  };
+
   async function termSend(line) {
     if (!line.trim()) return;
     try {
@@ -4406,7 +4629,7 @@ export function mount(root, ctx = {}) {
     const button = event.target.closest('[data-mode-action]');
     if (!button) return;
     const action = button.dataset.modeAction;
-    if (action === 'connect') termOpen();
+    if (action === 'connect') openAddDevice();
     else if (action === 'disconnect') void termDisconnect();
     else if (action === 'replay') {
       live.dismissed = true;
@@ -4440,6 +4663,7 @@ export function mount(root, ctx = {}) {
     el.terminal.addEventListener('click', onTermClick);
     el.terminal.addEventListener('submit', onTermSubmit);
   }
+  if (el.adddev) el.adddev.addEventListener('click', onAddDeviceClick);
   if (el.reset) {
     el.reset.addEventListener('click', onResetClick);
     el.reset.addEventListener('input', onResetInput);
@@ -4477,6 +4701,7 @@ export function mount(root, ctx = {}) {
       el.terminal.removeEventListener('click', onTermClick);
       el.terminal.removeEventListener('submit', onTermSubmit);
     }
+    if (el.adddev) el.adddev.removeEventListener('click', onAddDeviceClick);
     if (el.reset) {
       el.reset.removeEventListener('click', onResetClick);
       el.reset.removeEventListener('input', onResetInput);

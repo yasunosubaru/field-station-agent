@@ -30,10 +30,17 @@ public sealed class MainForm : Form
     {
         Text = "NovAtel Application Suite — reverse-engineered";
         Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        Width = 1440;
-        Height = 900;
-        MinimumSize = new Size(1000, 700);
+        /* Sizes are device pixels under PerMonitorV2, so ask the screen for its scale: a 1440x900
+         * *logical* window on a 150 % display is 2160x1350, which does not fit 1707x1067 — that is
+         * exactly the case where the old build opened a window whose right third was off-screen. */
+        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
+        float scale;
+        using (var screen = Graphics.FromHwnd(IntPtr.Zero)) scale = screen.DpiX / 96f;
+        Width = (int)Math.Min(1440 * scale, area.Width);
+        Height = (int)Math.Min(900 * scale, area.Height);
+        MinimumSize = new Size((int)Math.Min(1000 * scale, area.Width), (int)Math.Min(700 * scale, area.Height));
         StartPosition = FormStartPosition.CenterScreen;
+        if (Width >= area.Width || Height >= area.Height) WindowState = FormWindowState.Maximized;
         Controls.Add(_web);
         Controls.Add(_status);
         Shown += async (_, _) => await StartAsync();
@@ -47,10 +54,18 @@ public sealed class MainForm : Form
             _root = await Task.Run(ExtractPayload);
             Status("Starting the local server…");
             var port = await Task.Run(StartServer);
-            var env = await CoreWebView2Environment.CreateAsync(
-                null,
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NovAtelReverse", "webview2"));
+            var userData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NovAtelReverse", "webview2");
+            /* NAS_DEBUG_PORT is a maintenance door, not a feature: it lets the pack be inspected
+             * from outside (DOM, console, screenshots) without a second build. */
+            var debugPort = Environment.GetEnvironmentVariable("NAS_DEBUG_PORT");
+            var options = new CoreWebView2EnvironmentOptions();
+            if (int.TryParse(debugPort, out var devtoolsPort) && devtoolsPort > 0)
+            {
+                options.AdditionalBrowserArguments = $"--remote-debugging-port={devtoolsPort}";
+            }
+            var env = await CoreWebView2Environment.CreateAsync(null, userData, options);
             await _web.EnsureCoreWebView2Async(env);
             _web.CoreWebView2.Settings.AreDevToolsEnabled = false;
             _web.CoreWebView2.Settings.IsStatusBarEnabled = false;
@@ -78,7 +93,7 @@ public sealed class MainForm : Form
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "NovAtelReverse", $"app-{version}");
         var marker = Path.Combine(root, ".ready");
-        if (File.Exists(marker)) return root;
+        if (File.Exists(marker)) { CleanOldVersions(root); return root; }
 
         if (Directory.Exists(root)) Directory.Delete(root, true);
         Directory.CreateDirectory(root);
@@ -87,7 +102,23 @@ public sealed class MainForm : Form
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
         archive.ExtractToDirectory(root, overwriteFiles: true);
         File.WriteAllText(marker, DateTime.UtcNow.ToString("o"));
+        CleanOldVersions(root);
         return root;
+    }
+
+    /// <summary>
+    /// One extracted tree per version is enough. A 137 MB exe leaves ~200 MB behind per update;
+    /// the previous version is never read again, so it goes (a failure to delete is not fatal).
+    /// </summary>
+    private static void CleanOldVersions(string root)
+    {
+        var parent = Path.GetDirectoryName(root);
+        if (parent is null) return;
+        foreach (var dir in Directory.GetDirectories(parent, "app-*"))
+        {
+            if (string.Equals(Path.GetFullPath(dir), Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase)) continue;
+            try { Directory.Delete(dir, true); } catch { /* locked by an older instance still running */ }
+        }
     }
 
     private int StartServer()

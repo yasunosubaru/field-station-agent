@@ -11,5 +11,8 @@
   },
   "engines": {
     "node": ">=22.6"
+  },
+  "dependencies": {
+    "serialport": "^13.0.0"
   }
 }

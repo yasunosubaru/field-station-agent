@@ -36,3 +36,8 @@ dist/
 逆向/05_打包/**/payload.zip
 逆向/05_打包/**/bin/
 逆向/05_打包/**/obj/
+
+# Node 依赖（serialport 的预编译二进制，打包时 npm install，不入库）
+逆向/04_重实现/packages/app/node_modules/
+逆向/04_重实现/**/node_modules/
+
