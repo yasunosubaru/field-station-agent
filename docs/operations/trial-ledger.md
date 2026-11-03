@@ -22,7 +22,9 @@ M6-1 要的是「试运行台账：数据源可用性、异常与失败原因」
 | `duration_ms` | 本次尝试耗时 | 自动 |
 | `notes` | 人看的备注 | 失败时带异常原文 |
 
-## 失败分类：固定六类
+## 失败分类：数据源六类 + 任务两类（共八类）
+
+数据源失败（``FAILURE_CLASSES``）：
 
 | 分类 | 判据 | 典型原因 |
 |---|---|---|
@@ -33,8 +35,16 @@ M6-1 要的是「试运行台账：数据源可用性、异常与失败原因」
 | `字段缺失` | 格式对但必需字段没有 | 接口改了字段名、返回了残缺对象 |
 | `未知` | 以上都不是 | **要查，不要装懂** |
 
-分类由 `tools/trial_ledger.py::classify` / `check_payload` 自动给出，不允许手写
-（手写的分类没法复核）。
+任务失败（``TASK_FAILURE_CLASSES``，M6-4 / issue #111，调度器写入）：
+
+| 分类 | 判据 | 典型原因 |
+|---|---|---|
+| `任务未执行` | 到点窗口过了还没跑（被上一个任务拖住） | 单线程调度积压、进程假死 |
+| `任务超时` | 单次执行耗时超过 `timeout_s` | 采集/分析卡住 |
+
+分类由 `tools/trial_ledger.py::classify` / `check_payload` 自动给出，
+不允许手写（手写的分类没法复核）。任务两类由 `harness/station_loop.py`
+写入，行与原台账**同形**（`source_id = task:<id>`），可直接追加到同一份 JSONL。
 
 ## 怎么记
 
@@ -51,6 +61,15 @@ python tools/trial_ledger.py --probe-url <url> --probe-id probe:xxx \
 python tools/trial_ledger.py --summarize logs/trial_ledger_20261021.jsonl \
     --summary logs/trial_ledger_summary_20261021.json
 ```
+
+汇总里的 `by_failure_kind` 把两类分开计数：
+
+```json
+"by_failure_kind": {"data_source": 4, "task": 0}
+```
+
+`data_source` 只数数据源六类，`task` 只数「任务未执行 / 任务超时」——
+「今天没数据，是设备、数据源还是任务」看的就是这一行。
 
 **台账里有失败行不是错误** —— 失败行正是台账的价值（报告里要写「哪些源不好使」）。
 

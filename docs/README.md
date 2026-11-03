@@ -53,7 +53,10 @@
 |---|---|
 | [质控与研判的边界](operations/agent-boundaries.md) | 两个最容易越权的智能体各自能做什么、不能做什么 |
 | [共享黑板](operations/blackboard.md) | 数据形状、并发语义与受控访问（M5-2） |
-| [运行看板](operations/dashboard.md) | 口径与数据流（M5-3） |
+| [运行看板](operations/dashboard.md) | 口径与数据流（M5-3；可选叠加心跳与调度台账） |
+| [设备心跳与离线判定](operations/heartbeat.md) | 心跳模型、三态阈值与「与读数健康度正交」的口径（M6-5） |
+| [Webhook 上报](operations/webhook.md) | 默认 dry-run 的通知通道：载荷契约、重试与审计（M6-6） |
+| [任务调度与失败分类](operations/station-loop.md) | 到点 / 错过 / 超时三种情形与台账口径（M6-4） |
 | [评估协议](operations/evaluation-protocol.md) | 预注册的指标与判读方式（M6-2） |
 | [公开数据通路](operations/public-data.md) | 公开数据怎么取、怎么留痕 |
 | [设备侧合成场景](operations/synthetic-device-scenarios.md) | 供电 / 网络 / 安防异常怎么造 |
@@ -114,7 +117,9 @@
 | [`tools/fetch_public_data.py`](../tools/fetch_public_data.py) | 抓取公开数据并留痕 |
 | [`tools/env_snapshot.py`](../tools/env_snapshot.py) | 记录环境快照，供换机重跑比对 |
 | [`tools/probe_provider_live.py`](../tools/probe_provider_live.py) | 模型通道探活（不消耗额度的小请求） |
-| [`tools/trial_ledger.py`](../tools/trial_ledger.py) | 试运行台账读写 |
+| [`tools/trial_ledger.py`](../tools/trial_ledger.py) | 试运行台账读写（数据源六类 + 任务两类失败） |
+| [`harness/heartbeat_replay.py`](../harness/heartbeat_replay.py) | 设备心跳回放：合成序列 → 三态判定（M6-5） |
+| [`harness/station_loop.py`](../harness/station_loop.py) | 任务调度演示：到点 / 错过 / 超时的确定性台账（M6-4） |
 | [`tools/workflow_cli.py`](../tools/workflow_cli.py) | 原版 GUI 缺口流程的命令行入口：目录、运行、审批门、人工任务、证据 |
 | [`tools/uia_driver.py`](../tools/uia_driver.py) | 原版套件的 UIA 驱动（可选）：按控件名操作，无坐标；套件需 `--force-renderer-accessibility` |
 | [`tools/gui_coverage.py`](../tools/gui_coverage.py) | 从源码生成/校验 A×B 覆盖矩阵，防止盘点与代码漂移（`--check` 进 CI） |

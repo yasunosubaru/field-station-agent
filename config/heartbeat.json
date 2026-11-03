@@ -1,0 +1,5 @@
+{
+  "_说明": "设备心跳判定阈值（M6-5，issue #109）。阈值按『心跳周期』计，不按绝对秒数：不同设备的 interval_s 可以不同。stale 与 offline 必须是递增的，且 offline 必须大于 stale。改这里不会改代码；tools/ 与 harness/ 一律读本文件。",
+  "stale_after_intervals": 2.0,
+  "offline_after_intervals": 6.0
+}

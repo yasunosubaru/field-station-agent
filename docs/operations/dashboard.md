@@ -45,6 +45,7 @@ figures/m5_dashboard.html（静态页） + logs/m5_dashboard.json（机读摘要
 | `station_health` | 台站状态 `degraded` | `warn` | 该 `station_health` 调用（`device_monitor:t0001` 这种 `agent:call_id` 形式） |
 | `station_health` | 台站状态 `critical` | `critical` | 同上 |
 | `data_quality` | `qc` 阶段某次 `slip_detect` 的 `counts.union > 0` | `warn` | 该 `slip_detect` 调用（`agent:call_id`） |
+| `heartbeat` | `device_heartbeat` 判定设备 `stale` / `offline`（可选输入，见下） | `warn` / `critical` | `device_heartbeat` + 设备 id |
 
 - 数据质量告警的卫星组名用**输入消息** `groups[].tool_args` 与工具入参的规范 JSON
   匹配得到 —— `slip_detect` 的入参本身不带卫星号，不靠猜。
@@ -105,6 +106,28 @@ python tools/make_station_dashboard.py --log logs/public_data_chain_202401d01.js
 
 M5-1 的页面（`figures/m5_dashboard.html`）与这份页并存：前者是合成基线，后者是公开
 数据链路的真实数值。
+
+## 第三、四类输入：心跳与调度台账（M6-4 / M6-5）
+
+两个**可选**参数，不给就还是原来的三大视图（默认页面与摘要逐字节不变）：
+
+```powershell
+$env:PYTHONPATH="src"
+python tools/make_station_dashboard.py `
+    --heartbeat logs/heartbeat_replay.json `
+    --trial-ledger logs/trial_ledger_20261021.jsonl `
+    --page figures/heartbeat_dashboard.html --summary logs/heartbeat_dashboard.json
+```
+
+- `--heartbeat`：多一块「设备心跳」面板（online / stale / offline / unknown），
+  并把 `stale` / `offline` 作为 `source=heartbeat` 的告警并入告警表；
+  设备状态挂在 `station/<台站>/heartbeat/<设备>`，与两段式的 `station/<台站>`
+  **不合并**；
+- `--trial-ledger`：多一块「数据源 / 任务失败」面板，按 `by_failure_kind`
+  分列 `data_source` 与 `task` —— 回答「没数据是源的问题还是任务没跑」。
+
+心跳与台账的判定不在看板里算：看板只读 `logs/heartbeat_replay.json` 与
+`tools/trial_ledger.py::summarize` 的结果。
 
 ## 不做什么（边界）
 

@@ -72,6 +72,9 @@ class TestClassification(unittest.TestCase):
 
     def test_failure_classes_are_fixed(self):
         self.assertEqual(len(_LEDGER.FAILURE_CLASSES), 6)
+        self.assertEqual(_LEDGER.TASK_FAILURE_CLASSES,
+                         ("任务未执行", "任务超时"))
+        self.assertEqual(len(_LEDGER.ALL_FAILURE_CLASSES), 8)
         self.assertIn("校验不符", _LEDGER.FAILURE_CLASSES)
 
 
@@ -106,6 +109,8 @@ class TestLedger(unittest.TestCase):
             self.assertEqual(summary["rows"], 2)
             self.assertEqual(summary["by_status"], {"ok": 1, "failed": 1})
             self.assertEqual(summary["by_failure_class"], {"超时": 1})
+            self.assertEqual(summary["by_failure_kind"],
+                             {"data_source": 1, "task": 0})
             self.assertEqual(summary["success_rate"], 0.5)
             self.assertEqual(summary["distinct_sources"], 2)
 

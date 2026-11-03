@@ -17,6 +17,8 @@ DRYRUN = ROOT / "logs" / "dryrun_trial_summary_202401.json"
 DASHBOARD = ROOT / "logs" / "public_chain_dashboard.json"
 COPYRIGHT = ROOT / "logs" / "copyright_source_summary.json"
 LEDGER = ROOT / "logs" / "trial_ledger_summary_20261021.json"
+HEARTBEAT = ROOT / "logs" / "heartbeat_replay.json"
+LOOP = ROOT / "logs" / "station_loop_demo_summary.json"
 
 
 def _load(path: Path) -> dict:
@@ -67,12 +69,31 @@ class TestOnePageSummary(unittest.TestCase):
         d = _load(LEDGER)
         self.assertIn(f"{d['rows']} 行", self.text)
         self.assertIn(f"{d['success_rate']:.3f}", self.text)
+        self.assertIn(f"任务失败 {d['by_failure_kind']['task']}", self.text)
+
+    def test_m6_prerequisites_numbers(self):
+        hb = _load(HEARTBEAT)
+        summary = hb["summary"]
+        self.assertIn(f"{summary['total']} 台设备", self.text)
+        self.assertIn(f"online {summary['online']}", self.text)
+        self.assertIn(f"stale {summary['stale']}", self.text)
+        self.assertIn(f"offline {summary['offline']}", self.text)
+        self.assertIn(f"unknown {summary['unknown']}", self.text)
+        self.assertIn(f"{len(hb['alerts'])} 条告警", self.text)
+
+        loop = _load(LOOP)
+        self.assertIn(f"{loop['rows']} 行", self.text)
+        self.assertIn(f"ok {loop['by_status']['ok']}", self.text)
+        self.assertIn(f"错过 {loop['missed']}", self.text)
+        self.assertIn(f"超时 {loop['timeouts']}", self.text)
 
     def test_every_number_cites_a_source_file(self):
         for name in ("dryrun_trial_summary_202401.json",
                      "public_chain_dashboard.json",
                      "copyright_source_summary.json",
-                     "trial_ledger_summary_20261021.json"):
+                     "trial_ledger_summary_20261021.json",
+                     "heartbeat_replay.json",
+                     "station_loop_demo_summary.json"):
             self.assertIn(name, self.text, name)
 
     def test_report_points_at_summary(self):

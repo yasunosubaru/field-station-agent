@@ -21,7 +21,7 @@
 | `duration_ms` | 本次尝试耗时 |
 | `notes` | 人看的备注 |
 
-## 失败分类（固定六类，不许自由发挥）
+## 失败分类（固定八类：数据源六类 + 任务两类，不许自由发挥）
 
 | 分类 | 判据 |
 |---|---|
@@ -31,6 +31,8 @@
 | `格式不支持` | 内容拿到了，但不是登记的格式（JSON 解析失败 / RINEX 判据不通过） |
 | `字段缺失` | 格式对，但必需字段没有 |
 | `未知` | 以上都不是 —— 要查，不要装懂 |
+| `任务未执行` | 调度器错过执行窗口（M6-4，`harness/station_loop.py` 写入） |
+| `任务超时` | 单次执行超过任务上限（同上） |
 
 ## 用法
 
@@ -72,10 +74,17 @@ for _p in (str(ROOT / "src"), str(ROOT / "tools")):
         sys.path.insert(0, _p)
 MANIFEST = ROOT / "data" / "public" / "manifest.json"
 
-#: 失败分类（固定六类）
+#: 数据源失败分类（固定六类）
 FAILURE_CLASSES = (
     "连接失败", "超时", "校验不符", "格式不支持", "字段缺失", "未知",
 )
+
+#: 任务失败分类（M6-4，issue #111）。与数据源六类**分开记**：同一行台账里
+#: 「连接失败」说的是源、而「任务未执行 / 任务超时」说的是调度器。
+TASK_FAILURE_CLASSES = ("任务未执行", "任务超时")
+
+#: 台账可能出现的全部分类（汇总时按这两组分别计数）。
+ALL_FAILURE_CLASSES = FAILURE_CLASSES + TASK_FAILURE_CLASSES
 
 _SPEC = importlib.util.spec_from_file_location(
     "fetch_public_data", ROOT / "tools" / "fetch_public_data.py")
@@ -259,24 +268,35 @@ def read_rows(path: Path) -> list[dict]:
 
 
 def summarize(rows: list[dict]) -> dict:
-    """台账汇总：覆盖、成功率、失败分类分布。"""
+    """台账汇总：覆盖、成功率、失败分类分布、数据源 / 任务两类失败。
+
+    ``by_failure_kind`` 回答的是「今天没数据，是设备/数据源，还是任务」：
+    ``data_source`` 只数六类源失败，``task`` 只数调度器两类。两者分开，
+    才不会把「任务没跑」误当成「数据源挂了」。
+    """
     by_status: dict[str, int] = {}
     by_class: dict[str, int] = {}
+    by_kind: dict[str, int] = {"data_source": 0, "task": 0}
     for row in rows:
         status = row.get("status", "unknown")
         by_status[status] = by_status.get(status, 0) + 1
         failure = row.get("failure_class")
         if failure:
             by_class[failure] = by_class.get(failure, 0) + 1
+            if failure in TASK_FAILURE_CLASSES:
+                by_kind["task"] += 1
+            else:
+                by_kind["data_source"] += 1
     total = len(rows)
     ok = by_status.get("ok", 0)
     return {
         "rows": total,
         "by_status": by_status,
         "by_failure_class": by_class,
+        "by_failure_kind": by_kind,
         "success_rate": round(ok / total, 3) if total else None,
         "distinct_sources": len({row.get("source_id") for row in rows}),
-        "failure_classes": list(FAILURE_CLASSES),
+        "failure_classes": list(ALL_FAILURE_CLASSES),
     }
 
 

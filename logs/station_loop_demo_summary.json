@@ -1,0 +1,21 @@
+{
+  "by_failure_class": {
+    "任务未执行": 1,
+    "任务超时": 1,
+    "未知": 1
+  },
+  "by_status": {
+    "failed": 3,
+    "ok": 12
+  },
+  "by_task": {
+    "collect": 5,
+    "flush": 2,
+    "poll": 4,
+    "qc": 4
+  },
+  "missed": 1,
+  "rows": 15,
+  "success_rate": 0.8,
+  "timeouts": 1
+}

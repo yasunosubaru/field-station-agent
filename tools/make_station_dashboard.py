@@ -64,6 +64,7 @@ KINDS = (
     "fieldstation.public_data_chain.log",
 )
 KIND = KINDS[0]
+HEARTBEAT_KIND = "fieldstation.heartbeat_replay.log"
 ACTOR = "dashboard:hydrate"
 #: 台站状态 → 告警级别；``ok`` 不产生告警。
 STATUS_LEVEL = {"degraded": "warn", "critical": "critical"}
@@ -105,6 +106,69 @@ def _stage(log: dict, name: str) -> dict | None:
         if stage.get("stage") == name:
             return stage
     return None
+
+
+def load_heartbeat(path: Path) -> dict:
+    """读心跳回放日志（M6-5）。字段不全就阻断 —— 不拿半份心跳去判设备。"""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise DashboardInputError(f"心跳日志读不了：{path}（{exc}）") from exc
+    except UnicodeDecodeError as exc:
+        raise DashboardInputError(f"心跳日志不是 UTF-8：{path}（{exc}）") from exc
+    try:
+        log = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise DashboardInputError(
+            f"心跳日志不是合法 JSON：{path}（{exc}）") from exc
+    if not isinstance(log, dict) or log.get("kind") != HEARTBEAT_KIND:
+        raise DashboardInputError(
+            f"不是心跳回放日志：{path}（kind="
+            f"{log.get('kind') if isinstance(log, dict) else type(log).__name__}）")
+    for key in ("devices", "alerts", "summary"):
+        if key not in log:
+            raise DashboardInputError(f"心跳日志缺字段 {key!r}：{path}")
+    return log
+
+
+def load_trial_summary(path: Path) -> dict:
+    """读试运行台账 JSONL 并复用 ``tools/trial_ledger.py`` 的汇总口径。"""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "trial_ledger", ROOT / "tools" / "trial_ledger.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        rows = module.read_rows(path)
+    except (OSError, ValueError) as exc:
+        raise DashboardInputError(f"台账读不了：{path}（{exc}）") from exc
+    return module.summarize(rows)
+
+
+def inject_heartbeat(board: Blackboard, heartbeat: dict) -> None:
+    """把心跳设备与告警装进黑板；与读数健康度分属不同键，不合并。
+
+    设备状态挂在 ``station/<台站>/heartbeat/<设备>``（黑板的 station 命名空间），
+    台站健康度主键仍是两段的 ``station/<台站>`` —— 两者不会被混成一桶。
+    """
+    for device in heartbeat.get("devices") or []:
+        device_id = device.get("device_id")
+        station = device.get("station_id") or device_id
+        board.upsert(f"station/{station}/heartbeat/{device_id}",
+                     {**device}, by=ACTOR)
+    for alert in heartbeat.get("alerts") or []:
+        device_id = alert.get("device_id")
+        station = alert.get("station_id") or device_id
+        board.upsert(f"alert/{station}/heartbeat/{device_id}", {
+            "station": station,
+            "level": alert.get("level"),
+            "source": "heartbeat",
+            "title": f"{device_id} 心跳 {alert.get('status')}",
+            "detail": alert.get("reason"),
+            "evidence": [{"agent": "device_heartbeat",
+                          "call_id": f"heartbeat/{device_id}"}],
+        }, by=ACTOR)
 
 
 def _tool_events(log: dict) -> tuple[dict[tuple, dict], list[dict]]:
@@ -255,7 +319,33 @@ def _badge(text: str, kind: str) -> str:
 
 
 def _status_kind(status: str) -> str:
-    return {"ok": "ok", "degraded": "warn", "critical": "critical"}.get(status, "")
+    return {"ok": "ok", "degraded": "warn", "critical": "critical",
+            "online": "ok", "stale": "warn", "offline": "critical",
+            "unknown": ""}.get(status, "")
+
+
+def _heartbeat_rows(devices: dict) -> str:
+    rows = []
+    for key, entry in sorted(devices.items()):
+        value = entry.value
+        rows.append(
+            f"<tr><td><code>{_escape(value.get('device_id'))}</code></td>"
+            f"<td><code>{_escape(value.get('station_id'))}</code></td>"
+            f"<td>{_badge(value.get('status'), _status_kind(value.get('status')))}</td>"
+            f"<td>{_escape(value.get('last_seen_at'))}</td>"
+            f"<td>{_escape(value.get('interval_s'))}</td>"
+            f"<td>{_escape(value.get('age_s'))}</td>"
+            f"<td>{_escape(value.get('reason'))}</td></tr>")
+    return "".join(rows)
+
+
+def _ledger_rows(ledger: dict) -> str:
+    rows = []
+    kind_label = {"data_source": "数据源失败", "task": "任务失败"}
+    for kind, count in sorted((ledger.get("by_failure_kind") or {}).items()):
+        rows.append(f"<tr><td>{_escape(kind_label.get(kind, kind))}</td>"
+                    f"<td>{_escape(count)}</td></tr>")
+    return "".join(rows)
 
 
 def _station_rows(stations: dict) -> str:
@@ -327,12 +417,21 @@ def _order_rows(orders: dict) -> str:
     return "".join(rows)
 
 
-def render_page(board: Blackboard, log: dict, *, source_name: str) -> str:
-    """从黑板快照渲染单文件静态页（无 JS、无外部资源）。"""
+def render_page(board: Blackboard, log: dict, *, source_name: str,
+                heartbeat: dict | None = None,
+                ledger: dict | None = None) -> str:
+    """从黑板快照渲染单文件静态页（无 JS、无外部资源）。
+
+    ``heartbeat`` / ``ledger`` 为空时页面与 M5-3 的三大视图逐字节相同；
+    给了才多一块面板 —— 心跳与读数健康度、任务失败与数据源失败都不合并。
+    """
     snapshot = board.snapshot()
-    stations = {k: v for k, v in snapshot.items() if k.startswith("station/")}
+    stations = {k: v for k, v in snapshot.items()
+                if k.startswith("station/") and "/heartbeat/" not in k}
     alerts = {k: v for k, v in snapshot.items() if k.startswith("alert/")}
     orders = {k: v for k, v in snapshot.items() if k.startswith("order/")}
+    heartbeat_devices = {k: v for k, v in snapshot.items()
+                         if k.startswith("station/") and "/heartbeat/" in k}
     summary = log.get("summary") or {}
     tokens = summary.get("tokens") or {}
     checks = summary.get("checks", "?")
@@ -342,11 +441,15 @@ def render_page(board: Blackboard, log: dict, *, source_name: str) -> str:
         level = entry.value.get("level")
         if level in counts:
             counts[level] += 1
+    hb_counts = {"online": 0, "stale": 0, "offline": 0, "unknown": 0}
+    for entry in heartbeat_devices.values():
+        status = entry.value.get("status")
+        if status in hb_counts:
+            hb_counts[status] += 1
 
     # 公开数据链路（issue #98）：页面上必须标明「哪一侧是公开数据、什么许可」
     sources = log.get("data_sources") or {}
     device_src = sources.get("device") or {}
-    obs_src = sources.get("observations") or {}
     source_line = ""
     sample_note = ("<strong>合成样本</strong>：真实台站样本受 #28/#33 阻塞，本页由固定种子合成样本\n"
                    "  的全链回放日志生成（替代口径，同 M4-0 / M5-1）；真实样本到位后用同一命令重新生成。")
@@ -360,9 +463,59 @@ def render_page(board: Blackboard, log: dict, *, source_name: str) -> str:
         sample_note = ("<strong>口径</strong>：设备侧是<strong>环境读数</strong>（气温/湿度/气压/风速），"
                        "不是供电/链路/安防；低温标记是演示用示例阈值，不是工程判据。"
                        "观测侧是合成样本，结论里的数字来自工具返回。")
+    if heartbeat is not None:
+        sample_note += ("<br>心跳序列为<strong>合成</strong>（公开数据源不带心跳）："
+                        "只演示判定，不冒充真实设备状态。")
     tokens_line = (f"tokens {_escape(tokens.get('prompt'))}/{_escape(tokens.get('completion'))}")
     if summary.get("tokens_note"):
         tokens_line += "（无模型调用）"
+    heartbeat_line = ""
+    if heartbeat is not None:
+        heartbeat_line = (f"\n  · 心跳 {len(heartbeat_devices)}（online {hb_counts['online']}、"
+                          f"stale {hb_counts['stale']}、offline {hb_counts['offline']}、"
+                          f"unknown {hb_counts['unknown']}）")
+
+    numerals = "一二三四五六"
+    panels: list[str] = []
+    empty_station = '<tr><td colspan="6" class="empty">无台站</td></tr>'
+    empty_heartbeat = '<tr><td colspan="7" class="empty">无心跳</td></tr>'
+    empty_alert = '<tr><td colspan="6" class="empty">无告警</td></tr>'
+    empty_order = '<tr><td colspan="8" class="empty">无工单</td></tr>'
+    empty_ledger = '<tr><td colspan="2" class="empty">无失败</td></tr>'
+
+    def add_panel(title: str, body: str) -> None:
+        panels.append(
+            f"<section class=\"panel\">\n  <h2>{numerals[len(panels)]}、{title}</h2>\n"
+            f"  {body}\n</section>")
+
+    add_panel("台站健康度",
+              "<table><thead><tr><th>台站</th><th>状态</th><th>健康度</th><th>缺测</th>\n"
+              "  <th>最近读数</th><th>指标</th></tr></thead>\n"
+              f"  <tbody>{_station_rows(stations) or empty_station}</tbody></table>")
+    if heartbeat is not None:
+        add_panel("设备心跳",
+                  "<table><thead><tr><th>设备</th><th>台站</th><th>状态</th>\n"
+                  "  <th>最近心跳</th><th>周期（s）</th><th>距今（s）</th><th>判据</th></tr></thead>\n"
+                  f"  <tbody>{_heartbeat_rows(heartbeat_devices) or empty_heartbeat}</tbody></table>")
+    add_panel("告警",
+              "<table><thead><tr><th>级别</th><th>来源</th><th>台站</th><th>标题</th>\n"
+              "  <th>细节</th><th>证据（agent:call_id）</th></tr></thead>\n"
+              f"  <tbody>{_alert_rows(alerts) or empty_alert}</tbody></table>")
+    add_panel("工单",
+              "<table><thead><tr><th>工单</th><th>优先级</th><th>状态</th><th>台站</th>\n"
+              "  <th>标题</th><th>动作</th><th>执行</th><th>说明</th></tr></thead>\n"
+              f"  <tbody>{_order_rows(orders) or empty_order}</tbody></table>")
+    if ledger is not None:
+        by_class = "、".join(f"{_escape(name)} {_escape(count)}"
+                           for name, count in sorted(
+                               (ledger.get("by_failure_class") or {}).items())) or "—"
+        add_panel("数据源 / 任务失败",
+                  "<table><thead><tr><th>类别</th><th>失败行数</th></tr></thead>\n"
+                  f"  <tbody>{_ledger_rows(ledger) or empty_ledger}</tbody></table>\n"
+                  f"  <p class=\"meta\">台账 {_escape(ledger.get('rows'))} 行；"
+                  f"分类：{by_class}</p>")
+    panels_html = "\n\n".join(panels)
+
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -403,30 +556,11 @@ footer {{ color:var(--muted); font-size:12px; margin-top:8px; }}
   数据源：<code>{_escape(source_name)}</code>（sha256 <code>{_escape(log_sha[:16])}…</code>）
   · 链路 {_escape(summary.get('stages'))} 阶段 / {_escape(summary.get('messages'))} 条消息
   · checks {_escape(checks)} · {tokens_line}
-  · 台站 {len(stations)} / 告警 {len(alerts)}（严重 {counts['critical']}、警告 {counts['warn']}）/ 工单 {len(orders)}
+  · 台站 {len(stations)} / 告警 {len(alerts)}（严重 {counts['critical']}、警告 {counts['warn']}）/ 工单 {len(orders)}{heartbeat_line}
 </div>
 {source_line}<div class="meta">{sample_note}</div>
 
-<section class="panel">
-  <h2>一、台站健康度</h2>
-  <table><thead><tr><th>台站</th><th>状态</th><th>健康度</th><th>缺测</th>
-  <th>最近读数</th><th>指标</th></tr></thead>
-  <tbody>{_station_rows(stations) or '<tr><td colspan="6" class="empty">无台站</td></tr>'}</tbody></table>
-</section>
-
-<section class="panel">
-  <h2>二、告警</h2>
-  <table><thead><tr><th>级别</th><th>来源</th><th>台站</th><th>标题</th>
-  <th>细节</th><th>证据（agent:call_id）</th></tr></thead>
-  <tbody>{_alert_rows(alerts) or '<tr><td colspan="6" class="empty">无告警</td></tr>'}</tbody></table>
-</section>
-
-<section class="panel">
-  <h2>三、工单</h2>
-  <table><thead><tr><th>工单</th><th>优先级</th><th>状态</th><th>台站</th>
-  <th>标题</th><th>动作</th><th>执行</th><th>说明</th></tr></thead>
-  <tbody>{_order_rows(orders) or '<tr><td colspan="8" class="empty">无工单</td></tr>'}</tbody></table>
-</section>
+{panels_html}
 
 <footer>
   口径与规则：<code>docs/operations/dashboard.md</code> ·
@@ -439,19 +573,22 @@ footer {{ color:var(--muted); font-size:12px; margin-top:8px; }}
 
 
 def build_summary(log: dict, board: Blackboard, *, source_name: str,
-                  page_sha256: str) -> dict:
+                  page_sha256: str, heartbeat: dict | None = None,
+                  ledger: dict | None = None) -> dict:
     snapshot = board.snapshot()
     stations = [entry.value for key, entry in sorted(snapshot.items())
-                if key.startswith("station/")]
+                if key.startswith("station/") and "/heartbeat/" not in key]
     alerts = [entry.value for key, entry in sorted(snapshot.items())
               if key.startswith("alert/")]
     orders = [entry.value for key, entry in sorted(snapshot.items())
               if key.startswith("order/")]
+    devices = [entry.value for key, entry in sorted(snapshot.items())
+               if key.startswith("station/") and "/heartbeat/" in key]
     by_level: dict[str, int] = {}
     for alert in alerts:
         level = alert.get("level")
         by_level[level] = by_level.get(level, 0) + 1
-    return {
+    summary = {
         "kind": "fieldstation.m5_dashboard.summary",
         "version": 1,
         "source": {"log": source_name, "log_sha256": log.get("sha256"),
@@ -465,6 +602,18 @@ def build_summary(log: dict, board: Blackboard, *, source_name: str,
         # 只记页面内容的 sha：输出路径会随调用方式变，不该进可复现摘要。
         "page": {"sha256": page_sha256},
     }
+    if heartbeat is not None:
+        summary["source"]["heartbeat"] = {
+            "log_sha256": heartbeat.get("sha256"),
+            "scenario": heartbeat.get("scenario"),
+            "policy": heartbeat.get("policy"),
+        }
+        summary["counts"]["heartbeats"] = len(devices)
+        summary["heartbeats"] = devices
+    if ledger is not None:
+        summary["counts"]["trial_ledger_rows"] = ledger.get("rows")
+        summary["trial_ledger"] = ledger
+    return summary
 
 
 # --------------------------------------------------------------------- CLI
@@ -480,6 +629,10 @@ def main(argv=None) -> int:
     parser.add_argument("--log", default=str(ROOT / "logs" / "m5_pipeline_replay.json"))
     parser.add_argument("--page", default=str(ROOT / "figures" / "m5_dashboard.html"))
     parser.add_argument("--summary", default=str(ROOT / "logs" / "m5_dashboard.json"))
+    parser.add_argument("--heartbeat", default=None,
+                        help="心跳回放日志（M6-5）；给了才多一块『设备心跳』面板")
+    parser.add_argument("--trial-ledger", default=None,
+                        help="试运行台账 JSONL（M6-4）；给了才多一块失败分类面板")
     args = parser.parse_args(argv)
 
     try:
@@ -493,24 +646,48 @@ def main(argv=None) -> int:
         print(f"[阻断] {exc}")
         return 1
 
+    heartbeat = None
+    if args.heartbeat:
+        try:
+            heartbeat = load_heartbeat(Path(args.heartbeat))
+        except DashboardInputError as exc:
+            print(f"[阻断] {exc}")
+            return 2
+        inject_heartbeat(board, heartbeat)
+
+    ledger = None
+    if args.trial_ledger:
+        try:
+            ledger = load_trial_summary(Path(args.trial_ledger))
+        except DashboardInputError as exc:
+            print(f"[阻断] {exc}")
+            return 2
+
     source_name = _display_path(Path(args.log))
-    page_text = render_page(board, log, source_name=source_name)
+    page_text = render_page(board, log, source_name=source_name,
+                            heartbeat=heartbeat, ledger=ledger)
     page_path = Path(args.page)
     _write_text(page_path, page_text)
     page_sha = hashlib.sha256(page_text.encode("utf-8")).hexdigest()
 
     summary = build_summary(log, board, source_name=source_name,
-                            page_sha256=page_sha)
+                            page_sha256=page_sha, heartbeat=heartbeat,
+                            ledger=ledger)
     summary_path = Path(args.summary)
     _write_text(summary_path,
                 json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
     counts = summary["counts"]
+    extra = ""
+    if heartbeat is not None:
+        extra += f" / 心跳 {counts['heartbeats']}"
+    if ledger is not None:
+        extra += f" / 台账 {counts['trial_ledger_rows']} 行"
     print(f"[OK] 页面 {_display_path(page_path)}（{len(page_text.encode('utf-8'))} B，"
           f"sha256 {page_sha[:16]}…）")
     print(f"[OK] 摘要 {_display_path(summary_path)}：台站 {counts['stations']} / "
           f"告警 {counts['alerts']} {counts['alerts_by_level']} / "
-          f"工单 {counts['orders']}")
+          f"工单 {counts['orders']}{extra}")
     return 0
 
 

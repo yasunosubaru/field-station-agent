@@ -19,7 +19,7 @@ import math
 import random
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import constants as C
@@ -313,6 +313,61 @@ def device_readings(
             station_id=station, sensor="security", metric="door", value=1.0,
             unit="state", observed_at=observed_at, quality_flag="door_open"))
     return readings
+
+
+#: 心跳同步列：默认三台设备（观测主机 / 供电 / 链路）。心跳不是观测数据，
+#: 公开数据源（Open-Meteo 等）也不带心跳，所以这里只造**合成**序列并逐行标注。
+def device_heartbeats(
+    *,
+    start: datetime,
+    n: int,
+    interval_s: float = 300.0,
+    devices: Iterable[str] = ("GNSS-RX", "POWER", "LINK"),
+    station: str = "SYNTH",
+    stop_after: dict[str, int] | None = None,
+) -> list[dict]:
+    """生成确定性的设备心跳序列（M6-5，issue #109）。
+
+    每一行 = 一台设备在某个周期的报告：``device_id`` / ``last_seen_at`` /
+    ``interval_s``，另带 ``station_id`` 与 ``synthetic=True``。``stop_after``
+    指定某台设备最后一个上报的槽位（含），用来造 stale / offline：
+    停止上报后不再补行，判定由 ``agents/tools/heartbeat_tools.py`` 负责 ——
+    合成器不写第二套阈值（同 ``device_readings`` 的口径）。
+
+    时间从 ``start`` 起按 ``interval_s`` 递增，**不读墙钟**；同一组参数两次
+    生成逐字节相同。槽位 0..n-1，未在 ``stop_after`` 里的设备上报到最后一个槽位。
+    """
+    if not isinstance(start, datetime):
+        raise ValueError("start 必须是 datetime")
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError("n 必须是正整数")
+    if not isinstance(interval_s, (int, float)) or interval_s <= 0:
+        raise ValueError("interval_s 必须是正数")
+    names = [str(name) for name in devices]
+    if not names or len(set(names)) != len(names):
+        raise ValueError("devices 不能为空且不能重名")
+    stop = dict(stop_after or {})
+    unknown = sorted(set(stop) - set(names))
+    if unknown:
+        raise ValueError(f"stop_after 里的设备不在 devices 中：{unknown}")
+
+    rows: list[dict] = []
+    step = timedelta(seconds=float(interval_s))
+    for device_id in names:
+        last = stop.get(device_id, n - 1)
+        if not isinstance(last, int) or last < 0:
+            last = -1
+        for index in range(min(last + 1, n)):
+            rows.append({
+                "device_id": device_id,
+                "station_id": station,
+                "last_seen_at": (start + step * index).isoformat(),
+                "interval_s": float(interval_s),
+                "synthetic": True,
+            })
+    # 顺序固定：按设备、再按时间 —— 两次生成逐字节相同。
+    rows.sort(key=lambda row: (row["device_id"], row["last_seen_at"]))
+    return rows
 
 
 def write_observations_csv(obs: list[Observation], path: str | Path) -> Path:

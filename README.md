@@ -233,6 +233,15 @@ $env:PYTHONPATH="src"; python -m fieldstation.cli --help
 
 固定测试命令不走这个入口，直接跑。它本身就是被转发的门禁之一。
 
+M6 无人值守前置（不依赖真实样本，合成/演示口径已标注）：
+
+```powershell
+$env:PYTHONPATH="src"
+python harness/heartbeat_replay.py            # 设备心跳三态（合成序列）
+python harness/station_loop.py                # 调度：到点 / 错过 / 超时
+python harness/heartbeat_replay.py --notify   # Webhook 默认 dry-run，不发请求
+```
+
 <a id="数据现在是什么情况"></a>
 ### 数据现在是什么情况
 
@@ -251,7 +260,7 @@ $env:PYTHONPATH="src"; python -m fieldstation.cli --help
 - [ ] **M3** 数据质量校验智能体（进行中：M3-0…M3-3 已完成，M3-4 待标注样本）
 - [x] **M4** 研判、调度、归档智能体与知识库（M4-0…M4-4 已完成）
 - [ ] **M5** 集成联调与告警看板（M5-1…M5-4 已落地；真实样本相关验收待 #28/#33）
-- [ ] **M6** 试运行与指标评估
+- [ ] **M6** 试运行与指标评估（无人值守前置 M6-4/M6-5/M6-6 已落地；真实试运行待样本）
 - [ ] **M7** 成果整理与结题验收
 
 [开放议题](../../issues) 里能看到全部提案和已知问题。逐阶段决策见
@@ -401,9 +410,9 @@ python tools/check_desensitization.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**109** 个
-- 入库 Python 行数：**20,324** 行
-- 入库测试文件数：**61** 个
+- 入库 Python 文件数：**114** 个
+- 入库 Python 行数：**21,512** 行
+- 入库测试文件数：**64** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，

@@ -12,6 +12,20 @@
 
 ## 2026-11-03
 
+**M6 无人值守前置：心跳 / Webhook / 调度（#109 #110 #111）**
+
+| 项 | 内容 |
+|---|---|
+| 心跳 | `src/fieldstation/agents/tools/heartbeat_tools.py`：`online/stale/offline/unknown` 三态 + 未知；阈值在 `config/heartbeat.json`（按心跳周期计）；与读数健康度正交，不合并成健康分 |
+| 心跳回放 | `harness/heartbeat_replay.py` → `logs/heartbeat_replay.json`：4 台设备（online 1 / stale 1 / offline 1 / unknown 1），2 条告警；序列逐行 `synthetic=True` |
+| Webhook | `src/fieldstation/agents/notify.py`：标准库 `urllib`，**默认 dry-run 不发请求**；载荷白名单 + 摘要化 + `<home>` 脱敏；5xx/429 有上限重试、4xx 不重试、失败不阻塞链路；审计只记 URL host |
+| 调度 | `harness/station_loop.py`：注入时钟，到点 / 错过 / 超时三种情形；台账行与 `tools/trial_ledger.py` 同形（`source_id=task:<id>`） |
+| 失败分类 | `tools/trial_ledger.py` 增加 `任务未执行` / `任务超时` 两类；汇总多一列 `by_failure_kind`（data_source / task），回答「没数据是源还是任务」 |
+| 看板 | `tools/make_station_dashboard.py` 新增可选 `--heartbeat` / `--trial-ledger`：多「设备心跳」「数据源 / 任务失败」两块面板；不给参数时原三大视图逐字节不变 |
+| 演示产物 | `figures/heartbeat_dashboard.html`、`logs/heartbeat_dashboard.json`、`logs/station_loop_demo.jsonl`、`logs/station_loop_demo_summary.json` |
+| 测试 | 新增 `tests/test_heartbeat.py`（11 项）、`tests/test_webhook.py`（10 项）、`tests/test_station_loop.py`（9 项）；全量 622 项 |
+| 材料 | 软著源程序随新增源码重生成（48 文件 / 11,120 行 / 223 页）；一页摘要与说明书数字同步 |
+
 **混合版：应用内 Workflows 页签 + 原版套件 UIA 驱动（本次提交）**
 
 | 项 | 内容 |
