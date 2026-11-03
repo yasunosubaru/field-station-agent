@@ -11,6 +11,7 @@
 | 想懂系统怎么设计 | [基础设计](spec/2026-10-13-野外台站智能体基础设计.md) → [五类智能体](../README.md#五类智能体) → [共享黑板](operations/blackboard.md) |
 | 想复核某个数字 | [已知缺陷与覆盖缺口登记](known-issues.md) → [`tools/audit_claims.py`](../tools/audit_claims.py) → [试运行台账](operations/trial-ledger.md) |
 | 想看接收机那套厂商软件怎么拆的 | [`逆向/README.md`](../逆向/README.md) → [`逆向/03_分析/`](../逆向/03_分析/) |
+| 想接手继续做 | [收尾交接（2026-11-03）](handoff/2026-11-03-收尾交接.md) → [开放议题](https://github.com/yasunosubaru/field-station-agent/issues) |
 
 ## 目录
 
@@ -25,6 +26,7 @@
 | [`team/`](team/) | 分工与后续工作、新手上手 | 判断某块归谁 |
 | [`reports/`](reports/) | 阶段性演练报告 | 看一次完整试跑长什么样 |
 | [`images/`](images/) | README 用的界面截图（重实现 GUI，0.1.10） | 只想看界面 |
+| [`handoff/`](handoff/) | **收尾交接**：给下一个 agent 的任务清单、环境陷阱与纪律 | 刚接手这个仓库 |
 | [`known-issues.md`](known-issues.md) | 已知缺陷与覆盖缺口登记表（KI-##） | 遇到怪现象先查这里 |
 
 ## 设计（spec/）
