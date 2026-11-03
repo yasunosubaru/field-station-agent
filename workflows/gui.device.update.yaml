@@ -24,7 +24,7 @@ params:
     type: string
     required: true
     pattern: '^[A-Za-z0-9-]+$'
-    description: 接收机型号，必须与 VERSION #37 完全一致，例如 OEM729
+    description: 接收机型号，必须与 VERSION (#37) 完全一致，例如 OEM729
   expect_software:
     type: string
     required: false

@@ -318,7 +318,7 @@ export function mount(root, ctx = {}) {
         const path = gate.kind === 'approval' ? '/api/workflows/job/gate' : '/api/workflows/job/resume';
         try {
           await api.post(path, { id: view.job_id, decision, by: 'operator', note: '' });
-          poll(view.job_id, true);
+          poll(view.job_id, true, true);
         } catch (error) {
           jobEl.querySelectorAll('button[data-decision]').forEach((b) => { b.disabled = false; });
           jobEl.insertAdjacentHTML('beforeend', `<div class="wf-note">${esc(error.message)}</div>`);
@@ -327,7 +327,7 @@ export function mount(root, ctx = {}) {
     });
   }
 
-  function poll(id, immediate = false) {
+  function poll(id, immediate = false, untilTerminal = false) {
     stopPolling();
     jobId = id;
     const tick = async () => {
@@ -335,7 +335,10 @@ export function mount(root, ctx = {}) {
       try {
         const view = await api.get(`/api/workflows/job?id=${encodeURIComponent(id)}`);
         renderJob(view);
-        if (view.status === 'running' || view.status === 'pending') {
+        const terminal = ['succeeded', 'failed', 'cancelled'].includes(view.status);
+        // After gate/resume the worker may not have written the new status yet; keep polling
+        // until it settles. A plain run only polls while it is still running.
+        if (!terminal && (untilTerminal || view.status === 'running' || view.status === 'pending')) {
           pollTimer = setTimeout(tick, POLL_MS);
         }
       } catch (error) {

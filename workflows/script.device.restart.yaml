@@ -24,7 +24,7 @@ params:
     type: string
     required: false
     pattern: '^[A-Za-z0-9-]+$'
-    description: 回来后期望的型号（VERSION #37 的 model），例如 OEM729
+    description: 回来后期望的型号（VERSION (#37) 的 model），例如 OEM729
   expect_software:
     type: string
     required: false
