@@ -15,12 +15,14 @@
 
 **前提**：原版套件要以 ``--force-renderer-accessibility`` 启动。Electron 默认不把网页内容
 暴露给 UIA，只会看到一个 ``Intermediate D3D Window``；不带这个开关时本驱动会明确报
-「control not found」，不会去猜坐标。
+「control not found」，不会去猜坐标。用 :mod:`tools.suite_launcher` 启动（它固定带这个
+开关），不要手工点图标。
 
 用法::
 
-    python tools/uia_driver.py --check          # 套件装没装、能不能找到窗口
-    python tools/uia_driver.py --read "Model"   # 读一个控件（调试用）
+    python tools/suite_launcher.py --launch    # 用正确的开关启动套件
+    python tools/uia_driver.py --check         # 装没装、能不能驱动、选择器缺什么（JSON）
+    python tools/uia_driver.py --read "Model"  # 读一个控件（调试用）
 
 在流程里通过 ``--driver uia`` 使用（``fieldstation.workflows.gui.load_driver`` 会加载
 本文件并调用 :func:`create`）。
@@ -30,12 +32,23 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-__all__ = ["UiaDriver", "create", "load_selectors"]
+__all__ = [
+    "GuiUnavailable",
+    "REQUIRED_CONTROLS",
+    "UiaDriver",
+    "check",
+    "create",
+    "load_selectors",
+    "missing_locators",
+    "workflow_locators",
+]
 
 _HERE = Path(__file__).resolve().parent
 _SELECTORS_PATH = _HERE / "uia_selectors.json"
@@ -255,6 +268,102 @@ def load_selectors(path: str | Path | None = None) -> dict:
     return data
 
 
+#: 新流程（``workflows/gui.*.yaml``）点名要用到的逻辑控件。缺一条，``--check``
+#: 就把它列进 ``missing``——这样「流程能跑」不靠人记得补选择器。
+REQUIRED_CONTROLS: tuple[str, ...] = (
+    "Graph",
+    "Add Device",
+    "Refresh ports",
+    "Connect",
+    "Settings",
+    "Auto Updates",
+    "Auto Updates status",
+    "New Project",
+    "Create from SBF",
+    "Create from CSV",
+    "SBF file",
+    "Project name",
+    "Next",
+    "Process",
+    "Graph > Pre-process > Flags",
+    "Graph > Projects > Current",
+    "Add application",
+    "Application package",
+    "Add application > Package",
+    "Install",
+    "Update application",
+    "Update application > Application",
+    "My Applications > Installed",
+    "My Applications > Version",
+)
+
+#: YAML 里 ``locator:`` / ``control:`` 的行。只取标量，不引 yaml 依赖：本模块
+#: 要能在 payload 里单独加载，不能假设 ``fieldstation`` 已经导入。
+_LOCATOR_LINE = re.compile(
+    r"^\s*(?:-\s*)?(?:locator|control):\s*(?P<value>[^\r\n#]+?)\s*$", re.MULTILINE)
+
+
+def _workflow_dir(workflows_dir: str | Path | None = None) -> Path:
+    return Path(workflows_dir) if workflows_dir else _HERE.parent / "workflows"
+
+
+def workflow_locators(workflows_dir: str | Path | None = None) -> list[str]:
+    """扫工作流 YAML，返回它们引用的逻辑控件名（去重、排序）。"""
+    folder = _workflow_dir(workflows_dir)
+    if not folder.is_dir():
+        return []
+    found: set[str] = set()
+    for path in sorted(folder.glob("*.yaml")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for match in _LOCATOR_LINE.finditer(text):
+            value = match.group("value").strip().strip("'\"")
+            if value and not value.startswith("$"):
+                found.add(value)
+    return sorted(found)
+
+
+def missing_locators(selectors: dict | None = None,
+                     workflows_dir: str | Path | None = None) -> list[str]:
+    """选择器表缺哪些名字。
+
+    两类都算缺：``REQUIRED_CONTROLS`` 里没有的键，以及工作流引用了但表里（含
+    ``A > B`` 退到末段）仍解析不到的名字。
+    """
+    controls = (selectors or load_selectors()).get("controls") or {}
+    missing = {name for name in REQUIRED_CONTROLS if name not in controls}
+    for locator in workflow_locators(workflows_dir):
+        if locator in controls:
+            continue
+        if locator.split(">")[-1].strip() in controls:
+            continue
+        missing.add(locator)
+    return sorted(missing)
+
+
+def check(selectors: dict | None = None, suite_dir: str | Path | None = None,
+          workflows_dir: str | Path | None = None) -> dict:
+    """``--check`` 的完整报告：装没装、能不能驱动、选择器缺什么。"""
+    driver = UiaDriver(selectors=selectors, suite_dir=suite_dir)
+    controls = driver.selectors.get("controls") or {}
+    powershell = shutil.which("powershell") or shutil.which("pwsh") or ""
+    windows = sys.platform == "win32"
+    return {
+        "installed": bool(driver.available),
+        "available": bool(driver.available and windows and powershell),
+        "windows": windows,
+        "powershell": powershell,
+        "suite": str(driver.suite_dir),
+        "exe": str(driver.exe),
+        "process": driver.process,
+        "selectorFile": str(_SELECTORS_PATH),
+        "selectors": sorted(controls.keys()),
+        "missing": missing_locators(driver.selectors, workflows_dir),
+    }
+
+
 class UiaDriver:
     """按 UIA 条件操作原版套件。``available`` 只代表「套件装了」，不代表「现在开着」。"""
 
@@ -391,12 +500,9 @@ def main(argv: list[str] | None = None) -> int:
 
     driver = UiaDriver()
     if args.check:
-        print(json.dumps({
-            "available": driver.available,
-            "suite": str(driver.suite_dir),
-            "exe": str(driver.exe),
-            "selectors": sorted((driver.selectors.get("controls") or {}).keys()),
-        }, ensure_ascii=False, indent=2))
+        print(json.dumps(check(selectors=driver.selectors,
+                               suite_dir=driver.suite_dir),
+                         ensure_ascii=False, indent=2, sort_keys=True))
         return 0 if driver.available else 1
 
     try:

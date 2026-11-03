@@ -16,7 +16,18 @@
     "Update": [
       { "names": ["Update"], "controlType": "MenuItem" },
       { "names": ["Update"], "controlType": "Button" },
-      { "names": ["Update"], "controlType": "TabItem" }
+      { "names": ["Update"], "controlType": "TabItem" },
+      { "names": ["Update"], "controlType": "Hyperlink" }
+    ],
+    "Graph": [
+      { "names": ["Graph"], "controlType": "TabItem" },
+      { "names": ["Graph"], "controlType": "MenuItem" },
+      { "names": ["Graph"], "controlType": "Button" }
+    ],
+    "Manage": [
+      { "names": ["Manage"], "controlType": "TabItem" },
+      { "names": ["Manage"], "controlType": "MenuItem" },
+      { "names": ["Manage"], "controlType": "Button" }
     ],
     "Restart": [
       { "names": ["Restart"], "controlType": "MenuItem" },
@@ -70,6 +81,10 @@
     "Create from SBF": [
       { "names": ["Create from SBF", "From SBF", "SBF"], "controlType": "RadioButton" },
       { "names": ["Create from SBF"], "controlType": "Button" }
+    ],
+    "Create from CSV": [
+      { "names": ["Create from CSV", "From CSV", "CSV"], "controlType": "RadioButton" },
+      { "names": ["Create from CSV"], "controlType": "Button" }
     ],
     "SBF file": [
       { "names": ["SBF file", "Input file", "File"], "controlType": "Edit" }
