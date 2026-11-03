@@ -25,7 +25,7 @@ import {
   type LaunchResult,
 } from '../src/launcher.ts';
 
-const TITLE = '野外台站智能体 · 重实现控制台';
+const TITLE = 'All powered-FSA · 野外台站智能体';
 
 /** A port nothing currently listens on, in a range the app never defaults to. */
 async function freePortBase(): Promise<number> {

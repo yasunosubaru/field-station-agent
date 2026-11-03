@@ -29,10 +29,10 @@ class DefaultDataDir(unittest.TestCase):
 
     def test_uses_localappdata_when_no_override(self):
         env = {k: v for k, v in os.environ.items() if k != agent_store.ENV_DATA_DIR}
-        env["LOCALAPPDATA"] = r"C:\Users\x\AppData\Local"
+        env["LOCALAPPDATA"] = r"D:\LocalAppData"
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertEqual(agent_store.default_data_dir(),
-                             Path(r"C:\Users\x\AppData\Local") / "AllPoweredFSA")
+                             Path(r"D:\LocalAppData") / "AllPoweredFSA")
 
 
 class SessionLifecycle(unittest.TestCase):

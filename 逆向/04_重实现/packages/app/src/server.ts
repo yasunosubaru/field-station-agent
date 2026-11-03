@@ -1417,11 +1417,39 @@ function handlePage(res: ServerResponse): void {
   res.end(body);
 }
 
+function loopbackHostAllowed(hostValue: string | undefined, port: number): boolean {
+  if (!hostValue) return false;
+  const host = hostValue.trim().toLowerCase();
+  const names = ['127.0.0.1', 'localhost', '[::1]'];
+  return names.some((name) => host === name || host === `${name}:${port}`);
+}
+
+function loopbackOriginAllowed(origin: string | undefined, port: number): boolean {
+  if (!origin) return true; // 非浏览器（Python/native）没有 Origin
+  const value = origin.trim().toLowerCase();
+  return value === `http://127.0.0.1:${port}`
+    || value === `http://localhost:${port}`
+    || value === `http://[::1]:${port}`;
+}
+
+/** 只接受本机回环 Host/Origin：防 DNS rebinding 与跨站页面调用本机 API。 */
+function loopbackRequest(
+  req: { headers: { host?: string; origin?: string } },
+  port: number,
+): boolean {
+  return loopbackHostAllowed(req.headers.host, port)
+    && loopbackOriginAllowed(req.headers.origin, port);
+}
+
 const server = createServer((req, res) => {
   void (async () => {
     const method = (req.method ?? 'GET').toUpperCase();
     if (method !== 'GET' && method !== 'HEAD' && method !== 'POST') {
       sendJson(res, 405, { ok: false, error: '不支持的请求方法' }, method);
+      return;
+    }
+    if (listeningPort > 0 && !loopbackRequest(req, listeningPort)) {
+      sendJson(res, 403, { ok: false, error: '只接受本机回环同源请求' }, method);
       return;
     }
     const url = new URL(req.url ?? '/', `http://${HOST}`);
@@ -1448,8 +1476,10 @@ const server = createServer((req, res) => {
       }
       if (path === '/shell.css' || path === '/icons.css' || path === '/theme.css' || path === '/theme.js'
         || path === '/home.css'
+        || path === '/agent.css'
         || path === '/config-dark.css'
         || path.startsWith('/home/')
+        || path.startsWith('/agent/')
         || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')
         || path.startsWith('/geo/')) {
         handleWebFile(path.slice(1), res, method);

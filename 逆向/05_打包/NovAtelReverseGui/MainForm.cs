@@ -29,6 +29,7 @@ public sealed class MainForm : Form
     };
     private Process? _server;
     private string _root = "";
+    private string _token = "";
 
     public MainForm()
     {
@@ -58,6 +59,7 @@ public sealed class MainForm : Form
             _root = await Task.Run(ExtractPayload);
             Status("Starting the local server… / 正在启动本地服务…");
             var port = await Task.Run(StartServer);
+            WriteRuntime(port);
             var userData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 AppName, "webview2");
@@ -146,6 +148,11 @@ public sealed class MainForm : Form
         // of the app keeps working.
         var python = Path.Combine(_root, "runtime", "python", "python.exe");
         if (File.Exists(python)) start.EnvironmentVariables["NAS_PYTHON"] = python;
+        // One token for the whole app: the shell writes it to runtime.json, Node passes it to
+        // Python, so a second source of truth cannot drift.
+        var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        start.EnvironmentVariables["FSA_AGENT_TOKEN"] = token;
+        _token = token;
         // FSA_ROOT is the extracted payload root; the Python side resolves src/, tools/, config/
         // and workflows/ from it. FSA_SUITE_DIR only exists when the payload was built with
         // --with-original, and then points at the installed suite tree.
@@ -177,6 +184,19 @@ public sealed class MainForm : Form
             throw new TimeoutException("the local server did not report READY within 40 s");
         }
         return ready.Task.Result;
+    }
+
+    private void WriteRuntime(int port)
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "AllPoweredFSA");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "runtime.json");
+        var pid = _server?.Id ?? 0;
+        File.WriteAllText(
+            path,
+            $"{{\"node_port\":{port},\"pid\":{pid},\"token\":\"{_token}\",\"started_at\":\"{DateTime.UtcNow:o}\"}}");
     }
 
     private void StopServer()

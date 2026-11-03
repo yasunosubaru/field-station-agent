@@ -62,3 +62,58 @@ jobs:
       # 脱敏守卫：公开仓库的绊线（通用模式 + 本机词表；不是证明，见工具文件头）。
       - name: 脱敏守卫
         run: python tools/check_desensitization.py
+
+      # Agent 桌面版（契约 §11）的单测。文件必须存在：缺一个就失败，
+      # 不再用 notice 跳过（跳过 = 假绿，和 skip 同一条纪律）。
+      - name: Agent 测试
+        shell: bash
+        run: |
+          set -euo pipefail
+          modules=(
+            tests.test_agent_store
+            tests.test_agent_server
+            tests.test_openai_provider
+            tests.test_secret_store
+            tests.test_native_bridge
+            tests.test_rpa_bridge
+            tests.test_suite_launcher
+          )
+          missing=0
+          for mod in "${modules[@]}"; do
+            file="${mod//.//}.py"
+            if [ ! -f "$file" ]; then
+              echo "::error::缺少 Agent 测试文件 $file（不允许静默跳过）"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+          python -m unittest "${modules[@]}" -v
+        env:
+          PYTHONPATH: src
+          PYTHONIOENCODING: utf-8
+
+  # 交付物 B 的重实现测试。仓库零 npm 依赖，也不 npm install：
+  # Node 22.18+ 默认擦除类型，直接跑 .ts（与 README 的本地命令一致）。
+  # 单独开 job 而不是塞进 gate：Python 门禁失败时不必等 1200+ 项 Node 测试重跑，
+  # 两边在 PR 上仍是两道并列的必过门。
+  node-tests:
+    name: 重实现测试（Node 22）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 重实现测试
+        working-directory: 逆向/04_重实现
+        run: |
+          set -euo pipefail
+          count=$(find packages -path '*/test/*.test.ts' -type f | wc -l)
+          echo "test files: $count"
+          test "$count" -gt 0
+          node --test --test-force-exit "packages/*/test/*.test.ts"
+

@@ -170,7 +170,10 @@ export class AgentBridge {
         ? process.env.NAS_AGENT_SERVER.trim()
         : join(this.repo, 'tools', 'agent_server.py'));
     this.dataDir = options.dataDir ?? (process.env.NAS_AGENT_DATA ?? '').trim();
-    this.token = options.token ?? randomBytes(TOKEN_BYTES).toString('hex');
+    this.token = options.token ?? (
+      process.env.FSA_AGENT_TOKEN?.trim()
+      || randomBytes(TOKEN_BYTES).toString('hex')
+    );
     this.fixedPython = options.python ?? '';
     this.fixedNodeUrl = options.nodeUrl ?? '';
     this.nodePort = options.nodePort;

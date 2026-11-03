@@ -844,6 +844,8 @@
   },
   "b": {
     "api_routes": [
+      "/api/agent",
+      "/api/agent/...",
       "/api/captures",
       "/api/config/device/export",
       "/api/config/device/import",
@@ -967,6 +969,7 @@
       "terminalConsole"
     ],
     "web_panels": [
+      "agent",
       "convert",
       "graph",
       "grit",

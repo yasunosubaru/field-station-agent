@@ -415,6 +415,31 @@ def _load_bridge(label: str, module_name: str, bridge_class_name: str,
     return _iter_tools(produced), ""
 
 
+class _ListWorkOrdersTool:
+    """只读工单列表；契约 §5 的 ``list_work_orders``。"""
+
+    name = "list_work_orders"
+    description = "列出当前工单（可按 status 过滤）；只读，不推进状态。"
+    params = {
+        "status": {"type": "string", "required": False,
+                   "description": "open / assigned / in_progress / done / cancelled"},
+    }
+    risk = "low"
+
+    def __init__(self, service) -> None:
+        self._service = service
+
+    def invoke(self, args: dict) -> ToolResult:
+        status = args.get("status")
+        orders = self._service.list_all()
+        if isinstance(status, str) and status.strip():
+            orders = [order for order in orders if order.status == status.strip()]
+        return ToolResult(ok=True, data={
+            "orders": [order.to_dict() for order in orders],
+            "count": len(orders),
+        })
+
+
 def _register_local_tools(registry: ToolRegistry, warnings: list[str], *,
                           repo_root: Path, data_dir: Path | None,
                           work_order_service=None) -> None:
@@ -452,7 +477,9 @@ def _register_local_tools(registry: ToolRegistry, warnings: list[str], *,
 
         service = work_order_service or WorkOrderService()
         _register_all(registry, [CreateWorkOrderTool(service),
-                                 ExecuteDeviceActionTool()], warnings, "本地工具")
+                                 ExecuteDeviceActionTool(),
+                                 _ListWorkOrdersTool(service)],
+                      warnings, "本地工具")
     except Exception as exc:
         warnings.append(f"未注册工单工具（{type(exc).__name__}）")
 
@@ -466,6 +493,20 @@ def _register_local_tools(registry: ToolRegistry, warnings: list[str], *,
                       warnings, "本地工具")
     except Exception as exc:
         warnings.append(f"未注册 archive_export（{type(exc).__name__}）")
+
+    # 知识检索：有入库 JSONL 就索引到数据目录的 sqlite；没有就不注册，不编造。
+    try:
+        from .knowledge import KnowledgeBase, knowledge_search_tool, load_documents
+
+        kb_path = ((data_dir / "kb.sqlite3") if data_dir
+                   else repo_root / "data" / "kb" / "knowledge.sqlite3")
+        kb = KnowledgeBase(kb_path)
+        docs_path = repo_root / "data" / "kb" / "knowledge.jsonl"
+        if docs_path.is_file():
+            kb.index(load_documents(docs_path))
+        _register_all(registry, [knowledge_search_tool(kb)], warnings, "本地工具")
+    except Exception as exc:
+        warnings.append(f"未注册 knowledge_search（{type(exc).__name__}）")
 
 
 # --------------------------------------------------------------------------
@@ -585,6 +626,15 @@ def _run_call(call: dict, *, registry: ToolRegistry, emitter: _Emitter,
 
     tool = registry.get(name) if name else None
     risk = getattr(tool, "risk", None) if tool is not None else None
+    # 工具可以按参数重算风险（例如 workflow_run 的真实流程 risk）：优先用它。
+    risk_for = getattr(tool, "risk_for", None) if tool is not None else None
+    if callable(risk_for):
+        try:
+            dynamic = risk_for(args)
+        except Exception:  # noqa: BLE001 —— 风险计算失败就退回静态值
+            dynamic = None
+        if dynamic in ("low", "medium", "high"):
+            risk = dynamic
     if not isinstance(risk, str) or not risk:
         risk = "high"  # 未注册的工具按高风险看待，且反正不会执行
 
@@ -696,6 +746,23 @@ def _emit_result(emitter: _Emitter, call_id: str, evidence_call: str,
         "data": data, "evidence": {"agent": agent_name, "call_id": evidence_call},
         "duration_ms": duration_ms,
     })
+    if ok and isinstance(data, dict) and (data.get("path") or data.get("name")):
+        # 产物只暴露文件名/相对路径与哈希；本机绝对路径不进会话 JSONL（契约 §12）。
+        name = str(data.get("name") or "").strip()
+        raw_path = str(data.get("path") or "").strip()
+        if not name and raw_path:
+            name = raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+        if name:
+            suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            kind = suffix if suffix in (
+                "pdf", "csv", "json", "png", "html", "txt", "sbf", "kml") else "file"
+            emitter.emit({
+                "type": "artifact", "id": emitter.new_id("f"),
+                "name": name, "kind": kind,
+                "path": f"artifacts/{name}",
+                "sha256": data.get("sha256"),
+                "source_call": call_id,
+            })
 
 
 def _approval_prompt(name: str, args: dict) -> str:

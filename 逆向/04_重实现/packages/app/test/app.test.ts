@@ -113,7 +113,7 @@ test('首页返回 200 且含页面标题与三个工作页', async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /text\/html/);
   const html = await response.text();
-  assert.match(html, /<title>野外台站智能体/);
+  assert.match(html, /<title>All powered-FSA/);
   assert.match(html, /id="panel-convert"/);
   assert.match(html, /id="panel-manage"/);
   assert.match(html, /id="panel-playback"/);

@@ -93,6 +93,10 @@ class WorkOrderService:
         except KeyError as exc:
             raise KeyError(f"工单不存在：{order_id!r}") from exc
 
+    def list_all(self) -> list[WorkOrder]:
+        """按工单号排序返回全部工单（只读；给看板/Agent 列表用）。"""
+        return [self._orders[key] for key in sorted(self._orders)]
+
     def transition(self, order_id: str, new_status: str) -> WorkOrder:
         if new_status not in STATUSES:
             raise ValueError(f"未知工单状态：{new_status!r}")
