@@ -6,6 +6,19 @@
 产品名是 **All powered-FSA**，可执行文件是 `AllPoweredFSA.exe`。本目录的四份文档都对应
 [W0 接口契约](../superpowers/plans/2026-11-03-Agent桌面版-契约.md)（2026-11-03 冻结）：
 
+## 当前发布物（2026-11-04）
+
+| 项 | 值 |
+|---|---|
+| EXE | `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe` |
+| 字节 / SHA256 | 904,169,047 B / `2ce2346bc4304edfe9070a3e35574f61848ae3736e74c28065333ed0eab70ce4` |
+| payload | 852,065,709 B / 5223 项 / `6e9c4911df3fe32b6c716c11036638779f90271672676f53d06f6825f5f1c17a` |
+| 内置 | Node 24、Python 3.11、B 引擎、样本、原版套件便携副本、8 条流程 |
+| 首次启动 | 解压 payload（约 1.7 GB）到 `%LOCALAPPDATA%\AllPoweredFSA\app-0.2.0.0`，然后起本地服务并打开 WebView2 |
+| 构建记录 | `dist/AllPoweredFSA-0.2.0-win-x64/release.json` |
+
+> 原版套件随包只用于本机演示/比赛；对外分发前请自行确认 NovAtel 的再分发许可。
+
 | 文档 | 回答什么 |
 |---|---|
 | 本页 | 它是什么、怎么开始用、日常能做什么、数据放哪 |
