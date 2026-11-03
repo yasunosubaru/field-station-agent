@@ -15,6 +15,10 @@ venv/
 .DS_Store
 Thumbs.db
 
+# 监工会话的逐轮报告是运行态，不入库
+docs/plans/agent-watch-report.md
+docs/plans/agent-supervisor-report.md
+
 # 注意：data/ logs/ figures/ 全部入库。
 #
 # 这是本仓库自己的裁定，不指向任何外部项目：曾经有方案主张"测试产物只入库

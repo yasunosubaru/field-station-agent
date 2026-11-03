@@ -112,8 +112,10 @@ class _WebSocket:
         self.sock.sendall(bytes(header) + masked)
 
     def recv_text(self) -> str:
+        buffer = b""
         while True:
             first = self._read_exact(2)
+            fin = bool(first[0] & 0x80)
             opcode = first[0] & 0x0F
             masked = bool(first[1] & 0x80)
             length = first[1] & 0x7F
@@ -132,10 +134,16 @@ class _WebSocket:
                 continue
             if opcode == 0xA:  # pong
                 continue
-            try:
-                return payload.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise GuiUnavailable(f"CDP 帧不是 UTF-8：{exc}") from exc
+            if opcode in (0x0, 0x1):  # continuation / text
+                buffer += payload
+                if not fin:
+                    continue
+                try:
+                    return buffer.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise GuiUnavailable(f"CDP 帧不是 UTF-8：{exc}") from exc
+            # 其它 opcode（binary 等）忽略
+            buffer = b""
 
     def _pong(self, payload: bytes) -> None:
         header = bytearray([0x8A])

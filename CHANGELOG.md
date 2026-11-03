@@ -4,11 +4,34 @@
 
 | 线 | 版本形态 | 现在 |
 |---|---|---|
-| **重实现 GUI**（`NovAtelReverse`，交付物 B 的产物） | `0.1.x`，跟 `逆向/05_打包/NovAtelReverseGui/NasGui.csproj` 的 `<Version>` 走 | `0.1.10`（[Releases](../../releases)） |
-| **野外台站智能体**（交付物 A） | 按阶段 M0 — M7 推进，不打语义化版本 | M0、M4 已完成 |
+| **重实现 GUI**（`NovAtelReverse`，交付物 B 的产物） | `0.1.x`，跟 `逆向/05_打包/NovAtelReverseGui/NasGui.csproj` 的 `<Version>` 走 | `0.2.0`（All powered-FSA） |
+| **野外台站智能体**（交付物 A） | 按阶段 M0 — M7 推进，不打语义化版本 | M0、M4 已完成；M6 无人值守前置已落地 |
 
 规则：一个版本号对应一次 `dotnet publish`，exe 的 SHA256 与发布说明一起记在 Release 里；
 只用 `0.1.0` 起的递增号，跳号表示那版没出。
+
+## 2026-11-04
+
+**All powered-FSA 0.2.0 桌面版（首个可用单文件 EXE）**
+
+| 项 | 内容 |
+|---|---|
+| 产物 | `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe`，**904,169,047 B**，SHA256 `f30d0c8956449b035ec8bf98bd2bdb7b2619d1867b0ed92911135486588fa4c8` |
+| payload | 5222 文件 / 1.7 GB → zip 812.6 MB；含 Node 24、Python 3.11、B 引擎、样本、解包视图、8 条流程、原版套件便携副本 |
+| 双模式 | 默认 **Agent 工作台**（三栏对话/工具卡/审批卡/产物卡/计划卡/失败卡/命令面板/深浅主题/窄屏收栏）；顶栏切 **专业面板**（原版 6 页） |
+| Agent 服务 | `tools/agent_server.py`：会话 JSONL、SSE、审批阻塞/超时、取消、409、5MB；默认 `fake` 演示，不联网 |
+| 模型通道 | OpenAI 兼容（流式/工具调用/usage）+ 本机 Ollama + fake；key 走 Windows DPAPI；未配 key 自动回退 fake 并提示 |
+| 工具 | 30 个：local 9 / native 11 / RPA 8；`workflow_run` 按流程真实 risk 动态升为 high；产物只暴露文件名/相对路径 |
+| RPA | `tools/cdp_driver.py`：手写 WebSocket/CDP，按页面文字找控件（无坐标），open/click/type/select/read/截图；`suite_launcher --launch --cdp-port` 启动原版 |
+| 原版启动陷阱 | 原版 `main.js` 把任何多余 argv 当 Convert CLI；`suite_launcher` 用 `NASRunner.exe` 硬链接把 Chromium 开关真正传进去 |
+| 安全 | Node 只监听 127.0.0.1，Host/Origin 必须回环同源（403 兜底）；壳生成 token 写 `runtime.json`；Chromium 禁用端口自动换 |
+| 打包 | `tools/build_payload.py`（确定性 zip + manifest，核心模块缺失即失败）与 `tools/build_release.ps1`（dotnet publish + SHA256 + release.json） |
+| 验证 | Python 827 项全过 skip 0；Node 1275 项（1272 pass / 3 skip / 0 fail）；selftest 5/5；audit 3/3；脱敏 0；EXE 内实测：健康度对话、审批拒绝、产物下载 5.3 MB PDF、专业面板、原版套件便携启动、CDP open/read/click/截图 |
+
+**已知边界（不写成已完成）**：原版套件再分发需自行确认许可；工作流的控件文字映射需按套件
+版本继续校准（RPA 框架已通，个别流程会停在 `GuiUnavailable` 并转人工）；真实台站样本仍受
+#28/#33 阻塞；`fake` 演示的数字不是业务结论。
+
 
 ## 2026-11-03
 
