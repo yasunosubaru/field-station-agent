@@ -32,6 +32,13 @@
 
 </div>
 
+> **桌面版 `All powered-FSA` 0.2.0（2026-11-04）**：一个 Windows 单文件 EXE，把
+> 「Agent 工作台（类 Claude/ChatGPT）+ 专业面板（重实现的官方界面）」放进同一窗口，
+> 底层同时具备**已逆向的 B 引擎**与**原版套件的 RPA 通道**。产物在
+> `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe`（约 862 MiB，已内置 Node / Python /
+> 样本 / 原版套件便携副本），使用说明见 [`docs/product/`](docs/product/README.md)。
+> 未配模型 key 时以 `fake` 演示模式启动；设置里可切 OpenAI 兼容 API 或本机 Ollama。
+
 <!-- 目录 -->
 <details>
   <summary>目录</summary>
@@ -410,9 +417,9 @@ python tools/check_desensitization.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**126** 个
-- 入库 Python 行数：**27,131** 行
-- 入库测试文件数：**71** 个
+- 入库 Python 文件数：**127** 个
+- 入库 Python 行数：**27,214** 行
+- 入库测试文件数：**72** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，

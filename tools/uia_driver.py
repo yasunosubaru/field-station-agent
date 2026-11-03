@@ -382,7 +382,9 @@ class UiaDriver:
         self.exe = suite / str(
             (self.selectors.get("suite") or {}).get("exe") or _DEFAULT_EXE)
         self.process = str(
-            (self.selectors.get("window") or {}).get("process") or _DEFAULT_PROCESS)
+            os.environ.get("NOVATEL_SUITE_PROCESS")
+            or (self.selectors.get("window") or {}).get("process")
+            or _DEFAULT_PROCESS)
         self.ps_timeout = float(ps_timeout)
         self.log: list[dict] = []
 

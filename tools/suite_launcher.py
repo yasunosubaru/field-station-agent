@@ -40,6 +40,7 @@ import ctypes
 import importlib.util
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -238,28 +239,64 @@ def _extra_args(extra_args) -> list[str]:
     return args
 
 
+#: 原版 ``main.js`` 的 CLI 判定：只要 argv 多于一个且 argv[0] 含
+#: ``NovAtelApplicationSuite``，它就把这轮当成 Convert CLI，Chromium 开关会被
+#: 当成非法参数。用一个不同名的硬链接（失败再复制）启动，开关才能真正到达 Chromium。
+RUNNER_NAME = "NASRunner.exe"
+
+
+def _accessibility_runner(info: SuiteInfo) -> Path | None:
+    """返回可带 Chromium 开关启动的副本/硬链接；目录不可写时返回 None。"""
+    target = info.dir / RUNNER_NAME
+    if target.is_file():
+        return target
+    try:
+        os.link(info.exe, target)
+        return target
+    except OSError:
+        try:
+            shutil.copy2(info.exe, target)
+            return target
+        except OSError:
+            return None
+
+
 def launch(suite: SuiteInfo | str | Path, extra_args=None, *,
            wait_ready: bool = False, timeout: float = DEFAULT_WAIT_S,
            interval: float = DEFAULT_READY_INTERVAL_S,
-           driver: object = None) -> dict:
-    """启动套件，返回 ``{pid, cmd, portable}``（``wait_ready`` 时再加就绪状态）。
+           driver: object = None, cdp_port: int | None = None) -> dict:
+    """启动套件，返回 ``{pid, cmd, portable, accessibility}``。
 
-    命令行固定是 ``[exe, "--force-renderer-accessibility", ...]``，``Popen`` 不走
-    shell。``wait_ready`` **不会**把「没就绪」变成异常——启动已经发生了，调用方
-    需要 pid 去收尾，所以超时只体现在返回值里（``ready=False``、``state=not_ready``）。
+    原版对任意多余参数会进 Convert CLI 并退出；因此优先用 ``NASRunner.exe``
+    硬链接（同名判定不成立）把 ``--force-renderer-accessibility`` 传给 Chromium。
+    安装目录不可写时退回「不带开关正常启动」，``accessibility=False``，GUI 流程
+    走 assisted 人工任务，不假装 UIA 可用。
     """
     info = _as_suite(suite)
     if not info.exe.is_file():
         raise SuiteUnavailable(
             f"没找到原版套件：{info.exe}（装套件，或把 {ENV_VAR} 指向安装目录）")
 
-    cmd = [str(info.exe), ACCESSIBILITY_FLAG, *_extra_args(extra_args)]
+    runner = _accessibility_runner(info)
+    exe = runner or info.exe
+    args = [ACCESSIBILITY_FLAG, *_extra_args(extra_args)] if runner else _extra_args(extra_args)
+    if cdp_port:
+        args.append(f"--remote-debugging-port={int(cdp_port)}")
+    cmd = [str(exe), *args]
+    env = dict(os.environ)
+    if runner:
+        env["NOVATEL_SUITE_PROCESS"] = runner.stem
     try:
-        proc = subprocess.Popen(cmd, shell=False, cwd=str(info.dir))
+        proc = subprocess.Popen(cmd, shell=False, cwd=str(info.dir), env=env)
     except OSError as exc:
         raise SuiteUnavailable(f"启动原版套件失败：{exc}") from exc
 
-    result: dict = {"pid": int(proc.pid), "cmd": cmd, "portable": bool(info.portable)}
+    result: dict = {
+        "pid": int(proc.pid), "cmd": cmd, "portable": bool(info.portable),
+        "accessibility": bool(runner), "process": runner.stem if runner else info.exe.stem,
+    }
+    if cdp_port:
+        result["cdp_port"] = int(cdp_port)
     if wait_ready:
         ready, reason = _wait_for_driver(driver, timeout, interval)
         result["ready"] = ready
@@ -534,6 +571,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="启动后轮询 UIA 驱动可用（最多 --timeout 秒）")
     ap.add_argument("--timeout", type=float, default=DEFAULT_WAIT_S,
                     help=f"--wait-ready 的超时秒数（默认 {DEFAULT_WAIT_S:g}）")
+    ap.add_argument("--cdp-port", type=int, default=None,
+                    help="以 --remote-debugging-port 启动，供 cdp_driver 使用（如 9223）")
     args = ap.parse_args(argv)
 
     if not (args.check or args.launch or args.stop is not None):
@@ -552,7 +591,8 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_OK if result["stopped"] else EXIT_FAILED
 
         suite = find_suite(args.root)
-        result = launch(suite, wait_ready=args.wait_ready, timeout=args.timeout)
+        result = launch(suite, wait_ready=args.wait_ready, timeout=args.timeout,
+                        cdp_port=args.cdp_port)
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         if args.wait_ready and not result.get("ready", False):
             return EXIT_FAILED

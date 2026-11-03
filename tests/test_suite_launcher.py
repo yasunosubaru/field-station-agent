@@ -197,14 +197,16 @@ class Launch(LauncherCase):
         calls = self.popen()
 
         result = self.launcher.launch(suite, ["--no-sandbox", "--lang=en-US"])
-        self.assertEqual(calls[0][0], [
-            str(suite.exe), "--force-renderer-accessibility", "--no-sandbox", "--lang=en-US"])
+        self.assertTrue(calls[0][0][0].endswith("NASRunner.exe"))
+        self.assertEqual(calls[0][0][1:], [
+            "--force-renderer-accessibility", "--no-sandbox", "--lang=en-US"])
         self.assertEqual(calls[0][1].get("shell"), False)
         self.assertEqual(calls[0][1].get("cwd"), str(suite.dir))
         self.assertIsInstance(calls[0][0], list)
         self.assertEqual(result["pid"], 4242)
         self.assertEqual(result["cmd"], calls[0][0])
         self.assertTrue(result["portable"])
+        self.assertTrue(result["accessibility"])
         self.assertNotIn("ready", result)
 
     def test_accessibility_flag_is_not_duplicated(self):
@@ -239,7 +241,7 @@ class Launch(LauncherCase):
         calls = self.popen()
 
         result = self.launcher.launch(str(suite.dir))
-        self.assertEqual(result["cmd"][0], str(suite.exe))
+        self.assertTrue(result["cmd"][0].endswith("NASRunner.exe"))
         self.assertEqual(len(calls), 1)
 
     def test_oserror_is_reported_as_unavailable(self):

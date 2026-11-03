@@ -156,6 +156,8 @@ def load_driver(name: str = "assisted") -> GuiDriver:
         return ScriptedDriver()
     if key == "uia":
         return _load_path(_ROOT / "tools" / "uia_driver.py")
+    if key == "cdp":
+        return _load_path(_ROOT / "tools" / "cdp_driver.py")
     if key.endswith(".py") or "/" in key or "\\" in key:
         path = Path(name)
         if not path.is_absolute():

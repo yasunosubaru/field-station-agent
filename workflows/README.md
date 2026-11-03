@@ -133,9 +133,19 @@ artifacts/      # 流程产物 + context.json + failure.json（失败现场）
 
 - `assisted`（默认）：没有驱动，`gui`/`verify_ui` 转人工任务；
 - `scripted`：**仅测试/演练**，读值来自预置表，截图是标记文件，不能当生产证据；
-- `uia`：仓库自带的 Windows UI Automation 驱动（`tools/uia_driver.py`），驱动**原版套件**；
-  需要套件以 `--force-renderer-accessibility` 启动；
+- `cdp`：**推荐**，`tools/cdp_driver.py` 通过 Chromium DevTools Protocol 在页面里按文字
+  找控件、点击/填值/读文本/截图，不按坐标。套件用
+  `python tools/suite_launcher.py --launch --cdp-port 9223` 启动；
+  流程用 `--driver cdp`，或设 `FSA_GUI_DRIVER=cdp` 让 Agent 的 RPA 工具默认走它；
+- `uia`：Windows UI Automation 驱动（`tools/uia_driver.py`）。原版 Electron 8 在本机
+  只暴露 `Chrome Legacy Window`，UIA 看不到网页控件，因此保留为备选而非默认；
+  套件须以 `--force-renderer-accessibility` 启动；
 - 其它名字：按模块名导入；也可直接给 `.py` 路径。模块须提供 `create() -> GuiDriver`。
+
+> **原版的 CLI 陷阱**：`main.js` 只要发现 argv 多于一个且 argv[0] 含
+> `NovAtelApplicationSuite` 就进 Convert CLI，给 exe 加任何 Chromium 开关都会
+> 「Invald option」退出。`suite_launcher` 因此用同名判定不成立的 `NASRunner.exe`
+> 硬链接启动（失败才复制），并把 `NOVATEL_SUITE_PROCESS=NASRunner` 传给 UIA 驱动。
 
 ## 新增一条流程
 

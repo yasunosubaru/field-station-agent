@@ -529,6 +529,21 @@ test('the Agent workbench assets are served (no 404 white screen)', async () => 
   }
 });
 
+test('a Chromium-blocked port is replaced by a safe ephemeral port', async () => {
+  const blocked = 6667; // Chromium ERR_UNSAFE_PORT range 6665-6669
+  const proc = spawn(process.execPath, [serverPath, '--port', String(blocked)], {
+    cwd: resolve(here, '..', '..', '..'),
+    env: { ...process.env, PYTHONPATH: 'src' },
+  });
+  try {
+    const port = await waitForReady(proc);
+    assert.notEqual(port, blocked);
+    assert.ok(port > 0);
+  } finally {
+    proc.kill();
+  }
+});
+
 test('a non-loopback Host header is rejected before any route runs', async () => {
   const status = await new Promise<number>((resolve, reject) => {
     const req = request(base + '/api/health', { headers: { Host: 'evil.example' } }, (res) => {
@@ -540,4 +555,5 @@ test('a non-loopback Host header is rejected before any route runs', async () =>
   });
   assert.equal(status, 403);
 });
+
 

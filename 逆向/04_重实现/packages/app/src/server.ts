@@ -1828,16 +1828,33 @@ const server = createServer((req, res) => {
 });
 
 const port = parsePort(process.argv.slice(2));
-server.listen(port, HOST, () => {
+/** Chromium/WebView2 refuses to navigate to these ports (`ERR_UNSAFE_PORT`). */
+const CHROME_BLOCKED_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79,
+  87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137,
+  139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532,
+  540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720,
+  1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+  6669, 6697, 10080,
+]);
+
+const onReady = (): void => {
   const address = server.address();
   const actual = typeof address === 'object' && address ? address.port : port;
+  if (CHROME_BLOCKED_PORTS.has(actual)) {
+    // WebView2/Chromium 会直接报 ERR_UNSAFE_PORT；换一个临时端口重来。
+    console.log(`[app] 端口 ${actual} 被 Chromium 禁用，换一个`);
+    server.close(() => server.listen(0, HOST, onReady));
+    return;
+  }
   listeningPort = actual;
   const line = `nas-reimpl app listening on http://${HOST}:${actual}`;
   console.log(line);
   console.log(`samples: ${SAMPLES_DIR}`);
   console.log(`assets: ${ASSETS_DIR}${existsSync(ASSETS_DIR) ? '' : '（缺失，图标与字体走 404）'}`);
   console.log(`READY ${actual}`);
-});
+};
+server.listen(port, HOST, onReady);
 
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {

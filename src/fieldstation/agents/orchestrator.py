@@ -41,6 +41,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -178,7 +179,7 @@ class _Emitter:
                 attachments: list | None = None) -> str:
         mid = self.new_id("m")
         event = {"type": "message", "id": mid, "role": role,
-                 "content": content, "ts": _now_iso()}
+                 "content": _sanitize_text(content), "ts": _now_iso()}
         if attachments:
             event["attachments"] = _jsonable(attachments)
         self._emit(event)
@@ -187,6 +188,7 @@ class _Emitter:
     def assistant(self, content: str) -> str:
         """先发 token 分片，再发完整 message（同一 id，后者为准）。"""
         mid = self.new_id("m")
+        content = _sanitize_text(content)
         for chunk in _chunks(content, TOKEN_CHUNK_CHARS):
             self._emit({"type": "token", "id": mid, "delta": chunk})
         self._emit({"type": "message", "id": mid, "role": "assistant",
@@ -339,6 +341,7 @@ def build_registry(*, repo_root: str | Path | None = None,
         "exports_dir": (base_dir / "exports") if base_dir else None,
         "jobs_root": (base_dir / "jobs") if base_dir else None,
         "session_id": session_id,
+        "driver": os.environ.get("FSA_GUI_DRIVER", "assisted"),
     }
     for label, module_name, bridge_class, builder_names in _BRIDGES:
         tools, reason = _load_bridge(label, module_name, bridge_class,

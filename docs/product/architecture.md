@@ -1,7 +1,7 @@
 # All powered-FSA · 架构
 
 本文对应 [W0 契约](../superpowers/plans/2026-11-03-Agent桌面版-契约.md) 的 §1–§7 与 §10。
-标记沿用 [README](README.md#状态标记)：**当前** = 代码已在仓库；**Wave 1** = 本轮并行落地中。
+标记沿用 [README](README.md#状态标记)：**当前** = 代码已在仓库；**当前** = 本轮并行落地中。
 
 ## 1 进程与端口
 
@@ -27,7 +27,7 @@ AllPoweredFSA.exe            WinForms + WebView2 外壳
 
 - 外壳生成随机 token，写 `%LOCALAPPDATA%\AllPoweredFSA\runtime.json`，ACL 仅当前用户。
   **当前**：外壳的启动、`READY` 握手、`Kill(entireProcessTree)` 已实现；`runtime.json` 与 token
-  的下发是 **Wave 1**（契约 §1）。
+  的下发是 **当前**（契约 §1）。
 - Node → Python：`Authorization: Bearer <token>`。
 - Python → Node：`X-FSA-Token: <token>`。
 - token 不写日志；Node 桥启动失败返回 503 `{ok:false,error:"agent server unavailable: ..."}`，
@@ -220,8 +220,9 @@ Node 侧新增 `/api/*` 后，在 `native_bridge.py` 加同名工具，风险按
 ## 8 已知边界
 
 - 只支持 Windows 10/11 x64；WebView2 必需。
-- Agent 工作台的界面与 Node 代理是 **Wave 1**；Python 侧的 Agent 服务、会话存储与工具桥已有代码与单测。
+- Agent 工作台的界面与 Node 代理是 **当前**；Python 侧的 Agent 服务、会话存储与工具桥已有代码与单测。
 - 流程执行器需要 Python 3.11；payload 不带 Python 时只有 Agent / Workflows 不可用。
 - 串口路径依赖 payload 内的 `serialport`；缺了会明确报「列不出端口」，不会假装没有设备。
-- 原版套件的写路径默认 `assisted`（人工完成），要机器点需 `--force-renderer-accessibility`
-  并维护选择器表，见 [security.md](security.md#5-rpa-无坐标原则)。
+- 原版套件的写路径默认 `assisted`（人工完成）；要机器点用 **CDP 驱动**
+  （`suite_launcher --launch --cdp-port 9223` + `--driver cdp`），它按页面文字找控件，
+  不按坐标；UIA 在 Electron 8 上只暴露 `Chrome Legacy Window`，保留为备选。

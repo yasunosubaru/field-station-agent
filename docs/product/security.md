@@ -1,7 +1,7 @@
 # All powered-FSA · 安全模型
 
 本文说明四件事：**哪些动作必须过人、密钥放在哪、日志里不能有什么、自动点原版套件的边界**。
-标记沿用 [README](README.md#状态标记)：**当前** = 已实现；**Wave 1** = 本轮落地。
+标记沿用 [README](README.md#状态标记)：**当前** = 已实现；**当前** = 本轮落地。
 
 ## 1 审批边界
 
@@ -101,13 +101,16 @@ API key 的其它约束：
 
 ## 5 RPA 无坐标原则
 
-自动操作原版套件时，只按控件身份找目标，**没有任何坐标点击**：
+自动操作原版套件时，只按控件身份/页面文字找目标，**没有任何坐标点击**：
 
-- 选择器在 `tools/uia_selectors.json`，按 `Name` / `AutomationId` / `ControlType` 匹配。
+- 首选 **CDP 驱动**（`tools/cdp_driver.py`）：套件用 `suite_launcher --launch --cdp-port 9223`
+  启动，流程 `--driver cdp`；按可见元素的文字/标签找控件，找不到就报 `GuiUnavailable`。
+- 备选 UIA：选择器在 `tools/uia_selectors.json`，按 `Name` / `AutomationId` / `ControlType`
+  匹配。原版 Electron 8 在本机只暴露 `Chrome Legacy Window`，因此 UIA 不是默认通道。
 - 找不到控件就报 `GuiUnavailable`，流程按失败分类停下；**不会**退回「大概位置点一下」。
-- 原版套件是 Electron，默认不向 UIA 暴露网页内容；必须以 `--force-renderer-accessibility`
-  启动，否则只能看到 `Intermediate D3D Window`。
-- 选择器随套件版本维护；套件升级后先跑 `python tools/uia_driver.py --check`，再跑流程。
+- 原版 `main.js` 对多余 argv 会进 Convert CLI；`suite_launcher` 用 `NASRunner.exe`
+  硬链接避开这条判定，并把 Chromium 开关真正传进去。
+- 选择器/文字映射随套件版本维护；套件升级后先跑 `python tools/cdp_driver.py --check`。
 - `gui` 步骤默认 `assisted`：没有驱动时转人工任务，界面里点「已完成」。这不是降级容错，
   而是默认立场——机器不确定时，让人来。
 - 每次 `gui` 动作都留证据（动作、目标控件、结果）；`verify_ui` 负责回读，避免「点了但没生效」
