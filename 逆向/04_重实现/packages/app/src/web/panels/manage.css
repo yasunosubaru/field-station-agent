@@ -2305,6 +2305,35 @@ body[data-page="manage"] #tabs-list li.mg-filetabs:not([hidden]) {
   white-space: nowrap;
 }
 
+/* ---- 2.3.8 AGC Status (AGCINFO #4096) ------------------------------------ */
+
+.manage-panel .mg-agc { overflow-x: auto; }
+.manage-panel .mg-agc table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12px/1.4 var(--mg-sans);
+  font-variant-numeric: tabular-nums;
+}
+.manage-panel .mg-agc th,
+.manage-panel .mg-agc td {
+  padding: 2px 6px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--mg-rule);
+}
+.manage-panel .mg-agc th:first-child,
+.manage-panel .mg-agc td:first-child,
+.manage-panel .mg-agc th:nth-child(2),
+.manage-panel .mg-agc td:nth-child(2) { text-align: left; }
+.manage-panel .mg-agc th {
+  color: var(--mg-ink-60);
+  font-family: var(--mg-semi);
+  font-weight: normal;
+}
+.manage-panel .mg-agc tr.mg-agc-bad td { color: var(--mg-bad); }
+.manage-panel .mg-agc tr.mg-agc-warn td { color: var(--mg-warn); }
+.manage-panel .mg-muted { margin: 0; color: var(--mg-ink-60); }
+
 .manage-panel .mg-track-sky {
   color: var(--mg-ink-60);
   font-size: 11.5px;

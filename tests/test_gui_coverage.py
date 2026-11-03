@@ -117,9 +117,13 @@ class Generator(unittest.TestCase):
         self.assertIn("a", inventory)
         self.assertIn("b", inventory)
         self.assertTrue(inventory["a"]["views"])
-        self.assertEqual([w["id"] for w in inventory["b"]["workflows"]],
-                         ["gui.device.update", "gui.graph.export", "script.device.restart"])
-        for workflow_id in ("gui.device.update", "gui.graph.export", "script.device.restart"):
+        expected = [
+            "gui.app.install", "gui.app.update", "gui.device.add",
+            "gui.device.update", "gui.graph.export", "gui.graph.newproject",
+            "gui.suite.autoupdate", "script.device.restart",
+        ]
+        self.assertEqual([w["id"] for w in inventory["b"]["workflows"]], expected)
+        for workflow_id in expected:
             self.assertIn(workflow_id, matrix_text)
 
     def test_matrix_lists_gaps_and_internal_dirs(self):

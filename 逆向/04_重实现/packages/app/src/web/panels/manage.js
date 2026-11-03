@@ -70,6 +70,7 @@ const HWMONITOR = 963;
 const VERSION_LOG = 37;
 const SATVIS2 = 1043;
 const ITDETECTSTATUS = 2065;
+const AGCINFO = 4096;
 
 /** `system` = `(c_status >> 16) & 7` — same table as `packages/graph/src/range-charts.ts`. */
 const SYSTEM_GPS = 0;
@@ -844,8 +845,88 @@ export function pppReasonText(ppp) {
   return `抓包回放 · ${reasons.join(' · ')}`;
 }
 
-export function radioReasonText(radio, captureName) {
-  if (radio.present) return `抓包回放 · ${radio.reason || 'SATELSTATUS (#2205)'}`;
+/* ---- 2.3.8 AGC Status ------------------------------------------------------------------- */
+
+/** `AGC_CARD` / `AGC_RF` — the same tables as `protocol/src/status-fields.ts:201-214`. */
+const AGC_CARDS = { 3: 'DSPC1', 4: 'DSPC2' };
+const AGC_RF = ['L1', 'L2', 'L5', 'S'];
+
+function agcNumber(fields, name) {
+  return numOf(fields.get(name)?.value);
+}
+
+/** One AGCINFO row → card/RF, the six bins and the status-word flags the tile colours. */
+function agcEntry(record) {
+  const fields = fieldIndex(record);
+  const wordValue = agcNumber(fields, 'statusWord');
+  const word = Number.isFinite(wordValue) ? wordValue >>> 0 : 0;
+  const entry = {
+    card: AGC_CARDS[(word >>> 28) & 0xf] ?? `CARD${(word >>> 28) & 0xf}`,
+    rf: AGC_RF[(word >>> 25) & 0x7] ?? `RF${(word >>> 25) & 0x7}`,
+    pulseWidth: agcNumber(fields, 'pulseWidth'),
+    modulus: agcNumber(fields, 'modulus'),
+    bins: [1, 2, 3, 4, 5, 6].map((index) => agcNumber(fields, `bin${index}`)),
+    railGain: ((word >>> 13) & 1) === 1,
+    binSkew: ((word >>> 23) & 1) === 1,
+    binsEmpty: ((word >>> 11) & 1) === 1,
+    binsNotFull: ((word >>> 12) & 1) === 1,
+  };
+  entry.tone = agcEntryTone(entry);
+  return entry;
+}
+
+/** Bad / warn / good exactly as the original's `rAgcStatus` slices it (`agcStatus.ts:201-262`). */
+export function agcEntryTone(entry) {
+  const width = entry.pulseWidth;
+  if (!Number.isFinite(width)) return 'unknown';
+  if (width === 0 || width === 1000 || entry.railGain) return 'bad';
+  if (width > 900 || width < 100 || entry.binSkew || entry.binsEmpty || entry.binsNotFull) {
+    return 'warn';
+  }
+  return 'good';
+}
+
+/**
+ * §2.3.8 AGC Status. A capture without AGCINFO (#4096) is the original's **Off** state, not a
+ * fabricated Good: `count === 0` is what the tile and the reason text key off.
+ */
+export function readAgc(input = {}) {
+  const records = Array.isArray(input.records) ? input.records : [];
+  const rows = records.map(agcEntry);
+  let tone = rows.length ? 'good' : 'off';
+  for (const row of rows) {
+    if (row.tone === 'bad') {
+      tone = 'bad';
+      break;
+    }
+    if (row.tone === 'warn' && tone !== 'bad') tone = 'warn';
+    if (row.tone === 'unknown' && tone === 'good') tone = 'unknown';
+  }
+  return {
+    rows,
+    cards: [...new Set(rows.map((row) => row.card))],
+    tone,
+    count: rows.length,
+  };
+}
+
+export function agcReasonText(agc, captureName) {
+  if (!agc.count) {
+    return (
+      `抓包回放 · 无 AGCINFO (#4096)：${captureName || '这个抓包'} 里没有这条记录 — ` +
+      '保持 Off（灰），不编一个 Good。'
+    );
+  }
+  const bad = agc.rows.filter((row) => row.tone === 'bad').length;
+  const warn = agc.rows.filter((row) => row.tone === 'warn').length;
+  return (
+    `抓包回放 · AGCINFO (#4096)：${agc.count} 条 / 卡 ${agc.cards.join('、')}；` +
+    `bad ${bad}、warn ${warn}。判据：pulseWidth 0/1000 或 VGA railed → bad；` +
+    '>900 / <100 / bin skew / bins empty / bins not full → warn。'
+  );
+}
+
+export function radioReasonText(radio, captureName) {  if (radio.present) return `抓包回放 · ${radio.reason || 'SATELSTATUS (#2205)'}`;
   return (
     `抓包回放 · 无电台：${captureName || '这个抓包'} 里没有 SATELSTATUS (#2205) / SATELDETECT (#2204) — ` +
     '手册 2.3.11 说这一块只在外接发射电台的系统上出现，保持 Off（灰）而不是编一个 Good。'
@@ -1695,6 +1776,17 @@ function template() {
         </div>
         <button type="button" class="mg-help" data-help="satellite"
                 title="Satellite View counts RANGE (#43) observations: system = (c_status >> 16) & 7 (0 GPS · 1 GLO · 2 SBAS · 3 GAL · 4 BDS · 5 QZSS · 6 NAVIC), In Use = distinct sv_prn in the newest epoch, Not Used = PRNs seen in earlier epochs only. In a live session SATVIS2 (#1043) adds real azimuth/elevation for the sky dots and Missing = visible but not in the newest epoch; a capture has neither, so its dots are symbolic and Missing stays 0.">Help</button>
+      </section>
+
+      <section class="mg-card" data-area="agc">
+        <div class="mg-card-head">
+          <h2 class="mg-heading">AGC Status</h2>
+          <span class="mg-badge mg-badge-off" data-el="agcBadge" data-tone="off">Off</span>
+        </div>
+        <div class="mg-agc" data-el="agcBody"></div>
+        <p class="mg-reason" data-el="agcReason"></p>
+        <button type="button" class="mg-help" data-help="agc"
+                title="AGC Status (manual 2.3.8) reads AGCINFO (#4096): card = (statusWord >> 28) &amp; 0xf (3 DSPC1 · 4 DSPC2), RF = (statusWord >> 25) &amp; 7 (L1/L2/L5/S), plus pulseWidth, modulus and bin1..bin6. Bad = pulseWidth 0/1000 or VGA railed 3+ s; warn = >900 / <100 / bin skew / bins empty / bins not full. A capture without #4096 keeps the original's Off state.">Help</button>
       </section>
 
       <section class="mg-card" data-area="ppp">
@@ -3257,7 +3349,8 @@ export function mount(root, ctx = {}) {
     }
     if (el.portsList) el.portsList.innerHTML = '';
     if (el.trackBody) el.trackBody.innerHTML = '';
-    for (const node of [el.portsBadge, el.logBadge, el.pppBadge, el.radioBadge, el.alignBadge, el.spanBadge, el.trackBadge]) {
+    if (el.agcBody) el.agcBody.innerHTML = '';
+    for (const node of [el.portsBadge, el.logBadge, el.pppBadge, el.radioBadge, el.alignBadge, el.spanBadge, el.trackBadge, el.agcBadge]) {
       setBadge(node, 'unknown');
     }
   }
@@ -3268,14 +3361,15 @@ export function mount(root, ctx = {}) {
       resetTileValues();
       const why =
         mode === 'live'
-          ? 'Live · 这一路的解码器只产出 Positioning / Device / Interference / Satellite 记录的视图模型，这五块读的是抓包字段路径（/api/records）；要看它们，先断开回放到同一份抓包。'
+          ? 'Live · 这一路的解码器只产出 Positioning / Device / Interference / Satellite 记录的视图模型，这六块读的是抓包字段路径（/api/records）；要看它们，先断开回放到同一份抓包。'
           : 'Live lost · 会话已断开，不拿抓包数字顶替 — 字段回到 --。';
-      for (const node of [el.portsReason, el.logReason, el.pppReason, el.radioReason, el.alignReason, el.spanReason, el.trackReason]) {
+      for (const node of [el.portsReason, el.logReason, el.pppReason, el.agcReason, el.radioReason, el.alignReason, el.spanReason, el.trackReason]) {
         setText(node, why);
       }
       setBadge(el.portsBadge, 'unknown');
       setBadge(el.logBadge, 'unknown');
       setBadge(el.pppBadge, 'off');
+      setBadge(el.agcBadge, 'off');
       setBadge(el.radioBadge, 'off');
       setBadge(el.alignBadge, 'unknown');
       setBadge(el.spanBadge, 'off');
@@ -3288,6 +3382,7 @@ export function mount(root, ctx = {}) {
     renderPortsTile(tiles.ports);
     renderLoggingTile(tiles.logging);
     renderPppTile(tiles.ppp);
+    renderAgcTile(tiles.agc);
     renderRadioTile(tiles.radio);
     renderAlignTile(tiles.align);
     renderSpanTile(tiles.span);
@@ -3358,6 +3453,36 @@ export function mount(root, ctx = {}) {
     setBadge(el.logBadge, active ? 'good' : 'off');
     setText(el.logReason, loggingReasonText(logging, baseName(state.capture)));
     setText(el.bandLogging, logging.status ?? '--');
+  }
+
+  /* ---- 2.3.8 AGC Status ---- */
+
+  const AGC_WIDTH = (width) => (Number.isFinite(width) ? width.toFixed(0) : '--');
+
+  function renderAgcTile(agc) {
+    if (!el.agcBadge) return;
+    setBadge(el.agcBadge, agc.tone);
+    setText(el.agcReason, agcReasonText(agc, state.capture));
+    if (!el.agcBody) return;
+    if (!agc.count) {
+      el.agcBody.innerHTML = '<p class="mg-muted">No AGCINFO (#4096) in this capture.</p>';
+      return;
+    }
+    const bins = [1, 2, 3, 4, 5, 6];
+    const head =
+      '<tr><th>Card</th><th>RF</th><th>Pulse Width</th><th>Modulus</th>' +
+      bins.map((index) => `<th>Bin ${index}</th>`).join('') +
+      '</tr>';
+    const body = agc.rows
+      .map(
+        (row) =>
+          `<tr class="mg-agc-${row.tone}"><td>${esc(row.card)}</td><td>${esc(row.rf)}</td>` +
+          `<td>${AGC_WIDTH(row.pulseWidth)}</td><td>${AGC_WIDTH(row.modulus)}</td>` +
+          bins.map((index) => `<td>${AGC_WIDTH(row.bins[index - 1])}</td>`).join('') +
+          '</tr>',
+      )
+      .join('');
+    el.agcBody.innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
   }
 
   /* ---- 2.3.10 PPP Corrections ---- */
@@ -4290,6 +4415,7 @@ export function mount(root, ctx = {}) {
       heading2,
       dualantenna,
       inspvax,
+      agcinfo,
     ] = await Promise.all([
       probeList(MODELFEATURES),
       probeList(PORTSTATS),
@@ -4313,6 +4439,7 @@ export function mount(root, ctx = {}) {
       probeList(HEADING2),
       probeList(DUALANTENNAALIGN),
       probeList(INSPVAX),
+      probeList(AGCINFO, 8),
     ]);
     const featureState = readFeatures(features[0]);
     const rangeTotal = await recordTotal(RANGE);
@@ -4322,6 +4449,7 @@ export function mount(root, ctx = {}) {
       features: featureState,
       ports: readPorts({ stats: stats[0], serial, logs: logs[0], iface, features: featureState }),
       logging: readLogging({ filestatus, logs: logs[0] }),
+      agc: readAgc({ records: agcinfo }),
       ppp: readPpp({
         features: featureState,
         ppppos,

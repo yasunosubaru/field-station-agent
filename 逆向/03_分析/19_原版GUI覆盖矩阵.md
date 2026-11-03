@@ -18,9 +18,9 @@
 
 | 处置 | 条数 | 含义 |
 |---|---|---|
-| B 已覆盖 | 33 | `covered` |
+| B 已覆盖 | 34 | `covered` |
 | B 部分覆盖 | 4 | `partial` |
-| A-only（B 没有） | 4 | `a_only` |
+| A-only（B 没有） | 3 | `a_only` |
 | 本机 A 也不适用 | 9 | `not_applicable` |
 | **合计** | **50** | |
 
@@ -32,14 +32,13 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | 项 | A 项 | 处置 | 处理方式 | 理由与证据 |
 |---|---|---|---|---|
-| `tile.agcStatus` | AGC Status tile（AGC 模式与增益） | A-only（B 没有） | 补 B：AgcStatus 类已有，但没接成 Manage 的 tile（本次不做 RPA，补 B 优先）。 | [观察] B 的 status/agcStatus.ts 实现了类，manage.js 里没有它的挂载点；原版在 Manage 状态带有 AGC Status tile（01_解包/app/view/agcStatus/agcStatus.html）。 |
-| `tool.events` | Events（事件列表与详情） | B 部分覆盖 | 补 B：spoofing / jamming / L-Band 事件源需要样本或固件支持；不是代码没写。 | [观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。 |
+| `tool.events` | Events（事件列表与详情） | B 部分覆盖 | 不做（等样本）：spoofing / jamming / L-Band 事件源要真实样本或固件支持才能定字段；本机 b1..b7 里没有，先不写猜测性代码。 | [观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。处置：现有两类保留，其余等样本，不编造。 |
 | `device.deviceUpdate` | Device ▸ Update（选固件、校验、Apply 刷写） | B 部分覆盖 | workflow `gui.device.update` | [观察] B 把 deviceUpdate 列入 READ_ONLY_PAGES，Browse/Apply 禁用、SOFTLOAD 帧丢弃（18 台账 §J6）；固定流程用 RPA + 人工闸门补这一段。 |
-| `graph.newProjectFromSbf` | Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process） | A-only（B 没有） | 补 B：从 SBF/CSV 建工程与 Pre-process 四步（本机只有 Read/Convert/PDF 路径，未见原版完整向导）。 | [推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3）。 |
-| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | 补 B 或 RPA：没有装包源；当前只弹说明。套件级、优先级低，需 GUI 文件对话框与安装包。 | [观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P）。 |
-| `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | RPA 或补 B：需要更新服务器/安装器；不可逆性高，若做必须人工闸门。套件级、优先级低。 | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路。 |
-| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | 补 B：AutoUpdatesPage 类可渲染，但没有更新源/入口；也可用本地配置替代，优先级低。 | [观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源，故只算部分覆盖。 |
-| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | 补 B：多设备档案与切换（当前是单 live 会话 + Add Device 对话框）。 | [观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 只维护单一 live 连接。 |
+| `graph.newProjectFromSbf` | Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process） | A-only（B 没有） | workflow `gui.graph.newproject` | [推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3），缺口由 gui.graph.newproject 兜住。 |
+| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | workflow `gui.app.install` | [观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。 |
+| `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | workflow `gui.app.update` | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路，缺口由 gui.app.update 兜住（覆盖安装不可逆，必须人工闸门）。 |
+| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | workflow `gui.suite.autoupdate` | [观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源。处置从「补更新源」改为「明确不做 + 只读审计流程」，故保留 partial 但缺口有归宿。 |
+| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | workflow `gui.device.add` | [观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 的多档案仍未补，故保留 partial，缺口由 gui.device.add 兜住。 |
 
 ## 四、完整矩阵
 
@@ -48,14 +47,14 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
 | `entry.manage` | Manage 主界面（tab、状态带、状态 tile、配置页容器） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/setUpMonitor.html:2 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:15；[观察] B 的 manage.js 复刻 tab、50 px 黑色菜单条、状态带与 tile 容器；tile 集合见 status/ 包。 |
-| `entry.menu` | 套件菜单栏（Status / Configuration / Settings / Tools / Device / Events） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.html:5 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1489；[观察] B 的 manage.js 以 MENU 数组 + menuBar() 复刻同一组菜单项与下拉层级；页面本体由配置页类提供。 |
+| `entry.menu` | 套件菜单栏（Status / Configuration / Settings / Tools / Device / Events） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.html:5 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1570；[观察] B 的 manage.js 以 MENU 数组 + menuBar() 复刻同一组菜单项与下拉层级；页面本体由配置页类提供。 |
 | `entry.shell` | 套件外壳（页签栏、抓包条、设置/帮助/主题入口） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/index.html:320 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:67；[观察] 原版外壳在 01_解包/app/view/html/index.html；B 在 web/index.html 复刻了页签栏与设置/帮助/主题入口，主题语义见 18 台账 §Q。 |
 
 ### 状态 tile
 
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
-| `tile.agcStatus` | AGC Status tile（AGC 模式与增益） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/agcStatus/agcStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/agcStatus.ts:26；[观察] B 的 status/agcStatus.ts 实现了类，manage.js 里没有它的挂载点；原版在 Manage 状态带有 AGC Status tile（01_解包/app/view/agcStatus/agcStatus.html）。 |
+| `tile.agcStatus` | AGC Status tile（AGC 模式与增益） | B 已覆盖 | [观察] 逆向/01_解包/app/view/agcStatus/agcStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/agcStatus.ts:26; [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:893；[观察] B 的 Manage 面板已挂 AGC Status tile：AGCINFO (#4096) → 卡/RF、pulseWidth/modulus、bin1..bin6 与 bad/warn 判据；无 #4096 时保持原版的 Off。测试见 packages/app/test/manage-tiles.test.ts 的 AGC 4 项。 |
 | `tile.deviceInfo` | Device 状态 tile（型号、固件、存储、电池等） | B 已覆盖 | [观察] 逆向/01_解包/app/view/deviceInfo/deviceInfo.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/deviceInfo.ts:24；[观察] B 的 DeviceInfo 类覆盖 VERSION/RXSTATUS/HWMONITOR 字段；空态与存储不可用时的显示见 18 台账 §J7。 |
 | `tile.interferenceStatus` | Interference 状态 tile（干扰检测结论） | B 已覆盖 | [观察] 逆向/01_解包/app/view/interferenceStatus/interferenceStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/interferenceStatus.ts:18；[观察] B 的 InterferenceStatus 类按 ITDETECTSTATUS 显示；无 ITK 数据时与原版一样显示 Not detected（18 台账 §B8）。 |
 | `tile.logStatus` | Logging 状态 tile（日志请求/占用/丢弃） | B 已覆盖 | [观察] 逆向/01_解包/app/view/logStatus/logStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/logStatus.ts:20；[观察] B 的 LogStatus 类覆盖 LOGSTATUS/LOGLIST 字段；tile 在 Manage 状态带挂载。 |
@@ -93,7 +92,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 |---|---|---|---|---|
 | `tool.interferenceToolKit` | Tools ▸ Interference Toolkit（ITK 检测表与写入类控件） | B 已覆盖 | [观察] 逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:689；[观察] B 的 InterferenceToolkitPage 只读表 + 六组写入控件；HDR/带通/可编程滤波器在本机回 Message is invalid for this model（18 台账 §I）。 |
 | `tool.terminalConsole` | Tools ▸ Terminal（命令终端） | B 已覆盖 | [观察] 逆向/01_解包/app/view/terminalConsole/terminalConsole.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/terminalConsole.ts:11；[观察] B 的 TerminalConsolePage 通过 /api/live/command 发命令并回显；行/历史行为对齐原版 terminalConsole.js。 |
-| `tool.events` | Events（事件列表与详情） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/events/events.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/events.ts:131；[观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。 |
+| `tool.events` | Events（事件列表与详情） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/events/events.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/events.ts:131；[观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。处置：现有两类保留，其余等样本，不编造。 |
 
 ### 设备页
 
@@ -108,7 +107,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
-| `graph.newProjectFromSbf` | Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process） | A-only（B 没有） | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:9；[推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3）。 |
+| `graph.newProjectFromSbf` | Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process） | A-only（B 没有） | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:9；[推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3），缺口由 gui.graph.newproject 兜住。；固定流程 `gui.graph.newproject` |
 | `graph.charts` | Graph 页签与图表（13 张图，含 Velocity / Heading & Attitude、Flags、地图） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:49；[观察] B 的 graph 面板已含 13 张图、Luciad 地图与 Flags store；GNSS _Mean 列序用工程元数据 sidecar 对齐（18 台账 §M/D4）。 |
 | `graph.export` | Graph 导出（PDF/CSV/HTML/KML、Message Summary、第 2 页底图） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:4346；[观察] B 的 exportAs 走 /api/graph/pdf 真 PDF；Message Summary、第 2 页底图与 8 页版式在 18 台账 §N/§D6 关闭；固定流程只读导出、无人工闸门。；固定流程 `gui.graph.export` |
 | `graph.project` | Graph 工程页（New/Open Project、Recent Projects、.gpf 读取） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:9；[观察] B 的 graph 面板有工程页与 Recent Projects；多工程切换在 18 台账 §G 关闭。 |
@@ -135,9 +134,9 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
-| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:92；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P）。 |
-| `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/updateApplication/updateApplication.js:1 | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路。 |
-| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/autoUpdates/autoUpdates.js:1 | [观察] 逆向/04_重实现/packages/view/src/config/localSettings.ts:246；[观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源，故只算部分覆盖。 |
+| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:92；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。；固定流程 `gui.app.install` |
+| `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/updateApplication/updateApplication.js:1 | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路，缺口由 gui.app.update 兜住（覆盖安装不可逆，必须人工闸门）。；固定流程 `gui.app.update` |
+| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/autoUpdates/autoUpdates.js:1 | [观察] 逆向/04_重实现/packages/view/src/config/localSettings.ts:246；[观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源。处置从「补更新源」改为「明确不做 + 只读审计流程」，故保留 partial 但缺口有归宿。；固定流程 `gui.suite.autoupdate` |
 
 ### 其它页面
 
@@ -145,8 +144,8 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 |---|---|---|---|---|
 | `page.dynamicTiles` | Dynamic Tiles 布局（拖动、撤销、重置、持久化） | B 已覆盖 | [观察] 逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html:1 | [观察] 逆向/04_重实现/packages/view/src/layout.ts:2；[观察] B 的 layout.ts 实现 packery 布局与持久化；原版行为见 01_Manage 文档 §3.4/§6.5。 |
 | `page.home` | My Applications 主页（五张应用卡片、连接数、Add application） | B 已覆盖 | [观察] 逆向/01_解包/app/view/welcome/welcome.html:124 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:87；[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。 |
-| `page.menuBar` | 菜单栏行为（切换到状态页/配置页、Settings/Tools/Device 下拉） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1202；[观察] B 的 manage.js 有同一组菜单切换与抽屉挂载逻辑；配置页由 config-host 提供。 |
-| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:11；[观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 只维护单一 live 连接。 |
+| `page.menuBar` | 菜单栏行为（切换到状态页/配置页、Settings/Tools/Device 下拉） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1283；[观察] B 的 manage.js 有同一组菜单切换与抽屉挂载逻辑；配置页由 config-host 提供。 |
+| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:11；[观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 的多档案仍未补，故保留 partial，缺口由 gui.device.add 兜住。；固定流程 `gui.device.add` |
 
 ## 五、B 清单（从代码扫描）
 
@@ -185,8 +184,13 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | workflow | 规格文件 |
 |---|---|
+| `gui.app.install` | `workflows/gui.app.install.yaml` |
+| `gui.app.update` | `workflows/gui.app.update.yaml` |
+| `gui.device.add` | `workflows/gui.device.add.yaml` |
 | `gui.device.update` | `workflows/gui.device.update.yaml` |
 | `gui.graph.export` | `workflows/gui.graph.export.yaml` |
+| `gui.graph.newproject` | `workflows/gui.graph.new-project.yaml` |
+| `gui.suite.autoupdate` | `workflows/gui.suite.autoupdate.yaml` |
 | `script.device.restart` | `workflows/script.device.restart.yaml` |
 
 ## 六、未纳入 A 的 view 目录（内部件）

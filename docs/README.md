@@ -70,7 +70,7 @@
 | 文档 | 一句话 |
 |---|---|
 | [原版 GUI 覆盖矩阵](../逆向/03_分析/19_原版GUI覆盖矩阵.md) | A（原版 GUI）× B（重实现）逐项盘点：covered / partial / a_only / not_applicable，每个缺口都有处置 |
-| [固定流程目录](../workflows/README.md) | 三条流程（重启 / 刷固件 / 导出 Graph PDF）的用法、证据与安全约束 |
+| [固定流程目录](../workflows/README.md) | 八条流程（重启 / 刷固件 / 导出 Graph PDF / 加设备 / 从 SBF 建工程 / 装应用 / 更新应用 / 只读自动更新设置）的用法、证据与安全约束 |
 | [执行器说明](../src/fieldstation/workflows/__init__.py) | 状态机、锁、幂等键、只追加审计、人工闸门与 GUI 驱动边界 |
 
 ## 交付材料（m1/、m7/、reports/）

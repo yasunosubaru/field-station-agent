@@ -1,0 +1,82 @@
+id: gui.suite.autoupdate
+version: 1
+title: 读取套件自动更新设置（只读，不下载不安装）
+summary: >
+  原版 Settings ▸ Auto Updates 会检查更新并提示安装。本仓库**明确不做自动更新**：
+  没有可信的更新源，也没有在无人值守时安全回滚的能力。这条流程只把当前设置与
+  「为什么不做」记进证据，供覆盖矩阵与本机核对；不下载、不安装、不改设置。
+intent: suite.autoupdate.inspect
+risk: low
+tags: [suite, autoupdate, gui, read-only]
+
+requires:
+  engine: true
+  live: false
+  gui: true
+  node: false
+
+params:
+  expect_status:
+    type: string
+    required: false
+    enum: [enabled, disabled]
+    description: 可选：断言当前设置（enabled / disabled）；不给就只记录
+
+approval:
+  required: false
+  risk: low
+  reason: 只读页面的设置值，不触发检查、下载或安装。
+
+failure:
+  screenshot: true
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/19_原版GUI覆盖矩阵.md
+  - docs/operations/high-risk-actions.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: read_setting
+    kind: gui
+    description: 打开 Settings ▸ Auto Updates，只读当前设置
+    actions:
+      - action: open
+        page: manage
+      - action: click
+        locator: Settings
+      - action: click
+        locator: Auto Updates
+      - action: read
+        locator: Auto Updates status
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请打开 Settings ▸ Auto Updates，只读当前设置（不要点 Check for updates）。
+        把看到的启用/禁用状态与更新通道记下来，然后选 done。
+
+  - id: assert_status
+    kind: assert
+    description: 只有给了 expect_status 才断言
+    checks:
+      - path: steps.read_setting.actions.3.value
+        matches: ${params.expect_status}
+
+  - id: record
+    kind: artifact
+    name: autoupdate-setting.json
+    content:
+      job: ${job.id}
+      setting: ${steps.read_setting}
+      expect_status: ${params.expect_status}
+      decision: >
+        不做自动更新：仓库没有可信更新源，也没有无人值守时的回滚能力。
+        需要升级时走 gui.app.update（人工闸门）。

@@ -1,0 +1,104 @@
+id: gui.device.add
+version: 1
+title: 添加并连接一台接收机（多设备入口）
+summary: >
+  Manage ▸ Add Device 的固定流程：扫描端口、选端口与波特率、连接，再用 VERSION (#37)
+  回读型号证明连上的是哪一台。属覆盖矩阵 page.deviceManagement 的处置：B 的多设备
+  档案仍只维护单一 live 会话，这条流程把「加一台设备」做成可审计动作。
+intent: device.add
+risk: medium
+tags: [device, gui, connect, serial, tcp]
+
+requires:
+  engine: true
+  live: true
+  gui: true
+  node: false
+
+params:
+  target:
+    type: string
+    required: true
+    pattern: '^(COM[0-9]+@[0-9]+|tcp://[A-Za-z0-9._-]+:[0-9]+)$'
+    description: 目标连接，例如 COM8@115200 或 tcp://192.0.2.10:3001
+  expect_model:
+    type: string
+    required: false
+    pattern: '^[A-Za-z0-9-]+$'
+    description: 期望型号（VERSION #37 的 model）；给了才断言
+
+approval:
+  required: false
+  risk: medium
+  reason: 连接可随时断开，不是不可逆动作；但会占用串口，操作前确认端口没被别的程序占着。
+
+failure:
+  screenshot: true
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/19_原版GUI覆盖矩阵.md
+  - docs/operations/high-risk-actions.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: open_add
+    kind: gui
+    description: 打开 Add Device 并刷新端口列表
+    actions:
+      - action: open
+        page: manage
+      - action: click
+        locator: Add Device
+      - action: click
+        locator: Refresh ports
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请在 Manage 页点 Add Device，再点 Refresh 刷新端口列表。
+        目标：${params.target}
+
+  - id: connect
+    kind: gui
+    description: 选端口/波特率并连接
+    actions:
+      - action: click
+        locator: Connect
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请选中 ${params.target} 对应的端口与波特率（或填 TCP 地址），点 Connect。
+        连上后选 done；失败选 failed 并写明页面上的错误。
+
+  - id: read_version
+    kind: await_receiver
+    wait_for: version
+    timeout_s: 30
+    save_as: version
+    description: 连上后必须读到 VERSION；读不到不算添加成功
+
+  - id: assert_model
+    kind: assert
+    description: 只有给了 expect_model 才断言
+    checks:
+      - path: steps.read_version.model
+        equals: ${params.expect_model}
+
+  - id: record
+    kind: artifact
+    name: device-add.json
+    content:
+      job: ${job.id}
+      target: ${params.target}
+      version: ${steps.read_version}
+      expect_model: ${params.expect_model}
+      connect: ${steps.connect}

@@ -1,0 +1,130 @@
+id: gui.app.install
+version: 1
+title: 导入应用安装包（Add application，安装前人工闸门）
+summary: >
+  原版 My Applications ▸ Add application 支持导入 .zip 装包。B 的这个按钮只展开说明，
+  没有安装器；本流程用原版套件补上：先核对包文件哈希与清单，再在**安装之前**停一次
+  人工闸门，装完用应用列表回读。
+intent: suite.app.install
+risk: high
+tags: [suite, application, install, gui, package]
+
+requires:
+  engine: true
+  live: false
+  gui: true
+  node: false
+
+params:
+  package:
+    type: path
+    required: true
+    description: 应用安装包（.zip）；流程只读它并算哈希
+  expect_name:
+    type: string
+    required: true
+    description: 安装后应出现在应用列表里的名称
+  expect_version:
+    type: string
+    required: false
+    description: 可选：期望版本（显示在应用卡片上）
+
+approval:
+  required: false
+  risk: high
+  reason: 审批门放在点 Install 之前；前面的选择与校验只读。
+
+failure:
+  screenshot: true
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/19_原版GUI覆盖矩阵.md
+  - docs/operations/high-risk-actions.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: digest
+    kind: file_digest
+    path: ${params.package}
+    save_as: package
+    description: 先钉住安装包哈希，事后能证明装的是哪一份
+
+  - id: choose
+    kind: gui
+    description: 打开 My Applications ▸ Add application 并选中安装包；不点 Install
+    actions:
+      - action: open
+        page: manage
+      - action: click
+        locator: Add application
+      - action: type
+        locator: Application package
+        value: ${params.package}
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请在 My Applications 页点 Add application，选择安装包：
+        ${params.package}
+        现在**不要**点 Install。
+
+  - id: verify_package
+    kind: verify_ui
+    control: Add application > Package
+    expect:
+      contains: ${steps.digest.name}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认 Add application 对话框里显示的包文件是 ${steps.digest.name}。
+        确认后选 done；不对就选 failed 并写明看到的内容。
+
+  - id: approve_install
+    kind: human_gate
+    risk: high
+    reason: 安装会写入套件安装目录；先确认包文件与来源。
+    prompt: |
+      即将安装应用：${params.expect_name}
+      安装包：${params.package}
+      SHA256：${steps.digest.sha256}
+      确认来源可信后再批准。
+
+  - id: install
+    kind: gui
+    description: 点 Install，等安装完成
+    actions:
+      - action: click
+        locator: Install
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        现在点 Install，等安装器结束。完成后选 done；失败就选 failed 并写明错误。
+
+  - id: verify_installed
+    kind: verify_ui
+    control: My Applications > Installed
+    expect:
+      contains: ${params.expect_name}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认 My Applications 列表里出现 ${params.expect_name}。确认后选 done。
+
+  - id: record
+    kind: artifact
+    name: app-install.json
+    content:
+      job: ${job.id}
+      application: ${params.expect_name}
+      package: ${steps.digest}
+      expect_version: ${params.expect_version}
+      install: ${steps.install}

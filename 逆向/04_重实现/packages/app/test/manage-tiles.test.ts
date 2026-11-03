@@ -29,6 +29,8 @@ import { resolveCapture } from '../src/paths.ts';
 import { loadCapture, tables } from '../src/capture.ts';
 import { readRecords } from '../src/logs.ts';
 import {
+  agcEntryTone,
+  agcReasonText,
   alignReasonText,
   loggingReasonText,
   portLogsText,
@@ -36,6 +38,7 @@ import {
   portsReasonText,
   pppReasonText,
   radioReasonText,
+  readAgc,
   readAlign,
   readFeatures,
   readLogging,
@@ -292,3 +295,87 @@ test('Satellite Tracking: an empty RANGE keeps the table empty and names the id'
   assert.deepEqual(tracking.rows, []);
   assert.match(trackingReasonText(tracking, 'cno'), /这个抓包里没有 RANGE \(#43\)/);
 });
+
+/* ---------------------------------------------------------------- 2.3.8 AGC Status */
+
+function agcRecord(entries: Record<string, number>) {
+  return { fields: Object.entries(entries).map(([path, value]) => ({ path, value })) };
+}
+
+test('AGC: a capture without AGCINFO (#4096) keeps the original Off state', () => {
+  const agc = readAgc({ records: [] });
+  assert.equal(agc.count, 0);
+  assert.equal(agc.tone, 'off');
+  assert.match(agcReasonText(agc, 'b1-20261101.sbf'), /无 AGCINFO \(#4096\)/);
+});
+
+test('AGC: card and RF come from statusWord, bins/pulseWidth from the record', () => {
+  const word = ((3 << 28) | (1 << 25)) >>> 0;   // DSPC1, L2
+  const agc = readAgc({
+    records: [
+      agcRecord({
+        statusWord: word,
+        pulseWidth: 500,
+        modulus: 1024,
+        bin1: 1,
+        bin2: 2,
+        bin3: 3,
+        bin4: 4,
+        bin5: 5,
+        bin6: 6,
+      }),
+    ],
+  });
+  assert.equal(agc.count, 1);
+  assert.equal(agc.tone, 'good');
+  assert.deepEqual(agc.cards, ['DSPC1']);
+  const [row] = agc.rows;
+  assert.equal(row.rf, 'L2');
+  assert.equal(row.pulseWidth, 500);
+  assert.equal(row.modulus, 1024);
+  assert.deepEqual(row.bins, [1, 2, 3, 4, 5, 6]);
+  assert.equal(agcEntryTone(row), 'good');
+});
+
+test('AGC: pulseWidth 0 / 1000 or VGA railed is bad, >900 or bin skew is warn', () => {
+  const base = { modulus: 1024, bin1: 1, bin2: 1, bin3: 1, bin4: 1, bin5: 1, bin6: 1 };
+  const badZero = readAgc({ records: [agcRecord({ ...base, pulseWidth: 0 })] });
+  assert.equal(badZero.tone, 'bad');
+  assert.equal(badZero.rows[0].tone, 'bad');
+
+  const badFull = readAgc({ records: [agcRecord({ ...base, pulseWidth: 1000 })] });
+  assert.equal(badFull.tone, 'bad');
+
+  const railed = ((3 << 28) | (1 << 25) | (1 << 13)) >>> 0;
+  const railedAgc = readAgc({
+    records: [agcRecord({ ...base, statusWord: railed, pulseWidth: 500 })],
+  });
+  assert.equal(railedAgc.rows[0].railGain, true);
+  assert.equal(railedAgc.rows[0].tone, 'bad');
+
+  const high = readAgc({ records: [agcRecord({ ...base, pulseWidth: 950 })] });
+  assert.equal(high.tone, 'warn');
+
+  const skewWord = ((3 << 28) | (1 << 25) | (1 << 23)) >>> 0;
+  const skew = readAgc({
+    records: [agcRecord({ ...base, statusWord: skewWord, pulseWidth: 500 })],
+  });
+  assert.equal(skew.rows[0].binSkew, true);
+  assert.equal(skew.tone, 'warn');
+});
+
+test('AGC: bad wins over warn when several cards are present', () => {
+  const base = { modulus: 1024, bin1: 1, bin2: 1, bin3: 1, bin4: 1, bin5: 1, bin6: 1 };
+  const dspc1 = ((3 << 28) | (1 << 25)) >>> 0;
+  const dspc2 = ((4 << 28) | (2 << 25)) >>> 0;
+  const agc = readAgc({
+    records: [
+      agcRecord({ ...base, statusWord: dspc1, pulseWidth: 950 }),  // warn
+      agcRecord({ ...base, statusWord: dspc2, pulseWidth: 0 }),    // bad
+    ],
+  });
+  assert.deepEqual(agc.cards, ['DSPC1', 'DSPC2']);
+  assert.equal(agc.tone, 'bad');
+  assert.match(agcReasonText(agc, 'capture.sbf'), /bad 1、warn 1/);
+});
+

@@ -12,6 +12,22 @@
 
 ## 2026-11-03
 
+**覆盖矩阵 8 项缺口收口（B 侧）**
+
+| 项 | 处置 |
+|---|---|
+| `tile.agcStatus` | **补 B**：Manage 面板新增 AGC Status tile（AGCINFO #4096 → 卡/RF、pulseWidth/modulus、bins 与 bad/warn 判据；无 #4096 保持 Off），矩阵转 `covered`；测试 4 项 |
+| `graph.newProjectFromSbf` | 流程 `gui.graph.newproject`：原版 Graph 从 SBF/CSV 新建工程 + Pre-process 四步，Process 之前人工闸门 |
+| `page.deviceManagement` | 流程 `gui.device.add`：Add Device 扫描端口 → 连接 → VERSION 回读；多档案仍保留 `partial` |
+| `suite.addApplication` | 流程 `gui.app.install`：装包哈希 → 选包 → Install 前闸门 → 应用列表回读 |
+| `suite.updateApplication` | 流程 `gui.app.update`：Update 前闸门 → 版本回读 |
+| `suite.autoUpdates` | 明确不做自动更新；流程 `gui.suite.autoupdate` 只读设置并留证据 |
+| `device.deviceUpdate` | 已有 `gui.device.update`（不变） |
+| `tool.events` | **不做（等样本）**：spoofing / jamming / L-Band 事件源在本机 b1..b7 里没有，不写猜测性代码 |
+
+`tools/uia_selectors.json` 补齐新流程的控件名；覆盖矩阵与清单已重新生成
+（矩阵 `--check` 通过）。B 侧 `node --test`：1246 项，1243 pass / 3 skip / 0 fail。
+
 **M6 无人值守前置：心跳 / Webhook / 调度（#109 #110 #111）**
 
 | 项 | 内容 |

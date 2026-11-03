@@ -27,6 +27,11 @@
 | `script.device.restart` | high | 工作流级审批 | 发 `RESET` → 等断线 → 按原 target 重连 → 用 `VERSION (#37)` 证明回来的是同一台机 | 原版 Device ▸ Restart；台账 §N |
 | `gui.device.update` | high | 在 **Apply 之前** | 核对型号、算固件 SHA256、填文件、只读控件回读，批准后才点 Apply，升级后用 `VERSION` 回读 | 原版 Device ▸ Update；台账 §J6（B 只读） |
 | `gui.graph.export` | low | 无 | 列工程/文件 → `GET /api/graph/pdf` → 校验 PDF 头与页数 → 落盘 PDF 与 manifest | 原版 Graph Export ▸ PDF；台账 §D6/§N |
+| `gui.device.add` | medium | 无 | Add Device → 扫描端口 → 连接 → `VERSION (#37)` 回读型号 | 覆盖矩阵 `page.deviceManagement`（多设备档案的入口） |
+| `gui.graph.newproject` | medium | Process 之前 | 原版 Graph 从 SBF/CSV 新建工程并走 Pre-process 四步，写盘前停一次 | 覆盖矩阵 `graph.newProjectFromSbf` |
+| `gui.app.install` | high | Install 之前 | 核对装包哈希 → 选包 → 批准 → Install → 应用列表回读 | 覆盖矩阵 `suite.addApplication` |
+| `gui.app.update` | high | Update 之前 | 选新装包 → 批准 → Update → 版本回读 | 覆盖矩阵 `suite.updateApplication` |
+| `gui.suite.autoupdate` | low | 无（只读） | 读 Auto Updates 设置并留证据；**明确不做自动更新** | 覆盖矩阵 `suite.autoUpdates` |
 
 ## 用法
 

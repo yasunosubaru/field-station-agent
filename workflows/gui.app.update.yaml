@@ -1,0 +1,128 @@
+id: gui.app.update
+version: 1
+title: 更新已安装应用（Update application，更新前人工闸门）
+summary: >
+  原版 Update application 用新装包覆盖已安装版本。B 没有这条链路；本流程用原版套件
+  补上，并在**点 Update 之前**停一次人工闸门（覆盖安装不可逆），装完用版本号回读。
+intent: suite.app.update
+risk: high
+tags: [suite, application, update, gui, package]
+
+requires:
+  engine: true
+  live: false
+  gui: true
+  node: false
+
+params:
+  package:
+    type: path
+    required: true
+    description: 新版本安装包（.zip）
+  application:
+    type: string
+    required: true
+    description: 要更新的应用名称（必须已安装）
+  expect_version:
+    type: string
+    required: false
+    description: 更新后应显示的版本号
+
+approval:
+  required: false
+  risk: high
+  reason: 审批门放在点 Update 之前；准备步骤只读。
+
+failure:
+  screenshot: true
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/19_原版GUI覆盖矩阵.md
+  - docs/operations/high-risk-actions.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: digest
+    kind: file_digest
+    path: ${params.package}
+    save_as: package
+
+  - id: choose
+    kind: gui
+    description: 打开应用的 Update application 并选中新装包；不点 Update
+    actions:
+      - action: open
+        page: manage
+      - action: click
+        locator: Update application
+      - action: type
+        locator: Application package
+        value: ${params.package}
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请在 My Applications 里对 ${params.application} 点 Update application，
+        选择新装包：${params.package}
+        现在**不要**点 Update。
+
+  - id: verify_target
+    kind: verify_ui
+    control: Update application > Application
+    expect:
+      contains: ${params.application}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认更新对话框里选中的应用是 ${params.application}。确认后选 done。
+
+  - id: approve_update
+    kind: human_gate
+    risk: high
+    reason: 覆盖安装不可逆；先确认应用名、包文件与版本。
+    prompt: |
+      即将更新应用：${params.application}
+      新装包：${params.package}
+      SHA256：${steps.digest.sha256}
+      期望版本：${params.expect_version}
+      确认无误后再批准。
+
+  - id: update
+    kind: gui
+    description: 点 Update，等安装器结束
+    actions:
+      - action: click
+        locator: Update
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        现在点 Update，等安装器结束。完成后选 done；失败就选 failed 并写明错误。
+
+  - id: verify_version
+    kind: verify_ui
+    control: My Applications > Version
+    expect:
+      contains: ${params.expect_version}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认 ${params.application} 的版本现在是 ${params.expect_version}。确认后选 done。
+
+  - id: record
+    kind: artifact
+    name: app-update.json
+    content:
+      job: ${job.id}
+      application: ${params.application}
+      package: ${steps.digest}
+      expect_version: ${params.expect_version}
+      update: ${steps.update}

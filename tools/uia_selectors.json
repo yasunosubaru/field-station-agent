@@ -40,6 +40,82 @@
     ],
     "Browse": [
       { "names": ["Browse", "Browse..."], "controlType": "Button" }
+    ],
+    "Add Device": [
+      { "names": ["Add Device", "+ Add Device"], "controlType": "Button" },
+      { "names": ["Add Device"], "controlType": "Hyperlink" }
+    ],
+    "Refresh ports": [
+      { "names": ["Refresh", "Refresh ports", "Rescan"], "controlType": "Button" }
+    ],
+    "Connect": [
+      { "names": ["Connect"], "controlType": "Button" }
+    ],
+    "Settings": [
+      { "names": ["Settings"], "controlType": "MenuItem" },
+      { "names": ["Settings"], "controlType": "Button" }
+    ],
+    "Auto Updates": [
+      { "names": ["Auto Updates", "Auto Updates..."], "controlType": "MenuItem" },
+      { "names": ["Auto Updates"], "controlType": "TabItem" }
+    ],
+    "Auto Updates status": [
+      { "names": ["Status", "Auto Updates"], "controlType": "Text" },
+      { "automationId": "autoUpdatesStatus" }
+    ],
+    "New Project": [
+      { "names": ["New Project", "New..."], "controlType": "Button" },
+      { "names": ["New Project"], "controlType": "MenuItem" }
+    ],
+    "Create from SBF": [
+      { "names": ["Create from SBF", "From SBF", "SBF"], "controlType": "RadioButton" },
+      { "names": ["Create from SBF"], "controlType": "Button" }
+    ],
+    "SBF file": [
+      { "names": ["SBF file", "Input file", "File"], "controlType": "Edit" }
+    ],
+    "Project name": [
+      { "names": ["Project name", "Name"], "controlType": "Edit" }
+    ],
+    "Next": [
+      { "names": ["Next", "Next >"], "controlType": "Button" }
+    ],
+    "Process": [
+      { "names": ["Process"], "controlType": "Button" }
+    ],
+    "Graph > Pre-process > Flags": [
+      { "names": ["Flags"], "controlType": "TabItem" },
+      { "names": ["Flags"], "controlType": "Text" }
+    ],
+    "Graph > Projects > Current": [
+      { "names": ["Projects", "Current Project"], "controlType": "Text" },
+      { "names": ["Projects"], "controlType": "TreeItem" }
+    ],
+    "Add application": [
+      { "names": ["Add application", "Add Application"], "controlType": "Button" },
+      { "names": ["Add application"], "controlType": "Hyperlink" }
+    ],
+    "Application package": [
+      { "names": ["Package", "Application package", "File"], "controlType": "Edit" }
+    ],
+    "Add application > Package": [
+      { "names": ["Package", "Selected package"], "controlType": "Text" }
+    ],
+    "Install": [
+      { "names": ["Install"], "controlType": "Button" }
+    ],
+    "Update application": [
+      { "names": ["Update application", "Update Application"], "controlType": "Button" }
+    ],
+    "Update application > Application": [
+      { "names": ["Application", "Name"], "controlType": "Text" }
+    ],
+    "My Applications > Installed": [
+      { "names": ["Applications", "My Applications"], "controlType": "List" },
+      { "names": ["Applications"], "controlType": "Text" }
+    ],
+    "My Applications > Version": [
+      { "names": ["Version"], "controlType": "Text" }
     ]
   }
 }

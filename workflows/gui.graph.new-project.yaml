@@ -1,0 +1,154 @@
+id: gui.graph.newproject
+version: 1
+title: 从 SBF/CSV 新建 Graph 工程（Pre-process 四步）
+summary: >
+  原版 Graph 的 New Project 支持从 SBF/CSV 生成工程并走 Pre-process（Map / Timeline /
+  Flags / Process）。B 的 New Project 只打开 .gpf 工程，没有这条向导；本流程用 UIA
+  驱动原版套件补上，并在写工程之前停一次人工闸门。
+intent: graph.newproject
+risk: medium
+tags: [graph, project, sbf, csv, gui, pre-process]
+
+requires:
+  engine: true
+  live: false
+  gui: true
+  node: false
+
+params:
+  source:
+    type: path
+    required: true
+    description: 输入文件（.sbf / .csv）；流程只读它并算哈希
+  project_name:
+    type: string
+    required: true
+    pattern: '^[A-Za-z0-9 _.-]+$'
+    description: 新工程名（不含路径分隔符）
+  station:
+    type: string
+    required: false
+    description: 台站名（写进工程元数据，可选）
+  start_utc:
+    type: string
+    required: false
+    description: 开始时间（ISO 8601，可选；留空用文件第一历元）
+  end_utc:
+    type: string
+    required: false
+    description: 结束时间（ISO 8601，可选）
+
+approval:
+  required: false
+  risk: medium
+  reason: 真正的写盘在 Process 之前由 human_gate 停一次；前面的 Select/Map/Timeline/Flags 只读或可撤。
+
+failure:
+  screenshot: true
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/19_原版GUI覆盖矩阵.md
+  - 逆向/03_分析/18_1比1差距台账.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: digest
+    kind: file_digest
+    path: ${params.source}
+    save_as: source
+    description: 先钉住输入文件的哈希，事后能证明工程是从哪一份数据建的
+
+  - id: preprocess
+    kind: gui
+    description: 打开 Graph，选 New Project，从 SBF/CSV 建工程并走完前三个 Pre-process 步骤
+    actions:
+      - action: open
+        page: graph
+      - action: click
+        locator: New Project
+      - action: click
+        locator: Create from SBF
+      - action: type
+        locator: SBF file
+        value: ${params.source}
+      - action: type
+        locator: Project name
+        value: ${params.project_name}
+      - action: click
+        locator: Next
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请在 Graph 页新建工程：
+        1. New Project ▸ Create from SBF（或 CSV）；
+        2. 文件选：${params.source}
+        3. 工程名：${params.project_name}
+        4. 走完 Pre-process 的 Map / Timeline / Flags 三步，**先不要点 Process**。
+        完成后选 done。
+
+  - id: verify_preprocess
+    kind: verify_ui
+    control: Graph > Pre-process > Flags
+    expect:
+      contains: ${params.project_name}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认 Pre-process 页已经显示工程 ${params.project_name}，
+        且 Map / Timeline / Flags 三步都已完成。确认后选 done。
+
+  - id: approve_process
+    kind: human_gate
+    risk: medium
+    reason: Process 会把结果写进工程目录；先让人确认输入文件、时间范围与工程名。
+    prompt: |
+      即将执行 Pre-process 的最后一步 Process。
+      工程：${params.project_name}
+      输入：${params.source}
+      SHA256：${steps.digest.sha256}
+      台站：${params.station}
+      时间：${params.start_utc} ～ ${params.end_utc}
+      确认无误后再批准。
+
+  - id: process
+    kind: gui
+    description: 点 Process，等待工程生成
+    actions:
+      - action: click
+        locator: Process
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        现在点 Process，等进度结束。完成后选 done；报错就选 failed 并写明错误。
+
+  - id: verify_project
+    kind: verify_ui
+    control: Graph > Projects > Current
+    expect:
+      contains: ${params.project_name}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认 Graph 的工程列表/当前工程里有 ${params.project_name}。确认后选 done。
+
+  - id: record
+    kind: artifact
+    name: graph-project.json
+    content:
+      job: ${job.id}
+      project: ${params.project_name}
+      source: ${steps.digest}
+      station: ${params.station}
+      start_utc: ${params.start_utc}
+      end_utc: ${params.end_utc}
+      process: ${steps.process}

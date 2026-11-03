@@ -41,7 +41,7 @@ class Catalog(unittest.TestCase):
         code, out = _run("list")
         self.assertEqual(code, 0, out)
         self.assertIn("script.device.restart", out)
-        self.assertIn("共 3 条", out)
+        self.assertIn("共 8 条", out)
 
     def test_list_json_is_machine_readable(self):
         code, out = _run("list", "--json")

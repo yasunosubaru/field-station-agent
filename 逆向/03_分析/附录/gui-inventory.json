@@ -976,12 +976,32 @@
     ],
     "workflows": [
       {
+        "id": "gui.app.install",
+        "path": "workflows/gui.app.install.yaml"
+      },
+      {
+        "id": "gui.app.update",
+        "path": "workflows/gui.app.update.yaml"
+      },
+      {
+        "id": "gui.device.add",
+        "path": "workflows/gui.device.add.yaml"
+      },
+      {
         "id": "gui.device.update",
         "path": "workflows/gui.device.update.yaml"
       },
       {
         "id": "gui.graph.export",
         "path": "workflows/gui.graph.export.yaml"
+      },
+      {
+        "id": "gui.graph.newproject",
+        "path": "workflows/gui.graph.new-project.yaml"
+      },
+      {
+        "id": "gui.suite.autoupdate",
+        "path": "workflows/gui.suite.autoupdate.yaml"
       },
       {
         "id": "script.device.restart",
