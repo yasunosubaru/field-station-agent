@@ -20,6 +20,7 @@
 | 新增 | [`CHANGELOG.md`](CHANGELOG.md)、[`docs/README.md`](docs/README.md)（文档索引）、`.github` 下的 issue 与 PR 模板 |
 | 截图 | [`docs/images/`](docs/images/) 加入 0.1.10 的界面截图 |
 | 门禁 | 脱敏守卫补上「证据文件单列豁免」的口径（见 [KI-12](docs/known-issues.md)），其余文件仍按原规则拦 |
+| 软著材料 | 源程序文档按当前 `tools/` / `harness/` / `agents/` 重新生成（41 个文件、8,486 行、170 页），说明书里的数字同步 |
 | 工具 | `逆向/tools/remote/` 下脚本的本机路径与主机名改为参数，不再写死 |
 
 **NovAtelReverse 0.1.10**（[Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v0.1.10)，提交 `747af9a`）
