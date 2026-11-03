@@ -64,6 +64,7 @@ import {
 } from '../../graph/src/export-projects.ts';
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
 import { WorkflowBridge, assertJobId, assertWorkflowId } from './workflows.ts';
+import { AgentBridge, handleAgentRoute } from './agent-bridge.ts';
 import {
   GRIT_TILE_ATTRIBUTION,
   GRIT_TILE_DEFAULT_URL,
@@ -100,6 +101,12 @@ const artifacts = new Map<string, CachedArtifact>();
 const ARTIFACT_LIMIT = 40;
 /** One bridge for the process; the executor itself is spawned per call. */
 const workflowBridge = new WorkflowBridge();
+/**
+ * The Python agent server is spawned lazily on the first `/api/agent/*` request, so the bridge
+ * needs the port only at that moment — hence a getter rather than a value.
+ */
+let listeningPort = 0;
+const agentBridge = new AgentBridge({ nodePort: () => listeningPort });
 
 function rememberArtifact(artifact: CachedArtifact): void {
   artifacts.set(artifact.token, artifact);
@@ -1768,6 +1775,12 @@ const server = createServer((req, res) => {
         await handleGritTiles(url, res, method);
         return;
       }
+      // The agent surface is mounted here, ahead of the generic `/api/` fallback: a wrong
+      // `/api/agent/...` path must be its own 404, not "unknown endpoint" from the shell.
+      if (path === '/api/agent' || path.startsWith('/api/agent/')) {
+        await handleAgentRoute({ bridge: agentBridge, req, res, url, method });
+        return;
+      }
       if (path.startsWith('/api/')) {
         throw new HttpError(404, `未知接口：${path}`);
       }
@@ -1788,6 +1801,7 @@ const port = parsePort(process.argv.slice(2));
 server.listen(port, HOST, () => {
   const address = server.address();
   const actual = typeof address === 'object' && address ? address.port : port;
+  listeningPort = actual;
   const line = `nas-reimpl app listening on http://${HOST}:${actual}`;
   console.log(line);
   console.log(`samples: ${SAMPLES_DIR}`);
@@ -1806,7 +1820,12 @@ server.on('error', (error: NodeJS.ErrnoException) => {
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
+    // The agent server is a child of this process; it must not outlive the shell.
+    agentBridge.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 500).unref();
   });
 }
+
+// `server.close()` is the other way this process stops (tests, an embedder): same rule.
+server.on('close', () => agentBridge.stop());
