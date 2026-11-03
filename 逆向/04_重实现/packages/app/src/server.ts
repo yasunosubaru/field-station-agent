@@ -63,6 +63,7 @@ import {
   type ExportProject,
 } from '../../graph/src/export-projects.ts';
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
+import { WorkflowBridge, assertJobId, assertWorkflowId } from './workflows.ts';
 import {
   GRIT_TILE_ATTRIBUTION,
   GRIT_TILE_DEFAULT_URL,
@@ -97,6 +98,8 @@ interface CachedArtifact {
 /** Last converted artifacts, kept in memory so the download link does not re-run the pipeline. */
 const artifacts = new Map<string, CachedArtifact>();
 const ARTIFACT_LIMIT = 40;
+/** One bridge for the process; the executor itself is spawned per call. */
+const workflowBridge = new WorkflowBridge();
 
 function rememberArtifact(artifact: CachedArtifact): void {
   artifacts.set(artifact.token, artifact);
@@ -976,8 +979,74 @@ function graphProjectJson(project: ExportProject): Record<string, unknown> {
   };
 }
 
-function handleGraphProjects(res: ServerResponse, method: string): void {
-  try {
+/**
+ * Fixed workflows over HTTP — the "hybrid" surface.
+ *
+ * The catalog and the job views are the executor's own JSON, passed through unchanged; this layer
+ * only validates ids and maps exit codes (0 done / 1 failed job / 2 bad input / 3 waiting). `run`
+ * waits because a high-risk job stops at its gate immediately; `gate` / `resume` may continue into
+ * a long flash or reboot, so they return 202 and the caller polls `/api/workflows/job`.
+ */
+async function handleWorkflowRun(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'POST') throw new HttpError(405, '/api/workflows/run 只接受 POST');
+  const body = await readJsonBody(req);
+  const id = assertWorkflowId(body.id);
+  const params = body.params && typeof body.params === 'object' && !Array.isArray(body.params)
+    ? (body.params as Record<string, unknown>)
+    : {};
+  const result = await workflowBridge.run(id, params);
+  sendJson(res, result.code === 3 ? 202 : 200, {
+    ok: result.code !== 1,
+    exit_code: result.code,
+    ...(result.data ?? {}),
+  }, method);
+}
+
+async function handleWorkflowGate(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'POST') throw new HttpError(405, '/api/workflows/job/gate 只接受 POST');
+  const body = await readJsonBody(req);
+  const id = assertJobId(body.id);
+  const decision = String(body.decision ?? '');
+  const by = String(body.by ?? 'operator');
+  const note = String(body.note ?? '');
+  workflowBridge.gate(id, decision, by, note);
+  sendJson(res, 202, { ok: true, detached: true, job_id: id, decision }, method);
+}
+
+async function handleWorkflowResume(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'POST') throw new HttpError(405, '/api/workflows/job/resume 只接受 POST');
+  const body = await readJsonBody(req);
+  const id = assertJobId(body.id);
+  const decision = String(body.decision ?? '');
+  const by = String(body.by ?? 'operator');
+  const note = String(body.note ?? '');
+  workflowBridge.resume(id, decision, by, note);
+  sendJson(res, 202, { ok: true, detached: true, job_id: id, decision }, method);
+}
+
+async function handleWorkflowCancel(req: IncomingMessage, res: ServerResponse, method: string): Promise<void> {
+  if (method !== 'POST') throw new HttpError(405, '/api/workflows/job/cancel 只接受 POST');
+  const body = await readJsonBody(req);
+  const id = assertJobId(body.id);
+  const view = await workflowBridge.cancel(id, String(body.reason ?? ''), String(body.by ?? 'operator'));
+  sendJson(res, 200, { ok: true, ...view }, method);
+}
+
+function handleWorkflowArtifact(url: URL, res: ServerResponse, method: string): void {
+  const id = assertJobId(url.searchParams.get('id'));
+  const name = url.searchParams.get('name') ?? '';
+  const bytes = workflowBridge.artifactBytes(id, name);
+  const type = name.toLowerCase().endsWith('.pdf') ? 'application/pdf'
+    : name.toLowerCase().endsWith('.png') ? 'image/png'
+      : name.toLowerCase().endsWith('.json') ? 'application/json; charset=utf-8'
+        : 'application/octet-stream';
+  sendBytes(res, 200, bytes, {
+    'Content-Type': type,
+    'Content-Disposition': `attachment; filename="${name.replace(/"/g, '')}"`,
+  }, method);
+}
+
+function handleGraphProjects(res: ServerResponse, method: string): void {  try {
     const projects = listExportProjects(GRAPH_EXPORT_DIR).map((project) => ({
       ...graphProjectJson(project),
       bytes: project.bytes,
@@ -1630,6 +1699,45 @@ const server = createServer((req, res) => {
       }
       if (path === '/api/playback/events') {
         handlePlaybackEvents(url, res, method);
+        return;
+      }
+      if (path === '/api/workflows') {
+        sendJson(res, 200, { ok: true, ...(await workflowBridge.catalog()) }, method);
+        return;
+      }
+      if (path === '/api/workflows/describe') {
+        const id = assertWorkflowId(url.searchParams.get('id'));
+        sendJson(res, 200, { ok: true, ...(await workflowBridge.describe(id)) }, method);
+        return;
+      }
+      if (path === '/api/workflows/run') {
+        await handleWorkflowRun(req, res, method);
+        return;
+      }
+      if (path === '/api/workflows/job') {
+        const id = assertJobId(url.searchParams.get('id'));
+        sendJson(res, 200, { ok: true, ...(await workflowBridge.status(id)) }, method);
+        return;
+      }
+      if (path === '/api/workflows/job/gate') {
+        await handleWorkflowGate(req, res, method);
+        return;
+      }
+      if (path === '/api/workflows/job/resume') {
+        await handleWorkflowResume(req, res, method);
+        return;
+      }
+      if (path === '/api/workflows/job/cancel') {
+        await handleWorkflowCancel(req, res, method);
+        return;
+      }
+      if (path === '/api/workflows/job/artifacts') {
+        const id = assertJobId(url.searchParams.get('id'));
+        sendJson(res, 200, { ok: true, artifacts: await workflowBridge.artifacts(id) }, method);
+        return;
+      }
+      if (path === '/api/workflows/artifact') {
+        handleWorkflowArtifact(url, res, method);
         return;
       }
       if (path === '/api/graph/projects') {

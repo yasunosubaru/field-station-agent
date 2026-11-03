@@ -10,7 +10,7 @@ Playback / Convert / GRIT Monitor / Graph）**每一个可观察行为**都还�
 | 项 | 现状 |
 |---|---|
 | 分析文档 | `03_分析/` 30 篇、约 16 500 行，带 `文件:行号` 引用与 **R1–R101** 条可验收断言 |
-| 重实现 | 零依赖 TypeScript，8 个包，**1233 项测试**（1 项心跳用例对时序敏感，隔离运行必过） |
+| 重实现 | 零依赖 TypeScript，8 个包，**1242 项测试**（1 项心跳用例对时序敏感，隔离运行必过） |
 | 协议层 | CRC32（对过 OEM7 手册向量）、SBF 长/短头、成帧、ASCII/二进制命令、123 条消息 879 个字段、31 条重复块布局 |
 | 会话层 | TCP / UDP / 串口、心跳、日志订阅，回环端到端 |
 | 视图层 | 无依赖 DOM 子集、页签与瓦片系统、Packery 等价布局、连接流程、节流、语言、`updateView` 契约 |
@@ -51,7 +51,7 @@ node tools/gen_repeat_layouts.js   # 31 条 repeat 消息的块布局
 cd 04_重实现
 node --test "packages/protocol/test/*.test.ts"
 node --test --test-force-exit "packages/session/test/*.test.ts"
-node --test --test-force-exit "packages/*/test/*.test.ts"    # 全部 1233 项
+node --test --test-force-exit "packages/*/test/*.test.ts"    # 全部 1242 项
 
 # 4. 连真机 / 查字段
 node packages/cli/src/probe.ts --list BESTPOS

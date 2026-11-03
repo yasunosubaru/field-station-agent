@@ -12,7 +12,17 @@
 
 ## 2026-11-03
 
-**仓库界面整理（本次提交）**
+**混合版：应用内 Workflows 页签 + 原版套件 UIA 驱动（本次提交）**
+
+| 项 | 内容 |
+|---|---|
+| 应用内入口 | 重实现应用新增 **Workflows** 页签：目录/参数/审批门/失败分类/证据下载，与 CLI 共用 `describe` 与 `job.json` |
+| HTTP | `/api/workflows`（目录 + 执行器状态）、`describe`、`run`、`job`、`job/gate`、`job/resume`、`job/cancel`、`job/artifacts`、`artifact`；高风险运行返回 202 并停在闸门，`gate`/`resume` 异步执行后轮询 |
+| 执行器边界 | Node 侧只起子进程（`python tools/workflow_cli.py`），不重写执行器；Python/执行器缺失时 503 并说明原因 |
+| UIA 驱动 | 新增 `tools/uia_driver.py` + `tools/uia_selectors.json`：按 Name/AutomationId/ControlType 操作原版套件，无坐标；套件需 `--force-renderer-accessibility`，找不到控件即报错 |
+| 测试 | 新增 `packages/app/test/workflows.test.ts`（9 项，stub 执行器）与 `tests/test_uia_driver.py`（12 项，不启动套件） |
+
+**仓库界面整理（提交 `e5c2360`）**
 
 | 项 | 内容 |
 |---|---|
@@ -23,7 +33,7 @@
 | 软著材料 | 源程序文档按当前 `tools/` / `harness/` / `agents/` 重新生成（41 个文件、8,486 行、170 页），说明书里的数字同步 |
 | 工具 | `逆向/tools/remote/` 下脚本的本机路径与主机名改为参数，不再写死 |
 
-**原版 GUI 缺口固化为固定流程（本次提交）**
+**原版 GUI 缺口固化为固定流程（提交 `299b4e0`）**
 
 | 项 | 内容 |
 |---|---|

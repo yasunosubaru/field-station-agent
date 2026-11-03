@@ -1,0 +1,45 @@
+{
+  "note": "Logical locators used by workflows/*.yaml. Each entry is tried in order; names/automationId are matched against the original suite's UIA tree. The suite must be launched with --force-renderer-accessibility or Chromium exposes no web content to UIA. Edit this file when a new suite build renames a control - do not put coordinates here.",
+  "window": {
+    "process": "NovAtelApplicationSuite",
+    "titleContains": "NovAtel Application Suite"
+  },
+  "suite": {
+    "installDir": "C:\\Program Files\\NovAtel Inc\\NovAtel Application Suite",
+    "exe": "NovAtelApplicationSuite.exe"
+  },
+  "controls": {
+    "Device": [
+      { "names": ["Device"], "controlType": "MenuItem" },
+      { "names": ["Device"], "controlType": "Button" }
+    ],
+    "Update": [
+      { "names": ["Update"], "controlType": "MenuItem" },
+      { "names": ["Update"], "controlType": "Button" },
+      { "names": ["Update"], "controlType": "TabItem" }
+    ],
+    "Restart": [
+      { "names": ["Restart"], "controlType": "MenuItem" },
+      { "names": ["Restart"], "controlType": "Button" }
+    ],
+    "Firmware file": [
+      { "names": ["Firmware file", "Firmware File", "File"], "controlType": "Edit" },
+      { "automationId": "firmwareFile" }
+    ],
+    "Device > Update > Firmware file": [
+      { "names": ["Firmware file", "Firmware File", "File"], "controlType": "Edit" },
+      { "names": ["Firmware file", "Firmware File"], "controlType": "Text" }
+    ],
+    "Model": [
+      { "names": ["Model"], "controlType": "Text" },
+      { "automationId": "model" }
+    ],
+    "Apply": [
+      { "names": ["Apply"], "controlType": "Button" },
+      { "names": ["Apply", "Update"], "controlType": "Hyperlink" }
+    ],
+    "Browse": [
+      { "names": ["Browse", "Browse..."], "controlType": "Button" }
+    ]
+  }
+}

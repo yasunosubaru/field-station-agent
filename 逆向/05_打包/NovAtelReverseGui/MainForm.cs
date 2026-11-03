@@ -135,6 +135,17 @@ public sealed class MainForm : Form
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        // The Workflows tab shells out to the Python executor. Point it at the bundled runtime when
+        // the payload carries one; otherwise the bridge reports "workflow unavailable" and the rest
+        // of the app keeps working.
+        var python = Path.Combine(_root, "runtime", "python", "python.exe");
+        if (File.Exists(python)) start.EnvironmentVariables["NAS_PYTHON"] = python;
+        // Job receipts must survive a version upgrade (the extractor deletes older app-* trees).
+        var jobs = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "NovAtelReverse", "jobs");
+        Directory.CreateDirectory(jobs);
+        start.EnvironmentVariables["NAS_WORKFLOW_JOBS"] = jobs;
         _server = new Process { StartInfo = start };
         var ready = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         _server.OutputDataReceived += (_, e) =>

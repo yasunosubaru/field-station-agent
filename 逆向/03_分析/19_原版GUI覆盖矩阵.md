@@ -135,7 +135,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
-| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:88；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P）。 |
+| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:90；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P）。 |
 | `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/updateApplication/updateApplication.js:1 | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路。 |
 | `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/autoUpdates/autoUpdates.js:1 | [观察] 逆向/04_重实现/packages/view/src/config/localSettings.ts:246；[观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源，故只算部分覆盖。 |
 
@@ -144,7 +144,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
 | `page.dynamicTiles` | Dynamic Tiles 布局（拖动、撤销、重置、持久化） | B 已覆盖 | [观察] 逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html:1 | [观察] 逆向/04_重实现/packages/view/src/layout.ts:2；[观察] B 的 layout.ts 实现 packery 布局与持久化；原版行为见 01_Manage 文档 §3.4/§6.5。 |
-| `page.home` | My Applications 主页（五张应用卡片、连接数、Add application） | B 已覆盖 | [观察] 逆向/01_解包/app/view/welcome/welcome.html:124 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:83；[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。 |
+| `page.home` | My Applications 主页（五张应用卡片、连接数、Add application） | B 已覆盖 | [观察] 逆向/01_解包/app/view/welcome/welcome.html:124 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:85；[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。 |
 | `page.menuBar` | 菜单栏行为（切换到状态页/配置页、Settings/Tools/Device 下拉） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1202；[观察] B 的 manage.js 有同一组菜单切换与抽屉挂载逻辑；配置页由 config-host 提供。 |
 | `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:11；[观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 只维护单一 live 连接。 |
 
@@ -152,13 +152,15 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 ### 5.1 `/api/*` 路由
 
-共 30 条：
+共 39 条：
 
 - `/api/captures` · `/api/config/device/export` · `/api/config/device/import` · `/api/config/device/import/preview` · `/api/config/device/status` · `/api/config/events/summary`
 - `/api/config/pages` · `/api/convert` · `/api/download` · `/api/graph/data` · `/api/graph/files` · `/api/graph/flags`
 - `/api/graph/pdf` · `/api/graph/projects` · `/api/grit/tiles/config` · `/api/grit/tiles/{z}/{x}/{y}` · `/api/health` · `/api/live/command`
 - `/api/live/connect` · `/api/live/disconnect` · `/api/live/logs` · `/api/live/status` · `/api/logs` · `/api/playback/events`
 - `/api/playback/export` · `/api/playback/frame` · `/api/playback/frames` · `/api/playback/info` · `/api/ports` · `/api/records`
+- `/api/workflows` · `/api/workflows/artifact` · `/api/workflows/describe` · `/api/workflows/job` · `/api/workflows/job/artifacts` · `/api/workflows/job/cancel`
+- `/api/workflows/job/gate` · `/api/workflows/job/resume` · `/api/workflows/run`
 
 ### 5.2 配置页与菜单页
 
@@ -167,7 +169,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 ### 5.3 web 面板
 
-`convert`、`graph`、`grit`、`manage`、`playback`
+`convert`、`graph`、`grit`、`manage`、`playback`、`workflows`
 
 ### 5.4 CLI 选项（`packages/cli/src`）
 

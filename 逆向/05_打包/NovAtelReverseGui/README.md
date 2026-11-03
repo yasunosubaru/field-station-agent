@@ -21,10 +21,16 @@ payload 目录结构：
 ```
 payload/
   runtime/node.exe
+  runtime/python/                 # 可选：Python 3.11 embeddable（Workflows 页签用）
   逆向/04_重实现/...
   逆向/00_来源/samples/...        # 只放 .sbf/.gps/.bin 与 graph/convert/grit/raw
   逆向/01_解包/app/{view,model,assets,controller}
   逆向/01_解包/Graph/out/renderer/assets
+  workflows/                      # 固定流程 YAML（不含 jobs/）
+  src/fieldstation/workflows/     # 执行器（纯标准库）
+  tools/workflow_cli.py
+  tools/uia_driver.py
+  tools/uia_selectors.json
 ```
 
 把该目录压成 `payload.zip`，放到本目录，然后：
@@ -58,4 +64,10 @@ dotnet publish -c Release -r win-x64 --self-contained true `
 
 - 关闭窗口会 `Kill(entireProcessTree)` 结束内置 Node。
 - 改版本会换解压目录，旧目录不会自动删除（外壳启动时会清理更早的 `app-*` 目录）。
-- 固件 Update 与套件级 RPA 项不在这个壳里，原因见[覆盖边界](../../README.md#覆盖边界)。
+- **Workflows 页签需要 Python**（`runtime/python/` 或 PATH 里的 `python`；`NAS_PYTHON` 可覆盖）。
+  payload 不带 Python 时，页签会显示「工作流不可用」并给出原因，其余页面不受影响。
+- 原版套件的 **Update 写路径**通过固定流程 `gui.device.update` 完成：默认人工任务
+  （`assisted`）；要用 UIA 自动点，套件必须以 `--force-renderer-accessibility` 启动，
+  且 `tools/uia_selectors.json` 要随套件版本维护。
+- 套件级 RPA（Add Application / Auto Updates / Update Application）仍未纳入，见
+  [覆盖边界](../../README.md#覆盖边界)。

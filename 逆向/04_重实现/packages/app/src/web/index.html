@@ -74,6 +74,8 @@
         aria-selected="false" aria-controls="panel-grit"><a href="#" tabindex="-1">GRIT Monitor</a></li>
     <li class="app-tab" role="tab" data-tab="graph" id="tab-graph"
         aria-selected="false" aria-controls="panel-graph"><a href="#" tabindex="-1">Graph</a></li>
+    <li class="app-tab" role="tab" data-tab="workflows" id="tab-workflows"
+        aria-selected="false" aria-controls="panel-workflows"><a href="#" tabindex="-1">Workflows</a></li>
 </ul>
 </div>
 
@@ -150,6 +152,9 @@
 
       <!-- Graph 页由 panels/graph.js 挂载（首页 + 工作区两个视图，见该文件头注释） -->
       <div id="panel-graph" class="app-panel" role="tabpanel" aria-labelledby="tab-graph" hidden></div>
+
+      <!-- Workflows 页由 panels/workflows.js 挂载：A−B 缺口流程的目录 / 运行 / 审批 / 证据 -->
+      <div id="panel-workflows" class="app-panel" role="tabpanel" aria-labelledby="tab-workflows" hidden></div>
     </div>
   </main>
 </div>
@@ -199,16 +204,22 @@
       title: 'GRIT Monitor',
       subtitle: '频谱 / 干扰 / 信号矩阵监控',
       icon: 'grit-default-icon'
+    },
+    workflows: {
+      title: 'Workflows',
+      subtitle: '原版 GUI 缺口流程：状态机、审批门、证据',
+      icon: 'default-icon'
     }
   };
-  var ORDER = ['convert', 'manage', 'playback', 'grit', 'graph'];
+  var ORDER = ['convert', 'manage', 'playback', 'grit', 'graph', 'workflows'];
 
   var panelEls = {
     convert: $('panel-convert'),
     manage: $('panel-manage'),
     playback: $('panel-playback'),
     grit: $('panel-grit'),
-    graph: $('panel-graph')
+    graph: $('panel-graph'),
+    workflows: $('panel-workflows')
   };
 
   /* ---------------- 抓包选择器（ctx.capture 的唯一来源） ---------------- */

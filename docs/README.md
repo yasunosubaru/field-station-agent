@@ -114,6 +114,7 @@
 | [`tools/probe_provider_live.py`](../tools/probe_provider_live.py) | 模型通道探活（不消耗额度的小请求） |
 | [`tools/trial_ledger.py`](../tools/trial_ledger.py) | 试运行台账读写 |
 | [`tools/workflow_cli.py`](../tools/workflow_cli.py) | 原版 GUI 缺口流程的命令行入口：目录、运行、审批门、人工任务、证据 |
+| [`tools/uia_driver.py`](../tools/uia_driver.py) | 原版套件的 UIA 驱动（可选）：按控件名操作，无坐标；套件需 `--force-renderer-accessibility` |
 | [`tools/gui_coverage.py`](../tools/gui_coverage.py) | 从源码生成/校验 A×B 覆盖矩阵，防止盘点与代码漂移（`--check` 进 CI） |
 | [`harness/selftest.py`](../harness/selftest.py) | 五项发布门禁 |
 

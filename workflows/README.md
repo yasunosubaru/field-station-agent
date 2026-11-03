@@ -55,6 +55,44 @@ python tools/workflow_cli.py artifacts <job_id> --out .\out
 退出码：`0` 成功 / `1` 失败（终态非 succeeded）/ `2` 用法错误 / `3` 停在闸门
 （`waiting_approval` 或 `waiting_operator`，不是失败）。
 
+## 在应用里用（混合版）
+
+重实现应用（`逆向/04_重实现/packages/app`）的 **Workflows** 页签是这套流程的图形入口：
+左侧是目录，右侧是参数、审批门、失败分类与证据下载。它和 CLI 读的是同一份 `describe`，
+所以界面不会与规格漂移。
+
+| 接口 | 用途 |
+|---|---|
+| `GET /api/workflows` | 目录 + 执行器/Python 是否可用 + 引擎连通性 |
+| `GET /api/workflows/describe?id=` | 一条流程的完整定义 |
+| `POST /api/workflows/run` | 起 job；高风险流程停在审批门（HTTP 202） |
+| `GET /api/workflows/job?id=` | 状态、闸门、失败、产物（读 `job.json`） |
+| `POST /api/workflows/job/gate` · `/resume` | 批准/拒绝、人工任务完成；异步执行，202 |
+| `POST /api/workflows/job/cancel` | 取消未结束的 job |
+| `GET /api/workflows/job/artifacts` · `/artifact` | 产物列表与下载 |
+
+Node 应用通过子进程调用 `python tools/workflow_cli.py`（**不重写执行器**，避免第二套实现）。
+Python 不在 PATH 时用 `NAS_PYTHON` 指定；执行器路径用 `NAS_WORKFLOW_CLI`；job 目录用
+`NAS_WORKFLOW_JOBS`。找不到执行器时接口返回 **503 并说明原因**，不会假装「没有流程」。
+
+### 驱动原版套件（可选）
+
+`gui` 步骤默认 `assisted`：没有驱动就转人工任务，界面里点「已完成」。要让机器真的去点，
+用仓库自带的 UIA 驱动：
+
+```powershell
+python tools/uia_driver.py --check            # 套件装没装
+python tools/workflow_cli.py run gui.device.update --driver uia `
+    --param firmware=D:\fw\OEM7.gps --param model=OEM729
+```
+
+前提与限制（不满足就报错，不会乱点）：
+
+- 原版套件必须**以 `--force-renderer-accessibility` 启动**——Electron 默认不向 UIA 暴露网页内容，
+  否则只能看到 `Intermediate D3D Window`；
+- 选择器在 `tools/uia_selectors.json`，按 Name/AutomationId/ControlType 匹配，**没有坐标**；
+- 找不到控件时报 `GuiUnavailable`，流程按失败分类停下，不会退回「大概位置点一下」。
+
 ## 证据与状态
 
 一个 job 一个目录（默认 `workflows/jobs/<job_id>/`）：
@@ -90,7 +128,9 @@ artifacts/      # 流程产物 + context.json + failure.json（失败现场）
 
 - `assisted`（默认）：没有驱动，`gui`/`verify_ui` 转人工任务；
 - `scripted`：**仅测试/演练**，读值来自预置表，截图是标记文件，不能当生产证据；
-- 其它名字：按模块名导入，模块须提供 `create() -> GuiDriver`（真正的 UIA 驱动是可插拔的）。
+- `uia`：仓库自带的 Windows UI Automation 驱动（`tools/uia_driver.py`），驱动**原版套件**；
+  需要套件以 `--force-renderer-accessibility` 启动；
+- 其它名字：按模块名导入；也可直接给 `.py` 路径。模块须提供 `create() -> GuiDriver`。
 
 ## 新增一条流程
 

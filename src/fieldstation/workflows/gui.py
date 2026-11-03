@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -24,6 +25,8 @@ __all__ = [
     "describe_driver",
     "load_driver",
 ]
+
+_ROOT = Path(__file__).resolve().parents[3]
 
 
 class GuiUnavailable(RuntimeError):
@@ -142,26 +145,54 @@ def load_driver(name: str = "assisted") -> GuiDriver:
 
     * ``assisted``（默认）：没有驱动，GUI 步骤走人工任务。
     * ``scripted``：测试用，生产环境不要用。
-    * 其他名字：当作模块名导入，模块必须提供 ``create() -> GuiDriver``。
+    * ``uia``：仓库自带的 Windows UI Automation 驱动（``tools/uia_driver.py``）。
+    * 其它名字：当作模块名导入；以 ``.py`` 结尾或含路径分隔符时按文件加载。
+      模块必须提供 ``create() -> GuiDriver``。
     """
     key = (name or "assisted").strip().lower()
     if key in ("", "assisted", "none"):
         return AssistedDriver()
     if key == "scripted":
         return ScriptedDriver()
+    if key == "uia":
+        return _load_path(_ROOT / "tools" / "uia_driver.py")
+    if key.endswith(".py") or "/" in key or "\\" in key:
+        path = Path(name)
+        if not path.is_absolute():
+            path = _ROOT / path
+        return _load_path(path)
     module_name = name if "." in name else f"fieldstation.workflows.{name}"
     try:
         module = importlib.import_module(module_name)
     except ImportError as exc:
         raise GuiUnavailable(
             f"GUI 驱动 {name!r} 不存在（导入 {module_name} 失败）：{exc}") from exc
+    return _factory(module, module_name)
+
+
+def _factory(module: object, label: str) -> GuiDriver:
     factory = getattr(module, "create", None)
     if not callable(factory):
-        raise GuiUnavailable(f"GUI 驱动模块 {module_name} 没有 create()")
+        raise GuiUnavailable(f"GUI 驱动模块 {label} 没有 create()")
     driver = factory()
     if not getattr(driver, "available", False):
-        raise GuiUnavailable(f"GUI 驱动 {name!r} 报告自己不可用")
+        raise GuiUnavailable(f"GUI 驱动 {label!r} 报告自己不可用")
     return driver
+
+
+def _load_path(path: Path) -> GuiDriver:
+    if not path.is_file():
+        raise GuiUnavailable(f"GUI 驱动文件不存在：{path}")
+    module_name = f"fieldstation_gui_driver_{path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise GuiUnavailable(f"加载 GUI 驱动失败：{path}")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 —— 驱动自己的导入错误要原样带出
+        raise GuiUnavailable(f"GUI 驱动 {path} 导入失败：{exc}") from exc
+    return _factory(module, str(path))
 
 
 def describe_driver(driver: GuiDriver) -> dict:

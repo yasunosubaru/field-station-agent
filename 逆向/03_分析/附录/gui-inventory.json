@@ -873,7 +873,16 @@
       "/api/playback/frames",
       "/api/playback/info",
       "/api/ports",
-      "/api/records"
+      "/api/records",
+      "/api/workflows",
+      "/api/workflows/artifact",
+      "/api/workflows/describe",
+      "/api/workflows/job",
+      "/api/workflows/job/artifacts",
+      "/api/workflows/job/cancel",
+      "/api/workflows/job/gate",
+      "/api/workflows/job/resume",
+      "/api/workflows/run"
     ],
     "cli_flags": [
       "--ascii",
@@ -962,7 +971,8 @@
       "graph",
       "grit",
       "manage",
-      "playback"
+      "playback",
+      "workflows"
     ],
     "workflows": [
       {
