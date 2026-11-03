@@ -23,6 +23,17 @@
 | 软著材料 | 源程序文档按当前 `tools/` / `harness/` / `agents/` 重新生成（41 个文件、8,486 行、170 页），说明书里的数字同步 |
 | 工具 | `逆向/tools/remote/` 下脚本的本机路径与主机名改为参数，不再写死 |
 
+**原版 GUI 缺口固化为固定流程（本次提交）**
+
+| 项 | 内容 |
+|---|---|
+| A−B 盘点 | 新增 [`逆向/03_分析/19_原版GUI覆盖矩阵.md`](逆向/03_分析/19_原版GUI覆盖矩阵.md)，由 `tools/gui_coverage.py` 从 A/B 两侧源码生成：50 项逐项映射，A 目录不许漏项，引用的文件/行/workflow 失效即报错 |
+| 流程执行器 | `src/fieldstation/workflows/`：严格 YAML 子集、加载期规格校验、状态机、文件锁、幂等键、只追加审计、人工闸门、可插拔 GUI 驱动；纯标准库 |
+| 固定流程 | `workflows/`：`script.device.restart`、`gui.device.update`（Apply 前人工闸门）、`gui.graph.export`，附 [`workflows/README.md`](workflows/README.md) |
+| 入口 | `python tools/workflow_cli.py list/describe/run/status/gate/resume/cancel/artifacts/validate`；`python -m fieldstation.cli workflow ...`；退出码 0 成功 / 1 失败 / 2 用法 / 3 停在闸门 |
+| 门禁 | 新增 `python tools/gui_coverage.py --check`，并与测试、五项自检、数字回源、脱敏守卫并列进质量门禁表 |
+| 软著材料 | 源程序文档随新增源码重新生成（43 个文件、9,496 行、190 页），说明书与一页摘要的数字同步 |
+
 **NovAtelReverse 0.1.10**（[Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v0.1.10)，提交 `747af9a`）
 
 | 改动 | 说明 |

@@ -1,0 +1,995 @@
+{
+  "a": {
+    "graph_entry": "逆向/01_解包/Graph/out/renderer/index.html",
+    "menu_items": [
+      {
+        "id": "menuStatus",
+        "label": "status",
+        "line": 5
+      },
+      {
+        "id": "menuConfig",
+        "label": "configuration",
+        "line": 8
+      },
+      {
+        "id": "menuSettings",
+        "label": "settings",
+        "line": 11
+      },
+      {
+        "id": "generalSettings",
+        "label": "general",
+        "line": 17
+      },
+      {
+        "id": "networkingSettings",
+        "label": "networking",
+        "line": 20
+      },
+      {
+        "id": "displaySettings",
+        "label": "displays",
+        "line": 23
+      },
+      {
+        "id": "terminalConsole",
+        "label": "terminal",
+        "line": 28
+      },
+      {
+        "id": "menuTools",
+        "label": "tools",
+        "line": 32
+      },
+      {
+        "id": "interferenceToolKit",
+        "label": "itk",
+        "line": 41
+      },
+      {
+        "id": "menuDevice",
+        "label": "device",
+        "line": 46
+      },
+      {
+        "id": "deviceDetails",
+        "label": "details",
+        "line": 52
+      },
+      {
+        "id": "deviceExport",
+        "label": "storage",
+        "line": 55
+      },
+      {
+        "id": "deviceUpdate",
+        "label": "update",
+        "line": 58
+      },
+      {
+        "id": "deviceRestart",
+        "label": "restart",
+        "line": 61
+      }
+    ],
+    "shell_pages": [
+      {
+        "id": "index",
+        "path": "逆向/01_解包/app/view/html/index.html"
+      },
+      {
+        "id": "nasHelp",
+        "path": "逆向/01_解包/app/view/html/nasHelp.html"
+      },
+      {
+        "id": "playback",
+        "path": "逆向/01_解包/app/view/html/playback.html"
+      },
+      {
+        "id": "position",
+        "path": "逆向/01_解包/app/view/html/position.html"
+      },
+      {
+        "id": "setUpMonitor",
+        "path": "逆向/01_解包/app/view/html/setUpMonitor.html"
+      },
+      {
+        "id": "splashScreen",
+        "path": "逆向/01_解包/app/view/html/splashScreen.html"
+      },
+      {
+        "id": "welcome",
+        "path": "逆向/01_解包/app/view/html/welcome.html"
+      }
+    ],
+    "source": "unpacked",
+    "views": [
+      {
+        "files": [
+          "lghn-2d-sd.html"
+        ],
+        "id": "2d-sd",
+        "main": "lghn-2d-sd.html",
+        "path": "逆向/01_解包/app/view/2d-sd/lghn-2d-sd.html"
+      },
+      {
+        "files": [
+          "gritJarvisInterface.js",
+          "mapLayer.js",
+          "markerCustomPopup.js"
+        ],
+        "id": "GRIT",
+        "main": "gritJarvisInterface.js",
+        "path": "逆向/01_解包/app/view/GRIT/gritJarvisInterface.js"
+      },
+      {
+        "files": [
+          "addApplication.js"
+        ],
+        "id": "addApplication",
+        "main": "addApplication.js",
+        "path": "逆向/01_解包/app/view/addApplication/addApplication.js"
+      },
+      {
+        "files": [
+          "agcStatus.html",
+          "agcStatus.js"
+        ],
+        "id": "agcStatus",
+        "main": "agcStatus.html",
+        "path": "逆向/01_解包/app/view/agcStatus/agcStatus.html"
+      },
+      {
+        "files": [
+          "alignConfig.html",
+          "alignConfig.js"
+        ],
+        "id": "alignConfig",
+        "main": "alignConfig.html",
+        "path": "逆向/01_解包/app/view/alignConfig/alignConfig.html"
+      },
+      {
+        "files": [
+          "alignStatus.html"
+        ],
+        "id": "alignStatus",
+        "main": "alignStatus.html",
+        "path": "逆向/01_解包/app/view/alignStatus/alignStatus.html"
+      },
+      {
+        "files": [
+          "autoUpdates.js"
+        ],
+        "id": "autoUpdates",
+        "main": "autoUpdates.js",
+        "path": "逆向/01_解包/app/view/autoUpdates/autoUpdates.js"
+      },
+      {
+        "files": [
+          "cli.js",
+          "convert.html",
+          "convert.js",
+          "edieConvertAPI.js"
+        ],
+        "id": "convert",
+        "main": "convert.html",
+        "path": "逆向/01_解包/app/view/convert/convert.html"
+      },
+      {
+        "files": [
+          "bootstrap.min.css",
+          "bootstrap.min.js",
+          "jquery.js",
+          "jquery.mousewheel.min.js",
+          "jsin.1.2.min.js",
+          "pagination.css",
+          "style.css"
+        ],
+        "id": "css",
+        "main": "bootstrap.min.js",
+        "path": "逆向/01_解包/app/view/css/bootstrap.min.js"
+      },
+      {
+        "files": [
+          "deviceDetails.html",
+          "deviceDetails.js",
+          "giii-deviceDetails.html",
+          "giii-deviceDetails.js"
+        ],
+        "id": "deviceDetails",
+        "main": "deviceDetails.html",
+        "path": "逆向/01_解包/app/view/deviceDetails/deviceDetails.html"
+      },
+      {
+        "files": [
+          "deviceExport.html",
+          "deviceExport.js"
+        ],
+        "id": "deviceExport",
+        "main": "deviceExport.html",
+        "path": "逆向/01_解包/app/view/deviceExport/deviceExport.html"
+      },
+      {
+        "files": [
+          "deviceInfo.html",
+          "giii-deviceInfo.html"
+        ],
+        "id": "deviceInfo",
+        "main": "deviceInfo.html",
+        "path": "逆向/01_解包/app/view/deviceInfo/deviceInfo.html"
+      },
+      {
+        "files": [
+          "deviceManagement.js",
+          "devicesInfo.json"
+        ],
+        "id": "deviceManagement",
+        "main": "deviceManagement.js",
+        "path": "逆向/01_解包/app/view/deviceManagement/deviceManagement.js"
+      },
+      {
+        "files": [
+          "deviceRestart.html",
+          "deviceRestart.js"
+        ],
+        "id": "deviceRestart",
+        "main": "deviceRestart.html",
+        "path": "逆向/01_解包/app/view/deviceRestart/deviceRestart.html"
+      },
+      {
+        "files": [
+          "deviceUpdate.html",
+          "deviceUpdate.js",
+          "lghn-deviceUpdate.html",
+          "lghn-deviceUpdate.js"
+        ],
+        "id": "deviceUpdate",
+        "main": "deviceUpdate.html",
+        "path": "逆向/01_解包/app/view/deviceUpdate/deviceUpdate.html"
+      },
+      {
+        "files": [
+          "displaysSettings.html",
+          "displaysSettings.js"
+        ],
+        "id": "displaysSettings",
+        "main": "displaysSettings.html",
+        "path": "逆向/01_解包/app/view/displaysSettings/displaysSettings.html"
+      },
+      {
+        "files": [
+          "draggabilly.pkgd.min.js",
+          "dynamicTiles.html",
+          "dynamicTiles.js",
+          "packery.pkgd.min.js"
+        ],
+        "id": "dynamicTiles",
+        "main": "dynamicTiles.html",
+        "path": "逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html"
+      },
+      {
+        "files": [
+          "events.html",
+          "events.js"
+        ],
+        "id": "events",
+        "main": "events.html",
+        "path": "逆向/01_解包/app/view/events/events.html"
+      },
+      {
+        "files": [
+          "Akkurat.ttf",
+          "OpenSans-Bold.ttf",
+          "OpenSans-Italic.ttf",
+          "OpenSans-Light.ttf",
+          "OpenSans-LightItalic.ttf",
+          "OpenSans-Regular.ttf",
+          "OpenSans-SemiBold.ttf",
+          "Roboto-Regular.ttf"
+        ],
+        "id": "fonts",
+        "main": "Akkurat.ttf",
+        "path": "逆向/01_解包/app/view/fonts/Akkurat.ttf"
+      },
+      {
+        "files": [
+          "generalSettings.html",
+          "generalSettings.js"
+        ],
+        "id": "generalSettings",
+        "main": "generalSettings.html",
+        "path": "逆向/01_解包/app/view/generalSettings/generalSettings.html"
+      },
+      {
+        "files": [
+          "gnssConfig.html",
+          "gnssConfig.js"
+        ],
+        "id": "gnssConfig",
+        "main": "gnssConfig.html",
+        "path": "逆向/01_解包/app/view/gnssConfig/gnssConfig.html"
+      },
+      {
+        "files": [
+          "lghn-height-sd.html"
+        ],
+        "id": "height-sd",
+        "main": "lghn-height-sd.html",
+        "path": "逆向/01_解包/app/view/height-sd/lghn-height-sd.html"
+      },
+      {
+        "files": [
+          "index.html",
+          "nasHelp.html",
+          "playback.html",
+          "position.html",
+          "setUpMonitor.html",
+          "splashScreen.html",
+          "welcome.html"
+        ],
+        "id": "html",
+        "main": "index.html",
+        "path": "逆向/01_解包/app/view/html/index.html"
+      },
+      {
+        "files": [
+          "Button_Option_Off.png",
+          "Button_Option_On.png",
+          "Close.png",
+          "Download_complete_icon.png",
+          "GraphingLogo.png",
+          "Hexagon_A&P_NovAtel.png",
+          "HxGN_Logo.png",
+          "IMU_Pitch.svg",
+          "NAS_logo.ico",
+          "Notifications_Off.svg",
+          "Notifications_On.svg",
+          "Positioning_logo.png",
+          "PostProcessing_mini_icon.svg",
+          "Remove.png",
+          "SplashScreen1.png",
+          "USB_Blocked.png",
+          "WAAS-GIII.png",
+          "aboutPopup.svg",
+          "add-port.svg",
+          "add_circle_blue.svg",
+          "add_folder.svg",
+          "add_tab_plus.svg",
+          "addapp_postprocessing.svg",
+          "app_action_image.png",
+          "app_branding.png",
+          "app_help.svg",
+          "app_menu.png",
+          "app_menu.svg",
+          "app_menu_active.svg",
+          "app_retry_btn.png",
+          "app_settings.svg",
+          "arrow.svg",
+          "axis_xy.png",
+          "axis_xz.png",
+          "axis_yz.png",
+          "banner.png",
+          "block.png",
+          "btn_radio_selected.svg",
+          "btn_radio_selected_disabled.svg",
+          "btn_radio_unselected.svg",
+          "cancel_banner.svg",
+          "car_front.png",
+          "car_side.png",
+          "car_top.png",
+          "check_box_disabled.svg",
+          "checkbox_active.svg",
+          "checkbox_inactive.svg",
+          "chevron_down.svg",
+          "chevron_right.svg",
+          "chevrondown.png",
+          "close_SW_Update.svg",
+          "close_port.svg",
+          "config-settings.svg",
+          "connectionlost_alert.svg",
+          "convert-var-convrt-frmt.svg",
+          "convert-var-convrt-frmt1.svg",
+          "convert_menu.png",
+          "convert_title.svg",
+          "darkmode_addapp_postprocessing.svg",
+          "darkmode_delete_app.svg",
+          "default_img.svg",
+          "delete_app.svg",
+          "delete_icon.svg",
+          "delete_warning_icon.png",
+          "dialog_close.svg",
+          "download.png",
+          "download_icon.svg",
+          "error-info.png",
+          "error_download_icon.png",
+          "error_icon.svg",
+          "events-active-box.svg",
+          "events-arrow.svg",
+          "events-close.svg",
+          "events-delete.svg",
+          "events-dismiss.svg",
+          "events-filter.svg",
+          "events-save.svg",
+          "events.png",
+          "events.svg",
+          "events_blue.svg",
+          "exclamation.svg",
+          "exclamation_mark.png",
+          "feedback_Information_access.svg",
+          "feedback_Information_access1.svg",
+          "feedback_application_speed.svg",
+          "feedback_application_speed1.svg",
+          "feedback_check_box_tristate.svg",
+          "feedback_checked_box.svg",
+          "feedback_close.svg",
+          "feedback_exit.svg",
+          "feedback_go_back.svg",
+          "feedback_managing_multiple.svg",
+          "feedback_managing_multiple1.svg",
+          "feedback_menu_icon.svg",
+          "feedback_popup_icon.svg",
+          "feedback_receiver_configuration.svg",
+          "feedback_receiver_configuration1.svg",
+          "feedback_sentiment_dissatisfied.svg",
+          "feedback_sentiment_dissatisfied_selected.svg",
+          "feedback_sentiment_excited.svg",
+          "feedback_sentiment_excited_selected.svg",
+          "feedback_sentiment_neutral.svg",
+          "feedback_sentiment_neutral_selected.svg",
+          "feedback_sentiment_satisfied.svg",
+          "feedback_sentiment_satisfied_selected.svg",
+          "feedback_sentiment_very_satisfied.svg",
+          "feedback_sentiment_very_satisfied_selected.svg",
+          "feedback_snip_file.svg",
+          "feedback_snip_file1.svg",
+          "feedback_timeline_control.svg",
+          "feedback_timeline_control1.svg",
+          "feedback_unchecked_box.svg",
+          "feedback_unchecked_box_blue.svg",
+          "feedbackpopup.svg",
+          "folder_blue.svg",
+          "folder_white.svg",
+          "gear.png",
+          "grit_pos_overvw_map.svg",
+          "grit_pos_overvw_map1.svg",
+          "grit_signal_matrix.svg",
+          "grit_signal_matrix1.svg",
+          "header-desktop.png",
+          "header.png",
+          "help.png",
+          "help_active.svg",
+          "home_menu.svg",
+          "hxgn_logo.svg",
+          "ic_close.svg",
+          "ic_cursor_drag_24.svg",
+          "icon_folder.png",
+          "icon_folder.svg",
+          "icon_folder_b.svg",
+          "icon_plus.png",
+          "image-box.svg",
+          "imu_setup_front_compass.svg",
+          "imu_setup_side_compass.svg",
+          "imu_setup_top_compass.svg",
+          "info_not_supported.svg",
+          "itk-add.svg",
+          "lghn_span.png",
+          "loader.gif",
+          "logging_edit.svg",
+          "menu.png",
+          "menubar_config.svg",
+          "menubar_config_active.svg",
+          "menubar_device.svg",
+          "menubar_device_active.svg",
+          "menubar_settings.svg",
+          "menubar_settings_active.svg",
+          "menubar_status.svg",
+          "menubar_status_active.svg",
+          "menubar_tools.svg",
+          "menubar_tools_active.svg",
+          "more.png",
+          "more.svg",
+          "new_converticon.png",
+          "new_cross.png",
+          "new_nas_icon.png",
+          "new_playbackicon.png",
+          "new_s&micon.png",
+          "normal_check.svg",
+          "normal_good_u235.svg",
+          "normal_ok_u236.svg",
+          "normal_poor_u237.svg",
+          "normal_u15573.svg",
+          "normal_u249.svg",
+          "offline_Import.svg",
+          "partial_select_box.svg",
+          "passwordShow.svg",
+          "pl_menu.png",
+          "pl_title.png",
+          "pl_welcome.svg",
+          "radio_selected.svg",
+          "radio_unselected.svg",
+          "recent_convert_img.svg",
+          "recent_pb_img.png",
+          "recent_pb_img.svg",
+          "recent_sm_img.svg",
+          "sats-sprite.png",
+          "search.svg",
+          "selected_check.svg",
+          "selected_good_u235_selected.svg",
+          "selected_ok_u236_selected.svg",
+          "selected_poor_u237_selected.svg",
+          "settings.png",
+          "settings_active.svg",
+          "slider.png",
+          "slider_arrow.png",
+          "sm_menu.svg",
+          "sm_title.png",
+          "sm_welcome.svg",
+          "softwareUpdateLogo.png",
+          "spanImuMbl.png",
+          "spanImuSetup.png",
+          "spanOffsetMbl.png",
+          "spanOffsetSetup.png",
+          "spanSetup.png",
+          "spinner.svg",
+          "splashScreen.png",
+          "splashscreen2.png",
+          "spoofing_amber_warning.png",
+          "sprite.png",
+          "success-check.svg",
+          "summary-screen.svg",
+          "summary-screen1.svg",
+          "susbcriptionResendIcon.svg",
+          "sw_update_tick.svg",
+          "tab_close.svg",
+          "tabicon.ico",
+          "tabs_close.svg",
+          "terraStar_No_Internet.svg",
+          "terrastarError.svg",
+          "tile_drag.svg",
+          "tile_edit.svg",
+          "toggleswitch_off.svg",
+          "toggleswitch_on.svg",
+          "trash.png",
+          "unknown.svg",
+          "updateError.svg",
+          "usb.png",
+          "usb_icon.svg",
+          "warning.png",
+          "warning_icon.svg",
+          "white-arrow.png",
+          "wifi_disconnect.svg",
+          "wifi_lock.svg"
+        ],
+        "id": "images",
+        "main": "Button_Option_Off.png",
+        "path": "逆向/01_解包/app/view/images/Button_Option_Off.png"
+      },
+      {
+        "files": [
+          "interferenceStatus.html"
+        ],
+        "id": "interferenceStatus",
+        "main": "interferenceStatus.html",
+        "path": "逆向/01_解包/app/view/interferenceStatus/interferenceStatus.html"
+      },
+      {
+        "files": [
+          "interferenceToolKit.html"
+        ],
+        "id": "interferenceToolKit",
+        "main": "interferenceToolKit.html",
+        "path": "逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html"
+      },
+      {
+        "files": [
+          "alignStatus.js",
+          "deviceInfo.js",
+          "help.js",
+          "html2canvas.min.js",
+          "interferenceToolKit.js",
+          "interferencestatus.js",
+          "loadConfiguration.js",
+          "longhornStatusUI.js",
+          "markerclusterer.min.js",
+          "pagination.js",
+          "plotly-latest.min.js",
+          "portStatus.js",
+          "positionStatus.js",
+          "radioStatus.js",
+          "satelliteView.js",
+          "saveConfiguration.js",
+          "spanStatus.js",
+          "statusbar.js",
+          "tileMovement.js",
+          "tilesManagement.js",
+          "welcome.js"
+        ],
+        "id": "js",
+        "main": "alignStatus.js",
+        "path": "逆向/01_解包/app/view/js/alignStatus.js"
+      },
+      {
+        "files": [
+          "genericview.js"
+        ],
+        "id": "json",
+        "main": "genericview.js",
+        "path": "逆向/01_解包/app/view/json/genericview.js"
+      },
+      {
+        "files": [
+          "languageSettings.html",
+          "languageSettings.js"
+        ],
+        "id": "languageSettings",
+        "main": "languageSettings.html",
+        "path": "逆向/01_解包/app/view/languageSettings/languageSettings.html"
+      },
+      {
+        "files": [
+          "cn.js",
+          "de.js",
+          "eg.js",
+          "en.js",
+          "es.js",
+          "fr.js",
+          "languageSettings.json",
+          "pt.js",
+          "ru.js"
+        ],
+        "id": "languageSupport",
+        "main": "cn.js",
+        "path": "逆向/01_解包/app/view/languageSupport/cn.js"
+      },
+      {
+        "files": [
+          "giii-logStatus.html",
+          "giii-logStatus.js",
+          "logStatus.html",
+          "logStatus.js"
+        ],
+        "id": "logStatus",
+        "main": "logStatus.html",
+        "path": "逆向/01_解包/app/view/logStatus/logStatus.html"
+      },
+      {
+        "files": [
+          "giii-loggingConfig.html",
+          "giii-loggingConfig.js",
+          "lghn-loggingConfig.html",
+          "loggingConfig.html",
+          "loggingConfig.js"
+        ],
+        "id": "loggingConfig",
+        "main": "loggingConfig.html",
+        "path": "逆向/01_解包/app/view/loggingConfig/loggingConfig.html"
+      },
+      {
+        "files": [
+          "menuBar.html",
+          "menuBar.js"
+        ],
+        "id": "menuBar",
+        "main": "menuBar.html",
+        "path": "逆向/01_解包/app/view/menuBar/menuBar.html"
+      },
+      {
+        "files": [
+          "networkingSettings.html",
+          "networkingSettings.js"
+        ],
+        "id": "networkingSettings",
+        "main": "networkingSettings.html",
+        "path": "逆向/01_解包/app/view/networkingSettings/networkingSettings.html"
+      },
+      {
+        "files": [
+          "playbackcontrol.html",
+          "playbackview.js"
+        ],
+        "id": "playbackcontrol",
+        "main": "playbackcontrol.html",
+        "path": "逆向/01_解包/app/view/playbackcontrol/playbackcontrol.html"
+      },
+      {
+        "files": [
+          "lghn-portConfig.html",
+          "portConfig.html",
+          "portConfig.js"
+        ],
+        "id": "portConfig",
+        "main": "portConfig.html",
+        "path": "逆向/01_解包/app/view/portConfig/portConfig.html"
+      },
+      {
+        "files": [
+          "portStatus.html"
+        ],
+        "id": "portStatus",
+        "main": "portStatus.html",
+        "path": "逆向/01_解包/app/view/portStatus/portStatus.html"
+      },
+      {
+        "files": [
+          "lghn-positionConfig .js",
+          "lghn-positionConfig.html",
+          "positionConfig.html",
+          "positionConfig.js"
+        ],
+        "id": "positionConfig",
+        "main": "positionConfig.html",
+        "path": "逆向/01_解包/app/view/positionConfig/positionConfig.html"
+      },
+      {
+        "files": [
+          "giii-positionStatus.html",
+          "lghn-positionStatus.html",
+          "positionStatus.html"
+        ],
+        "id": "positionStatus",
+        "main": "positionStatus.html",
+        "path": "逆向/01_解包/app/view/positionStatus/positionStatus.html"
+      },
+      {
+        "files": [
+          "pppCorrections.html",
+          "pppCorrections.js"
+        ],
+        "id": "pppCorrections",
+        "main": "pppCorrections.html",
+        "path": "逆向/01_解包/app/view/pppCorrections/pppCorrections.html"
+      },
+      {
+        "files": [
+          "radioConfig.html",
+          "radioConfig.js"
+        ],
+        "id": "radioConfig",
+        "main": "radioConfig.html",
+        "path": "逆向/01_解包/app/view/radioConfig/radioConfig.html"
+      },
+      {
+        "files": [
+          "radioStatus.html"
+        ],
+        "id": "radioStatus",
+        "main": "radioStatus.html",
+        "path": "逆向/01_解包/app/view/radioStatus/radioStatus.html"
+      },
+      {
+        "files": [
+          "giii-satelliteTracking.html",
+          "giii-satelliteTracking.js",
+          "satelliteTracking.html",
+          "satelliteTracking.js"
+        ],
+        "id": "satelliteTracking",
+        "main": "satelliteTracking.html",
+        "path": "逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html"
+      },
+      {
+        "files": [
+          "satelliteView.html"
+        ],
+        "id": "satelliteView",
+        "main": "satelliteView.html",
+        "path": "逆向/01_解包/app/view/satelliteView/satelliteView.html"
+      },
+      {
+        "files": [
+          "lghn-spanConfig.html",
+          "spanConfig.html",
+          "spanConfig.js"
+        ],
+        "id": "spanConfig",
+        "main": "spanConfig.html",
+        "path": "逆向/01_解包/app/view/spanConfig/spanConfig.html"
+      },
+      {
+        "files": [
+          "spanInstallation.html",
+          "spanInstallation.js"
+        ],
+        "id": "spanInstallation",
+        "main": "spanInstallation.html",
+        "path": "逆向/01_解包/app/view/spanInstallation/spanInstallation.html"
+      },
+      {
+        "files": [
+          "spanStatus.html"
+        ],
+        "id": "spanStatus",
+        "main": "spanStatus.html",
+        "path": "逆向/01_解包/app/view/spanStatus/spanStatus.html"
+      },
+      {
+        "files": [
+          "statusBar.html"
+        ],
+        "id": "statusBar",
+        "main": "statusBar.html",
+        "path": "逆向/01_解包/app/view/statusBar/statusBar.html"
+      },
+      {
+        "files": [
+          "giii-terminalConsole.html",
+          "giii-terminalConsole.js",
+          "lghn-terminalConsole.html",
+          "lghn-terminalConsole.js",
+          "terminalConsole.html",
+          "terminalConsole.js"
+        ],
+        "id": "terminalConsole",
+        "main": "terminalConsole.html",
+        "path": "逆向/01_解包/app/view/terminalConsole/terminalConsole.html"
+      },
+      {
+        "files": [
+          "updateApplication.js"
+        ],
+        "id": "updateApplication",
+        "main": "updateApplication.js",
+        "path": "逆向/01_解包/app/view/updateApplication/updateApplication.js"
+      },
+      {
+        "files": [
+          "welcome.html"
+        ],
+        "id": "welcome",
+        "main": "welcome.html",
+        "path": "逆向/01_解包/app/view/welcome/welcome.html"
+      }
+    ]
+  },
+  "b": {
+    "api_routes": [
+      "/api/captures",
+      "/api/config/device/export",
+      "/api/config/device/import",
+      "/api/config/device/import/preview",
+      "/api/config/device/status",
+      "/api/config/events/summary",
+      "/api/config/pages",
+      "/api/convert",
+      "/api/download",
+      "/api/graph/data",
+      "/api/graph/files",
+      "/api/graph/flags",
+      "/api/graph/pdf",
+      "/api/graph/projects",
+      "/api/grit/tiles/config",
+      "/api/grit/tiles/{z}/{x}/{y}",
+      "/api/health",
+      "/api/live/command",
+      "/api/live/connect",
+      "/api/live/disconnect",
+      "/api/live/logs",
+      "/api/live/status",
+      "/api/logs",
+      "/api/playback/events",
+      "/api/playback/export",
+      "/api/playback/frame",
+      "/api/playback/frames",
+      "/api/playback/info",
+      "/api/ports",
+      "/api/records"
+    ],
+    "cli_flags": [
+      "--ascii",
+      "--at",
+      "--baud",
+      "--capture",
+      "--catalog",
+      "--crc",
+      "--csv",
+      "--daily-utc",
+      "--decimate",
+      "--duration",
+      "--expand-cmp",
+      "--export",
+      "--export-ascii",
+      "--fields",
+      "--finish-time",
+      "--from",
+      "--generation",
+      "--golden",
+      "--help",
+      "--host",
+      "--html",
+      "--info",
+      "--json",
+      "--kml",
+      "--limit",
+      "--limit-duration",
+      "--limit-output-duration",
+      "--limit-output-size",
+      "--list",
+      "--log",
+      "--max",
+      "--no-expand-cmp",
+      "--only",
+      "--out",
+      "--pdf",
+      "--period",
+      "--port",
+      "--project",
+      "--raw",
+      "--repeat",
+      "--serial",
+      "--split",
+      "--start-time",
+      "--time-format",
+      "--to",
+      "--tolerance",
+      "--trigger",
+      "--udp",
+      "--unknown-bytes",
+      "--verbose"
+    ],
+    "config_pages": [
+      "positionConfig",
+      "portConfig",
+      "loggingConfig",
+      "alignConfig",
+      "spanConfig",
+      "radioConfig",
+      "gnssConfig",
+      "spoofingConfiguration",
+      "networkingSettings",
+      "generalSettings",
+      "languageSettings",
+      "spanInstallation",
+      "lghnPositionConfig",
+      "lghnLoggingConfig"
+    ],
+    "menu_pages": [
+      "generalSettings",
+      "networkingSettings",
+      "languageSettings",
+      "spanInstallation",
+      "vehicleSetup",
+      "interferenceToolkit",
+      "displaysSettings",
+      "deviceDetails",
+      "deviceExport",
+      "deviceUpdate",
+      "deviceRestart",
+      "terminalConsole"
+    ],
+    "web_panels": [
+      "convert",
+      "graph",
+      "grit",
+      "manage",
+      "playback"
+    ],
+    "workflows": [
+      {
+        "id": "gui.device.update",
+        "path": "workflows/gui.device.update.yaml"
+      },
+      {
+        "id": "gui.graph.export",
+        "path": "workflows/gui.graph.export.yaml"
+      },
+      {
+        "id": "script.device.restart",
+        "path": "workflows/script.device.restart.yaml"
+      }
+    ]
+  },
+  "internal_views": {
+    "2d-sd": "Longhorn 2D 视图子图层，本机无 Longhorn 机型。",
+    "css": "原版样式表与 jQuery 插件资源，不是可操作页面。",
+    "fonts": "字体文件，不是可操作页面。",
+    "height-sd": "Longhorn Height 视图子图层，本机无 Longhorn 机型。",
+    "html": "外壳 HTML（index/setUpMonitor/welcome/playback）已在「入口与外壳」逐项映射；该目录本身不重复计数。",
+    "images": "图标与截图资源，不是可操作页面。",
+    "js": "页面共用的旧版脚本副本（help.js、html2canvas 等），不是独立屏幕。",
+    "json": "genericView 的数据表，不是可操作页面。",
+    "languageSupport": "语言包（cn/de/en…），由 languageSettings 页使用，不是独立屏幕。"
+  },
+  "note": "由 tools/gui_coverage.py 生成；源目录缺失时矩阵回退到本清单。",
+  "version": 1
+}

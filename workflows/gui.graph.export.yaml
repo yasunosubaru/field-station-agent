@@ -1,0 +1,111 @@
+id: gui.graph.export
+version: 1
+title: 导出 Graph 工程为 PDF 报告
+summary: >
+  把 Graph「Export」那一步做成固定流程：列工程 → 列 CSV → 让引擎生成 PDF →
+  校验 PDF 头与页数/图表数 → 落盘为证据。走 /api/graph/*，不需要 Electron，
+  也不需要点 Graph 的 Export 菜单。
+intent: graph.export
+risk: low
+tags: [graph, export, pdf, report, csv]
+
+requires:
+  engine: true
+  live: false
+  gui: false
+  node: false
+
+params:
+  project:
+    type: string
+    required: false
+    description: 工程 key（/api/graph/projects 里的 key）；不填就用引擎的默认工程
+  file:
+    type: string
+    required: false
+    description: 只导出这一张 CSV；不填就导出工程里的全部图表
+  min_pages:
+    type: integer
+    default: 1
+    description: PDF 至少要有几页（含封面）；低于它就判失败
+
+approval:
+  required: false
+  risk: low
+  reason: 只读导出，不改接收机、不改工程。
+
+failure:
+  screenshot: false
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/06_Graph应用.md
+  - 逆向/03_分析/18_1比1差距台账.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: projects
+    kind: http
+    method: GET
+    path: /api/graph/projects
+    save_as: projects
+    description: 没有工程时这里就停，错误信息会说明是「没有可导出的工程」而不是 PDF 坏了
+    expect:
+      json:
+        ok: true
+        count:
+          gte: 1
+
+  - id: files
+    kind: http
+    method: GET
+    path: /api/graph/files
+    query:
+      project: ${params.project}
+    save_as: files
+    expect:
+      json:
+        ok: true
+        count:
+          gte: 1
+
+  - id: pdf
+    kind: download
+    path: /api/graph/pdf
+    query:
+      project: ${params.project}
+      file: ${params.file}
+    filename: graph-report.pdf
+    magic: '%PDF-'
+    min_bytes: 1000
+    expect_header:
+      X-PDF-Pages: '^\d+$'
+      X-PDF-Charts: '^\d+$'
+      X-PDF-Bytes: '^\d+$'
+    description: 引擎用 PDF 1.4 生成报告；头部里的页数/图表数是服务端算的，不是我们猜的
+
+  - id: check_pages
+    kind: assert
+    description: 服务端报告的页数低于预期就停——空报告不是成功
+    checks:
+      - path: steps.pdf.headers.X-PDF-Pages
+        gte: ${params.min_pages}
+
+  - id: record
+    kind: artifact
+    name: graph-export.json
+    content:
+      job: ${job.id}
+      project: ${params.project}
+      file: ${params.file}
+      projects_seen: ${steps.projects.body.count}
+      files_seen: ${steps.files.body.count}
+      pdf: ${steps.pdf}
+      min_pages: ${params.min_pages}

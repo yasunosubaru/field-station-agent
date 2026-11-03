@@ -1,0 +1,195 @@
+id: gui.device.update
+version: 1
+title: 刷写接收机固件（人工闸门）
+summary: >
+  Device ▸ Update 的固定流程：核对型号与固件文件、算文件哈希、把文件填进 Update 页，
+  在**点击 Apply 之前**停下来等人批准，升级后再用 VERSION (#37) 证明它回来了。
+  没有 GUI 驱动时，填文件与点 Apply 变成两条人工任务，绝不假装点过。
+intent: device.update
+risk: high
+tags: [device, update, firmware, gui, oem729]
+
+requires:
+  engine: true
+  live: true
+  gui: true
+  node: false
+
+params:
+  firmware:
+    type: path
+    required: true
+    description: 固件文件（本机路径）。流程只读它、算哈希，不会上传到别处
+  model:
+    type: string
+    required: true
+    pattern: '^[A-Za-z0-9-]+$'
+    description: 接收机型号，必须与 VERSION #37 完全一致，例如 OEM729
+  expect_software:
+    type: string
+    required: false
+    description: 升级后期望的固件版本（正则），例如 ^7\.10
+  target:
+    type: string
+    required: false
+    description: 未连接时用它建会话：COM8@115200 / tcp://host:port
+  drop_grace_s:
+    type: number
+    default: 60
+  return_timeout_s:
+    type: number
+    default: 600
+    description: 固件升级可能重启，预算给到 10 分钟
+  poll_s:
+    type: number
+    default: 2.0
+
+approval:
+  required: false
+  risk: high
+  reason: 审批门放在 Apply 之前（见 approve_apply），准备步骤是只读/可撤的。
+
+failure:
+  screenshot: true
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/18_1比1差距台账.md
+  - docs/operations/high-risk-actions.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    expect:
+      json:
+        ok: true
+
+  - id: ensure_link
+    kind: ensure_live
+    target: ${params.target}
+    save_as: link
+
+  - id: request_version
+    kind: live_command
+    line: LOG VERSION ONCE
+    await_reply: false
+    save_as: version_request
+
+  - id: read_version
+    kind: await_receiver
+    wait_for: version
+    timeout_s: 20
+    save_as: before
+    description: 升级前必须读到型号；读不到就不让往下走
+
+  - id: assert_model
+    kind: assert
+    description: 型号不符立即停——刷错机型的固件是不可逆事故
+    checks:
+      - path: steps.read_version.model
+        equals: ${params.model}
+
+  - id: digest
+    kind: file_digest
+    path: ${params.firmware}
+    save_as: firmware
+    description: 先把文件哈希钉住，事后能证明刷的是哪一份
+
+  - id: prep
+    kind: gui
+    description: 打开 Device ▸ Update 并填入固件文件；不点 Apply
+    actions:
+      - action: open
+        page: manage
+      - action: click
+        locator: Device
+      - action: click
+        locator: Update
+      - action: type
+        locator: Firmware file
+        value: ${params.firmware}
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请在 Manage 页完成下面三件事，然后回来选择 done：
+        1. 打开 Device ▸ Update；
+        2. 点 Browse，选择固件文件：
+           ${params.firmware}
+        3. 确认页面上显示的型号是 ${params.model}。
+        现在**不要**点 Apply。
+
+  - id: confirm_file
+    kind: verify_ui
+    control: Device > Update > Firmware file
+    expect:
+      contains: ${steps.digest.name}
+    assisted:
+      enabled: true
+      prompt: |
+        请确认 Update 页的固件文件框显示的文件名是：
+        ${steps.digest.name}
+        确认无误选 done；不对就选 failed 并写明看到的内容。
+
+  - id: approve_apply
+    kind: human_gate
+    risk: high
+    reason: 固件升级不可逆；失败可能变砖，回滚依赖现场。
+    prompt: |
+      即将点击 Apply 刷写 ${params.model}。
+      固件：${params.firmware}
+      SHA256：${steps.digest.sha256}
+      确认型号、文件、校验和都无误后再批准。
+
+  - id: before_apply
+    kind: mark_cursor
+    save_as: mark
+    description: 只认 Apply 之后到达的 VERSION
+
+  - id: apply
+    kind: gui
+    description: 真正点 Apply
+    actions:
+      - action: click
+        locator: Apply
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        现在点击 Update 页的 Apply，并等进度条结束。
+        升级过程中不要断电、不要拔线。完成后选 done。
+
+  - id: after
+    kind: await_receiver
+    wait_for: reconnect_and_version
+    reconnect: true
+    model: ${params.model}
+    software: ${params.expect_software}
+    after_cursor: ${steps.mark.cursor}
+    drop_grace_s: ${params.drop_grace_s}
+    timeout_s: ${params.return_timeout_s}
+    poll_s: ${params.poll_s}
+    send_after_reconnect: LOG VERSION ONCE
+    save_as: after
+    description: 升级后重启并等待 VERSION；超时就停，不自动重刷
+
+  - id: check_software
+    kind: assert
+    description: 只有给了 expect_software 才断言；没给就跳过并记在结果里
+    checks:
+      - path: steps.after.software
+        matches: ${params.expect_software}
+
+  - id: record
+    kind: artifact
+    name: update.json
+    content:
+      job: ${job.id}
+      model: ${params.model}
+      firmware: ${steps.firmware}
+      before: ${steps.read_version}
+      after: ${steps.after}
+      expect_software: ${params.expect_software}
+      apply: ${steps.apply}

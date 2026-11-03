@@ -64,10 +64,14 @@ SCAN_DIRS = ("src", "tests", "harness", "tools")
 #: 所以按文件逐条加，不能只加 store/ 前缀了事。
 #: `src/fieldstation/store/work_order.py` (M4-3 工单模型与确定性状态机，
 #: 2026-10-18) 同理：本项目从零写的工单模型，无源项目对应文件。
+#: `src/fieldstation/workflows/` (原版 GUI 缺口工作流执行器，2026-11-03) 同理：
+#: spec / store / runner / engine / gui / service / yaml_lite 全部从零写，
+#: 无源项目对应文件；整棵子树是本项目原创。
 ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
                           "src/fieldstation/store/station.py",
                           "src/fieldstation/store/model.py",
-                          "src/fieldstation/store/work_order.py")
+                          "src/fieldstation/store/work_order.py",
+                          "src/fieldstation/workflows/")
 
 # ---------------------------------------------------------------- 第 1 项
 def check_tests() -> tuple[bool, list[str]]:

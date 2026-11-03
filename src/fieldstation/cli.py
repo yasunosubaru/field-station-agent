@@ -57,6 +57,9 @@ COMMANDS = {
     # M1 落地：数据字典完整性门禁。按本文件开头引的 KI-08 边界 ——
     # 「要加的子命令等它背后的实现落地再加」—— 实现已落地，故加。
     "datadict": "tools/check_datadict.py",
+    # 原版 GUI 缺口的工作流执行器：目录、运行、闸门、证据。规格在 workflows/*.yaml，
+    # 没有规格就没有入口，因此与规格一起落地。
+    "workflow": "tools/workflow_cli.py",
 }
 
 

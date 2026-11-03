@@ -1,0 +1,128 @@
+id: script.device.restart
+version: 1
+title: 重启接收机并确认它回来了
+summary: >
+  通过引擎的 live 通道发 RESET，观察链路断开、按原 target 自动重连，再用
+  VERSION (#37) 证明回来的是同一台接收机。全程走 /api/live/*，不依赖 GUI，
+  也不需要鼠标坐标。
+intent: device.restart
+risk: high
+tags: [device, restart, reset, live, oem729]
+
+requires:
+  engine: true
+  live: true
+  gui: false
+  node: false
+
+params:
+  target:
+    type: string
+    required: false
+    description: 未连接时用它建会话：COM8@115200 / tcp://192.168.1.2:3001 / udp://127.0.0.1:3001
+  expect_model:
+    type: string
+    required: false
+    pattern: '^[A-Za-z0-9-]+$'
+    description: 回来后期望的型号（VERSION #37 的 model），例如 OEM729
+  expect_software:
+    type: string
+    required: false
+    description: 回来后期望的固件版本（正则），例如 ^7\.10
+  drop_grace_s:
+    type: number
+    default: 30
+    description: 发完 RESET 后等链路断开的最长时间；先断开再回来是正常路径
+  return_timeout_s:
+    type: number
+    default: 180
+    description: 从发 RESET 到重新读到 VERSION 的总预算
+  poll_s:
+    type: number
+    default: 1.0
+
+approval:
+  required: true
+  risk: high
+  reason: RESET 会中断观测；无人值守台站如果起不来，只能等现场。
+
+failure:
+  screenshot: false
+  classes: [environment, input, execution, artifact, capability]
+
+docs:
+  - 逆向/03_分析/18_1比1差距台账.md
+  - docs/operations/high-risk-actions.md
+
+steps:
+  - id: health
+    kind: http
+    method: GET
+    path: /api/health
+    description: 先确认引擎在跑，避免把「引擎没开」误报成「接收机没反应」
+    expect:
+      json:
+        ok: true
+        version:
+          exists: true
+
+  - id: ensure_link
+    kind: ensure_live
+    target: ${params.target}
+    save_as: link
+    description: 已连接就复用；没连接就按 target 建会话
+
+  - id: baseline_request
+    kind: live_command
+    line: LOG VERSION ONCE
+    await_reply: false
+    save_as: baseline_request
+    description: 重启前先读一次型号，作为「同一台机器」的对照
+
+  - id: baseline
+    kind: await_receiver
+    wait_for: version
+    timeout_s: 15
+    save_as: baseline
+    on_fail: continue
+    description: 读不到基线不阻断重启；只记为警告
+
+  - id: before_reset
+    kind: mark_cursor
+    save_as: mark
+    description: 记下当前日志游标，之后只认这之后到达的 VERSION
+
+  - id: reset
+    kind: live_command
+    line: RESET
+    await_reply: false
+    save_as: reset
+    description: 与原版 Device ▸ Restart 发的是同一条命令
+
+  - id: come_back
+    kind: await_receiver
+    wait_for: reconnect_and_version
+    reconnect: true
+    model: ${params.expect_model}
+    software: ${params.expect_software}
+    after_cursor: ${steps.mark.cursor}
+    drop_grace_s: ${params.drop_grace_s}
+    timeout_s: ${params.return_timeout_s}
+    poll_s: ${params.poll_s}
+    send_after_reconnect: LOG VERSION ONCE
+    save_as: after
+    description: 等链路断开→重连→VERSION；超过预算就停，不自动重发 RESET
+
+  - id: record
+    kind: artifact
+    name: restart.json
+    description: 重启证据：target、基线、RESET 回执、回来后的 VERSION
+    content:
+      job: ${job.id}
+      target: ${steps.ensure_link.target}
+      baseline: ${steps.baseline}
+      baseline_request: ${steps.baseline_request}
+      reset: ${steps.reset}
+      after: ${steps.come_back}
+      expect_model: ${params.expect_model}
+      expect_software: ${params.expect_software}

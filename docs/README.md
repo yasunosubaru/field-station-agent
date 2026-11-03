@@ -60,6 +60,14 @@
 | [归档策略](operations/archive-policy.md) | 入库、版本、元数据与保留期（M4-4） |
 | [环境与干净环境重跑](operations/environment.md) | 换机器怎么把结论重跑出来 |
 
+## 原版 GUI 缺口流程（交付物 B）
+
+| 文档 | 一句话 |
+|---|---|
+| [原版 GUI 覆盖矩阵](../逆向/03_分析/19_原版GUI覆盖矩阵.md) | A（原版 GUI）× B（重实现）逐项盘点：covered / partial / a_only / not_applicable，每个缺口都有处置 |
+| [固定流程目录](../workflows/README.md) | 三条流程（重启 / 刷固件 / 导出 Graph PDF）的用法、证据与安全约束 |
+| [执行器说明](../src/fieldstation/workflows/__init__.py) | 状态机、锁、幂等键、只追加审计、人工闸门与 GUI 驱动边界 |
+
 ## 交付材料（m1/、m7/、reports/）
 
 | 文档 | 一句话 |
@@ -105,6 +113,8 @@
 | [`tools/env_snapshot.py`](../tools/env_snapshot.py) | 记录环境快照，供换机重跑比对 |
 | [`tools/probe_provider_live.py`](../tools/probe_provider_live.py) | 模型通道探活（不消耗额度的小请求） |
 | [`tools/trial_ledger.py`](../tools/trial_ledger.py) | 试运行台账读写 |
+| [`tools/workflow_cli.py`](../tools/workflow_cli.py) | 原版 GUI 缺口流程的命令行入口：目录、运行、审批门、人工任务、证据 |
+| [`tools/gui_coverage.py`](../tools/gui_coverage.py) | 从源码生成/校验 A×B 覆盖矩阵，防止盘点与代码漂移（`--check` 进 CI） |
 | [`harness/selftest.py`](../harness/selftest.py) | 五项发布门禁 |
 
 ## 写文档的约定

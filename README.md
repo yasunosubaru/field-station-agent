@@ -79,7 +79,7 @@
 | 一句话 | 用五类智能体接管野外台站的监测、质控、研判、派单、归档 | 把厂商的 Electron 套件拆成文档 + 可运行重实现，再收成一个连 OEM729 的单文件 GUI |
 | 代码 | Python 3.11，纯标准库 | 零依赖 TypeScript（Node ≥ 22.6 直接跑 `.ts`）+ WinForms/WebView2 外壳 |
 | 原料 | 合成观测（M0/M1 阶段刻意不接真实数据） | 解包后的厂商二进制 + 真机抓取的 golden 文件 |
-| 现在 | M0、M4 已完成；M3、M5 进行中 | 逆向文档 30 篇；重实现 1233 项测试；GUI 0.1.10 已发布 |
+| 现在 | M0、M4 已完成；M3、M5 进行中 | 逆向文档 31 篇；重实现 1233 项测试；GUI 0.1.10 已发布；A−B 缺口已固化为 3 条工作流 |
 | 入口 | [`src/`](src/) · [`docs/`](docs/) · [`harness/`](harness/) | [`逆向/`](逆向/README.md) · [`dist/`](dist/)（不入库） |
 
 两只交付物的关系：台站里那套厂商软件只给二进制，行为却直接决定我们能不能自动读出接收机状态。
@@ -120,6 +120,7 @@
 | [`逆向/`](逆向/README.md) | 交付物 B：来源、解包、证据、分析、重实现、打包 | [逆向说明](逆向/README.md) |
 | [`逆向/03_分析/`](逆向/03_分析/) | 逐子系统逆向文档，`文件:行号` 引用 + 可验收断言 | [约定](逆向/03_分析/_约定.md) |
 | [`逆向/04_重实现/`](逆向/04_重实现/) | 可运行重实现：协议 / 会话 / 视图 / 应用 / 图表 / 回放 / 桌面 | [重实现说明](逆向/04_重实现/README.md) |
+| [`workflows/`](workflows/README.md) | 原版 GUI 缺口的固定流程（YAML）与执行入口：状态机、锁、幂等、审计、人工闸门 | [流程目录](workflows/README.md) |
 | [`逆向/05_打包/`](逆向/05_打包/) | WinForms + WebView2 外壳源码与打包说明 | [打包说明](逆向/05_打包/NovAtelReverseGui/README.md) |
 | [`dist/`](dist/) | 发布产物（`.exe` 约 132 MB，**不入库**，见 Releases） | [Releases](../../releases) |
 | [`logs/`](logs/) `data/` `config/` `figures/` | 回放日志、知识库与样本、配置样例、可入论文的图表 | [运维手册](docs/operations/dashboard.md) |
@@ -272,7 +273,7 @@ $env:PYTHONPATH="src"; python -m fieldstation.cli --help
 
 | 项 | 现状 |
 |---|---|
-| 分析文档 | [`逆向/03_分析/`](逆向/03_分析/) 下 30 篇、约 16 500 行，**R1–R101** 条可验收断言（协议 / 解析 / Manage / 配置 / Convert / Playback / GRIT / Graph / Edie / 安装更新） |
+| 分析文档 | [`逆向/03_分析/`](逆向/03_分析/) 下 31 篇、约 16 700 行，**R1–R101** 条可验收断言（协议 / 解析 / Manage / 配置 / Convert / Playback / GRIT / Graph / Edie / 安装更新） |
 | 重实现 | 零依赖 TypeScript，8 个包（协议 / 会话 / 视图 / 应用 / 图表 / 回放 / CLI / 桌面），**1233 项测试**（其中 1 项心跳用例对时序敏感，隔离运行必过） |
 | 协议层 | CRC32（对过 OEM7 手册向量）、SBF 长/短头、成帧、ASCII/二进制命令、123 条消息 879 个字段、31 条重复块布局 |
 | 会话层 | TCP / UDP / 串口、心跳、日志订阅，回环端到端 |
@@ -350,6 +351,7 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | 数字回源 | `python tools/audit_claims.py` | README 里每个对外数字等于仓库实际状态 |
 | 脱敏守卫 | `python tools/check_desensitization.py` | 本机路径、邮箱、手机号、学号、私钥、token 不进公开仓库（绊线，不是证明） |
 | 重实现测试 | `node --test --test-force-exit "packages/*/test/*.test.ts"` | 交付物 B 的协议、会话、应用、图表、回放 |
+| 覆盖矩阵 | `python tools/gui_coverage.py --check` | A（原版 GUI）× B（重实现）逐项映射与源码一致，A 无漏项、引用无失效 |
 
 <a id="参与贡献"></a>
 ## 参与贡献
@@ -399,9 +401,9 @@ python tools/check_desensitization.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**95** 个
-- 入库 Python 行数：**15,598** 行
-- 入库测试文件数：**55** 个
+- 入库 Python 文件数：**108** 个
+- 入库 Python 行数：**20,150** 行
+- 入库测试文件数：**60** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，
