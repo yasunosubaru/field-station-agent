@@ -24,7 +24,7 @@
 param(
   [string]$Port = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b6-probe.txt',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b6-probe.txt'),
   [int]$WindowMs = 1500,
   [int]$DrainSeconds = 3,
   # Binary logs are `<name>B`; the bare name is the ASCII log, which never lands in an SBF capture.

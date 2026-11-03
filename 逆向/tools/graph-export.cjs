@@ -19,7 +19,7 @@
 //
 // The four export formats are checkboxes 6..9 of the Export panel (0..4 select which plots to
 // export, 5 is "Project Information"); they are off by default.
-const PW = 'C:/Users/SunCh/AppData/Roaming/npm/node_modules/playwright';
+const PW = 'C:/Users/<user>/AppData/Roaming/npm/node_modules/playwright';
 const { _electron } = require(PW);
 const fs = require('fs');
 const path = require('path');

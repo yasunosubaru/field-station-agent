@@ -1559,7 +1559,7 @@ GPSL2 / 195.3125 kHz / 512 点，最新网格上只有 4 条 sweep；同一页�
 （1531.299 MHz / 1024 点）属于另一张频率网格，按"只看与最新 sweep 同网格的帧"
 规则不叠加。这是数据本身，不是渲染丢弃。
 
-截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-spectrum\`
+截图：`%USERPROFILE%\AppData\Local\Temp\opencode\agent-spectrum\`
 （`b7-spectrum-tile.png`、`b7-waterfall-tile.png`、`b2-spectrum-empty.png`、
 `b1-spectrum-binary.png`）。测试：`packages/app/test/grit-text-spectrum.test.ts`
 新增 10 项（头时间、`textGroups` 首末、1024 点、FINAL/DETECT 判定、无二进制时按

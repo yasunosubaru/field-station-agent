@@ -14,7 +14,7 @@ import { join } from 'node:path';
 
 import { frame, oracle } from './oracle.ts';
 
-const REPO = 'H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体';
+const REPO = process.env.NAS_REPO ?? join(import.meta.dirname, '..', '..');
 const live = join(REPO, '逆向', '00_来源', 'samples', 'live-20261031');
 
 const { SbfDeframer } = await import('../04_重实现/packages/protocol/src/framing.ts');

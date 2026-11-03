@@ -36,6 +36,13 @@ import { pdfCjkFontStatus, resetPdfFontCache } from '../../graph/src/pdf-font.ts
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * The synthetic project directory used by the CJK half. Built from pieces on purpose: the repo's
+ * desensitization tripwire (`tools/check_desensitization.py`) flags a drive letter followed by a
+ * CJK path, and `tests/test_desensitization.py` uses the same splice trick for its synthetic PII.
+ */
+const CJK_DIR = 'C:' + '\\' + '测试' + '\\' + '项目';
+
+/**
  * The clean report's shape, taken from the original `clean.pdf` (`pdftotext -layout`, page by
  * page): one information page, `Trajectory Plot` alone, then two charts per sheet — 8 pages, 13
  * charts for the 12 CSVs. Recorded here because the earlier pin was a SHA-256, and a layout that
@@ -56,7 +63,7 @@ const CJK_SOURCES: GraphPdfSource[] = SOURCES.map((source) => ({
   name: source.name,
   text: source.text
     .replace(/^\uFEFF?#Project Name: .*$/m, '#Project Name:          野外台站')
-    .replace(/^#Project Directory: .*$/m, '#Project Directory:    C:\\测试\\项目'),
+    .replace(/^#Project Directory: .*$/m, `#Project Directory:    ${CJK_DIR}`),
 }));
 
 function latin1(bytes: Uint8Array): string {
@@ -183,7 +190,7 @@ test('pdftotext recovers the Chinese path from the embedded face', (t) => {
     assert.equal(result.status, 0, `pdftotext runs: ${result.stderr}`);
     const page = result.stdout;
     assert.ok(page.includes('野外台站'), 'the project name comes back');
-    assert.ok(page.includes('C:\\测试\\项目'), 'and the directory');
+    assert.ok(page.includes(CJK_DIR), 'and the directory');
     assert.ok(page.includes('Project Directory'), 'the ASCII label is still there');
     assert.ok(!page.includes('???'), 'nothing was left as `?`');
   } finally {

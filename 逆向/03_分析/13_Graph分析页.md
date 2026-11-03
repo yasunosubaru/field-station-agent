@@ -132,7 +132,7 @@ node packages/graph/tools/export-sbf-project.ts `
   （`Height(m)` 曲线 64.82 → 64.76 m）；`b1` 的 `Velocity(m/s)` 25 行 5 条曲线，`clean` 的那块写
   `-- 导出目录里没有 Velocity.csv`，页脚点名 `Velocity.csv`（不拿别的列顶替）。
 - `b1` 的 Tracking & Measurements / Receiver Status 页也能打开，控制台 0 error / 0 pageerror。
-- 截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-projects\`）：
+- 截图（`%USERPROFILE%\AppData\Local\Temp\opencode\agent-projects\`）：
   `b10-01-recent-projects.png`、`b10-02-b1-overview.png`、`b10-03-b1-pvt.png`、
   `b10-04-clean-overview.png`、`b10-05-clean-pvt.png`；接口原文 `projects.json`。
 
@@ -322,7 +322,7 @@ PRN 序、计数/均值序、哈希桶序）在两份输入上都会给出同样
 
 ### 8.4 截图
 
-`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-velocity\`：
+`%USERPROFILE%\AppData\Local\Temp\opencode\agent-velocity\`：
 `pvt-seven-tiles.png`（b1 的 PVT 七块，含 `Velocity(m/s)` 五条曲线）、`velocity-tile.png`（该图块）、
 `pvt-clean-velocity-empty.png`（clean 的 PVT：7 块，Velocity 留空并说明原因）、`pvt-full.png`
 （整页）。控制台 **0 error / 0 pageerror**，1 条 warning 来自 Luciad/WebGPU 纹理（原有）。
@@ -331,8 +331,8 @@ PRN 序、计数/均值序、哈希桶序）在两份输入上都会给出同样
 
 **问题**：`packages/graph/src/pdf.ts` 是手写 PDF 1.4，字体只按名字引用 base-14 `Helvetica`
 （`/Encoding /WinAnsiEncoding`），`text()` 只接受可打印 ASCII，超出的一律写成 `?`。
-`#Project Directory:` 是本机路径（`H:\Archive\文件夹 老版\…`），于是 b1 的 PDF 里整条路径变成
-`H:\Archive\??? ??\personal content\????\…`（改动前实测）。
+`#Project Directory:` 是本机路径（`<仓库上级>\…`），于是 b1 的 PDF 里整条路径变成
+`<仓库上级>\...`（改动前实测）。
 
 | 项 | 状态 |
 |---|---|
@@ -387,7 +387,7 @@ PRN 序、计数/均值序、哈希桶序）在两份输入上都会给出同样
 
 `text()` 逐字符串选字体：**纯 ASCII → 原来的 `F1`/`F2`，含非 ASCII → `F3`**。宽度也逐字符串选
 （ASCII 走 Helvetica AFM，其余走 TTF advance），所以
-`H:\Archive\` 与 `文件夹 老版` 在同一条路径里各用各的字号宽度，右对齐仍对得上。
+`<仓库上级>\...` 与 `文件夹 老版` 在同一条路径里各用各的字号宽度，右对齐仍对得上。
 粗体请求（`F2`）遇到中文仍落到同一 `F3`——SimHei 没有第二个字重，宁可少一层强调也不伪造。
 
 信息页脚注会随状态改写（这也是 ASCII 文档唯一会变的地方——而它对 ASCII 文档不变）：
@@ -414,16 +414,16 @@ ASCII 文档（测试里同一份输入分别带字体/强制 `cjkFontPath: null
 ```powershell
 node packages/graph/tools/export-sbf-project.ts `
   --capture "../00_来源/samples/live-20261031/b1-20261101.sbf" `
-  --out "C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfcjk\proj\b1" --name b1
-# 再把 13 份 CSV 的 #Project Name: / #Project Directory: 改成「野外台站」/「C:\测试\项目」
+  --out "%USERPROFILE%\AppData\Local\Temp\opencode\agent-pdfcjk\proj\b1" --name b1
+# 再把 13 份 CSV 的 #Project Name: / #Project Directory: 改成「野外台站」/「<盘>:\测试\项目」
 ```
 
 - `pdfinfo`：`Pages: 14`（1 页信息 + 13 页图），`Title: 野外台站 Report`，
   `Producer: … embedded SimHei for non-ASCII text`，无 xref 警告；
-- `pdftotext -enc UTF-8 -f 1 -l 1`：`野外台站 Report` / `野外台站` / `C:\测试\项目` 全部逐字还原，
+- `pdftotext -enc UTF-8 -f 1 -l 1`：`野外台站 Report` / `野外台站` / `<盘>:\测试\项目` 全部逐字还原，
   页面里没有一个残留的 `?`；
 - `pdftoppm -r 110 -png` 第一页目视：标题、Project Name、Project Directory 都是正常汉字，
-  不是方块也不是问号 —— `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfcjk\render-01.png`；
+  不是方块也不是问号 —— `%USERPROFILE%\AppData\Local\Temp\opencode\agent-pdfcjk\render-01.png`；
 - 同一份 b1（仓库里的样本 CSV，路径本身就是中文）改前/改后 `pdftotext` 全文比对：
   **2024 行里只有 2 行不同**——那条路径，和脚注那句说明，其余 2022 行一字不差。
 
@@ -442,7 +442,7 @@ node packages/graph/tools/export-sbf-project.ts `
    `.notdef`（`ToUnicode` 里记作 `<0000> <FFFD>`），不会变成错字。
 4. **首次构建多 ~15 ms**（读 9.7 MB + 解析 cmap，之后按路径缓存）；纯 ASCII 文档也付这一笔，
    因为它无法预知后面有没有中文。
-5. **混排 run 整体用 SimHei**：`C:\测试\项目` 这条字符串里的 ASCII 也是 SimHei 的字形
+5. **混排 run 整体用 SimHei**：`<盘>:\测试\项目` 这条字符串里的 ASCII 也是 SimHei 的字形
    （SimHei 的拉丁是 500/1000 em 等宽），不是 Helvetica——这是「按字符串选字体」的直接结果，
    宽度与渲染一致，只是字形风格略有差别。
 
@@ -457,7 +457,7 @@ node packages/graph/tools/export-sbf-project.ts `
 | 公共模块 | 新增 `packages/graph/src/pdf-font.ts`（TTF 解析 + PDF 字体对象 + ToUnicode + 宽度 + 降级）；两个 writer 共用 |
 | graph 回归 | `pdf.ts` 只是改为 import 公共模块：clean **330 802 B / SHA 不变**，b1 含中文 **6 668 948 B / SHA 不变** |
 | app ASCII | **逐字节不变**：137 644 B，SHA-256 `b19c81b0f69b4744454b068abf35b438dfa1622bbfe1673bda7cdf3ba116983b`（与 git HEAD 的 writer 相同） |
-| app 中文 | `/FontFile2` + `/Identity-H` + `/ToUnicode` + `/W`，`pdftotext` 取回 `野外台站` / `C:\测试\项目` |
+| app 中文 | `/FontFile2` + `/Identity-H` + `/ToUnicode` + `/W`，`pdftotext` 取回 `野外台站` / `<盘>:\测试\项目` |
 | Web 实测 | `GET /api/graph/pdf?project=_cjkweb` → **200**，14 页，5 168 121 B，渲染正常 |
 | 测试 | 新增 `packages/app/test/pdf-unicode.test.ts` 7 项；app 包 **313/313**；全量 **1042/1042**（并行任务还在加测试，总数会浮动） |
 
@@ -509,10 +509,10 @@ curl "http://127.0.0.1:7872/api/graph/pdf?project=_cjkweb" -o web-cjk.pdf
 - `HTTP 200`，`Content-Type: application/pdf`，`X-PDF-Pages: 14`（1 封面 + 13 图）；
 - `pdfinfo`：14 页、A4 横向、`Title: 野外台站 Report`、
   `Producer: packages/app hand-written PDF 1.4, embedded SimHei for non-ASCII text`；
-- `pdftotext -enc UTF-8 -f 1 -l 1`：`野外台站`（页眉与标题）、`C:\测试\项目` 全部逐字还原，
+- `pdftotext -enc UTF-8 -f 1 -l 1`：`野外台站`（页眉与标题）、`<盘>:\测试\项目` 全部逐字还原，
   页面里没有残留 `?`；
 - `pdftoppm -r 110 -png` 第一页目视正常（页眉、标题、Project Name/Directory、Chart Summary 表
-  都对得上）：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfcjk-web\web-page1-01.png`；
+  都对得上）：`%USERPROFILE%\AppData\Local\Temp\opencode\agent-pdfcjk-web\web-page1-01.png`；
 - 同一份 CSV 用固定时钟本地构建（不经 HTTP）：5 126 085 B / 13 页，
   `web-render-01.png`；`?project=clean` 的 ASCII 文档仍是 137 552 B（页码/时钟与固定时钟构建不同，
   逐字节比对用的是 `generatedAt` 固定的那两份）。
@@ -630,11 +630,11 @@ GPS↔ms 往返、`flagOffsetSeconds`（无 GPS 头返回 `null`）、每工程�
 - console errors **0**，无 pageerror（唯一 warning 是 Luciad/WebGPU 的
   `ValidateTextureDescriptor`，与本改动无关）。
 
-截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-flags\`）：
+截图（`%USERPROFILE%\AppData\Local\Temp\opencode\agent-flags\`）：
 `flags-timeline-tooltip.png`（4 个标记 + tooltip + `(4/10)`）、`flags-panel-list.png`
 （面板列表：时间/偏移/坐标/评论/颜色/眼睛/垃圾桶）、`flags-panel-full.png`（整页）。
 
-D5 复跑（2026-11-02，`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-graphmeta\`，
+D5 复跑（2026-11-02，`%USERPROFILE%\AppData\Local\Temp\opencode\agent-graphmeta\`，
 独立 Chromium、`?map=canvas` 绕开 headless 无 WebGPU 的 Luciad 报错）：
 
 - 右键时间轴 4 个点 + Add Flag → `(4/10)`、时间轴 4 个标记，`flag #1` 带评论
@@ -646,7 +646,7 @@ D5 复跑（2026-11-02，`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-graph
 
 
 
-截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-gpfcreate\`，1600×1000）：
+截图（`%USERPROFILE%\AppData\Local\Temp\opencode\agent-gpfcreate\`，1600×1000）：
 `gpf-created-b1.png`（b1 加第一个标记，`Flags (1/10)`，此前的 `GET` 是 `gpf:false`）、
 `gpf-after-refresh.png`（**清空 localStorage 后**刷新：标记与评论从新建的 `b1.gpf` 读回来）、
 `gpf-other-project-clean.png`（切到 clean 仍是 `(0/10)`，没有串）。
@@ -736,7 +736,7 @@ D5 只做到"有 `.gpf` 就读写，没有就 `localStorage`"，而三个 export
 - 切到 clean（`csv`）仍是 `(0/10)`，`GET ?project=csv` 是 `gpf:false`（没有顺手给 clean 造文件）；
 - console errors **0**、pageerror **0**。
 - 截图：`gpf-created-b1.png`、`gpf-after-refresh.png`、`gpf-other-project-clean.png`
-  （`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-gpfcreate\`）。跑完把生成的
+  （`%USERPROFILE%\AppData\Local\Temp\opencode\agent-gpfcreate\`）。跑完把生成的
   `export/b1/b1.gpf` 删掉，样本目录保持原样（`git status` 里不留文件）。
 
 
@@ -892,7 +892,7 @@ Position update,1477391600000.000000,1477391605000.000000,1,1.000000
   Heading & Attitude 页签 → 3 块图块都出 SVG，页脚"3 张图的 CSV 都在，全部画出来了"；
   console **0 error**，无 pageerror（唯一 warning 仍是 Luciad/WebGPU 的
   `ValidateTextureDescriptor`，与本改动无关）。
-- 截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-heading\heading-tab.png`。
+- 截图：`%USERPROFILE%\AppData\Local\Temp\opencode\agent-heading\heading-tab.png`。
 
 ### 12.8 仍然没做到的
 
@@ -983,7 +983,7 @@ node --test --test-force-exit "packages/*/test/*.test.ts"   # 1216 / 1217；另�
 | 字节 | **269 575 B**（其中瓦片 ≈126 KB；矢量回退 137 375 B；原版 348 419 B）。**旧的纯 ASCII 字节变了，这是本次预期的改动** |
 | b1（13 份 CSV） | `X-PDF-Pages: 9`、`X-PDF-Charts: 14`（1 信息 + 1 轨迹 + 7 页两图），5 299 367 B（含 SimHei 字体），第 2 页同样有 9 块 z18 瓦片 |
 
-瓦片缓存：`C:\Users\SunCh\AppData\Local\Temp\nas-pdf-tiles\{z}\{x}\{y}.jpg`；`NAS_PDF_TILE_CACHE`
+瓦片缓存：`%USERPROFILE%\AppData\Local\Temp\nas-pdf-tiles\{z}\{x}\{y}.jpg`；`NAS_PDF_TILE_CACHE`
 改目录，`options.tileCacheDir` 优先。缓存命中时同一份输入两次构建字节相同（有测试钉住）。
 
 测试（都在 `packages/app/test/`）：
@@ -997,10 +997,10 @@ node --test --test-force-exit "packages/*/test/*.test.ts"   # 1216 / 1217；另�
   `pdftotext -layout`** 对照原版逐页标题顺序，`pdfinfo` 也是 8 页（没装 poppler 时 skip）。
 - `pdf-unicode.test.ts`（7 项）：纯 ASCII 不嵌字体 + 8 页 / 13 图 / p2 是轨迹页 / p3 两张卡，
   封面 `Message Summary` 四行齐全，第 2 页有瓦片或有回退说明；中文嵌入、`pdftotext` 取回
-  `野外台站` / `C:\测试\项目`、降级路径照旧。
+  `野外台站` / `<盘>:\测试\项目`、降级路径照旧。
 - `graph-projects.test.ts`：b1 的两行数字 13/14 → 14/9（**边界外的一处改动**，见 §13.6）。
 
-截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-pdfmap\`）：`clean-page-1.png`（封面，
+截图（`%USERPROFILE%\AppData\Local\Temp\opencode\agent-pdfmap\`）：`clean-page-1.png`（封面，
 含 Message Summary）、`clean-page-2.png`（z18 底图 + 轨迹点 + 署名）、`b1-ours.pdf`、
 `clean-vector.pdf`（回退样本）。
 

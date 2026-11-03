@@ -2,7 +2,7 @@
  * Graph data layer + exports, checked against the **shipped golden** produced by Graph 2.11.0
  * (`00_来源/samples/graph/`, driven 2026-10-31 — see `03_分析/06_Graph应用.md §9.2`).
  *
- * The goldens embed the project path Graph itself used (`C:\Users\…\Temp\gs\clean`), which is the
+ * The goldens embed the project path Graph itself used (`%USERPROFILE%\Temp\gs\clean`), which is the
  * same string stored in `clean.gpf`, so no substitution is needed: the comparison is a plain
  * `Buffer` equality.
  */

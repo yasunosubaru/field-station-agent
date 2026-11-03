@@ -18,7 +18,7 @@ import type { EdieTables } from '../04_重实现/packages/protocol/src/edie.ts';
 
 const SUITE = 'C:\\Program Files\\NovAtel Inc\\NovAtel Application Suite\\NovAtelApplicationSuite.exe';
 const TEMP = 'C:\\Users\\SunCh\\AppData\\Local\\Temp\\opencode';
-const SAMPLES = 'H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体\\逆向\\00_来源\\samples\\live-20261031';
+const SAMPLES = join(import.meta.dirname, '..', '..', '逆向', '00_来源', 'samples', 'live-20261031');
 const tables = JSON.parse(
   readFileSync(new URL('../04_重实现/packages/protocol/data/edie-layouts.json', import.meta.url), 'utf8'),
 ) as EdieTables;

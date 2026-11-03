@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 先看已知缺陷登记
+    url: https://github.com/yasunosubaru/field-station-agent/blob/main/docs/known-issues.md
+    about: KI-01 起逐条记录已知缺陷与覆盖缺口，报缺陷前先查这里
+  - name: 逆向与重实现的说明
+    url: https://github.com/yasunosubaru/field-station-agent/blob/main/逆向/README.md
+    about: 交付物 B 的目录结构、重建步骤与覆盖边界
+  - name: 新手上手：把代码跑起来
+    url: https://github.com/yasunosubaru/field-station-agent/blob/main/docs/team/新手上手与本地运行.md
+    about: 从装环境到跑通第一条测试

@@ -607,7 +607,7 @@ Prefix/Suffix 的**落点**没有 CLI 开关可测（`cli.js:228-232` 恒发 `{v
   `…\agent-convertgui\gui-dest`，落盘 `…\b2-20261101\Converted_On_20261031_T1629\ASCII\` 两个文件，
   与套件同参数产物 sha256 相同；Sample Rate 填 `abc` 时字段旁出
   `Sample Rate must be a number in Hz.` 且不发请求。
-  截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-convertgui\gui-convert.png`（SOURCE 模式）、
+  截图：`%USERPROFILE%\AppData\Local\Temp\opencode\agent-convertgui\gui-convert.png`（SOURCE 模式）、
   `gui-convert-destination.png`（落盘）、`gui-convert-error.png`（非法 Sample Rate）。
 
 ### 6. 未做到的 / 未确认的

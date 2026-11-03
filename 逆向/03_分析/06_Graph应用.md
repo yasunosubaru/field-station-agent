@@ -928,8 +928,8 @@ const page = await app.firstWindow();
 
 | 项目路径 | 结果 |
 |---|---|
-| `H:\…\野外台站智能体\逆向\00_来源\samples\graph`（含中文与空格） | `File Validation` 停在 **0%**，180 s 无变化，`graphing` 子进程**一条响应都没有**，也未派生进程 |
-| `C:\Users\<user>\AppData\Local\Temp\gs`（纯 ASCII） | 立刻 `Percentage: 96 → 100`，`Finish` 可点，进入 `#/overview` |
+| `<仓库上级>\逆向\00_来源\samples\graph`（含中文与空格） | `File Validation` 停在 **0%**，180 s 无变化，`graphing` 子进程**一条响应都没有**，也未派生进程 |
+| `%USERPROFILE%\AppData\Local\Temp\gs`（纯 ASCII） | 立刻 `Percentage: 96 → 100`，`Finish` 可点，进入 `#/overview` |
 
 → **Graph 的校验/建库链路处理不了非 ASCII 路径**（推断是原生侧按 ANSI 路径传参）。这是本子系统
 新增的确定性缺陷，复现时若路径含中文，必须先把工程与日志放到纯 ASCII 目录。
@@ -1055,13 +1055,13 @@ GOS\events.db       24 576 B   同上
 `00_来源/samples/graph/` 只有工程与导出产物，**没有**输入日志。输入是
 `00_来源/samples/convert/clean-9600.gps`：`270 864 B`，与 `.gpf` 的 `DataInfo.FileSize` 和
 `Messages`（`RANGE 100 / BESTPOS 5 / RAWEPHEM 8 / RXSTATUS 4 / PORTSTATS 1 / HWMONITOR 1`）逐项吻合。
-CLI 用 `--capture` 指向它（`.gpf` 里记的是 `C:\Users\…\Temp\gs\clean.gps`，早已不存在）。
+CLI 用 `--capture` 指向它（`.gpf` 里记的是 `%USERPROFILE%\Temp\gs\clean.gps`，早已不存在）。
 
 ### 11.3 CSV 规格（逐字节）
 
 ```
 <UTF-8 BOM EF BB BF>#Project Name:          clean\r\n
-#Project Directory:    C:\Users\…\gs\clean\r\n
+#Project Directory:    %USERPROFILE%\gs\clean\r\n
 #Data File Name:      clean.gps\r\n
 #Start Time(GPS):      2442,463097.350\r\n
 #End Time(GPS):       2442,463102.300\r\n
@@ -1429,7 +1429,7 @@ CSV / KML 仍全部 `identical to golden`；PDF 不参与逐字节比对。实�
 | 合成 20 000 行 × 5 列 | 抽稀 1/17，整份 < 1.5 MB，构建 < 100 ms |
 | 浏览器（Playwright + Chrome 156，`file://`） | HTTP 200，**0 console error、0 page error**；截图 1100×900，平均亮度 199.6，纯黑像素 0.0% |
 
-浏览器截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\graph-pdf.png` —— Chrome 自带 PDF 阅读器，
+浏览器截图：`%USERPROFILE%\AppData\Local\Temp\opencode\graph-pdf.png` —— Chrome 自带 PDF 阅读器，
 左侧 13 个缩略图全部有内容，右侧第 1 页显示 `clean Report` / 六项项目信息 / Message Summary。
 
 测试断言（`packages/graph/test/pdf.test.ts`，9 项）：`%PDF-1.4` 开头、`%%EOF` 结尾；xref 每条偏移

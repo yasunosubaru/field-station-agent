@@ -1,0 +1,72 @@
+name: 缺陷报告
+description: 报一个可复现的缺陷（跑不通、算错了、界面坏了）
+title: "[缺陷] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        报缺陷之前先做两件事：
+
+        1. 跑一遍固定测试命令，把输出贴上来——`unittest` 对 skip 不报错，只贴「OK」不算数；
+        2. 截图或贴原文，别只描述现象。本仓库的数字都要求可回源，缺陷也一样。
+
+  - type: dropdown
+    id: deliverable
+    attributes:
+      label: 属于哪一半
+      options:
+        - A · 野外台站智能体（Python）
+        - B · NovAtel 套件逆向与重实现（TypeScript / GUI）
+        - 仓库本身（CI、文档、工具）
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 期望的行为、实际的行为，各写一句
+      placeholder: |
+        期望：Convert 的 RINEX 3 输出与 golden 逐字节一致
+        实际：头段少了 INTERVAL 一行，比对在第 12 行失败
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 从干净环境开始，逐条写命令。涉及样本时给仓库内相对路径。
+      placeholder: |
+        1. $env:PYTHONPATH="src"; python -m unittest tests.test_x -v
+        2. 或 cd 逆向/04_重实现; node --test "packages/protocol/test/convert-formats.test.ts"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据
+      description: 命令输出、日志、截图路径、`文件:行号`。不要只写结论。
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: GUI 缺陷填 `NovAtelReverse.exe` 的版本（窗口标题或文件名）；智能体缺陷填提交号
+      placeholder: 0.1.10 / 747af9a
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: 操作系统、Python 版本、Node 版本，以及是否接了真机（型号、端口）
+      placeholder: Windows 11 x64 / Python 3.11.9 / Node 22.6 / OEM729 接 COM10
+    validations:
+      required: true

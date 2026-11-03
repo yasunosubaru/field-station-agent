@@ -959,7 +959,7 @@ Device       deviceInfo.js:10-130, 376-407
 console / pageerror / 非 2xx：0
 ```
 
-截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-playback\`（`00-recent-activity.png`、
+截图：`%USERPROFILE%\AppData\Local\Temp\opencode\agent-playback\`（`00-recent-activity.png`、
 `01-files-bar-summary.png`、`02-open-dialog.png`、`03-two-files.png`、`04-switched-back.png`、
 `05-after-close.png`、`06-dock-open.png`、`07-controls-ended.png`、`08-band-link.png`、
 `09-recent-two-tiles.png`）。
@@ -1045,7 +1045,7 @@ console / pageerror / 非 2xx：0
 console / pageerror：0
 ```
 
-截图：`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-playback-events\`
+截图：`%USERPROFILE%\AppData\Local\Temp\opencode\agent-playback-events\`
 （`d1-b7-tooltip.png` 整页、`d1-b7-strip-tooltip.png` 局部、`d1-b7-strip.png`、
 `d1-b7-strip-closeup.png`、`d1-b1-empty.png`、`d1-b1-empty-strip.png`）。
 

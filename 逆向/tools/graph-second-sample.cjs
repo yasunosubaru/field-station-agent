@@ -18,7 +18,7 @@
 //
 // Exits 0 only when `<GRAPH_DIR>\<GRAPH_NAME>\<GRAPH_NAME>.gpf` exists AND the wizard
 // showed 100% file validation.
-const PW = 'C:/Users/SunCh/AppData/Roaming/npm/node_modules/playwright';
+const PW = 'C:/Users/<user>/AppData/Roaming/npm/node_modules/playwright';
 const { _electron } = require(PW);
 const fs = require('fs');
 const path = require('path');

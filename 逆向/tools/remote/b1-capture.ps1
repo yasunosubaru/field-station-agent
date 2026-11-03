@@ -8,7 +8,7 @@
 param(
   [string]$Port = 'COM8',
   [int]$Seconds = 25,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b1.sbf',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b1.sbf'),
   [int]$Baud = 115200,
   [switch]$NoUnlog
 )
@@ -87,7 +87,7 @@ $fs.Close()
 if (-not $NoUnlog) {
   # Bare UNLOGALL clears the port this session is on. The port-argument form wants the RECEIVER's
   # port name (USB1, COM2, ...), not the Windows COM name, so `UNLOGALL COM10` silently does
-  # nothing and leaves logs behind (see 03_分析/09 §9.x.8).
+  # nothing and leaves logs behind (see 03_analysis/09, section 9.x.8).
   $sp.Write("UNLOGALL`r`n")
   Start-Sleep -Milliseconds 400
 }

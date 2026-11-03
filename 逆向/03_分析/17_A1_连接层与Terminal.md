@@ -274,7 +274,7 @@ LOG RXCONFIGA ONCE      -> 本口 20 s 内一条不出（不要用它做回读�
 原版套件本轮**没能**做控制变量：远程机只有已断开的 RDP 会话，`CopyFromScreen` 抓出纯白，
 按键/鼠标注入无效，`PostMessage` 只有首页 Manage 卡片响应；加 `--remote-debugging-port=9222`
 时 DevTools 端口一闪即被它自己的参数校验判死（`Invald option  REMOTE-DEBUGGING-PORT`）。
-完整证据与逐页对照表见 `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-live\REPORT.md`。
+完整证据与逐页对照表见 `%USERPROFILE%\AppData\Local\Temp\opencode\agent-live\REPORT.md`。
 
 ### 17.8 实机：配置页真的拿到数据了（2026-11-01 下午，COM10/USB2）
 
@@ -387,7 +387,7 @@ LOG THISANTENNATYPEB ONCE
 
 口径：`GET /config/<page>`（服务端按该页 `requiredLogs` 自己发 `LOG …B ONCE`、喂数据、重渲染），
 浏览器读**可见控件的 value 与元素文本**，截图在
-`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-cfgdata\<page>.png`。
+`%USERPROFILE%\AppData\Local\Temp\opencode\agent-cfgdata\<page>.png`。
 
 | 页 | 页面显示（实测 DOM） | 接收机原话 | 判定 |
 |---|---|---|---|
@@ -428,5 +428,5 @@ port-state.ps1      -> COM8 FREE / COM9 FREE / COM10 FREE，远程机无我们�
 ```
 
 需要把这台机的日志表恢复成 17.7 记录的样子时，照
-`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-live\report\loglist-before-unlogall.txt` 重发即可。
+`%USERPROFILE%\AppData\Local\Temp\opencode\agent-live\report\loglist-before-unlogall.txt` 重发即可。
 

@@ -29,12 +29,12 @@
 | 项 | 值 |
 |---|---|
 | Graph | `C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe`，`2.11.0.3656` |
-| 输入（副本，纯 ASCII 路径） | `C:\Users\SunCh\AppData\Local\Temp\gs2\broad.gps`（3 199 316 B，源：`00_来源/samples/convert/broad-clean.gps`） |
-| 工程父目录 | `C:\Users\SunCh\AppData\Local\Temp\gs2` |
+| 输入（副本，纯 ASCII 路径） | `%USERPROFILE%\AppData\Local\Temp\gs2\broad.gps`（3 199 316 B，源：`00_来源/samples/convert/broad-clean.gps`） |
+| 工程父目录 | `%USERPROFILE%\AppData\Local\Temp\gs2` |
 | 工程名 | `broad` |
-| 工程文件 | `C:\Users\SunCh\AppData\Local\Temp\gs2\broad\broad.gpf`（2 840 B） |
+| 工程文件 | `%USERPROFILE%\AppData\Local\Temp\gs2\broad\broad.gpf`（2 840 B） |
 | **File Validation** | **成功（100%）**，向导页原文 `File validation successful.`，`Finish` 随之可点（3.2 MB 输入，从点 `Next` 到可 `Finish` 约 6 s） |
-| 导出目的地 | `C:\Users\SunCh\AppData\Local\Temp\gs2\export` |
+| 导出目的地 | `%USERPROFILE%\AppData\Local\Temp\gs2\export` |
 | CSV 表头行 | 两份 CSV 都用"以 `timestamp` 开头的那一行"定位（本样本是第 7 行，`#` 注释 6 行） |
 
 两份输入的时间跨度与报文量（Graph 自己写进 `DataSummary.json` 的计数）：
@@ -362,7 +362,7 @@ QZSS   : （无）
 
 ```powershell
 # 1) 纯 ASCII 工作目录 + 数据副本
-$dst = 'C:\Users\SunCh\AppData\Local\Temp\gs2'
+$dst = '%USERPROFILE%\AppData\Local\Temp\gs2'
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 Copy-Item 逆向\00_来源\samples\convert\broad-clean.gps "$dst\broad.gps" -Force
 

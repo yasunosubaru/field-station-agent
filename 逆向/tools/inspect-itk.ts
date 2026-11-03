@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { SbfDeframer } from '../04_重实现/packages/protocol/src/framing.ts';
 import { decodeEdie } from '../04_重实现/packages/protocol/src/edie.ts';
 
-const REPO = 'H:\\Archive\\文件夹 老版\\personal content\\课程资料\\其他\\大创项目\\野外台站智能体';
+const REPO = process.env.NAS_REPO ?? join(import.meta.dirname, '..', '..');
 const tables = JSON.parse(readFileSync(join(REPO, '逆向', '04_重实现', 'packages', 'protocol', 'data', 'edie-layouts.json'), 'utf8'));
 const capture = join(REPO, '逆向', '00_来源', 'samples', 'live-20261031', 'b7-20261101.sbf');
 const frames = [...new SbfDeframer({ crcMode: 'validate' }).push(new Uint8Array(readFileSync(capture)))] as any[];

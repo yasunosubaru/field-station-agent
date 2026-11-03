@@ -1,0 +1,60 @@
+name: 需求 / 提案
+description: 提一个新功能、新断言，或对现有设计提出修改
+title: "[提案] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        本仓库的默认答案是「先改文档，再改代码」：任何行为变更都要先说清楚它落在哪份文档的
+        哪一条可验收断言上。提案里请把这一点写在明面上。
+
+  - type: dropdown
+    id: deliverable
+    attributes:
+      label: 属于哪一半
+      options:
+        - A · 野外台站智能体（Python）
+        - B · NovAtel 套件逆向与重实现（TypeScript / GUI）
+        - 仓库本身（CI、文档、工具）
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决什么问题
+      description: 现状哪里不够用，谁受影响，不做的代价是什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 打算怎么做
+      description: 需要动哪些路径、是否新增可验收断言、边界在哪
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 怎么算做完
+      description: 给可验证的判据（命令、输出、数字口径），别写「优化一下」
+      placeholder: |
+        - `python -m unittest ...` 全绿且 skip 为 0
+        - README 的机维护块由 `tools/sync_code_counts.py` 重新生成后仍与实测一致
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: 风险等级
+      description: 高风险动作必须走人工审批门（见 docs/operations/high-risk-actions.md）
+      options:
+        - 低（只读、只加测试、只改文档）
+        - 中（改行为，有回滚路径）
+        - 高（涉及设备动作、真实数据或不可逆操作）
+    validations:
+      required: true

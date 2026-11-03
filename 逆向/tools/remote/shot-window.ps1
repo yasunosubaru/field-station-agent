@@ -1,8 +1,8 @@
 
 # ASCII only. Tries to capture the suite's main window via PrintWindow (PW_RENDERFULLCONTENT)
 # instead of grabbing the screen. Runs inside the interactive session.
-$log = 'C:\Users\niwawa\AppData\Local\Temp\nova-printwin.txt'
-$out = 'C:\Users\niwawa\AppData\Local\Temp\nova-printwin.png'
+$log = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\nova-printwin.txt')
+$out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\nova-printwin.png')
 $lines = @()
 $lines += 'session: ' + (Get-Process -Id $PID).SessionId
 

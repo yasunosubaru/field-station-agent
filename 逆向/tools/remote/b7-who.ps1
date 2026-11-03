@@ -1,6 +1,6 @@
 # ASCII only. Who owns the logs still flowing after the wrap-up?
 param([string]$Port = 'COM10', [int]$Baud = 115200,
-      [string]$Txt = 'C:\Users\niwawa\AppData\Local\Temp\b7-who.txt')
+      [string]$Txt = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-who.txt'))
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort -ArgumentList $Port, $Baud, 'None', 8, 'One'
 $sp.ReadTimeout = 100

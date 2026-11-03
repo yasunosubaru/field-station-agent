@@ -22,7 +22,7 @@
 param(
   [string]$Port = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b5-probe.txt',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b5-probe.txt'),
   [int]$WindowMs = 1500,
   [int]$DrainSeconds = 3,
   # Comma-separated log names: probe these instead of the built-in list.

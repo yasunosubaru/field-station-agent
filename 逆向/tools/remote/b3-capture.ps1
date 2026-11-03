@@ -34,7 +34,7 @@
 param(
   [string]$Port = 'COM10',
   [int]$Seconds = 30,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b3.sbf',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b3.sbf'),
   [int]$Baud = 115200,
   [switch]$ProbeOnly
 )

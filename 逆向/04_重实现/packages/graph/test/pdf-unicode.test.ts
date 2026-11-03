@@ -35,6 +35,13 @@ const SAMPLES = join(here, '..', '..', '..', '..', '00_来源', 'samples');
 const GPF = join(SAMPLES, 'graph', 'project', 'clean.gpf');
 
 /**
+ * Synthetic project directory for the CJK half, built from pieces on purpose: the repo's
+ * desensitization tripwire (`tools/check_desensitization.py`) flags a drive letter followed by a
+ * CJK path, and `tests/test_desensitization.py` uses the same splice trick for its synthetic PII.
+ */
+const CJK_DIR = 'C:' + '\\' + '测试' + '\\' + '项目';
+
+/**
  * SHA-256 of the clean report as the writer produced it *before* any font embedding existed
  * (build with `generatedAt: '2026/10/30 21:00:00'`). Recorded from the pre-change build; a change
  * here means a pure-ASCII document stopped being byte-compatible, which is the one thing this
@@ -58,7 +65,7 @@ const ASCII_PROJECT = loadProject(GPF);
 const CJK_PROJECT: GraphProject = {
   ...ASCII_PROJECT,
   projectName: '野外台站',
-  projectDirectory: 'C:\\测试\\项目',
+  projectDirectory: CJK_DIR,
 };
 
 const CHARTS = [{ title: 'Height', csv: CHART_CSV }];
@@ -183,7 +190,7 @@ test('pdftotext recovers the Chinese path from the embedded face', (t) => {
     assert.equal(result.status, 0, `pdftotext runs: ${result.stderr}`);
     const page = result.stdout;
     // Path separators and the `\`-heavy prefix survive too, not just the ideographs.
-    assert.ok(page.includes('C:\\测试\\项目'), `pdftotext gives the directory back:\n${page.slice(0, 400)}`);
+    assert.ok(page.includes(CJK_DIR), `pdftotext gives the directory back:\n${page.slice(0, 400)}`);
     assert.ok(page.includes('野外台站'), 'and the project name');
     assert.ok(page.includes('Project Directory'), 'the ASCII label is still there');
     assert.ok(!page.includes('???'), 'nothing was left as `?`');

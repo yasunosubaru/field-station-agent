@@ -6,8 +6,8 @@
 param(
   [string]$Port = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b7-flood.bin',
-  [string]$Txt = 'C:\Users\niwawa\AppData\Local\Temp\b7-flood.txt',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-flood.bin'),
+  [string]$Txt = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-flood.txt'),
   [int]$StepMs = 2000
 )
 $ErrorActionPreference = 'Stop'

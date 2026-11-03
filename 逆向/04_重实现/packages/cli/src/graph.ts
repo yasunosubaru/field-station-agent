@@ -17,7 +17,7 @@
  * `06_Graph应用.md §12`/§13).
  *
  * The capture comes from the project's own `filePath` when that file still exists; otherwise pass
- * `--capture` (the shipped sample project points at `C:\Users\…\Temp\gs\clean.gps`, which is gone).
+ * `--capture` (the shipped sample project points at `%USERPROFILE%\Temp\gs\clean.gps`, which is gone).
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

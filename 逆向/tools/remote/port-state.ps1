@@ -19,5 +19,5 @@ foreach ($p in $ports) {
 Get-Process powershell,pwsh,node -ErrorAction SilentlyContinue |
   Where-Object { $_.Id -ne $PID } |
   ForEach-Object { Write-Output ('proc  : ' + $_.Id + ' ' + $_.ProcessName + ' ' + $_.StartTime) }
-Get-ChildItem 'C:\Users\niwawa\AppData\Local\Temp' -Filter 'b4*' -ErrorAction SilentlyContinue |
+Get-ChildItem (Join-Path $env:USERPROFILE 'AppData\Local\Temp') -Filter 'b4*' -ErrorAction SilentlyContinue |
   ForEach-Object { Write-Output ('file  : ' + $_.Name + ' ' + $_.Length) }

@@ -35,7 +35,7 @@
  *    and a `ToUnicode` CMap. Such a run is written as UTF-16BE **glyph ids** in a hex string and
  *    measured with the TTF's own advances, so right-aligned cells still line up. SimHei has a
  *    single weight: bold runs fall back to it rather than faking a bold face. The two families
- *    are mixed per string, so `H:\Archive\中文\b1` keeps Helvetica for the ASCII parts.
+ *    are mixed per string, so `<盘>:\中文目录\b1` keeps Helvetica for the ASCII parts.
  *  - **Degradation**: with no usable face (file missing, unparseable, a `.ttc` collection) nothing
  *    is embedded and non-ASCII characters become `?` exactly as before. The information page's
  *    footer then says so, and {@link pdfCjkFontStatus} reports the reason.

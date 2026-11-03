@@ -47,7 +47,7 @@
 param(
   [string]$Port = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b6.sbf',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b6.sbf'),
   [int]$DrainSeconds = 3,
   [int]$OnceSeconds = 6,
   [int]$RateSeconds = 15,

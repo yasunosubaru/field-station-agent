@@ -6,7 +6,7 @@ param(
   [string[]]$Commands = @(),
   [int]$DrainSeconds = 8,
   [int]$Seconds = 20,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\capture.bin'
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\capture.bin')
 )
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort $Com, $Baud, 'None', 8, 'One'

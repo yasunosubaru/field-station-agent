@@ -424,6 +424,29 @@
   五个阶段 sha 不变），M5-4 审计与 M5-3 看板同步重生成。回归测试
   `tests/test_m5_pipeline.py::test_stage_input_events_record_note_messages_and_digest`。
 
+### KI-12 厂商原样证据文件带着本机路径：脱敏守卫对证据目录单列豁免【设计决定 · 2026-11-03】
+
+- **位置**：`逆向/00_来源/samples/**`（181 个文件，约 124 MB）与
+  `tools/check_desensitization.py` 的 `EVIDENCE_PREFIXES`。
+- **症状**：Convert 摘要的头段、Graph 导出的 CSV 头、真机抓取的转写里带着生成它们那台机器的
+  本机路径（用户目录 + 中文路径），守卫一次报出 86 处。
+- **为什么不能改**：这些文件是**逐字节比对的基准**（`packages/protocol/test/convert-*.test.ts`、
+  `packages/app/test/*.test.ts`、`packages/graph/test/*.test.ts`）。改一个字，比对即失效；
+  改完的产物也不再是「厂商软件当时写出来的东西」，证据就没了——这正是本仓库反复强调的那条线。
+- **处理**：守卫把该前缀下的命中**单独计数并按文件打印**，默认不计入退出码；`--strict` 一并计入
+  （本仓库实测 `--strict` 退出码 1）。放开的地方只有这一个前缀列表，加别的东西进列表要在这里登记。
+- **同一提交里收紧的三处误报**（误报会把门禁逼成摆设）：
+  `mobile` 曾把 SHA-256 十六进制串与 `1.15960574476e-11` 这类小数报成手机号；
+  `home_path_unix` 曾把 `url("/home/grit-icon.png")` 这种 URL 路径报成家目录；
+  厂商自己的公开支持邮箱（`@hexagon.com` / `@novatel.com`）不算个人数据。
+- **同时清理的**：仓库自有文件里的本机路径与远程机器信息——`逆向/03_分析/` 的文档改用
+  `%USERPROFILE%`、`<仓库上级>` 这类占位符；`逆向/tools/remote/*.ps1` 的本机路径改为
+  `$env:USERPROFILE`、仓库路径改为从 `import.meta.dirname` 推导；远程主机名与 IP 从
+  `逆向/tools/remote/README.md` 撤下，改为让读者填 `$H` / `$K` / `$T`。
+- **回归**：`tests/test_desensitization.py` 的
+  `TestCommandLine::test_evidence_directory_is_exempt_but_reported` 与
+  `TestPatterns::test_hex_and_float_are_not_phone_numbers`。
+
 ## 维护约定
 
 1. 新发现的缺陷**先登记在这里，再决定修不修**；"不修"的理由必须写出来。

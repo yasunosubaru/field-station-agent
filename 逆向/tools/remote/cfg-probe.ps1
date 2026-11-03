@@ -4,7 +4,7 @@ param(
   [string]$Com = 'COM10',
   [int]$Baud = 115200,
   [int]$Seconds = 5,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\cfg-probe.bin'
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\cfg-probe.bin')
 )
 
 $ErrorActionPreference = 'Stop'

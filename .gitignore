@@ -41,3 +41,9 @@ dist/
 逆向/04_重实现/packages/app/node_modules/
 逆向/04_重实现/**/node_modules/
 
+# 厂商手册原文（PDF，约 40 MB）与本机提取的文本：厂商专有，留在本机
+NovAtel/
+
+# 远程会话的本机专用参数（主机名、私钥名各人一份）
+逆向/tools/remote/*.local.ps1
+

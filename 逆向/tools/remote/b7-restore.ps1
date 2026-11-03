@@ -9,8 +9,8 @@
 param(
   [string]$Port = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b7-restore.bin',
-  [string]$Txt = 'C:\Users\niwawa\AppData\Local\Temp\b7-restore.txt'
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-restore.bin'),
+  [string]$Txt = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-restore.txt')
 )
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort -ArgumentList $Port, $Baud, 'None', 8, 'One'

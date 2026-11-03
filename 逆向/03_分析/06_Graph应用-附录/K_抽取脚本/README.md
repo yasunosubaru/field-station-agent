@@ -3,7 +3,7 @@
 所有 renderer 侧的脚本都从环境变量 `GRAPHSRC` 读目标文件，例如 PowerShell：
 
 ```powershell
-$env:GRAPHSRC = "F:\...\逆向\01_解包\Graph\out\renderer\assets\index-B86bHcCD.js"
+$env:GRAPHSRC = "<解包根>\逆向\01_解包\Graph\out\renderer\assets\index-B86bHcCD.js"
 node stats.js $env:GRAPHSRC           # 行数/行宽/关键标记计数
 node g.js 'pattern' 60 120 20 [out]   # 上下文 grep（before/after 字符数，limit，可选输出文件）
 node slice.js 562300 562800           # 按字节偏移切片打印

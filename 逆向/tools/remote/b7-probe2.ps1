@@ -9,8 +9,8 @@
 param(
   [string]$Port = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b7-probe2.bin',
-  [string]$Txt = 'C:\Users\niwawa\AppData\Local\Temp\b7-probe2.txt',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-probe2.bin'),
+  [string]$Txt = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-probe2.txt'),
   [int]$WaitMs = 1600
 )
 $ErrorActionPreference = 'Stop'

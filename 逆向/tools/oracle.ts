@@ -9,7 +9,7 @@
  * `NovAtelApplicationSuite.exe`, read the line.
  *
  * The suite needs a **pure ASCII path with no spaces** for both input and output (it silently
- * converts nothing otherwise), hence `C:\Users\SunCh\AppData\Local\Temp\opencode\oracle-*`.
+ * converts nothing otherwise), hence `%USERPROFILE%\AppData\Local\Temp\opencode\oracle-*`.
  *
  * Run one of the probe scripts in this directory directly:
  *   node --experimental-strip-types 逆向/tools/oracle-useri2c.ts

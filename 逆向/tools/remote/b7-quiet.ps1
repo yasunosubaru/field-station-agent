@@ -1,6 +1,6 @@
 # ASCII only. Clear the residual profile on USB2 and see whether it stays cleared.
 param([string]$Port = 'COM10', [int]$Baud = 115200,
-      [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b7-quiet.bin')
+      [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-quiet.bin'))
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort -ArgumentList $Port, $Baud, 'None', 8, 'One'
 $sp.ReadTimeout = 100

@@ -1173,7 +1173,7 @@ b4 = `live-20261031/b4-20261101.sbf`（2026-11-01 03:44 UTC，唯一带 PPP / L-
 
 ### 12.5 截图与对照脚本
 
-目录 `C:\Users\SunCh\AppData\Local\Temp\opencode\agent-manage\`，服务
+目录 `%USERPROFILE%\AppData\Local\Temp\opencode\agent-manage\`，服务
 `node packages/app/src/server.ts --port 7813`，Playwright 1706×1400：
 
 | 文件 | 内容 |
@@ -1314,7 +1314,7 @@ Events 页真的显示干扰条目，这两处名字得先对上；`packages/vie
 | 全抓包统计 | 47 条记录 / 38 条带检测（`STATISTICANALYSIS` 25 · `SPECTRUMANALYSIS` 13），频段全为 `L2` |
 | 空态 | 换成 `b1-20261101.sbf`（该抓包 0 条 `ITDETECTSTATUS`）：0 行、`No interference detected.` 可见、配置值全部 `--` 并列出缺失记录 |
 
-截图（`C:\Users\SunCh\AppData\Local\Temp\opencode\agent-itkpage\`）：
+截图（`%USERPROFILE%\AppData\Local\Temp\opencode\agent-itkpage\`）：
 `07-drawer-itk.png`（抽屉里的 ITK 页，25 行 + 页顶只读说明）、`04-itk-standalone.png`（整页）、
 `05-itk-config.png` / `06-itk-missing.png`（配置表与缺失原因）、`09-itk-empty.png`（换 b1 后的空态）、
 `10-filter-L1.png`（点 L1 页签后过滤成空）、`08-networking.png`（Settings ▸ Networking 只剩 Ethernet）。

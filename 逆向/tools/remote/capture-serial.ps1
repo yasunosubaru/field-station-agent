@@ -4,7 +4,7 @@
 param(
   [string]$Port = 'COM9',
   [int]$Seconds = 15,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\nova-capture.sbf',
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\nova-capture.sbf'),
   [int]$Baud = 115200
 )
 

@@ -1,7 +1,7 @@
 # ASCII only. Final check: is anything still streaming to USB2 after the wrap-up?
 # Writes what it saw so the leftover stream can be named.
 param([string]$Port = 'COM10', [int]$Baud = 115200, [int]$Seconds = 3,
-      [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\b7-idle.bin')
+      [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\b7-idle.bin'))
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort -ArgumentList $Port, $Baud, 'None', 8, 'One'
 $sp.ReadTimeout = 100

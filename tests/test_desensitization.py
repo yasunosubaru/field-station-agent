@@ -106,6 +106,22 @@ class TestPatterns(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual(self._categories(line), set(), line)
 
+    def test_hex_and_float_are_not_phone_numbers(self):
+        """误报会把门禁逼成摆设：十六进制串与小数里的 11 位数字不是手机号。
+
+        两个样本都取自本仓库真出现过误报的位置——RAWEPHEMA 的字节串，以及 RINEX 导航电文的
+        浮点常数（`1.15960574476e-11` 里的 11 位数字正好落在 `1[3-9]` 上）。
+        """
+        clean = [
+            "8b062c0bb6aa15027934873ee7685501ec07e9a9f2105aa10e0e8008c932",
+            "[-1.15960574476e-11, '-.115960574476D-10'],",
+            'background-image: url("/home/grit-icon.png");',
+            "the vendor's own support address is nas.support@hexagon.com",
+        ]
+        for line in clean:
+            with self.subTest(line=line):
+                self.assertEqual(self._categories(line), set(), line)
+
 
 class TestCommandLine(unittest.TestCase):
     def test_repository_is_clean(self):
@@ -152,6 +168,39 @@ class TestCommandLine(unittest.TestCase):
             run = _run("--root", td, "--denylist", str(Path(td) / "none.txt"))
             self.assertEqual(run.returncode, 2, run.stdout + run.stderr)
             self.assertIn("[阻断]", run.stdout)
+
+    def test_evidence_directory_is_exempt_but_reported(self):
+        """证据目录（厂商/真机原样文件）单列豁免：默认不计入退出码，但必须报数。
+
+        豁免不能是静默放行——输出里要看得见条数，`--strict` 要能把它算回去；
+        另外无论哪种模式，命中内容都不许回显（CI 日志是公开的）。
+        """
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            _git_repo(td, {
+                "逆向/00_来源/samples/live/summary.txt":
+                    f"#Project Directory:    {WIN_PATH}\n",
+            })
+            plain = _run("--root", str(td), "--denylist", str(td / "none.txt"))
+            self.assertEqual(plain.returncode, 0, plain.stdout + plain.stderr)
+            self.assertIn("证据豁免 1 处", plain.stdout)
+            self.assertIn("命中 0 处", plain.stdout)
+            self.assertNotIn(WIN_PATH, plain.stdout)
+
+            strict = _run("--root", str(td), "--denylist", str(td / "none.txt"),
+                          "--strict")
+            self.assertEqual(strict.returncode, 1, strict.stdout + strict.stderr)
+            self.assertIn("证据豁免 1 处", strict.stdout)
+            self.assertNotIn(WIN_PATH, strict.stdout)
+
+    def test_exemption_covers_only_the_evidence_prefix(self):
+        """同名内容挪出证据目录就得拦下来——前缀列表不放行别处。"""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            _git_repo(td, {"逆向/03_分析/notes.md": f"路径 {WIN_PATH} 已删除\n"})
+            run = _run("--root", str(td), "--denylist", str(td / "none.txt"))
+            self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+            self.assertIn("逆向/03_分析/notes.md:1", run.stdout)
 
 
 if __name__ == "__main__":

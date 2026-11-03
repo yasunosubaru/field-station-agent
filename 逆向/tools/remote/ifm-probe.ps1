@@ -4,7 +4,7 @@
 param(
   [string]$Com = 'COM10',
   [int]$Baud = 115200,
-  [string]$Out = 'C:\Users\niwawa\AppData\Local\Temp\ifm-probe.bin'
+  [string]$Out = (Join-Path $env:USERPROFILE 'AppData\Local\Temp\ifm-probe.bin')
 )
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort $Com, $Baud, 'None', 8, 'One'
