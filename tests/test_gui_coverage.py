@@ -35,6 +35,18 @@ class Generator(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = _load_module()
 
+    def _a(self):
+        """干净检出没有 01_解包 时，用已入库清单的 a 段（source=missing）。"""
+        a = self.mod.scan_a()
+        if a.get("source") != "missing":
+            return a
+        inventory = json.loads(
+            (ROOT / "逆向" / "03_分析" / "附录" / "gui-inventory.json")
+            .read_text(encoding="utf-8"))
+        a = dict(inventory.get("a") or {})
+        a["source"] = "missing"
+        return a
+
     def test_committed_outputs_are_current(self):
         self.assertEqual(self.mod.main(["--check"]), 0)
 
@@ -64,7 +76,7 @@ class Generator(unittest.TestCase):
 
     def test_every_view_is_mapped(self):
         map_data = self.mod.load_map()
-        a = self.mod.scan_a()
+        a = self._a()
         self.assertEqual(self.mod.validate(map_data, a, self.mod.scan_b()), [])
 
     def test_gap_rows_have_handling(self):
@@ -84,7 +96,7 @@ class Generator(unittest.TestCase):
 
     def test_missing_view_mapping_is_reported(self):
         map_data = self.mod.load_map()
-        a = self.mod.scan_a()
+        a = self._a()
         errors = self.mod.validate(map_data, a, self.mod.scan_b())
         self.assertEqual(errors, [])
         # 去掉一个已映射的 view，生成器必须报「A 目录未映射」
@@ -103,7 +115,7 @@ class Generator(unittest.TestCase):
 
     def test_bad_workflow_is_reported(self):
         map_data = self.mod.load_map()
-        a = self.mod.scan_a()
+        a = self._a()
         broken = json.loads(json.dumps(map_data))
         target = next(e for e in broken["entries"] if e.get("workflow"))
         target["workflow"] = "no.such.workflow"
@@ -112,7 +124,7 @@ class Generator(unittest.TestCase):
 
     def test_bad_evidence_line_is_reported(self):
         map_data = self.mod.load_map()
-        a = self.mod.scan_a()
+        a = self._a()
         broken = json.loads(json.dumps(map_data))
         target = next(e for e in broken["entries"] if e.get("b"))
         target["b"][0]["find"] = "这句话不在任何源码里"

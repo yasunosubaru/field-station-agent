@@ -547,8 +547,10 @@ def generate() -> tuple[str, str]:
         _A_FROM_COMMITTED = True
         _A_REF_OVERRIDES = dict(inventory.get("entry_refs") or {})
         if not _A_REF_OVERRIDES:
-            raise SystemExit(
-                "gui-inventory.json 缺 entry_refs：先用本机解包目录重新生成一次并提交")
+            # 旧清单没有 entry_refs 时仍要能生成（A 引用退化成 [未知]）；
+            # --check 会因为与提交版不一致而失败，正确定位「清单该重生成」。
+            print("[警告] gui-inventory.json 缺 entry_refs：A 证据行号会退化为 [未知]",
+                  file=sys.stderr)
     errors = validate(map_data, a, b)
     if errors:
         raise CoverageError(errors)
