@@ -84,6 +84,12 @@ ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{2,60}$")
 MENU_LINE_RE = re.compile(r'<li[^>]*class="[^"]*(?:menu-status-config|menubar-layouts|sidebar-nav-item)[^"]*"[^>]*>')
 ID_ATTR_RE = re.compile(r'id="([A-Za-z][A-Za-z0-9_-]*)"')
 
+#: 解包目录缺失时，A 侧证据行号从已入库清单的 ``entry_refs`` 取。
+#: 生成物必须与提交版逐字节一致，所以 ``source`` 不改写（仍是 ``unpacked``），
+#: 用这两个模块级标记表示“本次数据来自清单”。
+_A_FROM_COMMITTED = False
+_A_REF_OVERRIDES: dict[str, str] = {}
+
 
 class CoverageError(RuntimeError):
     """映射或引用不成立。消息里带全部问题，不逐条中断。"""
@@ -302,8 +308,9 @@ def validate(map_data: dict, a: dict, b: dict) -> list[str]:
         for i, ref in enumerate(entry.get("b") or []):
             _resolve_ref(ref, f"{item_id}.b[{i}]", errors)
         if "a" in entry:
-            _resolve_ref(entry["a"], f"{item_id}.a", errors,
-                         allow_missing=a.get("source") != "unpacked")
+            if not (_A_FROM_COMMITTED and item_id in _A_REF_OVERRIDES):
+                _resolve_ref(entry["a"], f"{item_id}.a", errors,
+                             allow_missing=a.get("source") != "unpacked")
         workflow = entry.get("workflow") or ""
         if workflow and workflow not in workflow_ids:
             errors.append(f"{item_id}.workflow 不在 workflows/：{workflow}")
@@ -332,7 +339,11 @@ def validate(map_data: dict, a: dict, b: dict) -> list[str]:
             errors.append(f"菜单项未映射：{item['id']}（menuBar.html:{item['line']}）")
 
     for name in internal:
-        if not any((VIEW_ROOT / name).is_dir() for _ in (0,)):
+        if _A_FROM_COMMITTED:
+            known = {view["id"] for view in a.get("views") or []}
+            if name not in known:
+                errors.append(f"internal 里的目录不在已提交清单：{name}")
+        elif not (VIEW_ROOT / name).is_dir():
             errors.append(f"internal 里的目录不存在：{name}")
     return errors
 
@@ -342,8 +353,10 @@ def build(map_data: dict, a: dict, b: dict) -> dict:
     for entry in map_data["entries"]:
         row = dict(entry)
         if "a" in row:
-            row["a_text"] = _resolve_ref(row["a"], row["id"] + ".a", [],
-                                         allow_missing=a.get("source") != "unpacked")
+            override = _A_REF_OVERRIDES.get(row["id"]) if _A_FROM_COMMITTED else None
+            row["a_text"] = override or _resolve_ref(
+                row["a"], row["id"] + ".a", [],
+                allow_missing=a.get("source") != "unpacked")
         else:
             row["a_text"] = ""
         row["b_text"] = "; ".join(
@@ -401,7 +414,7 @@ def render_matrix(data: dict, a: dict, b: dict, map_data: dict) -> str:
     lines.append(f"A 侧扫描：{len(a.get('views') or [])} 个 view 目录、"
                  f"{len(a.get('menu_items') or [])} 个菜单项、"
                  f"{len(a.get('shell_pages') or [])} 个外壳页。"
-                 if a.get("source") == "unpacked" else
+                 if a.get("source") != "missing" else
                  "A 侧扫描：本机没有 `逆向/01_解包/`，直接使用已提交清单。")
     lines.append("")
     lines.append("## 三、A−B 清单（只列仍有缺口的）")
@@ -499,7 +512,8 @@ def render_matrix(data: dict, a: dict, b: dict, map_data: dict) -> str:
     return "\n".join(lines)
 
 
-def render_inventory(a: dict, b: dict, map_data: dict) -> str:
+def render_inventory(a: dict, b: dict, map_data: dict,
+                     entry_refs: dict | None = None) -> str:
     data = {
         "version": 1,
         "note": "由 tools/gui_coverage.py 生成；源目录缺失时矩阵回退到本清单。",
@@ -510,6 +524,7 @@ def render_inventory(a: dict, b: dict, map_data: dict) -> str:
             "shell_pages": a.get("shell_pages") or [],
             "graph_entry": a.get("graph_entry", ""),
         },
+        "entry_refs": entry_refs or {},
         "b": b,
         "internal_views": map_data.get("internal") or {},
     }
@@ -518,6 +533,9 @@ def render_inventory(a: dict, b: dict, map_data: dict) -> str:
 
 # --------------------------------------------------------------------------- 入口
 def generate() -> tuple[str, str]:
+    global _A_FROM_COMMITTED, _A_REF_OVERRIDES
+    _A_FROM_COMMITTED = False
+    _A_REF_OVERRIDES = {}
     map_data = load_map()
     a = scan_a()
     b = scan_b()
@@ -526,12 +544,21 @@ def generate() -> tuple[str, str]:
             raise SystemExit("解包目录不在本机，且没有已提交的 gui-inventory.json 可回退")
         inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
         a = dict(inventory.get("a") or {})
-        a["source"] = "inventory"
+        # 不改写 source：生成物要与提交版逐字节一致；回退状态用模块标记表示。
+        _A_FROM_COMMITTED = True
+        _A_REF_OVERRIDES = dict(inventory.get("entry_refs") or {})
+        if not _A_REF_OVERRIDES:
+            raise SystemExit(
+                "gui-inventory.json 缺 entry_refs：先用本机解包目录重新生成一次并提交")
     errors = validate(map_data, a, b)
     if errors:
         raise CoverageError(errors)
     data = build(map_data, a, b)
-    return render_matrix(data, a, b, map_data), render_inventory(a, b, map_data)
+    entry_refs = {
+        row["id"]: row["a_text"] for row in data["entries"] if row.get("a_text")
+    }
+    return (render_matrix(data, a, b, map_data),
+            render_inventory(a, b, map_data, entry_refs))
 
 
 def main(argv: list[str] | None = None) -> int:

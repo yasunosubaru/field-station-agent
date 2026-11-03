@@ -44,6 +44,24 @@ class Generator(unittest.TestCase):
         self.assertEqual(first_matrix, second_matrix)
         self.assertEqual(first_inventory, second_inventory)
 
+    def test_generate_falls_back_to_committed_inventory(self):
+        """干净检出没有 01_解包：仍要逐字节生成提交版，且用清单里的 A 行号。"""
+        missing = Path("X:/definitely-missing-unpack")
+        with mock.patch.object(self.mod, "VIEW_ROOT", missing / "app" / "view"), \
+                mock.patch.object(self.mod, "HTML_ROOT", missing / "app" / "view" / "html"), \
+                mock.patch.object(self.mod, "MENU_HTML",
+                                  missing / "app" / "view" / "menuBar" / "menuBar.html"), \
+                mock.patch.object(self.mod, "GRAPH_ENTRY",
+                                  missing / "Graph" / "out" / "renderer" / "index.html"):
+            matrix, inventory = self.mod.generate()
+        self.assertEqual(
+            matrix, (ROOT / "逆向" / "03_分析" / "19_原版GUI覆盖矩阵.md")
+            .read_text(encoding="utf-8"))
+        self.assertEqual(
+            inventory, (ROOT / "逆向" / "03_分析" / "附录" / "gui-inventory.json")
+            .read_text(encoding="utf-8"))
+        self.assertIn("entry_refs", json.loads(inventory))
+
     def test_every_view_is_mapped(self):
         map_data = self.mod.load_map()
         a = self.mod.scan_a()
