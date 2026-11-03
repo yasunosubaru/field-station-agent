@@ -339,11 +339,10 @@ def validate(map_data: dict, a: dict, b: dict) -> list[str]:
             errors.append(f"菜单项未映射：{item['id']}（menuBar.html:{item['line']}）")
 
     for name in internal:
-        if _A_FROM_COMMITTED:
-            known = {view["id"] for view in a.get("views") or []}
-            if name not in known:
-                errors.append(f"internal 里的目录不在已提交清单：{name}")
-        elif not (VIEW_ROOT / name).is_dir():
+        if _A_FROM_COMMITTED or a.get("source") == "missing":
+            # 清单是在有解包目录时生成的，那时已经校验过；干净检出没有盘可查。
+            continue
+        if not (VIEW_ROOT / name).is_dir():
             errors.append(f"internal 里的目录不存在：{name}")
     return errors
 

@@ -108,12 +108,21 @@ jobs:
         with:
           node-version: "22"
 
-      - name: 重实现测试
+      - name: Agent 前端/桥测试
         working-directory: 逆向/04_重实现
         run: |
           set -euo pipefail
-          count=$(find packages -path '*/test/*.test.ts' -type f | wc -l)
-          echo "test files: $count"
-          test "$count" -gt 0
-          node --test --test-force-exit "packages/*/test/*.test.ts"
+          files=(packages/app/test/agent-model.test.ts packages/app/test/agent-bridge.test.ts)
+          for f in "${files[@]}"; do test -f "$f"; done
+          node --test --test-force-exit "${files[@]}"
+
+      - name: 重实现全量（仅本机有解包目录时）
+        working-directory: 逆向/04_重实现
+        run: |
+          set -euo pipefail
+          if [ -d ../01_解包/app/view ]; then
+            node --test --test-force-exit "packages/*/test/*.test.ts"
+          else
+            echo "::notice::本机没有 逆向/01_解包（270 MB，按纪律不入库）；跳过需要原版视图/图包的 B 侧全量。Agent 测试已在上一步跑过。"
+          fi
 
