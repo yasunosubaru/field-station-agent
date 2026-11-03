@@ -6,25 +6,22 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>NovAtelReverse</AssemblyName>
+    <AssemblyName>AllPoweredFSA</AssemblyName>
     <RootNamespace>NasGui</RootNamespace>
-    <Version>0.1.10</Version>
+    <Version>0.2.0</Version>
+    <Title>All powered-FSA</Title>
+    <AssemblyTitle>All powered-FSA</AssemblyTitle>
+    <Product>All powered-FSA</Product>
+    <Description>All powered-FSA - field station agent desktop shell</Description>
     <ApplicationIcon>app-inverted.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3351.48" />
-    <EmbeddedResource Include="payload.zip" />
+    <!-- LogicalName is pinned: MainForm.PayloadResource reads this exact name, independently of
+         AssemblyName / RootNamespace. Keep the two in sync if either one is ever renamed. -->
+    <EmbeddedResource Include="payload.zip" LogicalName="NasGui.payload.zip" />
   </ItemGroup>
 
 </Project>
-
-
-
-
-
-
-
-
-
