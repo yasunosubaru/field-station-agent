@@ -3,15 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>野外台站智能体 · 重实现控制台</title>
+<title>All powered-FSA · 野外台站智能体</title>
 <!-- shell.css 里的类名与数值全部照抄原版 逆向/01_解包/app/view/css/style.css，
      字体在 ./fonts/，图标走 /assets/images/（服务端只读暴露 01_解包/app/view）。 -->
 <link rel="stylesheet" href="/shell.css">
 <link rel="stylesheet" href="/icons.css">
 <link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/home.css">
+<!-- Agent 工作台的 token 与全部界面样式；只在 body[data-mode="agent"] 下生效 -->
+<link rel="stylesheet" href="/agent.css">
 </head>
-<body>
+<body data-mode="agent" data-agent-theme="dark">
+
+<!-- ⓪ 产品条：48px，只在 Agent 模式下显示。专业面板保持原版观感，不加这一层。 -->
+<header class="fsa-bar" id="fsa-bar">
+  <div class="fsa-brand">
+    <span class="fsa-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3.5" y="4" width="17" height="12" rx="2.5"/>
+        <path d="M8 20h8M12 16v4M7 10.5l2.4 2.4L14 8.6l3 3"/>
+      </svg>
+    </span>
+    <span class="fsa-product">All powered-FSA</span>
+    <span class="fsa-tag">野外台站智能体</span>
+  </div>
+  <div class="fsa-modes" role="tablist" aria-label="工作台模式">
+    <button type="button" role="tab" class="fsa-mode" data-mode-switch="agent"
+            aria-selected="true" aria-controls="agent-view">Agent 工作台</button>
+    <button type="button" role="tab" class="fsa-mode" data-mode-switch="pro"
+            aria-selected="false">专业面板</button>
+  </div>
+  <div class="fsa-bar-right">
+    <button type="button" class="fsa-rail-btn" id="fsa-toggle-left" aria-label="展开会话栏" title="会话栏">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M4 7h16M4 12h10M4 17h13"/>
+      </svg>
+    </button>
+    <span class="fsa-device" id="fsa-device" data-empty="true" title="当前设备">未连接设备</span>
+    <button type="button" class="fsa-chip" id="fsa-model-chip" data-state="ok"
+            title="模型 / Provider（点击打开设置）">连接中…</button>
+    <button type="button" class="fsa-rail-btn" id="fsa-toggle-right" aria-label="展开上下文栏" title="上下文栏">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M14 4v16"/>
+      </svg>
+    </button>
+    <button type="button" class="fsa-icon" id="fsa-theme" aria-label="切换到浅色主题" title="浅色主题">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.7 8.7 0 1 0 10.7 10.7z"/>
+      </svg>
+    </button>
+    <button type="button" class="fsa-icon" id="fsa-settings" aria-label="Agent 设置" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+      </svg>
+    </button>
+  </div>
+</header>
 
 <!-- ① 顶栏：原版 .navigation.banner-img.home-menu（渐变 + 九宫格 + 齿轮/问号） -->
 <ul class="navigation banner-img home-menu">
@@ -24,6 +73,8 @@
           <ul class="dropdown-menu app-menu" id="app-menu" role="menu" aria-labelledby="menu-home-banner">
             <li role="none"><a class="app-menu-item suite" role="menuitem" href="#" id="nas-home-menu">
               <span class="feature-menu-icon home-menu-icon"></span>NovAtel Application Suite</a></li>
+            <li role="none"><a class="app-menu-item" role="menuitem" href="#" data-tab="agent">
+              <span class="feature-menu-icon"></span>Agent 工作台</a></li>
             <li role="none"><a class="app-menu-item" role="menuitem" href="#" data-tab="manage">
               <span class="feature-menu-icon sm-menu-icon"></span>Manage</a></li>
             <li role="none"><a class="app-menu-item" role="menuitem" href="#" data-tab="playback">
@@ -66,7 +117,11 @@
 
 <!-- ② 应用标签栏：原版 #tabs-list（深青 #00516F，未选中 #666 卡片，选中近黑） -->
 <div class="tabs-view-data">
-  <ul id="tabs-list" role="tablist" aria-label="工作页">    <li class="app-tab ui-tabs-active" role="tab" data-tab="manage" id="tab-manage"
+  <ul id="tabs-list" role="tablist" aria-label="工作页">
+    <!-- Agent 是第一个页签，也是默认页（body[data-mode="agent"]） -->
+    <li class="app-tab" role="tab" data-tab="agent" id="tab-agent"
+        aria-selected="false" aria-controls="panel-agent"><a href="#" tabindex="-1">Agent 工作台</a></li>
+    <li class="app-tab" role="tab" data-tab="manage" id="tab-manage"
         aria-selected="true" aria-controls="panel-manage"><a href="#" tabindex="-1">Manage</a></li>
     <li class="app-tab" role="tab" data-tab="playback" id="tab-playback"
         aria-selected="false" aria-controls="panel-playback"><a href="#" tabindex="-1">Playback</a></li>
@@ -118,6 +173,11 @@
       </button>
     </div>
   </div>
+</div>
+
+<!-- Ⓜ Agent 工作台：默认页。容器只占位，界面由 panels/agent.js → web/agent/index.js 挂载。 -->
+<div id="agent-view" class="agent-view" role="tabpanel" aria-labelledby="tab-agent">
+  <div id="panel-agent" class="agent-panel"></div>
 </div>
 
 <div class="nas-body">
@@ -216,6 +276,7 @@
   var ORDER = ['convert', 'manage', 'playback', 'grit', 'graph', 'workflows'];
 
   var panelEls = {
+    agent: $('panel-agent'),
     convert: $('panel-convert'),
     manage: $('panel-manage'),
     playback: $('panel-playback'),
@@ -360,12 +421,41 @@
 
   /* ---------------- 页签 ---------------- */
 
-  var currentPage = 'manage';
+  var currentPage = 'agent';
+  /* 专业面板最后一次停留的页面：从 Agent 切回去时用 */
+  var lastProPage = 'home';
 
-  /* Landing page vs. a tool. `home` is not a tab: the original's welcome screen has neither the
-   * tab strip nor the folder rail, so both are hidden while it is up. */
+  /*
+   * 两种模式共用一页 DOM：
+   *   body[data-mode="agent"] —— 产品条 + Agent 三栏，原版顶栏/页签/内容区整块由 agent.css 收起；
+   *   body[data-mode="pro"]   —— 原版 NovAtel 外壳，Agent 的 DOM 不参与布局。
+   * 只有 data-mode 一个开关，避免两套 hidden 标记互相打架。
+   */
+  function setMode(mode) {
+    var next = mode === 'pro' ? 'pro' : 'agent';
+    document.body.setAttribute('data-mode', next);
+    document.body.setAttribute('data-agent-theme', document.body.getAttribute('data-agent-theme') || 'dark');
+    var switches = document.querySelectorAll('[data-mode-switch]');
+    for (var i = 0; i < switches.length; i++) {
+      switches[i].setAttribute('aria-selected', switches[i].getAttribute('data-mode-switch') === next ? 'true' : 'false');
+    }
+    var agentTab = $('tab-agent');
+    if (agentTab) agentTab.setAttribute('aria-selected', next === 'agent' ? 'true' : 'false');
+    try { window.localStorage.setItem('fsa-mode', next); } catch (error) { /* 记不住不影响本次 */ }
+    document.dispatchEvent(new CustomEvent('fsa:mode', { detail: { mode: next } }));
+  }
+
+  function showAgent() {
+    currentPage = 'agent';
+    document.body.setAttribute('data-page', 'agent');
+    setMode('agent');
+    ensurePanel('agent');
+  }
+
   function showHome() {
     currentPage = 'home';
+    lastProPage = 'home';
+    setMode('pro');
     document.body.setAttribute('data-page', 'home');
     for (var i = 0; i < ORDER.length; i++) {
       var panel = panelEls[ORDER[i]];
@@ -381,9 +471,12 @@
   }
 
   function selectPage(name) {
+    if (name === 'agent') { showAgent(); return; }
     if (name === 'home') { showHome(); return; }
     if (!PAGES[name]) return;
     currentPage = name;
+    lastProPage = name;
+    setMode('pro');
     document.body.setAttribute('data-page', name);
 
     var view = $('home-view');
@@ -421,6 +514,40 @@
         selectPage(this.getAttribute('data-tab'));
       });
     }
+  }
+
+  /* ---------------- 模式切换 ----------------
+   * 产品条里的两个分段按钮只在 Agent 模式下可见；专业模式回 Agent 走第一个页签 /
+   * 应用菜单里的「Agent 工作台」，两边都落到 selectPage('agent')。
+   *
+   * 从 Agent 切回专业面板时进"上次用的那个面板"（第一次是 Manage），而不是欢迎页：
+   * 欢迎页按原版设计会收起页签栏，那样就没有可见的入口回到 Agent 了。
+   */
+  function enterPro() {
+    selectPage(lastProPage && lastProPage !== 'home' ? lastProPage : 'manage');
+  }
+
+  function wireModes() {
+    var switches = document.querySelectorAll('[data-mode-switch]');
+    for (var i = 0; i < switches.length; i++) {
+      switches[i].addEventListener('click', function () {
+        var mode = this.getAttribute('data-mode-switch');
+        if (mode === 'agent') showAgent();
+        else enterPro();
+      });
+    }
+    // Agent 里的「专业面板 / 在面板打开」按钮只发事件，切页仍由外壳决定
+    document.addEventListener('fsa:mode', function (event) {
+      var mode = event && event.detail && event.detail.mode;
+      if (mode !== 'pro') return;
+      if (document.body.getAttribute('data-mode') === 'pro') return;
+      enterPro();
+    });
+    document.addEventListener('fsa:open-tab', function (event) {
+      var tab = event && event.detail && event.detail.tab;
+      if (!tab || !PAGES[tab]) return;
+      selectPage(tab);
+    });
   }
 
   /* ---------------- 顶栏下拉 ---------------- */
@@ -561,12 +688,22 @@
 
   wireBanner();
   wireTabs();
+  wireModes();
   wireCapture();
   wireHome();
   bootHealth();
   bootCaptures();
-  /* The original opens on its welcome page, not on a tool. */
-  selectPage('home');
+
+  /* 默认进 Agent 工作台（契约 §8）。只有上次明确停在专业面板时才回到原版入口：
+   * 原版把欢迎页当入口，所以专业模式仍然从 home 开始。 */
+  var startMode = null;
+  try {
+    startMode = window.localStorage.getItem('fsa-mode');
+  } catch (error) {
+    /* 隐私模式下读不到就当没存过 */
+  }
+  if (startMode === 'pro') selectPage('home');
+  else showAgent();
 })();
 </script>
 <script type="module" src="/theme.js"></script>

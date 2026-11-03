@@ -82,7 +82,7 @@ import {
 } from './paths.ts';
 
 const SERVICE = 'nas-reimpl-app';
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 7788;
 const JSON_LIMIT = 1_000_000;

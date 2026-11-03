@@ -521,3 +521,23 @@ test('/assets/ 与 /panels/ 的路径穿越一律 400', async () => {
   // 未开放的子目录不是穿越，但也不能被读到
   assert.equal((await fetch(base + '/assets/model/userStore.js')).status, 404);
 });
+
+test('the Agent workbench assets are served (no 404 white screen)', async () => {
+  for (const path of ['/agent.css', '/agent/index.js', '/agent/model.js', '/panels/agent.js']) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200, path);
+  }
+});
+
+test('a non-loopback Host header is rejected before any route runs', async () => {
+  const status = await new Promise<number>((resolve, reject) => {
+    const req = request(base + '/api/health', { headers: { Host: 'evil.example' } }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(status, 403);
+});
+

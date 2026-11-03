@@ -738,18 +738,38 @@ def _run_call(call: dict, *, registry: ToolRegistry, emitter: _Emitter,
     return "ok"
 
 
+def _sanitize_text(text: str) -> str:
+    home = str(Path.home())
+    for form in (home, home.replace("\\", "/")):
+        if form:
+            text = text.replace(form, "<home>")
+    return text
+
+
+def _sanitize_value(value):
+    if isinstance(value, str):
+        return _sanitize_text(value)
+    if isinstance(value, dict):
+        return {key: _sanitize_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_value(item) for item in value]
+    return value
+
+
 def _emit_result(emitter: _Emitter, call_id: str, evidence_call: str,
                  agent_name: str, ok: bool, summary: str, data: dict,
                  duration_ms: int) -> None:
+    safe_data = _sanitize_value(data)
+    safe_summary = _sanitize_text(summary)
     emitter.emit({
-        "type": "tool_result", "id": call_id, "ok": ok, "summary": summary,
-        "data": data, "evidence": {"agent": agent_name, "call_id": evidence_call},
+        "type": "tool_result", "id": call_id, "ok": ok, "summary": safe_summary,
+        "data": safe_data, "evidence": {"agent": agent_name, "call_id": evidence_call},
         "duration_ms": duration_ms,
     })
-    if ok and isinstance(data, dict) and (data.get("path") or data.get("name")):
+    if ok and isinstance(safe_data, dict) and (safe_data.get("path") or safe_data.get("name")):
         # 产物只暴露文件名/相对路径与哈希；本机绝对路径不进会话 JSONL（契约 §12）。
-        name = str(data.get("name") or "").strip()
-        raw_path = str(data.get("path") or "").strip()
+        name = str(safe_data.get("name") or "").strip()
+        raw_path = str(safe_data.get("path") or "").strip()
         if not name and raw_path:
             name = raw_path.replace("\\", "/").rsplit("/", 1)[-1]
         if name:
@@ -760,7 +780,7 @@ def _emit_result(emitter: _Emitter, call_id: str, evidence_call: str,
                 "type": "artifact", "id": emitter.new_id("f"),
                 "name": name, "kind": kind,
                 "path": f"artifacts/{name}",
-                "sha256": data.get("sha256"),
+                "sha256": safe_data.get("sha256"),
                 "source_call": call_id,
             })
 

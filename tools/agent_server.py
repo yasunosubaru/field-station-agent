@@ -34,6 +34,7 @@ import hmac
 import importlib
 import inspect
 import json
+import mimetypes
 import sys
 import threading
 import time
@@ -622,6 +623,16 @@ class AgentHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK,
                                 {"artifacts": store.list_artifacts(sid)})
                 return
+            if len(parts) == 4 and action == "artifacts":
+                self._require(method, "GET")
+                name = parts[3]
+                if not name or "/" in name or "\\" in name or name in (".", ".."):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "产物名非法", "input")
+                path = store.artifact_dir(sid, create=False) / name
+                if not path.is_file():
+                    raise ApiError(HTTPStatus.NOT_FOUND, "产物不存在", "input")
+                self._send_file(path, name)
+                return
         raise ApiError(HTTPStatus.NOT_FOUND, f"未知路径：/{'/'.join(parts)}",
                        "input")
 
@@ -676,6 +687,26 @@ class AgentHandler(BaseHTTPRequestHandler):
             if status >= 400:
                 self.send_header("Connection", "close")
                 self.close_connection = True
+            self.end_headers()
+            self.wfile.write(body)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
+    def _send_file(self, path: Path, name: str) -> None:
+        try:
+            body = path.read_bytes()
+        except OSError as exc:
+            raise ApiError(HTTPStatus.INTERNAL_SERVER_ERROR,
+                           f"产物读不了（{type(exc).__name__}）", "artifact") from exc
+        content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        try:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Disposition",
+                             f'attachment; filename="{name}"')
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
             self.wfile.flush()

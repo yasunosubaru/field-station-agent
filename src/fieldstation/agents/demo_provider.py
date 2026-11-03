@@ -116,7 +116,7 @@ class DemoProvider(Provider):
                 content="正在请求图表导出……",
                 tool_calls=[{
                     "name": "native_graph_pdf",
-                    "args": {"project": "demo"},
+                    "args": {"project": "b1"},
                     "reason": "用户要求导出 PDF",
                     "confidence": 0.8,
                 }],

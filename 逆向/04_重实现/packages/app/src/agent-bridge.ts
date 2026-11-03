@@ -501,6 +501,37 @@ export class AgentBridge {
     });
   }
 
+  /** Relay one artifact byte-for-byte (PDF/CSV/...): no JSON, no buffering. */
+  async requestBinary(path: string, res: ServerResponse): Promise<void> {
+    const endpoint = await this.ensureStarted();
+    const upstream = await this.open(endpoint.port, path, 'GET');
+    const status = upstream.statusCode ?? 502;
+    if (status < 200 || status >= 300) {
+      let data: Record<string, unknown> = { ok: false, error: `agent server 返回 HTTP ${status}` };
+      try {
+        const text = (await readAll(upstream, BODY_LIMIT, this.requestTimeoutMs)).toString('utf8').trim();
+        const parsed: unknown = text ? JSON.parse(text) : null;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) data = parsed as Record<string, unknown>;
+      } catch {
+        /* keep the generic error */
+      }
+      sendAgentJson(res, status, data);
+      return;
+    }
+    const type = String(upstream.headers['content-type'] ?? 'application/octet-stream');
+    const disposition = String(upstream.headers['content-disposition'] ?? 'attachment');
+    const length = upstream.headers['content-length'];
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Content-Disposition': disposition,
+      ...(length ? { 'Content-Length': String(length) } : {}),
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    upstream.pipe(res);
+    res.on('close', () => upstream.destroy());
+  }
+
   /** Terminate the worker (if any). Safe to call twice, and from a signal handler. */
   stop(): void {
     this.generation += 1;
@@ -568,6 +599,7 @@ export function assertAgentId(raw: unknown): string {
 }
 
 const SESSION_PATH_RE = /^\/api\/agent\/sessions\/([^/]+)(?:\/(message|approval|cancel|artifacts))?$/;
+const ARTIFACT_PATH_RE = /^\/api\/agent\/sessions\/([^/]+)\/artifacts\/([^/]+)$/;
 
 export interface AgentRouteContext {
   bridge: AgentBridge;
@@ -631,6 +663,24 @@ export async function handleAgentRoute(context: AgentRouteContext): Promise<void
         return;
       }
       throw new HttpError(405, '/api/agent/settings 只接受 GET / POST');
+    }
+
+    const artifactMatch = ARTIFACT_PATH_RE.exec(path);
+    if (artifactMatch) {
+      const id = assertAgentId(artifactMatch[1]);
+      if (method !== 'GET') throw new HttpError(405, '/api/agent/sessions/:id/artifacts/:name 只接受 GET');
+      let name: string;
+      try {
+        name = decodeURIComponent(artifactMatch[2]);
+      } catch {
+        throw new HttpError(400, '产物名不是合法编码');
+      }
+      if (!name || name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
+        throw new HttpError(400, '产物名非法');
+      }
+      await bridge.requestBinary(
+        `/sessions/${id}/artifacts/${encodeURIComponent(name)}`, res);
+      return;
     }
 
     const match = SESSION_PATH_RE.exec(path);
