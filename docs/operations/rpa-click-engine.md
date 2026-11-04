@@ -105,6 +105,14 @@ scrollIntoView(center)
 | `cdp-pointer` | 套件渲染进程内的 div/卡片/按钮 | `Input.dispatchMouseEvent` |
 | `cdp-css` | 无文字纯图标（齿轮、帮助） | `querySelector` → `DOM.getBoxModel` → 同上 |
 | `uia` | 原生文件对话框、Graph 独立窗口 | PowerShell UIA：优先 InvokePattern，退化为按 bounds 点 |
+
+**实测（2026-11-04，套件 2.11.0）**：UIA 对 `NASRunner` 只能拿到**顶层 Window 一个节点**，
+Control 视图与 Raw 视图都没有子节点 → **UIA 看不到 Chromium 渲染内容**，
+所以"用 UIA 点套件里的控件"不成立；它只可能对**独立的系统对话框窗口**（文件对话框、
+消息框）有效，这一条尚未在本机跑通，D5 验。
+
+**推论**：Graph 也是 Chromium 窗口，UIA 大概率同样看不到 → 第 7 条（`graph.newproject`）
+先从"UIA 自动"降级，优先找它的**工程文件格式或命令行入口**，找不到就如实标 `assisted`。
 | `screen` | UIA 拿不到 bounds 的最后兜底 | `SendInput` + 强制审计 |
 
 Graph 窗口的可行性前提：启动时带 `--force-renderer-accessibility`，
@@ -122,7 +130,7 @@ Graph 窗口的可行性前提：启动时带 `--force-renderer-accessibility`�
 | 4 | app.install | `+ Add application` → 原生对话框：文件名框输入 ZIP 路径 → `打开` → **Add（闸门）** | cdp-pointer + uia | 中：对话框控件名随系统语言变，用 UIA 自动化 ID 兜底 |
 | 5 | app.update | 更新横幅(div) → `Update application` → 选应用 → **Update（闸门）** | cdp-pointer | 中：需要先造"有更新"的场景 |
 | 6 | device.update | 连接设备 → `Device` 菜单 → `Update` → `Browse`（原生）→ **Apply（闸门）** | cdp-pointer + uia | 高：缺真机，菜单不出现 |
-| 7 | graph.newproject | Graph 窗口：`New Project` → 字段 → `Finish` → **Plot（闸门）** | uia（主）+ screen（兜底） | 高：独立进程，UIA 树需实测 |
+| 7 | graph.newproject | Graph 窗口：`New Project` → 字段 → `Finish` → **Plot（闸门）** | 先查 CLI/工程文件格式；UIA 大概率无效（实测看不到 Chromium 内容） | 高：独立进程，可能只能 assisted |
 | 8 | device.restart | 无 GUI（命令通道 + 审批） | — | 高：缺真机 |
 
 **结论**：第 4、7 条从"人工"变成"可点"的关键就是这套引擎——

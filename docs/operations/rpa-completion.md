@@ -28,7 +28,7 @@
 | 4 | `gui.app.install` | 卡在原生对话框 | **auto（到闸门）** | 用 **UIA 驱动原生 Open 对话框**：定位文件名编辑框 → 输入路径 → 回车。不猜坐标、不盲发按键 |
 | 5 | `gui.app.update` | 到闸门（本机没更新） | auto（到闸门） | 需要**造场景**：装一个旧版非核心应用，才有横幅可点；场景脚本进 `examples/` |
 | 6 | `gui.device.update` | 卡在 `ensure_link` | assisted + `blocked: hardware` | 代码推进到 `Apply` 闸门前；真机清单写清"插上接收机后跑什么、看什么" |
-| 7 | `gui.graph.newproject` | 人工 | **auto（主攻 UIA）** | Graph 没有 CDP，但它是 Chromium 窗口：用 `Graph.exe --force-renderer-accessibility` 启动，再走 **UIA** 读控件树。不通则退 assisted |
+| 7 | `gui.graph.newproject` | 人工 | **待定（UIA 大概率无效）** | 实测：UIA 对 NASRunner 只能看到顶层窗口，看不到 Chromium 内容；Graph 同为 Chromium。先查它的工程文件格式/命令行入口，找不到就标 assisted |
 | 8 | `script.device.restart` | 未验 | `blocked: hardware` | 命令通道已通；重启后"真的回来了"要真机 |
 
 **关键判断**：第 4 条和第 7 条不是"做不到"，是"之前只试了 CDP 一条路"。原生对话框和 Graph 窗口都是 Windows 窗口，UIA 能看见——这正是仓库里 `uia_driver` 存在的理由，之前一直没让它上主战场。
