@@ -1,0 +1,427 @@
+{
+ "nodes": [
+  {
+   "id": "legend",
+   "type": "text",
+   "text": "怎么读这张图\n上边是人，下边是设备，一层只干一件事。\n蓝色是壳，橙色是四个视角，绿色是运行时与引擎，紫色是存储。\n只画了主链路；每个视角的数据来源写在自己卡里。",
+   "x": 0,
+   "y": -260,
+   "width": 760,
+   "height": 200
+  },
+  {
+   "id": "g-shell",
+   "type": "group",
+   "label": "① 壳",
+   "x": -40,
+   "y": 30,
+   "width": 2000,
+   "height": 240,
+   "color": "5"
+  },
+  {
+   "id": "shell",
+   "type": "text",
+   "text": "Electron 壳（OpenChamber 源码 fork）\n原生菜单 / 托盘 / 多窗口 / 单实例 / 崩溃守护\n只负责解 payload、拉起 Python 与界面服务、把窗口指过去",
+   "x": 0,
+   "y": 95,
+   "width": 1360,
+   "height": 120,
+   "color": "5"
+  },
+  {
+   "id": "n-shell",
+   "type": "text",
+   "text": "窗口内四个工作区，共用一套权限与数据",
+   "x": 1400,
+   "y": 40,
+   "width": 560,
+   "height": 45
+  },
+  {
+   "id": "g-view",
+   "type": "group",
+   "label": "② 四个等价视角",
+   "x": -40,
+   "y": 340,
+   "width": 2000,
+   "height": 360,
+   "color": "2"
+  },
+  {
+   "id": "v1",
+   "type": "text",
+   "text": "对话\n会话 / 工具卡 / 审批卡 / 产物\n数据：E1 与 E2 经 MCP\n能力：全部",
+   "x": 0,
+   "y": 405,
+   "width": 460,
+   "height": 240,
+   "color": "2"
+  },
+  {
+   "id": "v2",
+   "type": "text",
+   "text": "编队\nbot / 日程 / 任务树 / 交互抽屉\n可与大 bot 对话，也可下钻小 bot\n能力：全部",
+   "x": 500,
+   "y": 405,
+   "width": 460,
+   "height": 240,
+   "color": "2"
+  },
+  {
+   "id": "v3",
+   "type": "text",
+   "text": "数据\n批次 / 质控 / 检索 / 评测\n双引擎切换（DuckDB 或 ClickHouse）\n能力：全部",
+   "x": 1000,
+   "y": 405,
+   "width": 460,
+   "height": 240,
+   "color": "2"
+  },
+  {
+   "id": "v4",
+   "type": "text",
+   "text": "套件\n挡位一：增强视图（Manage / Workflows / Graph 重做）\n挡位二：原版视图（原版窗口直接嵌入）\n右侧检查器：设备 / 证据 / 日志",
+   "x": 1500,
+   "y": 405,
+   "width": 460,
+   "height": 240,
+   "color": "2"
+  },
+  {
+   "id": "n-view",
+   "type": "text",
+   "text": "同一会话池 / 任务表 / 工具 / trace，深链双向",
+   "x": 1400,
+   "y": 355,
+   "width": 560,
+   "height": 45
+  },
+  {
+   "id": "g-agent",
+   "type": "group",
+   "label": "③ Agent 运行时（两个，互不依赖）",
+   "x": -40,
+   "y": 770,
+   "width": 2000,
+   "height": 320,
+   "color": "4"
+  },
+  {
+   "id": "a1",
+   "type": "text",
+   "text": "A OpenCode（OpenChamber 源码）\n自有会话；原生 OpenAI 兼容接 deepseek\n直连 MCP；与 B 完全隔离",
+   "x": 0,
+   "y": 835,
+   "width": 660,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "a2",
+   "type": "text",
+   "text": "B Claude Agent SDK（官方）\n自有会话；经 anthropic_shim 接 deepseek\n没有 shim 就用自带模型，任务照做",
+   "x": 720,
+   "y": 835,
+   "width": 660,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "a3",
+   "type": "text",
+   "text": "互不依赖的四条\n无共同前置 / 不共享状态\n不互相代理 / 失败隔离且不自动切换",
+   "x": 1440,
+   "y": 835,
+   "width": 520,
+   "height": 200
+  },
+  {
+   "id": "n-agent",
+   "type": "text",
+   "text": "同一份特化源生成两份装配产物，CI 校验同源",
+   "x": 1440,
+   "y": 785,
+   "width": 520,
+   "height": 45
+  },
+  {
+   "id": "g-bot",
+   "type": "group",
+   "label": "④ Bot 编队（三组件 + 交互层）",
+   "x": -40,
+   "y": 1160,
+   "width": 2000,
+   "height": 400,
+   "color": "4"
+  },
+  {
+   "id": "b1",
+   "type": "text",
+   "text": "DBOS 执行真相\ncron / 队列 / 重试 / 崩溃续跑\n等人批三天也不占进程\n只写 workflow 与 step 表",
+   "x": 0,
+   "y": 1225,
+   "width": 440,
+   "height": 280,
+   "color": "4"
+  },
+  {
+   "id": "b2",
+   "type": "text",
+   "text": "LangGraph 推理真相\n拆活 / 分支 / 结论 / 闸门 interrupt\n只写 checkpointer 与 trace\n不管什么时候跑",
+   "x": 480,
+   "y": 1225,
+   "width": 440,
+   "height": 280,
+   "color": "4"
+  },
+  {
+   "id": "b3",
+   "type": "text",
+   "text": "Letta 记忆真相\n身份 / 记忆块 / 经验沉淀\n只在首尾出现\n不可用时降级 bot_memory 加 Chroma",
+   "x": 960,
+   "y": 1225,
+   "width": 440,
+   "height": 280,
+   "color": "4"
+  },
+  {
+   "id": "b4",
+   "type": "text",
+   "text": "交互层\n任务树 加 事件流\n三种干预：暂停继续 / 改参重试 / 接管\n可跟大 bot 对话，也可下钻小 bot",
+   "x": 1440,
+   "y": 1225,
+   "width": 520,
+   "height": 280,
+   "color": "2"
+  },
+  {
+   "id": "n-bot",
+   "type": "text",
+   "text": "run_link：task 对 thread 对 agent 对 work_order",
+   "x": 1300,
+   "y": 1175,
+   "width": 660,
+   "height": 45
+  },
+  {
+   "id": "g-eng",
+   "type": "group",
+   "label": "⑤ 能力面",
+   "x": -40,
+   "y": 1630,
+   "width": 2260,
+   "height": 320,
+   "color": "4"
+  },
+  {
+   "id": "e3",
+   "type": "text",
+   "text": "E3 领域编排 LangGraph\n五阶段 / 结论契约 / 闸门\n唯一允许产领域结论的地方",
+   "x": 0,
+   "y": 1695,
+   "width": 500,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "e4",
+   "type": "text",
+   "text": "E4 数据 DuckDB 或 ClickHouse\nParquet 是唯一真相，两引擎只读\n不可用自动回落并明示",
+   "x": 540,
+   "y": 1695,
+   "width": 460,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "e6",
+   "type": "text",
+   "text": "E6 知识 LlamaIndex\n元数据卡 / 手册 / 报告\n答案必须带出处",
+   "x": 1040,
+   "y": 1695,
+   "width": 460,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "e7",
+   "type": "text",
+   "text": "E7 设备 CDP / UIA / native\n8 条流程 / 闸门 / 截图 / audit\n对嵌入的原版实例操作，可控窗口并可注入",
+   "x": 1540,
+   "y": 1695,
+   "width": 660,
+   "height": 200,
+   "color": "4"
+  },
+  {
+   "id": "n-eng",
+   "type": "text",
+   "text": "能力面对上层只暴露 MCP 工具",
+   "x": 1580,
+   "y": 1640,
+   "width": 620,
+   "height": 45
+  },
+  {
+   "id": "g-dev",
+   "type": "group",
+   "label": "⑥ 设备与被驱动的原版软件",
+   "x": -40,
+   "y": 2010,
+   "width": 2260,
+   "height": 270
+  },
+  {
+   "id": "suite",
+   "type": "text",
+   "text": "原版 NovAtel 套件 2.11.0\n便携副本 NASRunner.exe 与 Graph.exe\n用 SetParent 挂进套件台的面板\n同时开 CDP 端口，用于取数与注入",
+   "x": 0,
+   "y": 2075,
+   "width": 900,
+   "height": 170
+  },
+  {
+   "id": "rx",
+   "type": "text",
+   "text": "接收机\n串口 / USB / 网络 / SBF / CSV",
+   "x": 960,
+   "y": 2075,
+   "width": 500,
+   "height": 170
+  },
+  {
+   "id": "n-dev",
+   "type": "text",
+   "text": "嵌入不等于修改：原版二进制不动，只挂进我们的面板",
+   "x": 1280,
+   "y": 2020,
+   "width": 920,
+   "height": 45
+  },
+  {
+   "id": "g-rule",
+   "type": "group",
+   "label": "⑦ 纪律（不随架构变）",
+   "x": -40,
+   "y": 2340,
+   "width": 2260,
+   "height": 230
+  },
+  {
+   "id": "r1",
+   "type": "text",
+   "text": "三条硬约束\n模型归因 / 规则裁决 / 人工审批\n写动作停闸门，bot 不能批准自己",
+   "x": 0,
+   "y": 2400,
+   "width": 700,
+   "height": 140
+  },
+  {
+   "id": "r2",
+   "type": "text",
+   "text": "每个数字可回源\n结论到 call_id 到 job 到截图或 sha256",
+   "x": 740,
+   "y": 2400,
+   "width": 700,
+   "height": 140
+  },
+  {
+   "id": "r3",
+   "type": "text",
+   "text": "许可与模型\n唯一 deepseek-v4.1-flash（B 侧经 shim）",
+   "x": 1480,
+   "y": 2400,
+   "width": 700,
+   "height": 140
+  }
+ ],
+ "edges": [
+  {
+   "id": "ed1",
+   "fromNode": "shell",
+   "fromSide": "bottom",
+   "toNode": "v4",
+   "toSide": "top",
+   "color": "5"
+  },
+  {
+   "id": "ed2",
+   "fromNode": "v1",
+   "fromSide": "bottom",
+   "toNode": "a1",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "ed3",
+   "fromNode": "v2",
+   "fromSide": "bottom",
+   "toNode": "a1",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "ed4",
+   "fromNode": "a1",
+   "fromSide": "bottom",
+   "toNode": "b2",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "ed5",
+   "fromNode": "a2",
+   "fromSide": "bottom",
+   "toNode": "b2",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "ed6",
+   "fromNode": "b1",
+   "fromSide": "right",
+   "toNode": "b2",
+   "toSide": "left",
+   "color": "4"
+  },
+  {
+   "id": "ed7",
+   "fromNode": "b2",
+   "fromSide": "right",
+   "toNode": "b3",
+   "toSide": "left",
+   "color": "4"
+  },
+  {
+   "id": "ed8",
+   "fromNode": "b2",
+   "fromSide": "bottom",
+   "toNode": "e3",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "ed9",
+   "fromNode": "e3",
+   "fromSide": "right",
+   "toNode": "e7",
+   "toSide": "left",
+   "color": "4"
+  },
+  {
+   "id": "ed10",
+   "fromNode": "e7",
+   "fromSide": "bottom",
+   "toNode": "suite",
+   "toSide": "top"
+  },
+  {
+   "id": "ed11",
+   "fromNode": "suite",
+   "fromSide": "bottom",
+   "toNode": "rx",
+   "toSide": "top"
+  }
+ ]
+}

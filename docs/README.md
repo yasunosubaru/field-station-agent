@@ -20,7 +20,7 @@
 | [`spec/`](spec/) | 基础设计：系统边界、五类智能体职责、目录树、DoD | 第一次接触项目 |
 | [`decisions/`](decisions/) | 架构决策记录（ADR），一篇一个决定 | 想知道某个选型为什么这么定 |
 | [`operations/`](operations/) | 运维手册：黑板、看板、评估协议、公开数据、试运行台账 | 跑评测、接数据、写报告 |
-| [`v2/`](v2/README.md) | v2 架构图（Obsidian Canvas + Mermaid）与三候选说明 | 想看整体结构、想拍板界面底座 |
+| [`arch/`](arch/README.md) | 架构图（Obsidian Canvas + Mermaid）与画布说明 | 想看整体结构 |
 | [`m1/`](m1/) | 需求调研记录与数据字典（M1 交付物） | 接口与字段口径 |
 | [`m7/`](m7/) | 结题材料：一页摘要、结题报告骨架、软著三件套 | 写结题与软著材料 |
 | [`product/`](product/README.md) | 桌面 Agent 版：用户手册、架构、安全、验收清单 | 使用/部署/验收 All powered-FSA |
