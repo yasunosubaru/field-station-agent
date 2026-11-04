@@ -67,6 +67,41 @@ RECT_JS = ("(() => { const n = document.querySelector('[data-fsa-idx=\"%d\"]');"
            " const r = n.getBoundingClientRect();"
            " return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2}); })()")
 
+#: 记录坐标：选择器 -> 中心点 + 命中签名（点击前用来校验"那块地方还是原来的东西"）
+RECORD_JS = r"""
+(() => {
+  const out = {};
+  for (const q of %s) {
+    const n = document.querySelector(q);
+    if (!n) continue;
+    const r = n.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) continue;
+    out[q] = {
+      key: q,
+      x: Math.round(r.x + r.width / 2),
+      y: Math.round(r.y + r.height / 2),
+      w: Math.round(r.width), h: Math.round(r.height),
+      sig: { tag: n.tagName.toLowerCase(),
+             text: (n.innerText || n.getAttribute('aria-label') || n.title || '')
+                     .trim().replace(/\s+/g, ' ') }
+    };
+  }
+  return JSON.stringify(out);
+})()
+"""
+
+#: 命中测试：坐标上到底是哪个元素
+HIT_JS = r"""
+(() => {
+  const n = document.elementFromPoint(%f, %f);
+  if (!n) return 'null';
+  return JSON.stringify({ tag: n.tagName.toLowerCase(),
+    text: (n.innerText || n.getAttribute('aria-label') || n.title || '')
+            .trim().replace(/\s+/g, ' ') });
+})()
+"""
+
+
 
 @dataclass
 class Target:
@@ -236,3 +271,57 @@ class ClickEngine:
                 % (spec["selector"].replace("'", "\\'"), spec["name"]))
             return raw == spec.get("value")
         return False
+
+    # -- 坐标模式（固定视口 + 命中校验） -------------------------------
+    def fix_viewport(self, width: int, height: int) -> None:
+        """把 CSS 视口钉死。坐标点依赖布局，布局依赖视口，所以先钉视口。"""
+        self.driver.call("Emulation.setDeviceMetricsOverride",
+                         {"width": width, "height": height,
+                          "deviceScaleFactor": 1, "mobile": False})
+
+    def clear_viewport(self) -> None:
+        self.driver.call("Emulation.clearDeviceMetricsOverride")
+
+    def record_coords(self, selectors: list[str]) -> dict:
+        """记录选择器对应元素的中心点 + 命中签名（标签/文字），供以后按坐标点。"""
+        raw = self.driver.evaluate(RECORD_JS % json.dumps(selectors))
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        return {k: v for k, v in data.items() if v}
+
+    def click_point(self, rec: dict, *, expect: dict | None = None,
+                    timeout: float = 6.0) -> dict:
+        """按记录下来的坐标点。落下之前先用 elementFromPoint 校验那块地方还是原来的东西。"""
+        x, y = float(rec["x"]), float(rec["y"])
+        sig = self._hit_test(x, y)
+        if not self._sig_matches(rec, sig):
+            raise ClickError("坐标漂移：(%d,%d) 处期望 %s，实际 %s"
+                             % (x, y, rec.get("sig"), sig))
+        before = self._snapshot()
+        if not self.dry_run:
+            self._hover(x, y)
+            self._press(x, y)
+            self._release(x, y)
+        ok = True if self.dry_run else self._wait_effect(expect, before, timeout)
+        entry = {"target": rec.get("key"), "x": x, "y": y, "mode": "coord",
+                 "sig": sig, "ok": ok, "expect": expect or {},
+                 "before": before.get("hash"), "after": self._snapshot().get("hash")}
+        self.log.append(entry)
+        if not ok:
+            raise ClickNoEffect("坐标点 (%d,%d) 没有预期效果" % (x, y))
+        return entry
+
+    def _hit_test(self, x: float, y: float) -> dict:
+        raw = self.driver.evaluate(HIT_JS % (x, y))
+        return json.loads(raw) if isinstance(raw, str) else raw
+
+    @staticmethod
+    def _sig_matches(rec: dict, sig: dict) -> bool:
+        want = (rec.get("sig") or {})
+        if not sig:
+            return False
+        if want.get("tag") and want["tag"] != sig.get("tag"):
+            return False
+        wt = (want.get("text") or "")[:12]
+        st = (sig.get("text") or "")[:len(wt)] if wt else ""
+        return (not wt) or wt == st
+
