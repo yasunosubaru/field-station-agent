@@ -146,10 +146,14 @@ def parse_targets(raw) -> list[Target]:
 
 
 def pick(targets: list[Target], key: str) -> Target:
-    """按 key 找目标：先精确 label，再包含匹配（且必须唯一）。"""
+    """按 key 找目标：先精确 label（多个同名时取面积最大的外层容器），再包含匹配。"""
     exact = [t for t in targets if t.key == key]
     if len(exact) == 1:
         return exact[0]
+    if len(exact) > 1:
+        # 同名的父子元素（div 包 span）都命中时，取面积最大的那个：
+        # 点击会冒泡，点外层与点内层等效，但外层坐标更稳。
+        return max(exact, key=lambda t: t.w * t.h)
     fuzzy = [t for t in targets if key.lower() in t.key.lower() and t.key]
     if len(fuzzy) == 1:
         return fuzzy[0]
