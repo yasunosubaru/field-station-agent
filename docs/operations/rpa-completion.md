@@ -25,7 +25,7 @@
 | 1 | `gui.suite.autoupdate` | auto | auto | 加固：去掉 `sleep`，改**条件等待**（轮询弹窗文本）；选择器进 fixture |
 | 2 | `gui.graph.export` | auto | auto | 同上；补失败分类（文件被占用 / 导出超时） |
 | 3 | `gui.device.add` | 到闸门 | auto（到闸门）+ 添加后校验 | 前半已通；"添加后设备卡出现"要真机，标 `blocked: hardware` 到那一步 |
-| 4 | `gui.app.install` | 卡在原生对话框 | **auto（到闸门）** | UIA 从 `NASRunner` 子树里找到 `Open` 对话框（实测可行）；文件名控件的 `AutomationId=1148` 不支持 ValuePattern，**文本用 SendKeys/剪贴板填**；点"打开"、回到弹窗，到 `Add` 闸门前停 |
+| 4 | `gui.app.install` | 卡在原生对话框 | **GUI 路径可自动；但优先改走文件层** | 实测：非核心应用装在 `%APPDATA%\NovAtelApplicationSuite\noncoreapps\<name>\`（Perception Viewer 已就位，含 `perceptionViewer.zip` 12 MB），目录旁有 `NonCoreAppsData.zip` 作登记表。**首选**：打包预置 + 首次启动铺文件（无需 GUI）；GUI 路径保留作通用能力 |
 | 5 | `gui.app.update` | 到闸门（本机没更新） | auto（到闸门） | 需要**造场景**：装一个旧版非核心应用，才有横幅可点；场景脚本进 `examples/` |
 | 6 | `gui.device.update` | 卡在 `ensure_link` | assisted + `blocked: hardware` | 代码推进到 `Apply` 闸门前；真机清单写清"插上接收机后跑什么、看什么" |
 | 7 | `gui.graph.newproject` | 人工 | **✅ auto（实测打通）** | 套件启动的是 `C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe`（不是 payload 副本）。用该 exe 加 `--remote-debugging-port=9224` 启动，CDP 直接可用（1 个页面）；点击引擎在其页面找到 14 个目标，含 `New Project` / `Open Project`。**注意**：payload 自带的那份 Graph 缺 `jszip`，直接启动会崩，不能用来做自动化 |
@@ -115,8 +115,27 @@ python tools/rpa_calibrate.py --port 9223 --page manage --out tools/uia_selector
 
 ---
 
-## 6. 开工前置
+## 5.5 可选应用：优先文件层，不走 GUI
 
+实测套件的非核心应用是**解压到用户目录**，不是系统安装：
+
+```
+%APPDATA%\NovAtelApplicationSuite\noncoreapps\
+├─ NonCoreAppsData.zip + NonCoreAppsData\   ← 登记表（2 KB）
+└─ perceptionViewer\                        ← 已安装的应用
+   ├─ perceptionViewer.zip（12 MB，原始包）
+   ├─ view\ · node_modules\ · package.json
+   └─ perceptionViewer_prerequisites.json
+```
+
+所以"自带 Perception Viewer"根本不需要 RPA：**打包时放进 payload，首次启动复制到该目录并合并登记表**即可，确定、可校验、可回滚。
+
+`gui.app.install` 因此降级为**通用能力**（用户自己拿到别的 ZIP 时才用），不再是我们的必经路径。
+GUI 路径的自动方案仍然保留（UIA 定位对话框 + 剪贴板填路径），但不再是主路径。
+
+> 许可提醒：把厂商的可选应用一起打包，与打包套件本身是同一类再分发问题，仍按"仅随包演示"处理。
+
+## 6. 开工前置
 | 需要 | 用途 | 谁提供 |
 |---|---|---|
 | 原版套件可启动（`NASRunner.exe`） | D1 的 dump 与全程验证 | 仓库已带便携副本，我直接起 |
