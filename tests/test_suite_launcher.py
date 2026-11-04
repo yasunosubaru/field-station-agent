@@ -448,7 +448,8 @@ class SelectorCoverage(unittest.TestCase):
             for match in re.finditer(r"^\s*page:\s*(\S+)\s*$", text, re.MULTILINE):
                 used.add(match.group(1).strip().strip("'\""))
         pages = {p for p in used if p.lower() not in ("", "manage")}
-        self.assertTrue(pages, "工作流里应该至少有一个非 manage 的 page")
+        # 流程现在按真实界面用 click 导航（没有 open page: 的入口），所以允许空集；
+        # 一旦出现 page:，它必须在选择器表里能解析。
         for page in pages:
             self.assertIn(page.lower(), keys, f"选择器表缺页面 {page!r}")
 

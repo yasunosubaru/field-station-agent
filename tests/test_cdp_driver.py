@@ -18,6 +18,11 @@ class TestScripts(unittest.TestCase):
         self.assertNotIn("__TARGET_JSON__", js)
         self.assertIn("__pool()", js)
 
+    def test_click_js_supports_css_selector(self):
+        js = cdp_driver._click_js("css:#settings-banner")
+        self.assertIn("querySelector", js)
+        self.assertIn("#settings-banner", js)
+
     def test_read_js_is_case_insensitive(self):
         js = cdp_driver._read_js("Manage")
         self.assertIn("toLowerCase()", js)

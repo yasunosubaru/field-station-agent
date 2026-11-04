@@ -1,10 +1,14 @@
 id: gui.suite.autoupdate
-version: 1
-title: 读取套件自动更新设置（只读，不下载不安装）
+version: 2
+title: 读取套件「检查更新」的真实结果（只读，不下载不安装）
 summary: >
-  原版 Settings ▸ Auto Updates 会检查更新并提示安装。本仓库**明确不做自动更新**：
-  没有可信的更新源，也没有在无人值守时安全回滚的能力。这条流程只把当前设置与
-  「为什么不做」记进证据，供覆盖矩阵与本机核对；不下载、不安装、不改设置。
+  本版套件（实测 2.11.0）的设置菜单只有四项：标题 Settings、Check For Updates、
+  标题 Theme（Light / Dark）、Quit——**没有**「自动更新」开关或页面。点 Check For Updates
+  会联网查一次并弹窗：「NovAtel Application Suite Update / NovAtel Application Suite is
+  up to date / Current Version: 2.11.0 / Close」。齿轮本身是纯图标
+  （a#settings-banner，innerText 为空、无 title、无 aria-label），CDP 只能按文字找元素，
+  点不到它，所以这一步人工做；结果由 CDP 回读。仓库仍然不做自动更新：更新源是 AWS，
+  没人值守时也无法回滚，需要升级就走 gui.app.update（人工闸门）。
 intent: suite.autoupdate.inspect
 risk: low
 tags: [suite, autoupdate, gui, read-only]
@@ -16,16 +20,16 @@ requires:
   node: false
 
 params:
-  expect_status:
+  expect_version:
     type: string
     required: false
-    enum: [enabled, disabled]
-    description: 可选：断言当前设置（enabled / disabled）；不给就只记录
+    pattern: '^[0-9]+(\.[0-9]+)+$'
+    description: 可选：断言弹窗里 Current Version 的版本号（例如 2.11.0）；不给就只记录
 
 approval:
   required: false
   risk: low
-  reason: 只读页面的设置值，不触发检查、下载或安装。
+  reason: 只查一次更新并读弹窗文字，不下载、不安装、不改设置。
 
 failure:
   screenshot: true
@@ -44,39 +48,57 @@ steps:
       json:
         ok: true
 
-  - id: read_setting
+  - id: open_check
     kind: gui
-    description: 打开 Settings ▸ Auto Updates，只读当前设置
+    description: >
+      点右上角齿轮（a#settings-banner，纯图标无文字，用 CSS 选择器定位），
+      再点菜单里的 Check For Updates。只检查，不点任何 Install。
     actions:
-      - action: open
-        page: manage
       - action: click
-        locator: Settings
+        locator: "css:#settings-banner"
       - action: click
-        locator: Auto Updates
-      - action: read
-        locator: Auto Updates status
+        locator: "Check For Updates"
     screenshot: true
     assisted:
       enabled: true
       prompt: |
-        请打开 Settings ▸ Auto Updates，只读当前设置（不要点 Check for updates）。
-        把看到的启用/禁用状态与更新通道记下来，然后选 done。
+        请点套件右上角的齿轮图标，在菜单里选「Check For Updates」。
+        菜单里应当只有：Settings / Check For Updates / Theme（Light、Dark）/ Quit。
+        只做检查，**不要**在任何「新版本可用」的横幅上点 Install。
+        完成后选 done。
 
-  - id: assert_status
+  - id: wait_popup
+    kind: sleep
+    seconds: 6
+    description: 套件要联网查一次，弹窗不是同步出现；等它画出来再读
+
+  - id: read_result
+    kind: verify_ui
+    description: >
+      读整个更新弹窗（div.update-software-popup）的正文：它同时含结论行
+      （“… is up to date”或“新版本可用”）与「Current Version: x.y.z」。
+      这里断言版本行存在，具体文字原样进证据
+    control: NovatEl Application Suite Update Novat
+    expect:
+      matches: 'Current Version: [0-9]+(\.[0-9]+)+'
+    assisted:
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
+
+  - id: assert_version
     kind: assert
-    description: 只有给了 expect_status 才断言
+    description: 只有给了 expect_version 才断言
     checks:
-      - path: steps.read_setting.actions.3.value
-        matches: ${params.expect_status}
+      - path: steps.read_result.value
+        contains: ${params.expect_version}
 
   - id: record
     kind: artifact
     name: autoupdate-setting.json
     content:
       job: ${job.id}
-      setting: ${steps.read_setting}
-      expect_status: ${params.expect_status}
+      dialog: ${steps.read_result}
+      expect_version: ${params.expect_version}
       decision: >
-        不做自动更新：仓库没有可信更新源，也没有无人值守时的回滚能力。
-        需要升级时走 gui.app.update（人工闸门）。
+        不做自动更新：更新源是 AWS，本机没有可信的离线更新包，
+        也没有无人值守时的回滚能力。需要升级时走 gui.app.update（人工闸门）。

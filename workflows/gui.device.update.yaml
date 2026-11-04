@@ -1,10 +1,15 @@
 id: gui.device.update
-version: 1
-title: 刷写接收机固件（人工闸门）
+version: 2
+title: 刷写接收机固件（Update 窗口，人工闸门在 Apply 之前）
 summary: >
-  Device ▸ Update 的固定流程：核对型号与固件文件、算文件哈希、把文件填进 Update 页，
-  在**点击 Apply 之前**停下来等人批准，升级后再用 VERSION (#37) 证明它回来了。
-  没有 GUI 驱动时，填文件与点 Apply 变成两条人工任务，绝不假装点过。
+  本版套件的固件升级不在 Manage 页的设备卡片菜单里——卡片右上「…」（button.more-img，
+  纯图标、无文字）只有 Edit Device / Download configuration / Load configuration. /
+  Delete Device 四项。真正的 Update 窗口属于「已连接的那台设备」：连上之后在 Device 菜单里
+  打开，窗口上是 Current Firmware Version / Current Manage Web Version、Browse、Select File、
+  Apply（帮助原文：“Click the Browse button … Click the Apply button. After the new software
+  is loaded, the receiver will restart.”）。Browse 弹的是原生 Open 对话框，设备菜单也只有
+  连上后才生成，两者都不在 CDP 的文字可选范围内，所以准备段走人工闸门；
+  本流程只做到**点 Apply 之前**，绝不代点 Apply。
 intent: device.update
 risk: high
 tags: [device, update, firmware, gui, oem729]
@@ -23,8 +28,8 @@ params:
   model:
     type: string
     required: true
-    pattern: '^[A-Za-z0-9-]+$'
-    description: 接收机型号，必须与 VERSION (#37) 完全一致，例如 OEM729
+    pattern: '^[A-Za-z0-9.-]+$'
+    description: 接收机型号，必须与 VERSION (#37) 的 model 完全一致，例如 OEM729
   expect_software:
     type: string
     required: false
@@ -66,10 +71,20 @@ steps:
       json:
         ok: true
 
+  - id: digest
+    kind: file_digest
+    path: ${params.firmware}
+    save_as: firmware
+    description: 先把文件哈希钉住，事后能证明刷的是哪一份
+
   - id: ensure_link
     kind: ensure_live
     target: ${params.target}
     save_as: link
+    description: >
+      没有会话就先按 target 建一条。本机目前只有 COM3~COM6 四个蓝牙串口
+      （/api/ports 实测），没有接收机，这一步会以 environment 失败——那是真实情况，
+      不要改成「假装连上」
 
   - id: request_version
     kind: live_command
@@ -91,56 +106,43 @@ steps:
       - path: steps.read_version.model
         equals: ${params.model}
 
-  - id: digest
-    kind: file_digest
-    path: ${params.firmware}
-    save_as: firmware
-    description: 先把文件哈希钉住，事后能证明刷的是哪一份
-
-  - id: prep
-    kind: gui
-    description: 打开 Device ▸ Update 并填入固件文件；不点 Apply
-    actions:
-      - action: open
-        page: manage
-      - action: click
-        locator: Device
-      - action: click
-        locator: Update
-      - action: type
-        locator: Firmware file
-        value: ${params.firmware}
-    screenshot: true
-    assisted:
-      enabled: true
-      prompt: |
-        请在 Manage 页完成下面三件事，然后回来选择 done：
-        1. 打开 Device ▸ Update；
-        2. 点 Browse，选择固件文件：
-           ${params.firmware}
-        3. 确认页面上显示的型号是 ${params.model}。
-        现在**不要**点 Apply。
+  - id: open_update
+    kind: human_gate
+    risk: medium
+    reason: >
+      Update 窗口只在「已连接的那台设备」里存在：设备卡片菜单是纯图标（more-img），
+      连上后出现的 Device 菜单是动态生成的，Browse 还会弹原生 Open 对话框——
+      这三处 CDP 都点不到，只能人工做。做完再批准往下。
+    prompt: |
+      请在原版套件里完成（CDP 到不了这一步，原因是控件无文字/原生对话框）：
+        1. Manage 页，把 params.model 指定的那台接收机的 Connect 开关打开；
+        2. 在该设备的 Device 菜单里点 Update；
+        3. 点 Browse，在原生 Open 对话框里选 params.firmware 指定的固件文件；
+        4. 确认窗口上 Select File 一行显示的就是这个文件名，
+           Current Firmware Version 与机型对得上。
+      具体路径与型号见本 job 的 params（firmware / model）。
+      现在**不要**点 Apply。做完选 approved。
 
   - id: confirm_file
     kind: verify_ui
-    control: Device > Update > Firmware file
+    description: >
+      Update 窗口里的 Select File 一行必须显示固件文件名。这是人工填完之后由 CDP 回读的；
+      没走到这一步（没有接收机 / 没连上）就会读不到而停下
+    control: Select File
     expect:
       contains: ${steps.digest.name}
     assisted:
-      enabled: true
-      prompt: |
-        请确认 Update 页的固件文件框显示的文件名是：
-        ${steps.digest.name}
-        确认无误选 done；不对就选 failed 并写明看到的内容。
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
 
   - id: approve_apply
     kind: human_gate
     risk: high
     reason: 固件升级不可逆；失败可能变砖，回滚依赖现场。
     prompt: |
-      即将点击 Apply 刷写 ${params.model}。
-      固件：${params.firmware}
-      SHA256：${steps.digest.sha256}
+      即将点击 Update 窗口的 Apply 刷写 params.model 指定的机型，
+      固件为 params.firmware。
+      文件 SHA256 见本 job 的 digest 步骤输出（`workflow status <job_id>` 里的 steps）。
       确认型号、文件、校验和都无误后再批准。
 
   - id: before_apply
@@ -150,7 +152,7 @@ steps:
 
   - id: apply
     kind: gui
-    description: 真正点 Apply
+    description: 真正点 Apply（人工闸门已过）
     actions:
       - action: click
         locator: Apply
@@ -158,7 +160,7 @@ steps:
     assisted:
       enabled: true
       prompt: |
-        现在点击 Update 页的 Apply，并等进度条结束。
+        现在点击 Update 窗口的 Apply，并等进度条结束。
         升级过程中不要断电、不要拔线。完成后选 done。
 
   - id: after

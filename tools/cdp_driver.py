@@ -279,6 +279,7 @@ class CdpDriver:
         clicked = self.evaluate(_click_js(locator))
         if not clicked:
             raise GuiUnavailable(f"页面上找不到可点的 {locator!r}")
+        time.sleep(0.15)
         self.log.append({"action": "click", "target": locator})
 
     def type_text(self, locator: str, text: str) -> None:
@@ -322,6 +323,13 @@ const __pool = () => Array.from(document.querySelectorAll(
 """
 
 _CLICK_JS = "(() => {" + _PRELUDE + r"""
+  if (String(__target).startsWith('css:')) {
+    const node = document.querySelector(String(__target).slice(4));
+    if (!node) return false;
+    node.scrollIntoView({block: 'center'});
+    node.click();
+    return true;
+  }
   const __want = String(__target).toLowerCase();
   let exact = __pool().filter((el) => __text(el).toLowerCase() === __want);
   let pool = exact.length ? exact : __pool().filter((el) => __text(el).toLowerCase().includes(__want));
@@ -350,6 +358,12 @@ _CLICK_JS = "(() => {" + _PRELUDE + r"""
 })()"""
 
 _READ_JS = "(() => {" + _PRELUDE + r"""
+  if (String(__target).startsWith('css:')) {
+    const node = document.querySelector(String(__target).slice(4));
+    if (!node) return null;
+    if (['INPUT','TEXTAREA','SELECT'].includes(node.tagName)) return node.value;
+    return (node.innerText || node.textContent || '').trim();
+  }
   const __want = String(__target).toLowerCase();
   let pool = __pool().filter((el) => __text(el).toLowerCase() === __want);
   if (!pool.length) pool = __pool().filter((el) => __text(el).toLowerCase().includes(__want));

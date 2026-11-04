@@ -97,7 +97,7 @@ const SKELETON = `
     <aside class="ag-left" id="ag-left" aria-label="会话">
       <div class="ag-left-head">
         <h2 class="ag-rail-title">会话</h2>
-        <button type="button" class="ag-btn ag-btn-ghost ag-new" data-act="new-session">新建</button>
+        <button type="button" class="ag-btn ag-btn-primary ag-new" data-act="new-session">＋ 新会话</button>
       </div>
       <div class="ag-filter">
         <input type="search" id="ag-filter" class="ag-input-line" placeholder="筛选会话" aria-label="筛选会话">

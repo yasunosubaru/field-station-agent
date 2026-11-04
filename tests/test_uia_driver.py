@@ -43,11 +43,14 @@ class Selectors(unittest.TestCase):
             self.assertNotIn(banned, text)
 
     def test_every_control_has_a_descriptor(self):
+        """每个键要么有 UIA 描述，要么有一条 note 明确说明本版不存在。"""
         for name, descriptors in self.selectors["controls"].items():
             self.assertIsInstance(descriptors, list, name)
             self.assertTrue(descriptors, name)
             for desc in descriptors:
-                self.assertTrue(desc.get("names") or desc.get("automationId"), name)
+                self.assertTrue(
+                    desc.get("names") or desc.get("automationId") or desc.get("note"),
+                    name)
 
     def test_workflow_locators_resolve(self):
         suite_root = Path(__file__).resolve().parents[1] / "workflows"
@@ -64,6 +67,8 @@ class Selectors(unittest.TestCase):
                     used.add(str(step["locator"]))
         controls = self.selectors["controls"]
         for locator in used:
+            if locator.startswith("css:") or locator.startswith("${"):
+                continue  # CDP 选择器 / 运行时参数，不走 UIA 表
             self.assertTrue(
                 locator in controls or locator.split(">")[-1].strip() in controls,
                 f"选择器表缺 {locator!r}")

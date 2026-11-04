@@ -1,13 +1,24 @@
 id: gui.graph.newproject
-version: 1
-title: 从 SBF/CSV 新建 Graph 工程（Pre-process 四步）
+version: 2
+title: 从 SBF/CSV 新建 Graph 工程（独立进程，只能人工驱动）
 summary: >
-  原版 Graph 的 New Project 支持从 SBF/CSV 生成工程并走 Pre-process（Map / Timeline /
-  Flags / Process）。B 的 New Project 只打开 .gpf 工程，没有这条向导；本流程用 UIA
-  驱动原版套件补上，并在写工程之前停一次人工闸门。
+  Graph 不是套件里的一个页面，而是**独立的 Electron 进程**：套件首页的 Graph 卡片
+  （div#Graph-welcome.application-container.GraphApp.standAloneApp）点下去会启动
+  C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe，
+  它的父进程就是套件的 NASRunner（本机实测）。所以它不出现在 CDP 的 /json/list 里；
+  直接用 --remote-debugging-port=9224 启 Graph 也拿不到调试端口（Graph 的 main 进程
+  argv 被脚本改写，只剩 "...\Graph"），/json/list 连不上。结论：当前 CDP 驱动到不了
+  Graph 的界面，这条流程只能人工做，这里把**真实文字**写清楚，别再写想象中的
+  “Create from SBF / Next / Process”。
+  真实路径（来自 Graph 自己的 i18n 与套件帮助原文）：Welcome 窗口 New Project →
+  Project Wizard 的 Next → Project Information（Select → Select Folder 对话框、
+  Project Folder、Project Name、Project Description (optional)）→ Next →
+  Receiver Data（Select → Open 对话框、NovAtel Receiver Data File）→ Next →
+  File Validation（Copy / Finish）→ Pre-Process 窗口（Map / Timeline / Flags）→
+  Plot 处理 → Processed 窗口。写盘发生在 Plot 之前，所以闸门放在 Plot 前。
 intent: graph.newproject
 risk: medium
-tags: [graph, project, sbf, csv, gui, pre-process]
+tags: [graph, project, sbf, csv, gui, pre-process, standalone]
 
 requires:
   engine: true
@@ -19,16 +30,22 @@ params:
   source:
     type: path
     required: true
-    description: 输入文件（.sbf / .csv）；流程只读它并算哈希
+    description: >
+      NovAtel 接收机数据文件（.gps / .sbf / .csv 都行，Graph 的 Receiver Data 就是这么选的）；
+      流程只读它并算哈希
   project_name:
     type: string
     required: true
     pattern: '^[A-Za-z0-9 _.-]+$'
-    description: 新工程名（不含路径分隔符）
+    description: Graph 的 Project Name（不含路径分隔符）
+  project_dir:
+    type: path
+    required: true
+    description: Graph 的 Project Folder；Project Wizard 里用 Select 选中的那个目录
   station:
     type: string
     required: false
-    description: 台站名（写进工程元数据，可选）
+    description: 台站名（写进工程描述，可选）
   start_utc:
     type: string
     required: false
@@ -41,7 +58,7 @@ params:
 approval:
   required: false
   risk: medium
-  reason: 真正的写盘在 Process 之前由 human_gate 停一次；前面的 Select/Map/Timeline/Flags 只读或可撤。
+  reason: 真正的写盘在 Plot 之前由 human_gate 停一次；前面的向导步骤只读或可撤。
 
 failure:
   screenshot: true
@@ -66,80 +83,56 @@ steps:
     save_as: source
     description: 先钉住输入文件的哈希，事后能证明工程是从哪一份数据建的
 
-  - id: preprocess
+  - id: launch_graph
     kind: gui
-    description: 打开 Graph，选 New Project，从 SBF/CSV 建工程并走完前三个 Pre-process 步骤
+    description: >
+      点首页的 Graph 卡片启动独立进程。只做到「把 Graph 拉起来」：点完之后
+      套件页面上再没有 Graph 的任何 DOM，后续向导都在另一个窗口里
     actions:
-      - action: open
-        page: graph
       - action: click
-        locator: New Project
-      - action: click
-        locator: Create from SBF
-      - action: type
-        locator: SBF file
-        value: ${params.source}
-      - action: type
-        locator: Project name
-        value: ${params.project_name}
-      - action: click
-        locator: Next
-    screenshot: true
+        locator: Graph
     assisted:
       enabled: true
       prompt: |
-        请在 Graph 页新建工程：
-        1. New Project ▸ Create from SBF（或 CSV）；
-        2. 文件选：${params.source}
-        3. 工程名：${params.project_name}
-        4. 走完 Pre-process 的 Map / Timeline / Flags 三步，**先不要点 Process**。
+        请在 My Applications 首页点 Graph 卡片，等 Graph 窗口出现（独立程序，
+        标题栏是 Graph）。注意这一下不会让 Graph 出现在 CDP 里，后面的步骤都要人工做。
         完成后选 done。
 
-  - id: verify_preprocess
-    kind: verify_ui
-    control: Graph > Pre-process > Flags
-    expect:
-      contains: ${params.project_name}
-    assisted:
-      enabled: true
-      prompt: |
-        请确认 Pre-process 页已经显示工程 ${params.project_name}，
-        且 Map / Timeline / Flags 三步都已完成。确认后选 done。
-
-  - id: approve_process
+  - id: approve_plot
     kind: human_gate
     risk: medium
-    reason: Process 会把结果写进工程目录；先让人确认输入文件、时间范围与工程名。
+    reason: >
+      Graph 没有 CDP 页面（独立进程、调试端口被吃掉），向导里的 Select Folder /
+      Open 都是原生对话框；Plot 会把结果写进工程目录，所以人工做完向导再批准。
     prompt: |
-      即将执行 Pre-process 的最后一步 Process。
-      工程：${params.project_name}
-      输入：${params.source}
-      SHA256：${steps.digest.sha256}
-      台站：${params.station}
-      时间：${params.start_utc} ～ ${params.end_utc}
-      确认无误后再批准。
+      请在 Graph 窗口里完成向导（这些都是界面上的真实文字）：
+        1. Welcome 窗口点「New Project」；
+        2. 点「Next」进 Project Information：
+             · 「Select」→ 原生「Select Folder」对话框，选 params.project_dir 指定的工程目录
+             · 「Project Name」填 params.project_name
+             · 需要的话在「Project Description (optional)」写台站 params.station
+        3. 点「Next」进 Receiver Data：
+             · 「Select」→ 原生「Open」对话框，选 params.source 指定的数据文件
+             · 确认「NovAtel Receiver Data File」一行就是它
+        4. 点「Next」，等「File Validation」通过（失败会提示原因，可用「Back」换文件）；
+        5. 点「Finish」进 Pre-Process 窗口，核对 Map / Timeline / Flags
+           （时间范围按 params.start_utc ~ params.end_utc）。
+      到这里**先不要**点「Plot」。确认无误后选 approved，下一步才是 Plot。
 
-  - id: process
+  - id: plot
     kind: gui
-    description: 点 Process，等待工程生成
+    description: >
+      点 Pre-Process 窗口的「Plot」开始处理。CDP 下这一步必然 capability 失败——
+      Graph 不在任何可连的调试端口上；这行留在这里是为了把「真正做什么」写清楚，
+      并让 assisted 模式能生成人工任务
     actions:
       - action: click
-        locator: Process
-    screenshot: true
+        locator: Plot
     assisted:
       enabled: true
       prompt: |
-        现在点 Process，等进度结束。完成后选 done；报错就选 failed 并写明错误。
-
-  - id: verify_project
-    kind: verify_ui
-    control: Graph > Projects > Current
-    expect:
-      contains: ${params.project_name}
-    assisted:
-      enabled: true
-      prompt: |
-        请确认 Graph 的工程列表/当前工程里有 ${params.project_name}。确认后选 done。
+        现在点 Pre-Process 窗口的「Plot」，等处理完成、Processed 窗口出现。
+        完成后选 done；报错就选 failed 并照抄错误文字。
 
   - id: record
     kind: artifact
@@ -147,8 +140,11 @@ steps:
     content:
       job: ${job.id}
       project: ${params.project_name}
+      project_dir: ${params.project_dir}
       source: ${steps.digest}
       station: ${params.station}
       start_utc: ${params.start_utc}
       end_utc: ${params.end_utc}
-      process: ${steps.process}
+      driver_note: >
+        Graph 是独立 Electron 进程（Graph.exe，父进程 NASRunner），不出现在 CDP
+        /json/list；带 --remote-debugging-port 启动也拿不到调试端口，故本流程只能人工执行。

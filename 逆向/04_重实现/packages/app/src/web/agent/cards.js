@@ -143,8 +143,10 @@ export function renderToolCard(card, handlers = {}) {
   head.addEventListener('click', () => {
     const open = head.getAttribute('aria-expanded') === 'true';
     head.setAttribute('aria-expanded', open ? 'false' : 'true');
+    // 折叠区当场同步：上层 setExpanded 只改状态、不保证马上重渲染，
+    // 若只靠它，点开会看到箭头转了而正文不动。
+    body.hidden = open;
     if (typeof handlers.setExpanded === 'function') handlers.setExpanded(card.id, !open);
-    else body.hidden = open;
   });
 
   const body = el('div', { class: 'ag-card-body', id: bodyId }, [

@@ -1,36 +1,58 @@
 id: gui.device.add
-version: 1
-title: 添加并连接一台接收机（多设备入口）
+version: 2
+title: 新增接收机连接（Manage ▸ + Add Device ▸ New Connection）
 summary: >
-  Manage ▸ Add Device 的固定流程：扫描端口、选端口与波特率、连接，再用 VERSION (#37)
-  回读型号证明连上的是哪一台。属覆盖矩阵 page.deviceManagement 的处置：B 的多设备
-  档案仍只维护单一 live 会话，这条流程把「加一台设备」做成可审计动作。
+  Manage 页「+ Add Device」打开的是 New Connection 对话框，真实字段是 Connection Name、
+  Type（Network / Serial / USB），选 Serial 后出现 Port / Baud Rate / Passive /
+  Hardware Handshake / PIM222A Receiver，底部 Cancel / Add。没有「Refresh ports」之类的
+  刷新按钮——端口列表是打开对话框时由套件枚举的（本机实测只有 COM3~COM6 四个蓝牙串口，
+  与 /api/ports 一致）。本流程按真实文字填完，在点 Add（会真的新增一条连接）之前停一次
+  人工闸门；Add 之后设备卡片以 Connection Name 作为标题出现在 Manage 页。
 intent: device.add
 risk: medium
-tags: [device, gui, connect, serial, tcp]
+tags: [device, gui, new-connection, serial, usb, tcp]
 
 requires:
   engine: true
-  live: true
+  live: false
   gui: true
   node: false
 
 params:
-  target:
+  name:
     type: string
     required: true
-    pattern: '^(COM[0-9]+@[0-9]+|tcp://[A-Za-z0-9._-]+:[0-9]+)$'
-    description: 目标连接，例如 COM8@115200 或 tcp://192.0.2.10:3001
+    pattern: '^[A-Za-z0-9._-]{1,16}$'
+    description: >
+      对话框里的 Connection Name（套件 maxlength=16，只允许这些字符），
+      它同时是 Manage 页设备卡片的标题
+  port:
+    type: string
+    required: true
+    pattern: '^COM[0-9]+$'
+    description: >
+      Serial 端口，必须是对话框 Port 下拉里真实存在的项（本机实测 COM3~COM6）；
+      事先用 /api/ports 或对话框里的列表确认，不要照抄旧文档的 COM8
+  baud:
+    type: string
+    required: true
+    default: '115200'
+    pattern: '^(Auto|[0-9]+)$'
+    description: 波特率下拉项：Auto / 115200 / 230400 / 460800 / 921600
   expect_model:
     type: string
     required: false
-    pattern: '^[A-Za-z0-9-]+$'
-    description: 期望型号（VERSION #37 的 model）；给了才断言
+    pattern: '^[A-Za-z0-9.-]+$'
+    description: >
+      可选：连上之后由 VERSION (#37) 读到的型号。本流程只新增连接、不连接设备，
+      这个值只记进证据，真正回读走 live 流程
 
 approval:
   required: false
   risk: medium
-  reason: 连接可随时断开，不是不可逆动作；但会占用串口，操作前确认端口没被别的程序占着。
+  reason: >
+    点 Add 会往套件里写一条新连接（可再删，但要人工确认端口没被别的程序占着）。
+    审批点就放在 Add 前一步。
 
 failure:
   screenshot: true
@@ -49,56 +71,130 @@ steps:
       json:
         ok: true
 
-  - id: open_add
+  - id: settle_home
+    kind: sleep
+    seconds: 2.0
+    description: >
+      首页会异步刷新非核心应用状态并重绘卡片；刚关掉一个弹窗/刚回到首页时立刻点
+      Manage，事件会落在即将被替换的节点上（本机实测点空过）。先等它落定。
+      注意：套件**刚启动**时首页卡片要约 9 秒后才绑定点击（实测 9.2s），
+      刚开机就跑请把 seconds 调到 10 以上
+
+  - id: open_dialog
     kind: gui
-    description: 打开 Add Device 并刷新端口列表
+    description: >
+      首页 Manage 卡片 → 左上「+ Add Device」→ New Connection 里把 Type 选成 Serial。
+      不用 open 动作：驱动把 page="manage" 当「不用导航」直接跳过，什么都不会点
     actions:
-      - action: open
-        page: manage
+      - action: click
+        locator: Manage
       - action: click
         locator: Add Device
       - action: click
-        locator: Refresh ports
+        locator: Serial
     screenshot: true
     assisted:
       enabled: true
       prompt: |
-        请在 Manage 页点 Add Device，再点 Refresh 刷新端口列表。
-        目标：${params.target}
+        请在 My Applications 首页点 Manage 卡片，再点左上「+ Add Device」，
+        在弹出的 New Connection 对话框里把 Type 选成 Serial。
+        完成（能看到 Port / Baud Rate）后选 done；找不到按钮就选 failed 并写明看到的文字。
 
-  - id: connect
+  - id: verify_dialog
+    kind: verify_ui
+    description: 对话框标题必须真的出现；读不到说明没打开
+    control: New Connection
+    expect:
+      contains: New Connection
+    assisted:
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
+
+  - id: fill
     kind: gui
-    description: 选端口/波特率并连接
+    description: >
+      填 Connection Name，再依次选 Port 与 Baud Rate。两个下拉都是自定义按钮
+      （button#ports-selected / button#baudrate-selected + ul 列表），不是 <select>，
+      所以只能先点开再点选项；未选时按钮文字是 Select
+    actions:
+      - action: type
+        locator: connection-name
+        value: ${params.name}
+      - action: click
+        locator: Select
+      - action: click
+        locator: ${params.port}
+      - action: click
+        locator: Select
+      - action: click
+        locator: ${params.baud}
+    screenshot: true
+    assisted:
+      enabled: true
+      prompt: |
+        请在 New Connection 对话框里填三样东西（值见本 job 的 params）：
+        1. Connection Name ← params.name
+        2. Port 下拉 ← params.port
+        3. Baud Rate 下拉 ← params.baud
+        现在**不要**点 Add。完成三步后选 done。
+
+  - id: verify_fields
+    kind: verify_ui
+    description: >
+      读对话框正文（从 Connection Name 起）确认 Port 与 Baud Rate 两行真的变成了选中的值；
+      没选上的话按钮还写着 Select，这一条会失败
+    control: Connection Name Type
+    expect:
+      matches: 'Port ${params.port} Baud Rate ${params.baud}'
+    assisted:
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
+
+  - id: approve_add
+    kind: human_gate
+    risk: medium
+    reason: 点 Add 会真的新增一条连接记录；先确认端口没被占用、名字没写错。
+    prompt: |
+      即将点 Add 新增连接。
+      具体值看本 job 的 params（name / port / baud，`workflow status <job_id>` 会列出来），
+      对照对话框里 Connection Name / Port / Baud Rate 三行是否一致。
+      这一步只写连接记录、不连接设备；连上并回读 VERSION 是后面的事。
+      确认无误后再批准。
+
+  - id: click_add
+    kind: gui
+    description: 点对话框右下角的 Add（未填全时它是禁用态，文字仍是 Add）
     actions:
       - action: click
-        locator: Connect
+        locator: Add
     screenshot: true
     assisted:
       enabled: true
       prompt: |
-        请选中 ${params.target} 对应的端口与波特率（或填 TCP 地址），点 Connect。
-        连上后选 done；失败选 failed 并写明页面上的错误。
+        现在点 New Connection 对话框的 Add。完成后选 done；
+        如果弹了错误提示，选 failed 并把它照抄下来。
 
-  - id: read_version
-    kind: await_receiver
-    wait_for: version
-    timeout_s: 30
-    save_as: version
-    description: 连上后必须读到 VERSION；读不到不算添加成功
-
-  - id: assert_model
-    kind: assert
-    description: 只有给了 expect_model 才断言
-    checks:
-      - path: steps.read_version.model
-        equals: ${params.expect_model}
+  - id: verify_tile
+    kind: verify_ui
+    description: >
+      新增成功后 Manage 页会出现以 Connection Name 为标题的设备卡片
+      （div.device-tile > span.device-tile-heading）。未验证：本机没有可用接收机，
+      这段只在有真实端口时才会走到
+    control: ${params.name}
+    expect:
+      contains: ${params.name}
+    assisted:
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
 
   - id: record
     kind: artifact
     name: device-add.json
     content:
       job: ${job.id}
-      target: ${params.target}
-      version: ${steps.read_version}
+      connection: ${params.name}
+      port: ${params.port}
+      baud: ${params.baud}
       expect_model: ${params.expect_model}
-      connect: ${steps.connect}
+      dialog: ${steps.verify_fields}
+      add: ${steps.click_add}

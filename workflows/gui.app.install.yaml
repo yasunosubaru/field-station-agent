@@ -1,13 +1,18 @@
 id: gui.app.install
-version: 1
-title: 导入应用安装包（Add application，安装前人工闸门）
+version: 2
+title: 从本地 ZIP 导入并添加应用（Add application，安装前人工闸门）
 summary: >
-  原版 My Applications ▸ Add application 支持导入 .zip 装包。B 的这个按钮只展开说明，
-  没有安装器；本流程用原版套件补上：先核对包文件哈希与清单，再在**安装之前**停一次
-  人工闸门，装完用应用列表回读。
+  My Applications 页的「Add application」打开的是弹窗 #popupModal.appInstallerPopup：
+  标题 Add application，正文是「可安装应用」列表——本机没有候选时显示
+  “No applications are available for installation.”，有候选时是
+  “Select the application(s) to add” + 应用卡片；底栏是
+  “Import from your computer / Cancel / Add”。本地 .zip 只能走 Import from your computer，
+  而它调的是原生 Open 对话框（套件代码 remote.dialog.showOpenDialog，filters 只留 ZIP），
+  CDP 里没有页面可点，所以这一步只能人工；导入后卡片出现在 .app-card-container，
+  选中才会点亮 Add（未选中时 Add 带 customDisableAddBtn）。
 intent: suite.app.install
 risk: high
-tags: [suite, application, install, gui, package]
+tags: [suite, application, install, gui, package, zip]
 
 requires:
   engine: true
@@ -23,16 +28,16 @@ params:
   expect_name:
     type: string
     required: true
-    description: 安装后应出现在应用列表里的名称
+    description: 安装后应出现在 My Applications 里的应用名（同时是弹窗里卡片的名字）
   expect_version:
     type: string
     required: false
-    description: 可选：期望版本（显示在应用卡片上）
+    description: 可选：期望版本（应用卡片上显示）
 
 approval:
   required: false
   risk: high
-  reason: 审批门放在点 Install 之前；前面的选择与校验只读。
+  reason: 审批门放在点 Add 之前；前面的打开对话框、校验包哈希只读。
 
 failure:
   screenshot: true
@@ -51,73 +56,111 @@ steps:
       json:
         ok: true
 
+  - id: settle_home
+    kind: sleep
+    seconds: 2.0
+    description: >
+      首页会异步枚举非核心应用，期间卡片区显示“Loading”且按钮会被重绘；
+      这期间点 Add application 会被吞掉（本机实测），先等它落定
+
   - id: digest
     kind: file_digest
     path: ${params.package}
     save_as: package
     description: 先钉住安装包哈希，事后能证明装的是哪一份
 
-  - id: choose
+  - id: open_add
     kind: gui
-    description: 打开 My Applications ▸ Add application 并选中安装包；不点 Install
+    description: >
+      首页 My Applications ▸ 「+ Add application」。注意这个流程必须从首页开始——
+      左上角的返回首页入口是纯图标（a#menu-home-banner，无文字/title/aria），
+      CDP 只能按文字找元素，从 Manage 页回不到首页
     actions:
-      - action: open
-        page: manage
       - action: click
         locator: Add application
-      - action: type
-        locator: Application package
-        value: ${params.package}
     screenshot: true
     assisted:
       enabled: true
       prompt: |
-        请在 My Applications 页点 Add application，选择安装包：
-        ${params.package}
-        现在**不要**点 Install。
+        请在 My Applications 首页点「+ Add application」，等弹窗出来。
+        现在**不要**点 Add。完成后选 done。
 
-  - id: verify_package
+  - id: wait_dialog
+    kind: sleep
+    seconds: 5.0
+    description: >
+      弹窗打开前套件会去拉一次「可安装应用」清单：冷启动实测 3.1 秒才 display:block，
+      清单有缓存时 0.3 秒。紧接着 read 会读不到，所以这里等 5 秒（本机实测值，不是猜的）
+
+  - id: verify_modal
     kind: verify_ui
-    control: Add application > Package
+    description: >
+      弹窗底栏只有这个弹窗才有「Import from your computer」；读到它就说明
+      Add application 弹窗真的开着（关掉后元素还在 DOM 里，但尺寸为 0，读不到）
+    control: Import from your computer
     expect:
-      contains: ${steps.digest.name}
+      contains: Import from your computer
     assisted:
-      enabled: true
-      prompt: |
-        请确认 Add application 对话框里显示的包文件是 ${steps.digest.name}。
-        确认后选 done；不对就选 failed 并写明看到的内容。
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
+
+  - id: import_manual
+    kind: human_gate
+    risk: medium
+    reason: >
+      「Import from your computer」打开的是 Windows 原生 Open 对话框（套件代码里是
+      remote.dialog.showOpenDialog，title 'Open'，filters: ZIP Files），不是网页元素，
+      CDP 点不到也填不了；只能人工选文件。
+    prompt: |
+      请在 Add application 弹窗里点「Import from your computer」，
+      在原生 Open 对话框里选择 params.package 指定的那个 .zip 安装包
+      （文件名与 SHA256 见本 job 的 digest 步骤输出）。
+      导入成功后弹窗里会出现应用卡片，标题是 params.expect_name。
+      现在**不要**点 Add。做完选 approved。
+
+  - id: verify_imported
+    kind: verify_ui
+    description: >
+      导入成功后弹窗里出现以应用名为标题的卡片（.appAddCard）。未验证：
+      本机没有可导入的候选包，这一段没跑到；有真实 ZIP 时这里才会被读到
+    control: ${params.expect_name}
+    expect:
+      contains: ${params.expect_name}
+    assisted:
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
 
   - id: approve_install
     kind: human_gate
     risk: high
-    reason: 安装会写入套件安装目录；先确认包文件与来源。
+    reason: 点 Add 会把应用写进套件目录；先确认应用名、包文件与来源。
     prompt: |
-      即将安装应用：${params.expect_name}
-      安装包：${params.package}
-      SHA256：${steps.digest.sha256}
+      即将点 Add 添加应用 params.expect_name。
+      安装包为 params.package，SHA256 见本 job 的 digest 步骤输出；
+      期望版本 params.expect_version。
       确认来源可信后再批准。
 
   - id: install
     kind: gui
-    description: 点 Install，等安装完成
+    description: 点弹窗右下角的 Add（未选中任何卡片时它是禁用态，文字仍是 Add）
     actions:
       - action: click
-        locator: Install
+        locator: Add
     screenshot: true
     assisted:
       enabled: true
       prompt: |
-        现在点 Install，等安装器结束。完成后选 done；失败就选 failed 并写明错误。
+        现在点 Add，等安装结束。完成后选 done；失败就选 failed 并写明错误。
 
   - id: verify_installed
     kind: verify_ui
-    control: My Applications > Installed
+    description: 安装后首页 My Applications 出现该应用卡片（.appFullName）
+    control: ${params.expect_name}
     expect:
       contains: ${params.expect_name}
     assisted:
-      enabled: true
-      prompt: |
-        请确认 My Applications 列表里出现 ${params.expect_name}。确认后选 done。
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
 
   - id: record
     kind: artifact
@@ -127,4 +170,5 @@ steps:
       application: ${params.expect_name}
       package: ${steps.digest}
       expect_version: ${params.expect_version}
+      modal: ${steps.verify_modal}
       install: ${steps.install}
