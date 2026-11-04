@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://fsa.local/schema/mcp-tool.schema.json",
+  "title": "MCP 工具登记项",
+  "description": "一条工具 = 名字 + 分组 + 入参 + 返回 + 错误码 + 审批 + 风险；30 条工具共用此形状。",
+  "type": "object",
+  "required": [
+    "name",
+    "group",
+    "description",
+    "params",
+    "returns",
+    "errors",
+    "approval",
+    "risk"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 64,
+      "description": "全局唯一工具名；重名注册直接报错"
+    },
+    "group": {
+      "type": "string",
+      "enum": ["台站", "质控", "研判", "工单", "知识", "工作流", "套件", "数据", "管线"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "params": {
+      "type": "object",
+      "description": "键 = 参数名；值 = 参数描述",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type", "required"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["string", "integer", "number", "boolean", "object", "array"]
+          },
+          "required": { "type": "boolean" },
+          "description": { "type": "string" },
+          "default": {},
+          "items": { "type": "string" },
+          "enum": { "type": "array" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "returns": {
+      "type": "object",
+      "description": "成功时 data 的 shapes；至少给 summary 或主键",
+      "required": ["summary"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "shape": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["code", "retryable", "meaning"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^E_[A-Z_]+$" },
+          "retryable": { "type": "boolean" },
+          "meaning": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "approval": {
+      "type": "string",
+      "pattern": "^(否|是|条件（.+）)$",
+      "description": "否 / 是 / 条件（写明触发条件）"
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "name": "execute_device_action",
+      "group": "台站",
+      "description": "提交高风险设备动作，必须人工审批；当前返回授权命令包。",
+      "params": {
+        "station_id": { "type": "string", "required": true },
+        "action": { "type": "string", "required": true },
+        "reason": { "type": "string", "required": true },
+        "confidence": { "type": "number", "required": false, "default": 1.0 }
+      },
+      "returns": {
+        "summary": "receipt{status,execution_mode,station_id,action,reason,confidence,approval_id}"
+      },
+      "errors": [
+        { "code": "E_ARG", "retryable": false, "meaning": "参数缺失或越界" },
+        { "code": "E_APPROVAL_REQUIRED", "retryable": false, "meaning": "必须先发审批卡" },
+        { "code": "E_APPROVAL_DENIED", "retryable": false, "meaning": "人拒绝或审批过期" }
+      ],
+      "approval": "是",
+      "risk": "high"
+    }
+  ]
+}

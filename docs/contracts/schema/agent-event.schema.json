@@ -1,0 +1,256 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://fsa.local/schema/agent-event.schema.json",
+  "title": "Agent 内部事件（E1）",
+  "description": "运行时 A/B 共用的九个事件；信封固定为 type/session_id/data。",
+  "type": "object",
+  "required": ["type", "session_id", "data"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "session.start",
+        "message.delta",
+        "message.done",
+        "tool.call",
+        "tool.result",
+        "approval.request",
+        "approval.result",
+        "usage",
+        "error"
+      ]
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "运行时自己的会话 id；同一轮内不变"
+    },
+    "data": {
+      "type": "object"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "单调递增序号；断号说明事件被丢"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO 8601 毫秒；不参与回放比对"
+    },
+    "turn_id": {
+      "type": "string",
+      "description": "一轮用户输入的 id"
+    }
+  },
+  "additionalProperties": true,
+  "oneOf": [
+    {
+      "properties": {
+        "type": { "const": "session.start" },
+        "data": { "$ref": "#/definitions/sessionStart" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "message.delta" },
+        "data": { "$ref": "#/definitions/messageDelta" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "message.done" },
+        "data": { "$ref": "#/definitions/messageDone" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "tool.call" },
+        "data": { "$ref": "#/definitions/toolCall" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "tool.result" },
+        "data": { "$ref": "#/definitions/toolResult" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "approval.request" },
+        "data": { "$ref": "#/definitions/approvalRequest" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "approval.result" },
+        "data": { "$ref": "#/definitions/approvalResult" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "usage" },
+        "data": { "$ref": "#/definitions/usage" }
+      }
+    },
+    {
+      "properties": {
+        "type": { "const": "error" },
+        "data": { "$ref": "#/definitions/error" }
+      }
+    }
+  ],
+  "definitions": {
+    "sessionStart": {
+      "type": "object",
+      "required": ["runtime"],
+      "properties": {
+        "runtime": { "type": "string", "enum": ["opencode", "claude", "fake"] },
+        "model": { "type": "string" },
+        "agent": { "type": "string" },
+        "resumed": { "type": "boolean" },
+        "parent_session_id": { "type": "string" },
+        "toolset_rev": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "messageDelta": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "message_id": { "type": "string" },
+        "index": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "messageDone": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": ["stop", "tool_calls", "length", "done", "cancel", "error"]
+        },
+        "content": { "type": "string" },
+        "message_id": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "toolCall": {
+      "type": "object",
+      "required": ["id", "name", "arguments"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "arguments": {
+          "type": "string",
+          "description": "JSON 文本；空参数写 {}"
+        },
+        "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "approval": { "type": "string", "enum": ["none", "required", "granted"] }
+      },
+      "additionalProperties": true
+    },
+    "toolError": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^E_[A-Z_]+$" },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "artifactRef": {
+      "type": "object",
+      "required": ["name", "sha256", "bytes"],
+      "properties": {
+        "name": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "toolResult": {
+      "type": "object",
+      "required": ["id", "name", "ok"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "ok": { "type": "boolean" },
+        "data": { "type": "object" },
+        "error": { "$ref": "#/definitions/toolError" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "artifact_ref": { "$ref": "#/definitions/artifactRef" }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+          "then": { "required": ["error"] }
+        }
+      ]
+    },
+    "approvalRequest": {
+      "type": "object",
+      "required": ["approval_id", "call_id", "name", "risk", "reason", "prompt"],
+      "properties": {
+        "approval_id": { "type": "string" },
+        "call_id": { "type": "string" },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "requested_by": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "approvalResult": {
+      "type": "object",
+      "required": ["approval_id", "call_id", "verdict", "by"],
+      "properties": {
+        "approval_id": { "type": "string" },
+        "call_id": { "type": "string" },
+        "verdict": { "type": "string", "enum": ["approved", "rejected", "expired"] },
+        "by": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" },
+        "decided_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    },
+    "usage": {
+      "type": "object",
+      "required": ["prompt_tokens", "completion_tokens"],
+      "properties": {
+        "prompt_tokens": { "type": "integer", "minimum": 0 },
+        "completion_tokens": { "type": "integer", "minimum": 0 },
+        "total_tokens": { "type": "integer", "minimum": 0 },
+        "cache_read_tokens": { "type": "integer", "minimum": 0 },
+        "model": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "required": ["class", "message"],
+      "properties": {
+        "class": {
+          "type": "string",
+          "enum": ["environment", "input", "execution", "artifact", "capability", "approval", "provider"]
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "code": { "type": "string", "pattern": "^E_[A-Z_]+$" },
+        "retryable": { "type": "boolean" },
+        "call_id": { "type": "string" },
+        "detail": { "type": "object" }
+      },
+      "additionalProperties": true
+    }
+  }
+}
