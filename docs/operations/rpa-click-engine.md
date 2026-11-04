@@ -130,7 +130,7 @@ Graph 窗口的可行性前提：启动时带 `--force-renderer-accessibility`�
 | 4 | app.install | `+ Add application` → 原生对话框：文件名框输入 ZIP 路径 → `打开` → **Add（闸门）** | cdp-pointer + uia | 中：对话框控件名随系统语言变，用 UIA 自动化 ID 兜底 |
 | 5 | app.update | 更新横幅(div) → `Update application` → 选应用 → **Update（闸门）** | cdp-pointer | 中：需要先造"有更新"的场景 |
 | 6 | device.update | 连接设备 → `Device` 菜单 → `Update` → `Browse`（原生）→ **Apply（闸门）** | cdp-pointer + uia | 高：缺真机，菜单不出现 |
-| 7 | graph.newproject | Graph 窗口：`New Project` → 字段 → `Finish` → **Plot（闸门）** | 先查 CLI/工程文件格式；UIA 大概率无效（实测看不到 Chromium 内容） | 高：独立进程，可能只能 assisted |
+| 7 | graph.newproject | Graph 窗口：`New Project` → 字段 → `Finish` → **Plot（闸门）** | **cdp（9224）**：用系统安装的 Graph 加调试端口启动，实测可用 | 低-中：必须用 Program Files 那份；payload 副本缺依赖会崩 |
 | 8 | device.restart | 无 GUI（命令通道 + 审批） | — | 高：缺真机 |
 
 **结论**：第 4、7 条从"人工"变成"可点"的关键就是这套引擎——
