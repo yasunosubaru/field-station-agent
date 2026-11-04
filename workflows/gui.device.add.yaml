@@ -87,11 +87,13 @@ steps:
       不用 open 动作：驱动把 page="manage" 当「不用导航」直接跳过，什么都不会点
     actions:
       - action: click
-        locator: Manage
+        locator: "css:a.homemenu-title"
       - action: click
-        locator: Add Device
+        locator: "target:#sm-welcome"
       - action: click
-        locator: Serial
+        locator: "target!:#add_device_btn"
+      - action: click
+        locator: "target:Serial"
     screenshot: true
     assisted:
       enabled: true
@@ -121,13 +123,13 @@ steps:
         locator: connection-name
         value: ${params.name}
       - action: click
-        locator: Select
+        locator: "target:Select@1"
       - action: click
-        locator: ${params.port}
+        locator: "target:${params.port}"
       - action: click
-        locator: Select
+        locator: "target:Select"
       - action: click
-        locator: ${params.baud}
+        locator: "target:${params.baud}"
     screenshot: true
     assisted:
       enabled: true

@@ -7,11 +7,11 @@
     "harness"
   ],
   "kind": "fieldstation.copyright_source.summary",
-  "lines": 18184,
+  "lines": 18238,
   "lines_per_page": 50,
   "pages_shown": 60,
-  "pages_total": 364,
-  "sha256": "caf4babc4e43ca5ca87d71fe02b6e86dd1f0fc116447191c75e91a02a71f4cc9",
+  "pages_total": 365,
+  "sha256": "0e8fd50ea89b1ce2967cc42be2ed1ccf848e2b541e0e060c236790845369fce1",
   "software": {
     "name": "野外台站智能体运行与评估系统",
     "version": "V1.0"

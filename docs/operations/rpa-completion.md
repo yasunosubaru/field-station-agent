@@ -135,6 +135,24 @@ GUI 路径的自动方案仍然保留（UIA 定位对话框 + 剪贴板填路径
 
 > 许可提醒：把厂商的可选应用一起打包，与打包套件本身是同一类再分发问题，仍按"仅随包演示"处理。
 
+## 5.6 四条流程已切到点击引擎（2026-11-04 实测）
+
+| 流程 | 改了什么 | 结果 |
+|---|---|---|
+| `gui.suite.autoupdate` | `Check For Updates` 改 `target:`；末尾加 `Close` 收尾 | **succeeded**（7 步），弹窗关掉后不再挡住后续流程 |
+| `gui.device.add` | 首页→Manage 用 `#sm-welcome`、`+ Add Device` 用 `#add_device_btn`、`Serial` 用 `target:` | 到 `approve_add` 闸门；**rejected → cancelled**，未新增连接 |
+| `gui.app.update` | 更新按钮改 `target:Update` | 到闸门（本机无可用更新）；rejected |
+| `gui.graph.export` | 走 API，未改 | **succeeded** |
+
+踩到的三个坑（都写进流程注释）：
+
+1. **上一条流程没关弹窗会挡住下一条**：更新弹窗还在时，点 Manage 卡片会落在遮罩上。现在 autoupdate 末尾强制 `Close`。
+2. **只收 `cursor:pointer` 会漏按钮**：`#add_device_btn` 是原生 `button`，光标是 `default`。采集器改成"pointer **或** 语义可交互"。
+3. **`li` 不能一律跳过**：`Type` 的 Serial/Network/USB 是 `<li>`，之前被过滤掉。
+
+新增两个定位语法：`#id`（按 id 精确匹配）、`label@2`（同名元素取第 2 个）。
+危险词默认拦截；要点"只是打开对话框"的按钮时写 `target!:`，可被 lint 检出。
+
 ## 6. 开工前置
 | 需要 | 用途 | 谁提供 |
 |---|---|---|

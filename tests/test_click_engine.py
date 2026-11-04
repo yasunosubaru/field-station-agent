@@ -54,6 +54,30 @@ class TestPick(unittest.TestCase):
             pick(targets, "a")          # 命中多个
         self.assertIn("不唯一", str(ctx.exception))
 
+    def test_id_selector(self):
+        targets = parse_targets(RAW)
+        self.assertEqual(pick(targets, "#sm-welcome").idx, 0)
+
+    def test_id_selector_missing(self):
+        targets = parse_targets(RAW)
+        with self.assertRaises(ClickError):
+            pick(targets, "#nope")
+
+    def test_nth_of_duplicates(self):
+        raw = json.dumps([
+            {"idx": 0, "tag": "button", "id": "", "cls": "d", "label": "Select", "w": 60, "h": 30},
+            {"idx": 1, "tag": "button", "id": "", "cls": "d", "label": "Select", "w": 60, "h": 30},
+        ])
+        targets = parse_targets(raw)
+        self.assertEqual(pick(targets, "Select@2").idx, 1)
+        self.assertEqual(pick(targets, "Select@1").idx, 0)
+
+    def test_nth_out_of_range(self):
+        targets = parse_targets(RAW)
+        with self.assertRaises(ClickError) as ctx:
+            pick(targets, "Playback@3")
+        self.assertIn("取不到", str(ctx.exception))
+
 
 class TestDanger(unittest.TestCase):
     def test_danger_words(self):

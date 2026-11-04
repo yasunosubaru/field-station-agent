@@ -37,13 +37,26 @@ SAFE_PHRASES = (
 COLLECT_JS = r"""
 (() => {
   document.querySelectorAll('[data-fsa-idx]').forEach(n => n.removeAttribute('data-fsa-idx'));
+  const INTERACTIVE_ROLES = ['button','tab','menuitem','option','checkbox','radio',
+                             'switch','link','combobox','menuitemcheckbox','menuitemradio'];
+  const SKIP_TAGS = ['html','body','main','section','article','nav'];
+  const isInteractive = (n) => {
+    const tag = n.tagName.toLowerCase();
+    if (['a','button','input','select','textarea','summary'].includes(tag)) return true;
+    const role = (n.getAttribute('role') || '').toLowerCase();
+    return INTERACTIVE_ROLES.includes(role);
+  };
   const out = [];
   const seen = new Set();
   const all = document.querySelectorAll('*');
   let idx = 0;
   for (const n of all) {
+    const tag = n.tagName.toLowerCase();
+    if (SKIP_TAGS.includes(tag)) continue;
     const st = getComputedStyle(n);
-    if (st.cursor !== 'pointer') continue;
+    // 两种都收：人眼认的（pointer 光标）+ 语义认的（button/a/role=...）。
+    // 只按 pointer 会漏掉原生按钮（它们常常是 cursor:default）。
+    if (st.cursor !== 'pointer' && !isInteractive(n)) continue;
     const r = n.getBoundingClientRect();
     if (r.width < 8 || r.height < 8) continue;
     if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) continue;
@@ -53,7 +66,7 @@ COLLECT_JS = r"""
     const label = (n.innerText || n.getAttribute('aria-label') || n.title || n.id || '')
       .trim().replace(/\s+/g, ' ').slice(0, 60);
     n.setAttribute('data-fsa-idx', String(idx));
-    out.push({ idx: idx, tag: n.tagName.toLowerCase(), id: n.id || '',
+    out.push({ idx: idx, tag: tag, id: n.id || '',
                cls: (n.className || '').toString().slice(0, 40),
                label: label, w: Math.round(r.width), h: Math.round(r.height) });
     idx += 1;
@@ -146,20 +159,43 @@ def parse_targets(raw) -> list[Target]:
 
 
 def pick(targets: list[Target], key: str) -> Target:
-    """按 key 找目标：先精确 label（多个同名时取面积最大的外层容器），再包含匹配。"""
-    exact = [t for t in targets if t.key == key]
-    if len(exact) == 1:
-        return exact[0]
-    if len(exact) > 1:
-        # 同名的父子元素（div 包 span）都命中时，取面积最大的那个：
-        # 点击会冒泡，点外层与点内层等效，但外层坐标更稳。
-        return max(exact, key=lambda t: t.w * t.h)
-    fuzzy = [t for t in targets if key.lower() in t.key.lower() and t.key]
-    if len(fuzzy) == 1:
-        return fuzzy[0]
-    if not fuzzy:
+    """按 key 找目标。
+
+    支持三种写法：
+      ``#id``        按元素 id 精确匹配（最稳，适合卡片这类带 id 的 div）
+      ``label@2``    同名目标里的第 2 个（1 起），用于"页面上有两个 Select"
+      ``label``      先精确 label，再唯一包含匹配；同名父子元素取面积最大的外层
+    """
+    nth = None
+    if "@" in key and not key.startswith("#"):
+        head, _, tail = key.rpartition("@")
+        if tail.isdigit():
+            key, nth = head, int(tail)
+
+    if key.startswith("#"):
+        pool = [t for t in targets if t.id == key[1:]]
+    else:
+        pool = [t for t in targets if t.key == key]
+        if not pool:
+            pool = [t for t in targets if key.lower() in t.key.lower() and t.key]
+
+    if not pool:
         raise ClickError("找不到目标 %r（当前页 %d 个可点目标）" % (key, len(targets)))
-    raise ClickError("目标 %r 不唯一：%s" % (key, [t.key for t in fuzzy[:6]]))
+
+    if nth is not None:
+        if not 0 < nth <= len(pool):
+            raise ClickError("目标 %r 只有 %d 个，取不到第 %d 个" % (key, len(pool), nth))
+        return pool[nth - 1]
+
+    if len(pool) == 1:
+        return pool[0]
+
+    labels = {t.key for t in pool}
+    if len(labels) > 1:
+        raise ClickError("目标 %r 不唯一：%s" % (key, [t.key for t in pool[:6]]))
+
+    # 同名父子元素（div 包 span）：取面积最大的外层，点击会冒泡，等效且更稳
+    return max(pool, key=lambda t: t.w * t.h)
 
 
 class ClickEngine:
@@ -178,7 +214,12 @@ class ClickEngine:
 
     # -- 点击 ---------------------------------------------------------
     def click(self, key: str, *, expect: dict | None = None, timeout: float = 6.0,
-              allow_danger: bool = False) -> dict:
+              allow_danger: bool = False, require_effect: bool = True) -> dict:
+        """点一个目标。
+
+        ``require_effect=False`` 时不等待效果（流程里由 verify_ui 统一验），
+        用于"点开菜单/展开下拉"这类由流程后续步骤负责判断的动作。
+        """
         targets = self.collect()
         target = pick(targets, key)
         if target.danger and not allow_danger:
@@ -197,7 +238,10 @@ class ClickEngine:
             self._press(x, y)
             self._release(x, y)
 
-        ok = True if self.dry_run else self._wait_effect(expect, before, timeout)
+        if self.dry_run or not require_effect:
+            ok = True
+        else:
+            ok = self._wait_effect(expect, before, timeout)
         entry = {"target": target.key, "idx": target.idx, "x": x, "y": y,
                  "danger": target.danger, "dry_run": self.dry_run,
                  "expect": expect or {}, "ok": ok,

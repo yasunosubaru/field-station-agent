@@ -52,12 +52,13 @@ steps:
     kind: gui
     description: >
       点右上角齿轮（a#settings-banner，纯图标无文字，用 CSS 选择器定位），
-      再点菜单里的 Check For Updates。只检查，不点任何 Install。
+      再点菜单里的 Check For Updates（target: 按"人眼看到的目标"点，真实鼠标事件）。
+      只检查，不点任何 Install。
     actions:
       - action: click
         locator: "css:#settings-banner"
       - action: click
-        locator: "Check For Updates"
+        locator: "target:Check For Updates"
     screenshot: true
     assisted:
       enabled: true
@@ -84,6 +85,16 @@ steps:
     assisted:
       enabled: false
       prompt: 这一步必须由驱动真读到值；没有驱动就失败，不接受人工口头确认。
+
+  - id: close_popup
+    kind: gui
+    description: >
+      读完后把更新弹窗关掉。不关会挡住后续流程（实测：弹窗在，Manage 卡片的点击会落在遮罩上，
+      下一个流程第一步就失败）。这一步不改变任何状态，只是收尾
+    actions:
+      - action: click
+        locator: "target:Close"
+    screenshot: false
 
   - id: assert_version
     kind: assert

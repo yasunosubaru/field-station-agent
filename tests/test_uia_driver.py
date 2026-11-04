@@ -67,8 +67,9 @@ class Selectors(unittest.TestCase):
                     used.add(str(step["locator"]))
         controls = self.selectors["controls"]
         for locator in used:
-            if locator.startswith("css:") or locator.startswith("${"):
-                continue  # CDP 选择器 / 运行时参数，不走 UIA 表
+            if (locator.startswith("css:") or locator.startswith("${")
+                    or locator.startswith("target:") or locator.startswith("target!:")):
+                continue  # CDP 选择器 / 点击引擎目标 / 运行时参数，都不走 UIA 表
             self.assertTrue(
                 locator in controls or locator.split(">")[-1].strip() in controls,
                 f"选择器表缺 {locator!r}")

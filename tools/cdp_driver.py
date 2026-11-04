@@ -276,6 +276,16 @@ class CdpDriver:
 
     def click(self, locator: str) -> None:
         self._require()
+        if locator.startswith("target:") or locator.startswith("target!:"):
+            # target!: 显式允许"危险词"目标（例如 + Add Device 只是打开对话框），
+            # 由流程作者在 YAML 里写死，可被 lint 检出；默认 target: 仍然拦截。
+            allow = locator.startswith("target!:")
+            key = locator[len("target!:"):] if allow else locator[len("target:"):]
+            from click_engine import ClickEngine  # 延迟导入，避免循环依赖
+            ClickEngine(self).click(key, require_effect=False, allow_danger=allow)
+            time.sleep(0.15)
+            self.log.append({"action": "click", "target": locator})
+            return
         clicked = self.evaluate(_click_js(locator))
         if not clicked:
             raise GuiUnavailable(f"页面上找不到可点的 {locator!r}")

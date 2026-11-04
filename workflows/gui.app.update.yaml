@@ -92,10 +92,10 @@ steps:
 
   - id: update
     kind: gui
-    description: 点弹窗右下角的更新按钮（未选中卡片时是禁用态）
+    description: 点弹窗右下角的更新按钮（未选中卡片时是禁用态）；target: 按目标点，闸门已在前面
     actions:
       - action: click
-        locator: Update
+        locator: "target:Update"
     screenshot: true
     assisted:
       enabled: true
