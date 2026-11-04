@@ -21,6 +21,8 @@ from . import yaml_lite
 
 __all__ = [
     "FAILURE_CLASSES",
+    "KNOWN_FAILURE_CLASSES",
+    "LEGACY_FAILURE_CLASSES",
     "RISK_LEVELS",
     "STEP_KINDS",
     "Workflow",
@@ -32,7 +34,28 @@ __all__ = [
     "validate_params",
 ]
 
-FAILURE_CLASSES = ("environment", "input", "execution", "artifact", "capability")
+#: 失败分类（八类）。:func:`fieldstation.workflows.errors.classify_failure` 只返回这批值；
+#: job 记录里的 ``failure.class`` 以它为准，同时仍可能出现历史的 ``artifact`` /
+#: ``capability``（见 :data:`LEGACY_FAILURE_CLASSES`）。每类直接对应「下一步该谁动」：
+#: 换环境 / 改参数 / 修选择器 / 叫人批 / 插设备。
+FAILURE_CLASSES = (
+    "environment",        # 引擎连不上、套件没开、没有驱动
+    "input",              # 参数/规格不合法，改参数重跑
+    "execution",          # 动作执行了但没效果，或未预期异常
+    "policy",             # 审批被拒、危险动作被策略挡下
+    "selector_drift",     # 找不到目标 / 不唯一 / 坐标漂移——界面文案变了
+    "dialog_unavailable", # 该出现的对话框/弹窗不在
+    "gate_timeout",       # 条件等待（wait_ui / 闸门）超时
+    "hardware_missing",   # 设备/接收机/串口根本没接
+)
+
+#: 历史类别。引擎层仍在产出它们（``artifact`` 下载/产物、``capability`` 403 与
+#: 「有驱动但不该由驱动做」），所以加载校验仍接受，但不作为新分类器的输出。
+LEGACY_FAILURE_CLASSES = ("artifact", "capability")
+
+#: 规格里 ``failure.classes`` 允许声明、``StepFailure`` 允许携带的全部类别。
+KNOWN_FAILURE_CLASSES = FAILURE_CLASSES + LEGACY_FAILURE_CLASSES
+
 RISK_LEVELS = ("low", "medium", "high")
 
 #: 每种步骤允许的字段。``COMMON_STEP_FIELDS`` 对所有步骤都成立。
@@ -51,6 +74,9 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
     "file_digest": frozenset({"path"}),
     "gui": frozenset({"action", "actions", "page", "locator", "value", "option", "screenshot", "assisted"}),
     "verify_ui": frozenset({"control", "expect", "assisted"}),
+    "wait_ui": frozenset({
+        "control", "expect", "timeout", "timeout_s", "poll_ms", "assisted",
+    }),
     "human_gate": frozenset({"reason", "prompt", "risk"}),
     "assert": frozenset({"checks"}),
     "artifact": frozenset({"name", "content", "format"}),
@@ -58,7 +84,9 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
 }
 
 STEP_KINDS = tuple(STEP_FIELDS)
-GUI_ACTIONS = ("open", "click", "type", "select", "read", "sequence")
+#: ``click_optional`` = 「有就点，没有就算」：只用于关闭残留弹窗这类可空操作，
+#: 绝不能用来做真正的步骤（真正的点击必须失败可见）。
+GUI_ACTIONS = ("open", "click", "click_optional", "type", "select", "read", "sequence")
 
 _WORKFLOW_FIELDS = frozenset({
     "id", "version", "title", "summary", "intent", "risk", "tags", "requires",
@@ -380,6 +408,9 @@ def _check_steps(value: object, errors: list[str]) -> list[dict]:
             errors.append(f"{where}.timeout_s 必须是正数或 ${{...}} 模板")
         if "seconds" in step and not _is_positive_or_template(step["seconds"]):
             errors.append(f"{where}.seconds 必须是正数或 ${{...}} 模板")
+        for key in ("timeout", "poll_ms"):
+            if key in step and not _is_positive_or_template(step[key]):
+                errors.append(f"{where}.{key} 必须是正数或 ${{...}} 模板")
         _check_step_body(str(kind), step, where, errors)
         out.append(dict(step))
     return out
@@ -459,6 +490,34 @@ def _check_step_body(kind: str, step: dict, where: str, errors: list[str]) -> No
         if "expect" in step and not isinstance(step["expect"], dict):
             errors.append(f"{where}.expect 必须是映射")
         _check_assisted(step.get("assisted"), where, errors)
+    elif kind == "wait_ui":
+        control = step.get("control")
+        if not isinstance(control, str) or not control.strip():
+            errors.append(f"{where}.control 不能为空")
+        expect = step.get("expect")
+        if expect is None:
+            errors.append(f"{where}.expect 不能为空（wait_ui 必须有等待条件）")
+        elif not isinstance(expect, dict):
+            errors.append(f"{where}.expect 必须是映射")
+        else:
+            unknown = sorted(set(expect) - {"contains", "matches", "equals", "absent"})
+            if unknown:
+                errors.append(
+                    f"{where}.expect 只认 contains / matches / equals / absent，"
+                    f"不认：{', '.join(unknown)}")
+            if not ({"contains", "matches", "equals", "absent"} & set(expect)):
+                errors.append(
+                    f"{where}.expect 至少要有一个断言（contains / matches / equals / absent）")
+            if "absent" in expect:
+                if expect["absent"] is not True:
+                    errors.append(f"{where}.expect.absent 只能是 true")
+                if len(expect) > 1:
+                    errors.append(
+                        f"{where}.expect.absent 不能和 contains/matches/equals 同时写"
+                        "（「不出现」与「等于什么」是两种条件）")
+        if "timeout" in step and "timeout_s" in step:
+            errors.append(f"{where} 不能同时写 timeout 与 timeout_s（选一个）")
+        _check_assisted(step.get("assisted"), where, errors)
     elif kind == "human_gate":
         reason = step.get("reason")
         if not isinstance(reason, str) or not reason.strip():
@@ -505,7 +564,7 @@ def _check_gui_action(action: object, where: str, errors: list[str]) -> None:
     if name not in GUI_ACTIONS:
         errors.append(f"{where}.action 必须是 {GUI_ACTIONS} 之一")
         return
-    if name in ("click", "type", "select", "read") and not action.get("locator"):
+    if name in ("click", "click_optional", "type", "select", "read") and not action.get("locator"):
         errors.append(f"{where}.locator 不能为空（action={name}）")
     if name == "type" and "value" not in action:
         errors.append(f"{where}.value 不能为空（action=type）")
@@ -564,17 +623,17 @@ def _check_failure(value: object, errors: list[str]) -> dict:
         value = {}
     if not isinstance(value, dict):
         errors.append("failure 必须是映射")
-        return {"screenshot": False, "classes": list(FAILURE_CLASSES)}
+        return {"screenshot": False, "classes": list(KNOWN_FAILURE_CLASSES)}
     extra = sorted(set(value) - _FAILURE_FIELDS)
     if extra:
         errors.append(f"failure 未知字段：{', '.join(extra)}")
     screenshot = value.get("screenshot", False)
     if not isinstance(screenshot, bool):
         errors.append("failure.screenshot 必须是 true/false")
-    classes = value.get("classes", list(FAILURE_CLASSES))
-    if not isinstance(classes, list) or any(c not in FAILURE_CLASSES for c in classes):
-        errors.append(f"failure.classes 必须是 {FAILURE_CLASSES} 的子集")
-        classes = list(FAILURE_CLASSES)
+    classes = value.get("classes", list(KNOWN_FAILURE_CLASSES))
+    if not isinstance(classes, list) or any(c not in KNOWN_FAILURE_CLASSES for c in classes):
+        errors.append(f"failure.classes 必须是 {KNOWN_FAILURE_CLASSES} 的子集")
+        classes = list(KNOWN_FAILURE_CLASSES)
     return {
         "screenshot": bool(screenshot),
         "classes": list(classes),

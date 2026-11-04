@@ -141,7 +141,7 @@ class WorkflowService:
         data["gate_steps"] = [
             s["id"] for s in wf.steps if s["kind"] == "human_gate"]
         data["gui_steps"] = [
-            s["id"] for s in wf.steps if s["kind"] in ("gui", "verify_ui")]
+            s["id"] for s in wf.steps if s["kind"] in ("gui", "verify_ui", "wait_ui")]
         return data
 
     # ================================================================== 运行

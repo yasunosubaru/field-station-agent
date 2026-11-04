@@ -9,10 +9,12 @@
 
 硬规则（不是建议）
 ------------------
-* **一步失败就停**（``on_fail: stop``，默认），并把失败归类到
-  ``environment / input / execution / artifact / capability`` 之一。
+* **一步失败就停**（``on_fail: stop``，默认），并把失败归类。新分类器给出八类
+  （``environment / input / execution / policy / selector_drift /
+  dialog_unavailable / gate_timeout / hardware_missing``，见 :mod:`.errors`）；
+  引擎层与「有驱动但不该由驱动做」仍沿用 ``artifact`` / ``capability``。
 * **没有 retry。** 不可逆动作不自动重试；要再来一次就是一条新 job，审计里看得见。
-* **没有驱动就不点。** ``gui`` / ``verify_ui`` 在 assisted 模式下变成
+* **没有驱动就不点。** ``gui`` / ``verify_ui`` / ``wait_ui`` 在 assisted 模式下变成
   ``waiting_operator`` 人工任务，而不是假装执行成功。
 * **审批门在看懂风险之前不消失。** ``human_gate`` 只有 ``approved`` 才继续；
   ``rejected`` 直接取消，不执行后面的步骤。
@@ -31,6 +33,12 @@ from typing import Callable
 from . import engine as engine_mod
 from . import gui as gui_mod
 from . import spec as spec_mod
+from .errors import (
+    GateTimeout,
+    classify_failure,
+    is_click_error,
+    is_gui_unavailable,
+)
 from .store import Job, JobStore
 
 __all__ = ["JobBusy", "StepFailure", "WorkflowRunner"]
@@ -48,7 +56,7 @@ class JobBusy(RuntimeError):
 
 
 class StepFailure(Exception):
-    """一个步骤失败。``failure_class`` 必须是 :data:`spec.FAILURE_CLASSES` 之一。"""
+    """一个步骤失败。``failure_class`` 必须是 :data:`spec.KNOWN_FAILURE_CLASSES` 之一。"""
 
     def __init__(
         self,
@@ -57,7 +65,7 @@ class StepFailure(Exception):
         *,
         evidence: dict | None = None,
     ) -> None:
-        if failure_class not in spec_mod.FAILURE_CLASSES:
+        if failure_class not in spec_mod.KNOWN_FAILURE_CLASSES:
             raise ValueError(f"未知失败类别：{failure_class!r}")
         self.failure_class = failure_class
         self.message = message
@@ -149,10 +157,13 @@ class WorkflowRunner:
                 job.cancel_reason = note or "approval_rejected"
                 self.store.audit(job, "job.cancelled", reason=job.cancel_reason, by=by)
             else:
+                note_text = note or "操作员报告这一步失败"
                 job.failure = {
-                    "class": "execution",
+                    "class": classify_failure(None, step_kind=str(gate.get("kind", "")),
+                                              message=note_text),
                     "step": gate.get("step"),
-                    "message": note or "操作员报告这一步失败",
+                    "kind": gate.get("kind"),
+                    "message": note_text,
                     "evidence": {"gate": gate},
                     "at": _utcnow(),
                 }
@@ -247,7 +258,9 @@ class WorkflowRunner:
                 continue
             except Exception as exc:  # noqa: BLE001 —— 未预期的异常也要归类和落盘
                 failure = StepFailure(
-                    "execution", f"{type(exc).__name__}: {exc}",
+                    classify_failure(exc, step_kind=str(step.get("kind", "")),
+                                     message=str(exc)),
+                    f"{type(exc).__name__}: {exc}",
                     evidence={"traceback": True})
                 self._handle_step_failure(job, workflow, step, failure,
                                           duration_ms=round((self.clock() - started) * 1000))
@@ -306,7 +319,7 @@ class WorkflowRunner:
                 "options": ["approved", "rejected"],
                 "opened_at": _utcnow(),
             }
-        if kind in ("gui", "verify_ui") and not getattr(self.driver, "available", False):
+        if kind in ("gui", "verify_ui", "wait_ui") and not getattr(self.driver, "available", False):
             assisted = step.get("assisted") or {}
             if assisted.get("enabled") is False:
                 raise StepFailure(
@@ -326,6 +339,9 @@ class WorkflowRunner:
 
     @staticmethod
     def _default_prompt(step: dict) -> str:
+        if step["kind"] == "wait_ui":
+            return (f"请在 GUI 里让 {step.get('control')} 出现并满足 {step.get('expect')}，"
+                    "确认后选 done。")
         if step["kind"] == "verify_ui":
             return f"请确认 {step.get('control')} 的值符合 {step.get('expect')}，然后选择 done。"
         if step.get("actions"):
@@ -365,6 +381,17 @@ class WorkflowRunner:
         except (TypeError, ValueError) as exc:
             raise StepFailure(
                 "input", f"步骤 {step.get('id')} 的 {key} 不是数值：{raw!r} → {value!r}") from exc
+
+    def _step_failure(
+        self, exc: BaseException, step: dict, *, evidence: dict | None = None
+    ) -> StepFailure:
+        """把一个驱动/系统异常转成带类别与原始消息的 :class:`StepFailure`。"""
+        message = str(exc)
+        return StepFailure(
+            classify_failure(exc, step_kind=str(step.get("kind", "")), message=message),
+            message,
+            evidence=evidence,
+        )
 
     def _store_output(self, job: Job, step: dict, output: dict) -> None:
         steps = job.context.setdefault("steps", {})
@@ -704,6 +731,21 @@ class WorkflowRunner:
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     self.driver.click(locator)
                     performed.append({"action": "click", "locator": locator})
+                elif name == "click_optional":
+                    locator = str(spec_mod.resolve(action.get("locator"), ctx))
+                    try:
+                        self.driver.click(locator)
+                    except Exception as exc:  # noqa: BLE001 —— 找不到就跳过
+                        if "危险词" in str(exc):
+                            # 危险目标不能被"可选"吞掉：该停闸门的仍然要停
+                            raise
+                        if not (is_gui_unavailable(exc) or is_click_error(exc)):
+                            raise
+                        performed.append({"action": "click_optional", "locator": locator,
+                                          "clicked": False, "why": str(exc)})
+                    else:
+                        performed.append({"action": "click_optional", "locator": locator,
+                                          "clicked": True})
                 elif name == "type":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     value = str(spec_mod.resolve(action.get("value"), ctx))
@@ -720,8 +762,10 @@ class WorkflowRunner:
                                       "value": self.driver.read(locator)})
                 else:
                     raise StepFailure("capability", f"不支持的 GUI 动作：{name!r}")
-        except gui_mod.GuiUnavailable as exc:
-            raise StepFailure("capability", str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
+            if not is_gui_unavailable(exc):
+                raise
+            raise self._step_failure(exc, step) from exc
         screenshot = None
         if step.get("screenshot"):
             name = f"gui-{job.step_index:02d}-{step['id']}.png"
@@ -743,8 +787,10 @@ class WorkflowRunner:
         expected = spec_mod.resolve(step.get("expect") or {}, ctx)
         try:
             value = self.driver.read(control)
-        except gui_mod.GuiUnavailable as exc:
-            raise StepFailure("capability", str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
+            if not is_gui_unavailable(exc):
+                raise
+            raise self._step_failure(exc, step) from exc
         errors = _compare(value, dict(expected))
         if errors:
             raise StepFailure(
@@ -752,6 +798,114 @@ class WorkflowRunner:
                 evidence={"control": control, "value": value, "expected": expected,
                           "mismatches": errors})
         return {"control": control, "value": value, "expected": expected}
+
+    #: ``wait_ui`` 的默认预算与轮询间隔。间隔固定 200ms：比人眼刷新慢一点，
+    #: 但足够快，不至于把一次 3 秒的等待变成 6 秒。
+    _WAIT_UI_TIMEOUT_S = 10.0
+    _WAIT_UI_POLL_MS = 200.0
+
+    def _step_wait_ui(self, step: dict, job: Job, ctx: dict) -> dict:
+        """轮询 ``driver.read(control)``，直到读到的值满足 ``expect``。
+
+        语义
+        ----
+        * **条件等待，不是盲等**：每 ``poll_ms``（默认 200）读一次，满足
+          ``expect.contains`` / ``matches`` / ``equals`` 立刻继续；
+        * 读不到控件（``GuiUnavailable``，例如弹窗还没出现）**不算失败**，只是
+          「条件还没满足」，继续轮到 ``timeout``（默认 10 秒）；
+        * 总时长不超过 ``timeout``：最后一次 sleep 会被夹到剩余预算，超了就抛
+          ``gate_timeout``，消息里带轮询次数与最后一次读到的内容；
+        * 失败类别固定为 ``gate_timeout``——这是「还没到时候」，不是环境坏、
+          也不是选择器坏（选择器坏会在 ``verify_ui`` 里报 ``selector_drift``）。
+
+        两种条件
+        --------
+        * ``expect: {contains/matches/equals: ...}``：**出现**并满足才算成功；
+        * ``expect: {absent: true}``：**读不到**才算成功（等弹窗关掉 / 等遮罩消失）。
+          只在「驱动确实能看页面」时成立：CDP 掉线、套件没开归 ``environment``，
+          绝不能被当成「控件不在了」而秒过。
+
+        字段：``control``（必填）、``expect``（必填）、
+        ``timeout``（秒，默认 10，兼容别名 ``timeout_s``）、``poll_ms``（可选，默认 200）。
+        """
+        control = str(spec_mod.resolve(step["control"], ctx))
+        expected = spec_mod.resolve(step.get("expect") or {}, ctx)
+        if not isinstance(expected, dict) or not expected:
+            raise StepFailure(
+                "input", f"步骤 {step['id']} 的 wait_ui 没有可用的 expect 条件")
+        if "timeout" in step:
+            timeout = self._number(step, "timeout", self._WAIT_UI_TIMEOUT_S, ctx)
+        else:
+            timeout = self._number(step, "timeout_s", self._WAIT_UI_TIMEOUT_S, ctx)
+        if timeout <= 0:
+            raise StepFailure("input", f"步骤 {step['id']} 的 timeout 必须大于 0")
+        poll_ms = self._number(step, "poll_ms", self._WAIT_UI_POLL_MS, ctx)
+        interval = min(max(poll_ms, 1.0) / 1000.0, timeout)
+
+        started = self.clock()
+        deadline = started + timeout
+        max_polls = int(timeout / interval) + 2
+        absent = expected.get("absent") is True
+        polls = 0
+        last_value: str | None = None
+        last_problem = "还没有读到控件"
+
+        def hit(value: object) -> dict:
+            waited = round(self.clock() - started, 3)
+            self.store.audit(job, "wait_ui.matched", step=step["id"], control=control,
+                             polls=polls, waited_s=waited, absent=absent)
+            return {
+                "control": control,
+                "value": value,
+                "expected": expected,
+                "polls": polls,
+                "waited_s": waited,
+                "timeout_s": timeout,
+            }
+
+        while True:
+            polls += 1
+            try:
+                value = self.driver.read(control)
+            except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
+                # 读不到 ≠ 失败：弹窗/标签页可能还没画出来。
+                if not is_gui_unavailable(exc):
+                    raise
+                if absent:
+                    # 「不出现」只有在**驱动确实在看页面**时才算满足：
+                    # CDP 掉线/套件没开是环境坏了，不能被当成「控件不在了」。
+                    if classify_failure(exc, step_kind="wait_ui",
+                                        message=str(exc)) == "environment":
+                        raise self._step_failure(exc, step) from exc
+                    return hit(None)
+                last_problem = str(exc)
+            else:
+                last_value = value
+                if absent:
+                    last_problem = f"仍然可见：{str(value)[:120]}"
+                else:
+                    problems = _compare(str(value), dict(expected))
+                    if not problems:
+                        return hit(value)
+                    last_problem = "；".join(problems)
+
+            if polls >= max_polls or self.clock() >= deadline:
+                break
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                break
+            self.sleep(min(interval, remaining))
+
+        want = "消失（读不到才算）" if absent else f"满足 {expected}"
+        message = (
+            f"{timeout:g}s 内没有等到 {control!r} {want}："
+            f"轮询 {polls} 次，最后一次 {last_problem}")
+        raise StepFailure(
+            "gate_timeout", message,
+            evidence={"control": control, "expected": expected, "polls": polls,
+                      "last_value": last_value, "last_problem": last_problem,
+                      "timeout_s": timeout,
+                      "elapsed_s": round(self.clock() - started, 3)})
 
     def _step_assert(self, step: dict, job: Job, ctx: dict) -> dict:
         results: list[dict] = []

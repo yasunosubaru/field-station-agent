@@ -1,13 +1,13 @@
 id: gui.suite.autoupdate
-version: 2
+version: 3
 title: 读取套件「检查更新」的真实结果（只读，不下载不安装）
 summary: >
   本版套件（实测 2.11.0）的设置菜单只有四项：标题 Settings、Check For Updates、
   标题 Theme（Light / Dark）、Quit——**没有**「自动更新」开关或页面。点 Check For Updates
   会联网查一次并弹窗：「NovAtel Application Suite Update / NovAtel Application Suite is
   up to date / Current Version: 2.11.0 / Close」。齿轮本身是纯图标
-  （a#settings-banner，innerText 为空、无 title、无 aria-label），CDP 只能按文字找元素，
-  点不到它，所以这一步人工做；结果由 CDP 回读。仓库仍然不做自动更新：更新源是 AWS，
+  （a#settings-banner），用 CSS 选择器定位后 CDP 点得到（实测），结果也由 CDP 回读；
+  等弹窗改成条件等待（wait_ui），不再睡固定秒数。仓库仍然不做自动更新：更新源是 AWS，
   没人值守时也无法回滚，需要升级就走 gui.app.update（人工闸门）。
 intent: suite.autoupdate.inspect
 risk: low
@@ -33,7 +33,8 @@ approval:
 
 failure:
   screenshot: true
-  classes: [environment, input, execution, artifact, capability]
+  # 八类错误分类 + 两条历史类别（artifact/capability 仍由引擎层与闸门路径产生）
+  classes: [environment, input, execution, policy, selector_drift, dialog_unavailable, gate_timeout, hardware_missing, artifact, capability]
 
 docs:
   - 逆向/03_分析/19_原版GUI覆盖矩阵.md
@@ -47,6 +48,37 @@ steps:
     expect:
       json:
         ok: true
+
+  - id: dismiss_stale
+    kind: gui
+    description: >
+      上一次运行若失败在 wait_popup/read_result，更新弹窗会留在屏上。弹窗在时整页有
+      一层遮罩，点齿轮和 Check For Updates 都会落在遮罩上（实测），于是 wait_popup
+      读到的是**上一次**的结果——看起来成功，其实这次根本没查。所以先「有就关掉」：
+      没有弹窗时这是空操作（click_optional），不算失败、也不留 warning。
+    actions:
+      - action: click_optional
+        locator: "target:Close"
+    screenshot: false
+    assisted:
+      enabled: true
+      prompt: |
+        如果屏幕上还开着「NovAtel Application Suite Update」弹窗，点它的 Close 关掉；
+        没有弹窗就直接选 done。关掉后选 done。
+
+  - id: ensure_closed
+    kind: wait_ui
+    description: >
+      确认弹窗真的不在了再开始查。读不到弹窗正文（控制名是仓库里已有的那一整段弹窗文字）
+      才算满足；如果 dismiss_stale 没关掉（例如弹窗在“Checking”态换了按钮），
+      这一步会以 gate_timeout 停下，而不是继续读旧结果。
+    control: NovatEl Application Suite Update Novat
+    expect:
+      absent: true
+    timeout: 5
+    assisted:
+      enabled: true
+      prompt: 确认屏幕上已经**没有**「NovAtel Application Suite Update」弹窗，然后选 done。
 
   - id: open_check
     kind: gui
@@ -69,9 +101,24 @@ steps:
         完成后选 done。
 
   - id: wait_popup
-    kind: sleep
-    seconds: 6
-    description: 套件要联网查一次，弹窗不是同步出现；等它画出来再读
+    kind: wait_ui
+    description: >
+      条件等待，不睡固定时长：每 200ms 读一次弹窗正文，读到带版本号的
+      「Current Version: x.y.z」就继续，超时才失败。控制名沿用仓库里已有的整段弹窗文字，
+      因为 CDP 的 `read` 只在**可见**元素里找文字：弹窗关着时读到的是「找不到」
+      （正好当作「还没到时候」），而 css:div.update-software-popup 那种节点会一直留在
+      DOM 里、关掉后也带旧文字，按它读会在弹窗没出现时就把上一次的结果当成本次结果。
+      套件要联网查一次（本机实测 2~4 秒），给 15 秒预算。
+    control: NovatEl Application Suite Update Novat
+    expect:
+      matches: 'Current Version: [0-9]+(\.[0-9]+)+'
+    timeout: 15
+    assisted:
+      enabled: true
+      prompt: |
+        请等套件的更新结果弹窗出现（标题 NovAtel Application Suite Update，
+        正文有 “Current Version: x.y.z”），确认后再选 done。
+        如果 15 秒内没出现，选 failed 并写明看到的状态（是否有进度条/报错）。
 
   - id: read_result
     kind: verify_ui

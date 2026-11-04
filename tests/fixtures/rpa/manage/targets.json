@@ -1,0 +1,452 @@
+[
+ {
+  "idx": 0,
+  "tag": "a",
+  "id": "menu-home-banner",
+  "cls": "menu-img sidebar-nav-subitem-title dropd",
+  "label": "menu-home-banner",
+  "w": 19,
+  "h": 26
+ },
+ {
+  "idx": 1,
+  "tag": "a",
+  "id": "settings-banner",
+  "cls": "sidebar-nav-subitem-title dropdown-toggl",
+  "label": "settings-banner",
+  "w": 26,
+  "h": 31
+ },
+ {
+  "idx": 2,
+  "tag": "a",
+  "id": "menu-help",
+  "cls": "sidebar-nav-subitem-title dropdown-toggl",
+  "label": "menu-help",
+  "w": 26,
+  "h": 31
+ },
+ {
+  "idx": 3,
+  "tag": "li",
+  "id": "",
+  "cls": "tab-title-list ui-tabs-tab ui-corner-top",
+  "label": "Manage",
+  "w": 263,
+  "h": 32
+ },
+ {
+  "idx": 4,
+  "tag": "a",
+  "id": "ui-id-1",
+  "cls": "sm-title elidedText ui-tabs-anchor",
+  "label": "Manage",
+  "w": 237,
+  "h": 31
+ },
+ {
+  "idx": 5,
+  "tag": "div",
+  "id": "",
+  "cls": "addDeviceBtnGroup",
+  "label": "+ Add Device",
+  "w": 163,
+  "h": 41
+ },
+ {
+  "idx": 6,
+  "tag": "span",
+  "id": "",
+  "cls": "add-symbol",
+  "label": "+",
+  "w": 15,
+  "h": 36
+ },
+ {
+  "idx": 7,
+  "tag": "button",
+  "id": "add_device_btn",
+  "cls": "darkBtn elidedText adddevice-btn",
+  "label": "Add Device",
+  "w": 129,
+  "h": 36
+ },
+ {
+  "idx": 8,
+  "tag": "div",
+  "id": "1793355488097-device-tile",
+  "cls": "device-disconnected all-device-tile devi",
+  "label": "OEM729-COM13 Model OEM729-2.03 Type USB Port COM13 Connect",
+  "w": 372,
+  "h": 214
+ },
+ {
+  "idx": 9,
+  "tag": "div",
+  "id": "",
+  "cls": "device-tile-title",
+  "label": "OEM729-COM13",
+  "w": 340,
+  "h": 39
+ },
+ {
+  "idx": 10,
+  "tag": "div",
+  "id": "",
+  "cls": "device-model",
+  "label": "Model OEM729-2.03",
+  "w": 340,
+  "h": 24
+ },
+ {
+  "idx": 11,
+  "tag": "span",
+  "id": "",
+  "cls": "device-model-title",
+  "label": "Model",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 12,
+  "tag": "span",
+  "id": "",
+  "cls": "device-model-value",
+  "label": "OEM729-2.03",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 13,
+  "tag": "div",
+  "id": "",
+  "cls": "device-type",
+  "label": "Type USB",
+  "w": 340,
+  "h": 24
+ },
+ {
+  "idx": 14,
+  "tag": "span",
+  "id": "",
+  "cls": "device-type-title",
+  "label": "Type",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 15,
+  "tag": "span",
+  "id": "",
+  "cls": "device-type-value elidedText",
+  "label": "USB",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 16,
+  "tag": "div",
+  "id": "",
+  "cls": "device-port",
+  "label": "Port COM13",
+  "w": 340,
+  "h": 24
+ },
+ {
+  "idx": 17,
+  "tag": "span",
+  "id": "",
+  "cls": "device-port-title",
+  "label": "Port",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 18,
+  "tag": "span",
+  "id": "",
+  "cls": "device-port-value",
+  "label": "COM13",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 19,
+  "tag": "div",
+  "id": "",
+  "cls": "device-tile-more",
+  "label": "",
+  "w": 31,
+  "h": 214
+ },
+ {
+  "idx": 20,
+  "tag": "button",
+  "id": "",
+  "cls": "more-img",
+  "label": "",
+  "w": 24,
+  "h": 24
+ },
+ {
+  "idx": 21,
+  "tag": "div",
+  "id": "",
+  "cls": "device-tile-footer",
+  "label": "Connect",
+  "w": 372,
+  "h": 48
+ },
+ {
+  "idx": 22,
+  "tag": "div",
+  "id": "",
+  "cls": "toggle-switch device-tile-switch",
+  "label": "Connect",
+  "w": 211,
+  "h": 20
+ },
+ {
+  "idx": 23,
+  "tag": "div",
+  "id": "",
+  "cls": "disConnectedState",
+  "label": "Connect",
+  "w": 211,
+  "h": 26
+ },
+ {
+  "idx": 24,
+  "tag": "div",
+  "id": "",
+  "cls": "connectedIcon",
+  "label": "Connect",
+  "w": 108,
+  "h": 26
+ },
+ {
+  "idx": 25,
+  "tag": "div",
+  "id": "",
+  "cls": "icon",
+  "label": "",
+  "w": 34,
+  "h": 16
+ },
+ {
+  "idx": 26,
+  "tag": "span",
+  "id": "",
+  "cls": "",
+  "label": "Connect",
+  "w": 64,
+  "h": 16
+ },
+ {
+  "idx": 27,
+  "tag": "div",
+  "id": "1793355574457-device-tile",
+  "cls": "device-disconnected all-device-tile devi",
+  "label": "Model OEM729-2.03 Type USB Port COM12 Connect",
+  "w": 372,
+  "h": 214
+ },
+ {
+  "idx": 28,
+  "tag": "div",
+  "id": "",
+  "cls": "device-tile-title",
+  "label": "",
+  "w": 340,
+  "h": 39
+ },
+ {
+  "idx": 29,
+  "tag": "div",
+  "id": "",
+  "cls": "device-model",
+  "label": "Model OEM729-2.03",
+  "w": 340,
+  "h": 24
+ },
+ {
+  "idx": 30,
+  "tag": "span",
+  "id": "",
+  "cls": "device-model-title",
+  "label": "Model",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 31,
+  "tag": "span",
+  "id": "",
+  "cls": "device-model-value",
+  "label": "OEM729-2.03",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 32,
+  "tag": "div",
+  "id": "",
+  "cls": "device-type",
+  "label": "Type USB",
+  "w": 340,
+  "h": 24
+ },
+ {
+  "idx": 33,
+  "tag": "span",
+  "id": "",
+  "cls": "device-type-title",
+  "label": "Type",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 34,
+  "tag": "span",
+  "id": "",
+  "cls": "device-type-value elidedText",
+  "label": "USB",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 35,
+  "tag": "div",
+  "id": "",
+  "cls": "device-port",
+  "label": "Port COM12",
+  "w": 340,
+  "h": 24
+ },
+ {
+  "idx": 36,
+  "tag": "span",
+  "id": "",
+  "cls": "device-port-title",
+  "label": "Port",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 37,
+  "tag": "span",
+  "id": "",
+  "cls": "device-port-value",
+  "label": "COM12",
+  "w": 170,
+  "h": 24
+ },
+ {
+  "idx": 38,
+  "tag": "div",
+  "id": "",
+  "cls": "device-tile-more",
+  "label": "",
+  "w": 31,
+  "h": 214
+ },
+ {
+  "idx": 39,
+  "tag": "button",
+  "id": "",
+  "cls": "more-img",
+  "label": "",
+  "w": 24,
+  "h": 24
+ },
+ {
+  "idx": 40,
+  "tag": "div",
+  "id": "",
+  "cls": "device-tile-footer",
+  "label": "Connect",
+  "w": 372,
+  "h": 48
+ },
+ {
+  "idx": 41,
+  "tag": "div",
+  "id": "",
+  "cls": "toggle-switch device-tile-switch",
+  "label": "Connect",
+  "w": 211,
+  "h": 20
+ },
+ {
+  "idx": 42,
+  "tag": "div",
+  "id": "",
+  "cls": "disConnectedState",
+  "label": "Connect",
+  "w": 211,
+  "h": 26
+ },
+ {
+  "idx": 43,
+  "tag": "div",
+  "id": "",
+  "cls": "connectedIcon",
+  "label": "Connect",
+  "w": 108,
+  "h": 26
+ },
+ {
+  "idx": 44,
+  "tag": "div",
+  "id": "",
+  "cls": "icon",
+  "label": "",
+  "w": 34,
+  "h": 16
+ },
+ {
+  "idx": 45,
+  "tag": "span",
+  "id": "",
+  "cls": "",
+  "label": "Connect",
+  "w": 64,
+  "h": 16
+ },
+ {
+  "idx": 46,
+  "tag": "a",
+  "id": "",
+  "cls": "help-link",
+  "label": "Help",
+  "w": 31,
+  "h": 19
+ },
+ {
+  "idx": 47,
+  "tag": "img",
+  "id": "",
+  "cls": "",
+  "label": "",
+  "w": 70,
+  "h": 42
+ },
+ {
+  "idx": 48,
+  "tag": "span",
+  "id": "",
+  "cls": "folder_text elidedText",
+  "label": "All",
+  "w": 36,
+  "h": 28
+ },
+ {
+  "idx": 49,
+  "tag": "img",
+  "id": "",
+  "cls": "",
+  "label": "",
+  "w": 40,
+  "h": 40
+ }
+]

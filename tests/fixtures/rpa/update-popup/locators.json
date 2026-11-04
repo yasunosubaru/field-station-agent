@@ -1,0 +1,8 @@
+{
+ "page": "update-popup",
+ "locators": [
+  "Close",
+  "#settings-banner",
+  "#sm-welcome"
+ ]
+}

@@ -122,7 +122,7 @@ artifacts/      # 流程产物 + context.json + failure.json（失败现场）
    把要做的事写成明确指令；人做完 `resume --decision done` 才继续。不会假装点过、不会写假截图。
 4. **先验证再宣称成功。** `verify_ui` 读控件值（不靠「看起来点了」），`await_receiver` 用
    `VERSION` 回读；型号不符立即停（刷错机型是不可逆事故）。
-5. **失败分类固定。** `environment / input / execution / artifact / capability`，
+5. **失败分类固定八类。** `environment` / `input` / `execution` / `policy` / `selector_drift` / `dialog_unavailable` / `gate_timeout` / `hardware_missing`；历史 `artifact` / `capability` 仍被接受，新流程不要再写，
    每类决定 job 停在哪个分支（见 `spec.py` 的 `FAILURE_CLASSES`）。
 6. **单飞与幂等。** 同一流程同时只允许一个未结束 job；`--idempotency-key` 命中运行中/成功的
    job 时直接复用，不重复执行不可逆动作；job 与流程各有一把文件锁，崩溃后按时间判 stale。

@@ -1,0 +1,1417 @@
+{
+ "pages": {
+  "home": {
+   "url": "file://<home>/AppData/Local/AllPoweredFSA/app-0.2.0.0/original/resources/app.asar/view/html/index.html#",
+   "captured_at": "2026-11-04T23:51:14+08:00",
+   "targets": [
+    {
+     "key": "menu-home-banner",
+     "id": "menu-home-banner",
+     "tag": "a",
+     "cls": "menu-img sidebar-nav-subitem-title dropd",
+     "label": "menu-home-banner",
+     "w": 19,
+     "h": 26
+    },
+    {
+     "key": "settings-banner",
+     "id": "settings-banner",
+     "tag": "a",
+     "cls": "sidebar-nav-subitem-title dropdown-toggl",
+     "label": "settings-banner",
+     "w": 26,
+     "h": 31
+    },
+    {
+     "key": "menu-help",
+     "id": "menu-help",
+     "tag": "a",
+     "cls": "sidebar-nav-subitem-title dropdown-toggl",
+     "label": "menu-help",
+     "w": 26,
+     "h": 31
+    },
+    {
+     "key": "+",
+     "id": "",
+     "tag": "span",
+     "cls": "app-add-symbol",
+     "label": "+",
+     "w": 14,
+     "h": 38
+    },
+    {
+     "key": "Add application",
+     "id": "add_app_btn",
+     "tag": "button",
+     "cls": "darkBtn elidedText addapp-btn",
+     "label": "Add application",
+     "w": 161,
+     "h": 36
+    },
+    {
+     "key": "Manage 0 Active Connections",
+     "id": "sm-welcome",
+     "tag": "div",
+     "cls": "application-container SetupMonitorApp",
+     "label": "Manage 0 Active Connections",
+     "w": 184,
+     "h": 240
+    },
+    {
+     "key": "div#app-inner-box",
+     "id": "",
+     "tag": "div",
+     "cls": "app-inner-box",
+     "label": "",
+     "w": 104,
+     "h": 104
+    },
+    {
+     "key": "Manage",
+     "id": "",
+     "tag": "span",
+     "cls": "appFullName elidedText",
+     "label": "Manage",
+     "w": 175,
+     "h": 38
+    },
+    {
+     "key": "0 Active Connections",
+     "id": "",
+     "tag": "span",
+     "cls": "connectionsCount elidedText",
+     "label": "0 Active Connections",
+     "w": 184,
+     "h": 24
+    },
+    {
+     "key": "Playback",
+     "id": "pl-welcome",
+     "tag": "div",
+     "cls": "application-container playBackApp",
+     "label": "Playback",
+     "w": 184,
+     "h": 240
+    },
+    {
+     "key": "div#app-inner-box",
+     "id": "",
+     "tag": "div",
+     "cls": "app-inner-box",
+     "label": "",
+     "w": 104,
+     "h": 104
+    },
+    {
+     "key": "Playback",
+     "id": "",
+     "tag": "span",
+     "cls": "appFullName",
+     "label": "Playback",
+     "w": 128,
+     "h": 38
+    },
+    {
+     "key": "Convert",
+     "id": "convert-welcome",
+     "tag": "div",
+     "cls": "application-container convertApp",
+     "label": "Convert",
+     "w": 184,
+     "h": 240
+    },
+    {
+     "key": "div#app-inner-box",
+     "id": "",
+     "tag": "div",
+     "cls": "app-inner-box",
+     "label": "",
+     "w": 104,
+     "h": 104
+    },
+    {
+     "key": "Convert",
+     "id": "",
+     "tag": "span",
+     "cls": "appFullName",
+     "label": "Convert",
+     "w": 124,
+     "h": 38
+    },
+    {
+     "key": "GRIT Monitor 0 Active Connections",
+     "id": "grit-welcome",
+     "tag": "div",
+     "cls": "application-container gritApp",
+     "label": "GRIT Monitor 0 Active Connections",
+     "w": 184,
+     "h": 240
+    },
+    {
+     "key": "div#app-inner-box",
+     "id": "",
+     "tag": "div",
+     "cls": "app-inner-box",
+     "label": "",
+     "w": 165,
+     "h": 150
+    },
+    {
+     "key": "GRIT Monitor",
+     "id": "",
+     "tag": "span",
+     "cls": "appFullName",
+     "label": "GRIT Monitor",
+     "w": 148,
+     "h": 38
+    },
+    {
+     "key": "0 Active Connections",
+     "id": "",
+     "tag": "span",
+     "cls": "connectionsCount elidedText",
+     "label": "0 Active Connections",
+     "w": 184,
+     "h": 24
+    },
+    {
+     "key": "Perception Viewer 0 Active Connections",
+     "id": "perceptionViewer-welcome",
+     "tag": "div",
+     "cls": "application-container perceptionViewerAp",
+     "label": "Perception Viewer 0 Active Connections",
+     "w": 184,
+     "h": 240
+    },
+    {
+     "key": "div#app-inner-box",
+     "id": "",
+     "tag": "div",
+     "cls": "app-inner-box",
+     "label": "",
+     "w": 104,
+     "h": 104
+    },
+    {
+     "key": "Perception Viewer",
+     "id": "",
+     "tag": "span",
+     "cls": "appFullName",
+     "label": "Perception Viewer",
+     "w": 150,
+     "h": 38
+    },
+    {
+     "key": "0 Active Connections",
+     "id": "per-conn-count",
+     "tag": "span",
+     "cls": "connectionsCount elidedText",
+     "label": "0 Active Connections",
+     "w": 184,
+     "h": 24
+    },
+    {
+     "key": "span#delete-app-icon",
+     "id": "",
+     "tag": "span",
+     "cls": "delete-app-icon",
+     "label": "",
+     "w": 24,
+     "h": 24
+    },
+    {
+     "key": "Graph",
+     "id": "Graph-welcome",
+     "tag": "div",
+     "cls": "application-container GraphApp standAlon",
+     "label": "Graph",
+     "w": 184,
+     "h": 240
+    },
+    {
+     "key": "div#app-inner-box",
+     "id": "",
+     "tag": "div",
+     "cls": "app-inner-box",
+     "label": "",
+     "w": 104,
+     "h": 104
+    },
+    {
+     "key": "Graph",
+     "id": "",
+     "tag": "span",
+     "cls": "appFullName",
+     "label": "Graph",
+     "w": 50,
+     "h": 38
+    },
+    {
+     "key": "li#active",
+     "id": "",
+     "tag": "li",
+     "cls": "active",
+     "label": "",
+     "w": 10,
+     "h": 10
+    },
+    {
+     "key": "li#",
+     "id": "",
+     "tag": "li",
+     "cls": "",
+     "label": "",
+     "w": 10,
+     "h": 10
+    },
+    {
+     "key": "li#",
+     "id": "",
+     "tag": "li",
+     "cls": "",
+     "label": "",
+     "w": 10,
+     "h": 10
+    },
+    {
+     "key": "li#",
+     "id": "",
+     "tag": "li",
+     "cls": "",
+     "label": "",
+     "w": 10,
+     "h": 10
+    },
+    {
+     "key": "img#carousel-img png-img",
+     "id": "",
+     "tag": "img",
+     "cls": "carousel-img png-img",
+     "label": "",
+     "w": 317,
+     "h": 411
+    },
+    {
+     "key": "clean-9600.gps Start 30 Oct 2026 08:37:59 End 30 Oct 2026 08",
+     "id": "recent-1793431399673-device-tile",
+     "tag": "div",
+     "cls": "all-device-tile pb-recent-tile device-ti",
+     "label": "clean-9600.gps Start 30 Oct 2026 08:37:59 End 30 Oct 2026 08",
+     "w": 288,
+     "h": 172
+    },
+    {
+     "key": "clean-9600.gps Start 30 Oct 2026 08:37:59 End 30 Oct 2026 08",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-details",
+     "label": "clean-9600.gps Start 30 Oct 2026 08:37:59 End 30 Oct 2026 08",
+     "w": 292,
+     "h": 132
+    },
+    {
+     "key": "div#recent-pb-img",
+     "id": "",
+     "tag": "div",
+     "cls": "recent-pb-img",
+     "label": "",
+     "w": 24,
+     "h": 24
+    },
+    {
+     "key": "clean-9600.gps",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-title",
+     "label": "clean-9600.gps",
+     "w": 272,
+     "h": 32
+    },
+    {
+     "key": "clean-9600.gps",
+     "id": "",
+     "tag": "span",
+     "cls": "device-tile-heading",
+     "label": "clean-9600.gps",
+     "w": 231,
+     "h": 21
+    },
+    {
+     "key": "Start 30 Oct 2026 08:37:59",
+     "id": "",
+     "tag": "div",
+     "cls": "playback-start",
+     "label": "Start 30 Oct 2026 08:37:59",
+     "w": 294,
+     "h": 24
+    },
+    {
+     "key": "Start",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-start-title",
+     "label": "Start",
+     "w": 112,
+     "h": 24
+    },
+    {
+     "key": "30 Oct 2026 08:37:59",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-start-value",
+     "label": "30 Oct 2026 08:37:59",
+     "w": 137,
+     "h": 24
+    },
+    {
+     "key": "End 30 Oct 2026 08:38:04",
+     "id": "",
+     "tag": "div",
+     "cls": "playback-end",
+     "label": "End 30 Oct 2026 08:38:04",
+     "w": 294,
+     "h": 24
+    },
+    {
+     "key": "End",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-end-title",
+     "label": "End",
+     "w": 112,
+     "h": 24
+    },
+    {
+     "key": "30 Oct 2026 08:38:04",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-end-value",
+     "label": "30 Oct 2026 08:38:04",
+     "w": 137,
+     "h": 24
+    },
+    {
+     "key": "Duration 0mins 5secs",
+     "id": "",
+     "tag": "div",
+     "cls": "playback-duration",
+     "label": "Duration 0mins 5secs",
+     "w": 294,
+     "h": 24
+    },
+    {
+     "key": "Duration",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-duration-title elidedText",
+     "label": "Duration",
+     "w": 112,
+     "h": 24
+    },
+    {
+     "key": "0mins 5secs",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-duration-value",
+     "label": "0mins 5secs",
+     "w": 79,
+     "h": 24
+    },
+    {
+     "key": "Last Viewed 03 Nov 2026 14:08:24",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-footer",
+     "label": "Last Viewed 03 Nov 2026 14:08:24",
+     "w": 279,
+     "h": 40
+    },
+    {
+     "key": "Last Viewed 03 Nov 2026 14:08:24",
+     "id": "",
+     "tag": "span",
+     "cls": "playback-lastViewed",
+     "label": "Last Viewed 03 Nov 2026 14:08:24",
+     "w": 221,
+     "h": 17
+    }
+   ]
+  },
+  "manage": {
+   "url": "file://<home>/AppData/Local/AllPoweredFSA/app-0.2.0.0/original/resources/app.asar/view/html/index.html#",
+   "captured_at": "2026-11-04T23:51:20+08:00",
+   "targets": [
+    {
+     "key": "menu-home-banner",
+     "id": "menu-home-banner",
+     "tag": "a",
+     "cls": "menu-img sidebar-nav-subitem-title dropd",
+     "label": "menu-home-banner",
+     "w": 19,
+     "h": 26
+    },
+    {
+     "key": "settings-banner",
+     "id": "settings-banner",
+     "tag": "a",
+     "cls": "sidebar-nav-subitem-title dropdown-toggl",
+     "label": "settings-banner",
+     "w": 26,
+     "h": 31
+    },
+    {
+     "key": "menu-help",
+     "id": "menu-help",
+     "tag": "a",
+     "cls": "sidebar-nav-subitem-title dropdown-toggl",
+     "label": "menu-help",
+     "w": 26,
+     "h": 31
+    },
+    {
+     "key": "Manage",
+     "id": "",
+     "tag": "li",
+     "cls": "tab-title-list ui-tabs-tab ui-corner-top",
+     "label": "Manage",
+     "w": 263,
+     "h": 32
+    },
+    {
+     "key": "Manage",
+     "id": "ui-id-1",
+     "tag": "a",
+     "cls": "sm-title elidedText ui-tabs-anchor",
+     "label": "Manage",
+     "w": 237,
+     "h": 31
+    },
+    {
+     "key": "+ Add Device",
+     "id": "",
+     "tag": "div",
+     "cls": "addDeviceBtnGroup",
+     "label": "+ Add Device",
+     "w": 163,
+     "h": 41
+    },
+    {
+     "key": "+",
+     "id": "",
+     "tag": "span",
+     "cls": "add-symbol",
+     "label": "+",
+     "w": 15,
+     "h": 36
+    },
+    {
+     "key": "Add Device",
+     "id": "add_device_btn",
+     "tag": "button",
+     "cls": "darkBtn elidedText adddevice-btn",
+     "label": "Add Device",
+     "w": 129,
+     "h": 36
+    },
+    {
+     "key": "OEM729-COM13 Model OEM729-2.03 Type USB Port COM13 Connect",
+     "id": "1793355488097-device-tile",
+     "tag": "div",
+     "cls": "device-disconnected all-device-tile devi",
+     "label": "OEM729-COM13 Model OEM729-2.03 Type USB Port COM13 Connect",
+     "w": 372,
+     "h": 214
+    },
+    {
+     "key": "OEM729-COM13",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-title",
+     "label": "OEM729-COM13",
+     "w": 340,
+     "h": 39
+    },
+    {
+     "key": "Model OEM729-2.03",
+     "id": "",
+     "tag": "div",
+     "cls": "device-model",
+     "label": "Model OEM729-2.03",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Model",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-title",
+     "label": "Model",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "OEM729-2.03",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-value",
+     "label": "OEM729-2.03",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Type USB",
+     "id": "",
+     "tag": "div",
+     "cls": "device-type",
+     "label": "Type USB",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Type",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-title",
+     "label": "Type",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "USB",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-value elidedText",
+     "label": "USB",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Port COM13",
+     "id": "",
+     "tag": "div",
+     "cls": "device-port",
+     "label": "Port COM13",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Port",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-title",
+     "label": "Port",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "COM13",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-value",
+     "label": "COM13",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "div#device-tile-more",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-more",
+     "label": "",
+     "w": 31,
+     "h": 214
+    },
+    {
+     "key": "button#more-img",
+     "id": "",
+     "tag": "button",
+     "cls": "more-img",
+     "label": "",
+     "w": 24,
+     "h": 24
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-footer",
+     "label": "Connect",
+     "w": 372,
+     "h": 48
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "toggle-switch device-tile-switch",
+     "label": "Connect",
+     "w": 211,
+     "h": 20
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "disConnectedState",
+     "label": "Connect",
+     "w": 211,
+     "h": 26
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "connectedIcon",
+     "label": "Connect",
+     "w": 108,
+     "h": 26
+    },
+    {
+     "key": "div#icon",
+     "id": "",
+     "tag": "div",
+     "cls": "icon",
+     "label": "",
+     "w": 34,
+     "h": 16
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "span",
+     "cls": "",
+     "label": "Connect",
+     "w": 64,
+     "h": 16
+    },
+    {
+     "key": "Model OEM729-2.03 Type USB Port COM12 Connect",
+     "id": "1793355574457-device-tile",
+     "tag": "div",
+     "cls": "device-disconnected all-device-tile devi",
+     "label": "Model OEM729-2.03 Type USB Port COM12 Connect",
+     "w": 372,
+     "h": 214
+    },
+    {
+     "key": "div#device-tile-title",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-title",
+     "label": "",
+     "w": 340,
+     "h": 39
+    },
+    {
+     "key": "Model OEM729-2.03",
+     "id": "",
+     "tag": "div",
+     "cls": "device-model",
+     "label": "Model OEM729-2.03",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Model",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-title",
+     "label": "Model",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "OEM729-2.03",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-value",
+     "label": "OEM729-2.03",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Type USB",
+     "id": "",
+     "tag": "div",
+     "cls": "device-type",
+     "label": "Type USB",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Type",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-title",
+     "label": "Type",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "USB",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-value elidedText",
+     "label": "USB",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Port COM12",
+     "id": "",
+     "tag": "div",
+     "cls": "device-port",
+     "label": "Port COM12",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Port",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-title",
+     "label": "Port",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "COM12",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-value",
+     "label": "COM12",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "div#device-tile-more",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-more",
+     "label": "",
+     "w": 31,
+     "h": 214
+    },
+    {
+     "key": "button#more-img",
+     "id": "",
+     "tag": "button",
+     "cls": "more-img",
+     "label": "",
+     "w": 24,
+     "h": 24
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-footer",
+     "label": "Connect",
+     "w": 372,
+     "h": 48
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "toggle-switch device-tile-switch",
+     "label": "Connect",
+     "w": 211,
+     "h": 20
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "disConnectedState",
+     "label": "Connect",
+     "w": 211,
+     "h": 26
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "connectedIcon",
+     "label": "Connect",
+     "w": 108,
+     "h": 26
+    },
+    {
+     "key": "div#icon",
+     "id": "",
+     "tag": "div",
+     "cls": "icon",
+     "label": "",
+     "w": 34,
+     "h": 16
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "span",
+     "cls": "",
+     "label": "Connect",
+     "w": 64,
+     "h": 16
+    },
+    {
+     "key": "Help",
+     "id": "",
+     "tag": "a",
+     "cls": "help-link",
+     "label": "Help",
+     "w": 31,
+     "h": 19
+    },
+    {
+     "key": "img#",
+     "id": "",
+     "tag": "img",
+     "cls": "",
+     "label": "",
+     "w": 70,
+     "h": 42
+    },
+    {
+     "key": "All",
+     "id": "",
+     "tag": "span",
+     "cls": "folder_text elidedText",
+     "label": "All",
+     "w": 36,
+     "h": 28
+    },
+    {
+     "key": "img#",
+     "id": "",
+     "tag": "img",
+     "cls": "",
+     "label": "",
+     "w": 40,
+     "h": 40
+    }
+   ]
+  },
+  "device-dialog": {
+   "url": "file://<home>/AppData/Local/AllPoweredFSA/app-0.2.0.0/original/resources/app.asar/view/html/index.html#",
+   "captured_at": "2026-11-04T23:51:28+08:00",
+   "targets": [
+    {
+     "key": "menu-home-banner",
+     "id": "menu-home-banner",
+     "tag": "a",
+     "cls": "menu-img sidebar-nav-subitem-title dropd",
+     "label": "menu-home-banner",
+     "w": 19,
+     "h": 26
+    },
+    {
+     "key": "settings-banner",
+     "id": "settings-banner",
+     "tag": "a",
+     "cls": "sidebar-nav-subitem-title dropdown-toggl",
+     "label": "settings-banner",
+     "w": 26,
+     "h": 31
+    },
+    {
+     "key": "menu-help",
+     "id": "menu-help",
+     "tag": "a",
+     "cls": "sidebar-nav-subitem-title dropdown-toggl",
+     "label": "menu-help",
+     "w": 26,
+     "h": 31
+    },
+    {
+     "key": "Manage",
+     "id": "",
+     "tag": "li",
+     "cls": "tab-title-list ui-tabs-tab ui-corner-top",
+     "label": "Manage",
+     "w": 263,
+     "h": 32
+    },
+    {
+     "key": "Manage",
+     "id": "ui-id-1",
+     "tag": "a",
+     "cls": "sm-title elidedText ui-tabs-anchor",
+     "label": "Manage",
+     "w": 237,
+     "h": 31
+    },
+    {
+     "key": "+ Add Device",
+     "id": "",
+     "tag": "div",
+     "cls": "addDeviceBtnGroup",
+     "label": "+ Add Device",
+     "w": 163,
+     "h": 41
+    },
+    {
+     "key": "+",
+     "id": "",
+     "tag": "span",
+     "cls": "add-symbol",
+     "label": "+",
+     "w": 15,
+     "h": 36
+    },
+    {
+     "key": "Add Device",
+     "id": "add_device_btn",
+     "tag": "button",
+     "cls": "darkBtn elidedText adddevice-btn",
+     "label": "Add Device",
+     "w": 129,
+     "h": 36
+    },
+    {
+     "key": "OEM729-COM13 Model OEM729-2.03 Type USB Port COM13 Connect",
+     "id": "1793355488097-device-tile",
+     "tag": "div",
+     "cls": "device-disconnected all-device-tile devi",
+     "label": "OEM729-COM13 Model OEM729-2.03 Type USB Port COM13 Connect",
+     "w": 372,
+     "h": 214
+    },
+    {
+     "key": "OEM729-COM13",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-title",
+     "label": "OEM729-COM13",
+     "w": 340,
+     "h": 39
+    },
+    {
+     "key": "Model OEM729-2.03",
+     "id": "",
+     "tag": "div",
+     "cls": "device-model",
+     "label": "Model OEM729-2.03",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Model",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-title",
+     "label": "Model",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "OEM729-2.03",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-value",
+     "label": "OEM729-2.03",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Type USB",
+     "id": "",
+     "tag": "div",
+     "cls": "device-type",
+     "label": "Type USB",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Type",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-title",
+     "label": "Type",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "USB",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-value elidedText",
+     "label": "USB",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Port COM13",
+     "id": "",
+     "tag": "div",
+     "cls": "device-port",
+     "label": "Port COM13",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Port",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-title",
+     "label": "Port",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "COM13",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-value",
+     "label": "COM13",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "div#device-tile-more",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-more",
+     "label": "",
+     "w": 31,
+     "h": 214
+    },
+    {
+     "key": "button#more-img",
+     "id": "",
+     "tag": "button",
+     "cls": "more-img",
+     "label": "",
+     "w": 24,
+     "h": 24
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-footer",
+     "label": "Connect",
+     "w": 372,
+     "h": 48
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "toggle-switch device-tile-switch",
+     "label": "Connect",
+     "w": 211,
+     "h": 20
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "disConnectedState",
+     "label": "Connect",
+     "w": 211,
+     "h": 26
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "connectedIcon",
+     "label": "Connect",
+     "w": 108,
+     "h": 26
+    },
+    {
+     "key": "div#icon",
+     "id": "",
+     "tag": "div",
+     "cls": "icon",
+     "label": "",
+     "w": 34,
+     "h": 16
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "span",
+     "cls": "",
+     "label": "Connect",
+     "w": 64,
+     "h": 16
+    },
+    {
+     "key": "Model OEM729-2.03 Type USB Port COM12 Connect",
+     "id": "1793355574457-device-tile",
+     "tag": "div",
+     "cls": "device-disconnected all-device-tile devi",
+     "label": "Model OEM729-2.03 Type USB Port COM12 Connect",
+     "w": 372,
+     "h": 214
+    },
+    {
+     "key": "div#device-tile-title",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-title",
+     "label": "",
+     "w": 340,
+     "h": 39
+    },
+    {
+     "key": "Model OEM729-2.03",
+     "id": "",
+     "tag": "div",
+     "cls": "device-model",
+     "label": "Model OEM729-2.03",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Model",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-title",
+     "label": "Model",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "OEM729-2.03",
+     "id": "",
+     "tag": "span",
+     "cls": "device-model-value",
+     "label": "OEM729-2.03",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Type USB",
+     "id": "",
+     "tag": "div",
+     "cls": "device-type",
+     "label": "Type USB",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Type",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-title",
+     "label": "Type",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "USB",
+     "id": "",
+     "tag": "span",
+     "cls": "device-type-value elidedText",
+     "label": "USB",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "Port COM12",
+     "id": "",
+     "tag": "div",
+     "cls": "device-port",
+     "label": "Port COM12",
+     "w": 340,
+     "h": 24
+    },
+    {
+     "key": "Port",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-title",
+     "label": "Port",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "COM12",
+     "id": "",
+     "tag": "span",
+     "cls": "device-port-value",
+     "label": "COM12",
+     "w": 170,
+     "h": 24
+    },
+    {
+     "key": "div#device-tile-more",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-more",
+     "label": "",
+     "w": 31,
+     "h": 214
+    },
+    {
+     "key": "button#more-img",
+     "id": "",
+     "tag": "button",
+     "cls": "more-img",
+     "label": "",
+     "w": 24,
+     "h": 24
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "device-tile-footer",
+     "label": "Connect",
+     "w": 372,
+     "h": 48
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "toggle-switch device-tile-switch",
+     "label": "Connect",
+     "w": 211,
+     "h": 20
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "disConnectedState",
+     "label": "Connect",
+     "w": 211,
+     "h": 26
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "div",
+     "cls": "connectedIcon",
+     "label": "Connect",
+     "w": 108,
+     "h": 26
+    },
+    {
+     "key": "div#icon",
+     "id": "",
+     "tag": "div",
+     "cls": "icon",
+     "label": "",
+     "w": 34,
+     "h": 16
+    },
+    {
+     "key": "Connect",
+     "id": "",
+     "tag": "span",
+     "cls": "",
+     "label": "Connect",
+     "w": 64,
+     "h": 16
+    },
+    {
+     "key": "Help",
+     "id": "",
+     "tag": "a",
+     "cls": "help-link",
+     "label": "Help",
+     "w": 31,
+     "h": 19
+    },
+    {
+     "key": "img#",
+     "id": "",
+     "tag": "img",
+     "cls": "",
+     "label": "",
+     "w": 70,
+     "h": 42
+    },
+    {
+     "key": "All",
+     "id": "",
+     "tag": "span",
+     "cls": "folder_text elidedText",
+     "label": "All",
+     "w": 36,
+     "h": 28
+    },
+    {
+     "key": "img#",
+     "id": "",
+     "tag": "img",
+     "cls": "",
+     "label": "",
+     "w": 40,
+     "h": 40
+    },
+    {
+     "key": "button#ui-dialog-titlebar-close",
+     "id": "",
+     "tag": "button",
+     "cls": "ui-dialog-titlebar-close",
+     "label": "",
+     "w": 16,
+     "h": 16
+    },
+    {
+     "key": "connection-name",
+     "id": "connection-name",
+     "tag": "input",
+     "cls": "ui-widget-content ui-corner-all",
+     "label": "connection-name",
+     "w": 280,
+     "h": 40
+    },
+    {
+     "key": "Network",
+     "id": "network",
+     "tag": "li",
+     "cls": "",
+     "label": "Network",
+     "w": 120,
+     "h": 42
+    },
+    {
+     "key": "Serial",
+     "id": "serial",
+     "tag": "li",
+     "cls": "elidedText",
+     "label": "Serial",
+     "w": 120,
+     "h": 42
+    },
+    {
+     "key": "USB",
+     "id": "usb",
+     "tag": "li",
+     "cls": "",
+     "label": "USB",
+     "w": 120,
+     "h": 42
+    },
+    {
+     "key": "Cancel",
+     "id": "connection-cancelbtn",
+     "tag": "button",
+     "cls": "lightBtn cancel-btn connection-btn",
+     "label": "Cancel",
+     "w": 80,
+     "h": 42
+    },
+    {
+     "key": "Add",
+     "id": "connection-addbtn",
+     "tag": "button",
+     "cls": "darkBtn add-btn connection-btn customDis",
+     "label": "Add",
+     "w": 80,
+     "h": 42
+    }
+   ]
+  }
+ }
+}

@@ -1,15 +1,14 @@
 id: gui.graph.newproject
-version: 2
-title: 从 SBF/CSV 新建 Graph 工程（独立进程，只能人工驱动）
+version: 3
+title: 从 SBF/CSV 新建 Graph 工程（独立进程；CDP 走 9224）
 summary: >
   Graph 不是套件里的一个页面，而是**独立的 Electron 进程**：套件首页的 Graph 卡片
   （div#Graph-welcome.application-container.GraphApp.standAloneApp）点下去会启动
-  C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe，
-  它的父进程就是套件的 NASRunner（本机实测）。所以它不出现在 CDP 的 /json/list 里；
-  直接用 --remote-debugging-port=9224 启 Graph 也拿不到调试端口（Graph 的 main 进程
-  argv 被脚本改写，只剩 "...\Graph"），/json/list 连不上。结论：当前 CDP 驱动到不了
-  Graph 的界面，这条流程只能人工做，这里把**真实文字**写清楚，别再写想象中的
-  “Create from SBF / Next / Process”。
+  C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe。
+  **2026-11-04 更正**：之前记的"CDP 到不了 Graph"是误判——当时用的是 payload 里那份
+  副本（缺 jszip，主进程启动即崩）。用系统安装的那份加 --remote-debugging-port=9224，
+  CDP 正常（1 个页面），点击引擎在其页面实测到 14 个可点目标，含 New Project / Open Project。
+  所以这条流程可以自动，前提是**驱动指向 9224**（套件在 9233/9223 时是两个端口）。
   真实路径（来自 Graph 自己的 i18n 与套件帮助原文）：Welcome 窗口 New Project →
   Project Wizard 的 Next → Project Information（Select → Select Folder 对话框、
   Project Folder、Project Name、Project Description (optional)）→ Next →

@@ -1,0 +1,9 @@
+{
+ "page": "home",
+ "locators": [
+  "#sm-welcome",
+  "Add application",
+  "Playback",
+  "#settings-banner"
+ ]
+}

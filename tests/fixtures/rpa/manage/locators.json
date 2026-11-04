@@ -1,0 +1,9 @@
+{
+ "page": "manage",
+ "locators": [
+  "#add_device_btn",
+  "Add Device",
+  "Manage",
+  "Help"
+ ]
+}

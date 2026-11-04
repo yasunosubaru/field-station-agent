@@ -153,6 +153,18 @@ GUI 路径的自动方案仍然保留（UIA 定位对话框 + 剪贴板填路径
 新增两个定位语法：`#id`（按 id 精确匹配）、`label@2`（同名元素取第 2 个）。
 危险词默认拦截；要点"只是打开对话框"的按钮时写 `target!:`，可被 lint 检出。
 
+## 5.7 四条并行线（2026-11-04 完成）
+
+| 线 | 交付 | 验收 |
+|---|---|---|
+| fixture 回放 | `tools/rpa_fixture.py` + `tests/fixtures/rpa/**`（4 页 / 16 条 locator） | 回放不加载 `cdp_driver`；改名/多义能报错并 exit 1 |
+| 校准工具 | `tools/rpa_calibrate.py` + `tools/rpa_targets.json`（3 页基线） | `--diff` 无变化 exit 0；注入一条不存在目标 → 报"消失" exit 1 |
+| 条件等待 | `wait_ui`（轮询读值，默认 200 ms / 10 s）+ `click_optional` | autoupdate 的 6 秒死等已替换；残留弹窗场景也能正确重查 |
+| 错误分类 | `src/fieldstation/workflows/errors.py` 八类 + 27 项单测 | 分类落到 `job.json` 的 `failure.class` |
+| 真机清单 | `docs/operations/rpa-checklist.md` | 三条 `blocked: hardware` 各写跑什么/看什么/证据 |
+
+集成后实跑：`gui.suite.autoupdate` → **succeeded**（9 步）；全仓 949 项 OK、selftest 5/5。
+
 ## 6. 开工前置
 | 需要 | 用途 | 谁提供 |
 |---|---|---|

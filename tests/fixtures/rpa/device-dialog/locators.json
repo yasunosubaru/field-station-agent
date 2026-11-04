@@ -1,0 +1,10 @@
+{
+ "page": "device-dialog",
+ "locators": [
+  "#connection-name",
+  "Serial",
+  "Select@1",
+  "Cancel",
+  "Add"
+ ]
+}

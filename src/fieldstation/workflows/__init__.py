@@ -17,11 +17,18 @@ Agent 面向的入口全部在 :class:`service.WorkflowService`。
 from __future__ import annotations
 
 from .engine import EngineClient, EngineError, EngineHttpError, EngineUnavailable
+from .errors import (
+    ApprovalRejected,
+    GateTimeout,
+    PolicyViolation,
+    classify_failure,
+)
 from .gui import AssistedDriver, GuiDriver, GuiUnavailable, ScriptedDriver
 from .runner import StepFailure, WorkflowRunner
 from .service import WorkflowService
 from .spec import (
     FAILURE_CLASSES,
+    KNOWN_FAILURE_CLASSES,
     Workflow,
     WorkflowSpecError,
     load_all,
@@ -32,21 +39,26 @@ from .store import Job, JobStore
 
 __all__ = [
     "AssistedDriver",
+    "ApprovalRejected",
     "EngineClient",
     "EngineError",
     "EngineHttpError",
     "EngineUnavailable",
     "FAILURE_CLASSES",
+    "GateTimeout",
     "GuiDriver",
     "GuiUnavailable",
     "Job",
     "JobStore",
+    "KNOWN_FAILURE_CLASSES",
+    "PolicyViolation",
     "ScriptedDriver",
     "StepFailure",
     "Workflow",
     "WorkflowRunner",
     "WorkflowService",
     "WorkflowSpecError",
+    "classify_failure",
     "load_all",
     "load_spec",
     "validate_params",
