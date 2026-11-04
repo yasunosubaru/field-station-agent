@@ -12,14 +12,14 @@
 
 ## 2026-11-04（v2 立项）
 
-**四个台 + 七个引擎；界面底座改 Open WebUI，循环收敛到 LangGraph**
+**四个台 + 七个引擎；界面底座三选一（待拍板），循环收敛到 LangGraph**
 
 | 项 | 内容 |
 |---|---|
 | 决策 | [ADR-008 界面底座与四台](docs/decisions/2026-11-04-界面底座与四台.md)、[ADR-009 七引擎与工具面](docs/decisions/2026-11-04-七引擎与工具面.md) |
 | 设计 | [v2 设计：四个台 · 七个引擎](docs/spec/2026-11-04-v2-四台七引擎.md) |
 | 四台 | ① 会话台（框架原生 Chat）② Bot 台（Workspace→Models + `/fleet`）③ 专业台（`/pro`，唯一自建显示层）④ 数据台（Knowledge/Files + `/data`） |
-| 七引擎 | E1 会话循环（LangGraph operator 图，作 Open WebUI Pipe）· E2 Bot（`botd` + Pydantic AI）· E3 领域编排（LangGraph 五阶段）· E4 数据（DuckDB）· E5 存储（SQLite/DuckDB/Chroma）· E6 知识（LlamaIndex）· E7 设备（CDP/UIA/native，不动） |
+| 七引擎 | E1 会话循环（LangGraph operator 图，作底座的 Pipe）· E2 Bot（`botd` + Pydantic AI）· E3 领域编排（LangGraph 五阶段）· E4 数据（DuckDB）· E5 存储（SQLite/DuckDB/Chroma）· E6 知识（LlamaIndex）· E7 设备（CDP/UIA/native，不动） |
 | 明确不做 | 不再引 OpenCode 当宿主（省 247 MB 与第二个循环）、不引 Claude Code Best（无 LICENSE）、不再手写第二套设计系统 |
 | 现状 | 0.2.0 仍是可用版本；v2 从 W0（契约定版）开始，代码未动 |
 

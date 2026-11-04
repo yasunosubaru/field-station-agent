@@ -1,0 +1,375 @@
+{
+ "nodes": [
+  {
+   "id": "legend",
+   "type": "text",
+   "text": "# 怎么读这张图\n\n**上＝人，下＝设备**，一层只干一件事。\n\n- **橙**＝人要看的四个台　**绿**＝我们写的引擎　**紫**＝存储\n- 只画了主链路；每个台的「数据从哪来」写在自己卡里\n- 右侧「未定」栏是**还没拍板**的事，别当成已定\n\n顺着箭头走一遍，就是一次请求从开口到碰设备的全过程。",
+   "x": 0,
+   "y": -340,
+   "width": 800,
+   "height": 300
+  },
+  {
+   "id": "g-ui",
+   "type": "group",
+   "label": "① 界面层",
+   "x": -40,
+   "y": 30,
+   "width": 2000,
+   "height": 510,
+   "color": "2"
+  },
+  {
+   "id": "n-ui",
+   "type": "text",
+   "text": "台面 ⇄ 控制面：**HTTP + SSE** / 任务队列",
+   "x": 1440,
+   "y": 45,
+   "width": 500,
+   "height": 55
+  },
+  {
+   "id": "c1",
+   "type": "text",
+   "text": "**① 会话台 Chat**\n- 谁用：值班、演示\n- 能做什么：问状态、看工具卡、批准/拒绝、下载产物\n- 数据从哪来：E1 → MCP → E3 / E6\n- 验收：回答带证据号；拒绝后设备不动",
+   "x": 0,
+   "y": 110,
+   "width": 380,
+   "height": 380,
+   "color": "2"
+  },
+  {
+   "id": "c2",
+   "type": "text",
+   "text": "**② Bot 台 Fleet**\n- 谁用：想让它自己守夜的人\n- 能做什么：bot 列表（模型 / 工作区 / 记忆 / 今日任务 / 最近失败）、私有会话、日程、暂停接管\n- 数据从哪来：E2 的三张表\n- 验收：Supervisor 拆的每一步都能复盘",
+   "x": 400,
+   "y": 110,
+   "width": 380,
+   "height": 380,
+   "color": "2"
+  },
+  {
+   "id": "c3",
+   "type": "text",
+   "text": "**③ 专业台 Pro**\n- 谁用：要操作接收机的人\n- 能做什么：原版六页签只读镜像、8 条流程、截图 / audit / sha256\n- 数据从哪来：E7 + E5\n- 验收：写操作必停在闸门\n- **四个台里唯一自己写的**（它就是显示层）",
+   "x": 800,
+   "y": 110,
+   "width": 380,
+   "height": 380,
+   "color": "2"
+  },
+  {
+   "id": "c4",
+   "type": "text",
+   "text": "**④ 数据台 Data**\n- 谁用：判断数据能不能用的人\n- 能做什么：批次 / 质控通过率 / 迟滞 / 缺口、知识检索测试、数据集版本与评测得分\n- 数据从哪来：E4 + E6 + E5\n- 验收：换一批数据，数字跟着变（不是写死）",
+   "x": 1200,
+   "y": 110,
+   "width": 380,
+   "height": 380,
+   "color": "2"
+  },
+  {
+   "id": "g-open",
+   "type": "group",
+   "label": "未定：界面底座三选一",
+   "x": 2040,
+   "y": 30,
+   "width": 660,
+   "height": 510,
+   "color": "6"
+  },
+  {
+   "id": "o1",
+   "type": "text",
+   "text": "**A · Open WebUI**\nFastAPI + SvelteKit + SQLite；自带 Chat / 知识库 / Admin，原生 MCP。\n✔ 后端与引擎同栈，三个台开箱即用\n✘ 依赖重（估 400–500 MB），品牌条款要留署名",
+   "x": 2070,
+   "y": 105,
+   "width": 600,
+   "height": 115
+  },
+  {
+   "id": "o2",
+   "type": "text",
+   "text": "**B · LibreChat / LobeHub**\nLibreChat：MIT、React、Agents 面板，但要常驻 Mongo。\nLobeHub：最好看、Agent 与知识库最全，但要 Postgres。\n✔ 界面成熟度更高　✘ 多一个数据库，便携性变差",
+   "x": 2070,
+   "y": 240,
+   "width": 600,
+   "height": 115
+  },
+  {
+   "id": "o3",
+   "type": "text",
+   "text": "**C · 自己写（沿用 0.2.0 三栏）**\n✔ 体积最小、完全可控、已有 828 项测试与验收\n✘ 每加一个台都要自己写布局 / 表格 / 空态 —— 正是这次的痛点\n**折中**：只借组件库（shadcn / Tremor），页面仍自己写",
+   "x": 2070,
+   "y": 375,
+   "width": 600,
+   "height": 140
+  },
+  {
+   "id": "g-ctl",
+   "type": "group",
+   "label": "② 控制面",
+   "x": -40,
+   "y": 580,
+   "width": 2000,
+   "height": 470,
+   "color": "4"
+  },
+  {
+   "id": "n-ctl",
+   "type": "text",
+   "text": "控制面 ⇄ 能力面：**MCP 工具**（Streamable HTTP）",
+   "x": 1440,
+   "y": 595,
+   "width": 500,
+   "height": 55
+  },
+  {
+   "id": "e1",
+   "type": "text",
+   "text": "**E1 会话循环** · LangGraph operator\n- 回答「这句话该调哪个工具、怎么讲清楚」\n- 只调用 MCP 工具；**不许自己下领域结论**\n- 流式、取消、工具重试、token 记账\n- 模型只允许 deepseek-v4.1-flash",
+   "x": 0,
+   "y": 660,
+   "width": 470,
+   "height": 350,
+   "color": "4"
+  },
+  {
+   "id": "e2",
+   "type": "text",
+   "text": "**E2 Bot 引擎** · botd + Pydantic AI\n- Supervisor 拆活：每步带工具白名单 + 验收条件\n- worker × N：独立工作区 / 记忆 / 模型 / 沙箱（受限目录）\n- 队列 · 定时 · 重试 · 人工兜底（SQLite 落盘）\n- Bot 台可逐条复盘：谁派的、多少 token、卡在哪",
+   "x": 540,
+   "y": 660,
+   "width": 520,
+   "height": 350,
+   "color": "4"
+  },
+  {
+   "id": "g-cap",
+   "type": "group",
+   "label": "③ 能力面",
+   "x": -40,
+   "y": 1100,
+   "width": 2260,
+   "height": 620,
+   "color": "4"
+  },
+  {
+   "id": "n-cap",
+   "type": "text",
+   "text": "能力面 ⇄ 存储：同进程调用 / SQL",
+   "x": 1500,
+   "y": 1112,
+   "width": 440,
+   "height": 50
+  },
+  {
+   "id": "e3",
+   "type": "text",
+   "text": "**E3 领域编排** · LangGraph 五阶段\n- intake → qc / device_monitor → fault_diagnosis → dispatch → archive\n- 结论契约 + 闸门 + checkpointer = trace.jsonl\n- **唯一允许产出领域结论的地方**\n- `pipeline.py` 降级路径（没装依赖也能跑）",
+   "x": 0,
+   "y": 1180,
+   "width": 470,
+   "height": 450,
+   "color": "4"
+  },
+  {
+   "id": "e4",
+   "type": "text",
+   "text": "**E4 数据引擎** · DuckDB\n- SBF / CSV 解析 · 质控规则 · 特征\n- 批次版本 · Parquet · 数据集 / 评测集",
+   "x": 520,
+   "y": 1180,
+   "width": 360,
+   "height": 300,
+   "color": "4"
+  },
+  {
+   "id": "e6",
+   "type": "text",
+   "text": "**E6 知识引擎** · LlamaIndex + fastembed\n- 手册 / 帮助 / 论文 → 切分 → 本地嵌入（onnx，无 torch）\n- `fsa.kb.search`：必须带出处",
+   "x": 920,
+   "y": 1180,
+   "width": 360,
+   "height": 300,
+   "color": "4"
+  },
+  {
+   "id": "e7",
+   "type": "text",
+   "text": "**E7 设备引擎** · CDP / UIA / native（已有，不动）\n- 8 条 workflow + 闸门 + audit.jsonl + 截图\n- 失败分类：环境 / 输入 / 执行 / 策略\n- 被 E2 / E3 通过 `fsa.workflow.run` 调用\n- 点不到就 `GuiUnavailable` 转人工，**不许猜着点**",
+   "x": 1320,
+   "y": 1180,
+   "width": 440,
+   "height": 450,
+   "color": "4"
+  },
+  {
+   "id": "suite",
+   "type": "text",
+   "text": "**原版 NovAtel 套件 2.11.0**\n便携副本：NASRunner.exe / Graph.exe",
+   "x": 1800,
+   "y": 1180,
+   "width": 400,
+   "height": 160
+  },
+  {
+   "id": "rx",
+   "type": "text",
+   "text": "**接收机**\n串口 / USB / 网络 · SBF / CSV",
+   "x": 1800,
+   "y": 1380,
+   "width": 400,
+   "height": 150
+  },
+  {
+   "id": "g-store",
+   "type": "group",
+   "label": "④ 存储",
+   "x": -40,
+   "y": 1770,
+   "width": 1200,
+   "height": 300,
+   "color": "6"
+  },
+  {
+   "id": "n-store",
+   "type": "text",
+   "text": "同进程调用，无服务",
+   "x": 640,
+   "y": 1780,
+   "width": 380,
+   "height": 45
+  },
+  {
+   "id": "e5a",
+   "type": "text",
+   "text": "**SQLite**\n台账 / 会话 / bot 状态 / 工单 / 审批 / job\n事务；与界面同库同备份",
+   "x": 0,
+   "y": 1840,
+   "width": 360,
+   "height": 165,
+   "color": "6"
+  },
+  {
+   "id": "e5b",
+   "type": "text",
+   "text": "**DuckDB**\n观测列存分析、质控结果、特征\n直接读 Parquet",
+   "x": 400,
+   "y": 1840,
+   "width": 360,
+   "height": 165,
+   "color": "6"
+  },
+  {
+   "id": "e5c",
+   "type": "text",
+   "text": "**Chroma**\n知识库向量（只留一份）\nLlamaIndex 写、两处读",
+   "x": 800,
+   "y": 1840,
+   "width": 360,
+   "height": 165,
+   "color": "6"
+  },
+  {
+   "id": "path",
+   "type": "text",
+   "text": "**一次请求，从上往下 8 跳**\n\n1. 人问一句 → ① 会话台\n2. E1 选工具（只从注册表里选）\n3. MCP 过桥 → Python 引擎\n4. E3 跑图：规则 + 模型归因 → 结论契约校验\n5. 要动手 → `fsa.workflow.run` → 停闸门\n6. E7 驱动原版套件 → 回读文字 + 截图 + audit\n7. 结果回 E1 → 流式回答 + 工具卡（耗时 / 证据号）\n8. trace + sha256 + 工单 → 写进 E5\n\n**bot 在守时**：把第 1 跳换成「日程 / 事件 → E2」，其余完全一样。",
+   "x": 1260,
+   "y": 1770,
+   "width": 820,
+   "height": 400
+  },
+  {
+   "id": "g-rule",
+   "type": "group",
+   "label": "⑤ 纪律",
+   "x": -40,
+   "y": 2190,
+   "width": 2260,
+   "height": 300
+  },
+  {
+   "id": "r1",
+   "type": "text",
+   "text": "**三条硬约束**\n模型归因 · 规则裁决 · 人工审批\n写动作一律停闸门；bot 不能批准自己",
+   "x": 0,
+   "y": 2260,
+   "width": 700,
+   "height": 190
+  },
+  {
+   "id": "r2",
+   "type": "text",
+   "text": "**每个数字可回源**\n结论 → call_id → job → 截图 / sha256\n回放不联网；同 seed 同结论",
+   "x": 740,
+   "y": 2260,
+   "width": 700,
+   "height": 190
+  },
+  {
+   "id": "r3",
+   "type": "text",
+   "text": "**许可与模型**\n唯一模型 deepseek-v4.1-flash（不设 fallback）\n框架保留署名；无 LICENSE 的代码不进来",
+   "x": 1480,
+   "y": 2260,
+   "width": 700,
+   "height": 190
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "fromNode": "c1",
+   "fromSide": "bottom",
+   "toNode": "e1",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "e2",
+   "fromNode": "c2",
+   "fromSide": "bottom",
+   "toNode": "e2",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "e3",
+   "fromNode": "e1",
+   "fromSide": "bottom",
+   "toNode": "e3",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "e4",
+   "fromNode": "e2",
+   "fromSide": "bottom",
+   "toNode": "e3",
+   "toSide": "top",
+   "color": "4"
+  },
+  {
+   "id": "e5",
+   "fromNode": "e3",
+   "fromSide": "bottom",
+   "toNode": "e7",
+   "toSide": "bottom",
+   "color": "4"
+  },
+  {
+   "id": "e6",
+   "fromNode": "e7",
+   "fromSide": "right",
+   "toNode": "suite",
+   "toSide": "left"
+  },
+  {
+   "id": "e7",
+   "fromNode": "suite",
+   "fromSide": "bottom",
+   "toNode": "rx",
+   "toSide": "top"
+  }
+ ]
+}
