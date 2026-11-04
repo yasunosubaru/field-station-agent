@@ -1,0 +1,182 @@
+<!doctype html>
+<!--
+  四个视角共用的外壳页（W2 骨架）。
+
+  服务器（server.ts → handleView）只替换下面五个占位：
+    {{VIEW_ID}}      data-view，同时也是左导航高亮的依据
+    {{VIEW_TITLE}}   <title> 与中栏标题
+    {{VIEW_HINT}}    中栏标题右侧的说明
+    {{FRAME_SRC}}    中栏 iframe 的默认地址（现有页面，未改动）
+    {{FRAME_MODE}}   iframe 页面的模式开关（agent / pro / 空）
+
+  唯一的数据入口是左导航的四条链接 + 中栏 iframe；右栏三段检查器只是占位，
+  带 data-panel 标记，后续接真数据时按标记找位置即可。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{VIEW_TITLE}}</title>
+<!-- agent.css 提供现有 token（--bg / --panel / --border / --text / --muted / --accent …）；
+     外壳只借 token，不新造主题。views.css 只写布局。 -->
+<link rel="stylesheet" href="/agent.css">
+<link rel="stylesheet" href="/views/views.css">
+</head>
+<body data-view="{{VIEW_ID}}" data-mode="agent" data-agent-theme="dark">
+
+<a class="vw-skip" href="#vw-frame">跳到内容</a>
+
+<div class="vw-shell">
+
+  <nav class="vw-nav" aria-label="视角">
+    <div class="vw-brand">
+      <span class="vw-brand-mark" aria-hidden="true">FSA</span>
+      <span class="vw-brand-text">
+        <span class="vw-brand-name">野外台站智能体</span>
+        <span class="vw-brand-sub">W2 外壳骨架</span>
+      </span>
+    </div>
+
+    <ul class="vw-nav-list">
+      <li class="vw-nav-cell">
+        <a class="vw-nav-item" data-view-link="chat" href="/chat">
+          <span class="vw-nav-index" aria-hidden="true">01</span>
+          <span class="vw-nav-text">
+            <span class="vw-nav-name">对话</span>
+            <span class="vw-nav-hint">Agent 工作台</span>
+          </span>
+        </a>
+      </li>
+      <li class="vw-nav-cell">
+        <a class="vw-nav-item" data-view-link="fleet" href="/fleet">
+          <span class="vw-nav-index" aria-hidden="true">02</span>
+          <span class="vw-nav-text">
+            <span class="vw-nav-name">机队</span>
+            <span class="vw-nav-hint">台站总览</span>
+          </span>
+        </a>
+      </li>
+      <li class="vw-nav-cell">
+        <a class="vw-nav-item" data-view-link="data" href="/data">
+          <span class="vw-nav-index" aria-hidden="true">03</span>
+          <span class="vw-nav-text">
+            <span class="vw-nav-name">数据</span>
+            <span class="vw-nav-hint">记录与事件</span>
+          </span>
+        </a>
+      </li>
+      <li class="vw-nav-cell">
+        <a class="vw-nav-item" data-view-link="suite" href="/suite">
+          <span class="vw-nav-index" aria-hidden="true">04</span>
+          <span class="vw-nav-text">
+            <span class="vw-nav-name">套件台</span>
+            <span class="vw-nav-hint">NovAtel 外壳</span>
+          </span>
+        </a>
+      </li>
+    </ul>
+
+    <p class="vw-nav-foot">
+      <span class="vw-nav-foot-dot" aria-hidden="true"></span>
+      骨架阶段 · 未打包 Electron
+    </p>
+  </nav>
+
+  <main class="vw-main">
+    <header class="vw-head">
+      <div class="vw-head-text">
+        <h1 class="vw-title">{{VIEW_TITLE}}</h1>
+        <p class="vw-hint">{{VIEW_HINT}}</p>
+      </div>
+      <span class="vw-badge" data-frame-mode="{{FRAME_MODE}}">iframe 占位</span>
+    </header>
+
+    <div class="vw-frame-wrap">
+      <iframe id="vw-frame" class="vw-frame"
+              data-frame-src="{{FRAME_SRC}}"
+              src="{{FRAME_SRC}}"
+              title="{{VIEW_TITLE}}"
+              loading="eager"></iframe>
+    </div>
+  </main>
+
+  <aside class="vw-inspector" aria-label="检查器">
+    <section class="vw-panel" data-panel="device">
+      <header class="vw-panel-head">
+        <h2 class="vw-panel-title">设备</h2>
+        <span class="vw-panel-state">占位</span>
+      </header>
+      <dl class="vw-kv">
+        <div class="vw-kv-row"><dt>接收机</dt><dd>未连接</dd></div>
+        <div class="vw-kv-row"><dt>端口</dt><dd>—</dd></div>
+        <div class="vw-kv-row"><dt>固件</dt><dd>—</dd></div>
+      </dl>
+      <p class="vw-panel-note">等 /api/config/device/status 接进来。</p>
+    </section>
+
+    <section class="vw-panel" data-panel="evidence">
+      <header class="vw-panel-head">
+        <h2 class="vw-panel-title">证据</h2>
+        <span class="vw-panel-state">占位</span>
+      </header>
+      <ul class="vw-list">
+        <li class="vw-list-row"><span class="vw-list-dot" aria-hidden="true"></span>抓包 / 记录尚未选择</li>
+        <li class="vw-list-row"><span class="vw-list-dot" aria-hidden="true"></span>证据链空</li>
+      </ul>
+      <p class="vw-panel-note">等 captures / playback 的结果接进来。</p>
+    </section>
+
+    <section class="vw-panel" data-panel="logs">
+      <header class="vw-panel-head">
+        <h2 class="vw-panel-title">日志</h2>
+        <span class="vw-panel-state">占位</span>
+      </header>
+      <ol class="vw-log">
+        <li class="vw-log-row"><span class="vw-log-time">--:--:--</span><span class="vw-log-text">外壳就绪，等待真实事件</span></li>
+      </ol>
+      <p class="vw-panel-note">等 /api/live/logs 的条目接进来。</p>
+    </section>
+  </aside>
+
+</div>
+
+<script>
+  /*
+   * `web/index.html` 目前不读 `?mode=pro`：它只认 localStorage 的 `fsa-mode`，
+   * 默认进 Agent 工作台。因此这里在 iframe load 之后点一次它自己的模式页签，
+   * 把 `/suite` 切到专业面板、把 `/chat` 钉回 Agent。跨源时什么也不做。
+   */
+  (function () {
+    var frame = document.getElementById('vw-frame');
+    if (!frame) return;
+    // 模式挂在右栏的 badge 上（iframe 只有 data-frame-src），别读错元素。
+    var badge = document.querySelector('.vw-badge[data-frame-mode]');
+    var mode = badge ? badge.getAttribute('data-frame-mode') : '';
+    if (!mode) return;
+
+    function applyMode() {
+      try {
+        var doc = frame.contentDocument;
+        if (!doc || !doc.body) return;
+        var button = doc.querySelector('[data-mode-switch="' + mode + '"]');
+        if (button) {
+          button.click();
+          return;
+        }
+        doc.body.setAttribute('data-mode', mode);
+      } catch (error) {
+        /* 跨源 / 页面还没就绪：外壳本身仍然可用 */
+      }
+    }
+
+    frame.addEventListener('load', applyMode);
+    /*
+     * 脚本在 body 末尾，iframe 可能已经先加载完（缓存命中或解析更快）——这时候
+     * `load` 不会再补发，所以按 readyState 立即补一次。
+     */
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') applyMode();
+  })();
+</script>
+
+</body>
+</html>

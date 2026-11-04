@@ -26,12 +26,12 @@ def _post_json(url: str, body: dict, headers: dict, timeout: float = 120.0):
         raise RuntimeUnavailable("连不上运行时 %s：%s" % (url, exc)) from exc
 
 
-class OpenCodeRuntime:
-    """OpenCode 的 OpenAI 兼容端点（默认 http://127.0.0.1:4096/v1）。"""
+class OpenAICompatibleRuntime:
+    """任何 OpenAI 兼容端点（vLLM / Ollama / 网关；默认 http://127.0.0.1:11434/v1）。"""
 
-    name = "opencode"
+    name = "openai-compatible"
 
-    def __init__(self, base_url: str = "http://127.0.0.1:4096/v1",
+    def __init__(self, base_url: str = "http://127.0.0.1:11434/v1",
                  api_key: str = "", timeout: float = 120.0):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -131,3 +131,9 @@ class FakeRuntime:
 
     def cancel(self, session_id: str) -> None:
         return None
+
+
+#: 兼容旧名：OpenCode 的 v2 API 不是 OpenAI 兼容的（实测 /openapi.json 401，
+#: serve 会打印 server password），要接它得单独写原生适配器。在那之前，
+#: 这个名字指向通用 OpenAI 兼容实现，避免"以为已经接了 OpenCode"。
+OpenCodeRuntime = OpenAICompatibleRuntime

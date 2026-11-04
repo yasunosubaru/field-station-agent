@@ -1,0 +1,17 @@
+{
+  "name": "nas-reimpl-shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "野外台站智能体的 Electron 外壳：把现有零依赖 Node 服务装进一个窗口（本机已用 Electron 45.2.2 实测，node_modules 不提交）。",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "electron": "^45.2.2"
+  }
+}

@@ -71,6 +71,7 @@ import {
   gritTileTemplate,
   gritTileUrl,
 } from './web/panels/grit.js';
+import { LAYOUT_FILE, VIEWS, renderLayout, viewForPath, type ViewSpec } from './web/views/routes.ts';
 import {
   HttpError,
   SAMPLES_DIR,
@@ -318,6 +319,8 @@ function health() {
     samples: relative(REPO_DIR, SAMPLES_DIR).split('\\').join('/'),
     formats: formatOptions(),
     limits: { previewLines: 200, jsonBodyBytes: JSON_LIMIT, artifactsKept: ARTIFACT_LIMIT },
+    // 四个视角路由（外壳页），Electron 主进程与自测都照这份清单探活。
+    views: VIEWS.map((view) => ({ id: view.id, path: view.path, frame: view.frame })),
     endpoints: [
       '/api/health',
       '/api/captures',
@@ -1417,6 +1420,32 @@ function handlePage(res: ServerResponse): void {
   res.end(body);
 }
 
+/**
+ * 四个视角（`/chat` `/fleet` `/data` `/suite`）共用 `web/views/layout.html`，只替换
+ * `data-view`、标题与中栏 iframe 的默认地址；原有的 `/` 与所有 API 一个字节都不变。
+ *
+ * `frame-src 'self'` 是这份 CSP 唯一比首页多的一条：外壳的中栏就是同源 iframe。
+ */
+function handleView(res: ServerResponse, view: ViewSpec): void {
+  let template: string;
+  try {
+    template = readFileSync(join(WEB_DIR, 'views', LAYOUT_FILE), 'utf8');
+  } catch (error) {
+    throw new HttpError(500, `外壳页读取失败：${(error as Error).message}`);
+  }
+  const body = Buffer.from(renderLayout(template, view), 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': body.byteLength,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy':
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+  });
+  res.end(body);
+}
+
 function loopbackHostAllowed(hostValue: string | undefined, port: number): boolean {
   if (!hostValue) return false;
   const host = hostValue.trim().toLowerCase();
@@ -1466,6 +1495,12 @@ const server = createServer((req, res) => {
         handlePage(res);
         return;
       }
+      // 四个视角（additive）：每个都是一份 layout.html，只换 data-view 与 iframe 源。
+      const view = viewForPath(path);
+      if (view) {
+        handleView(res, view);
+        return;
+      }
       if (path.startsWith('/assets/')) {
         handleAsset(path.slice('/assets/'.length), res, method);
         return;
@@ -1480,6 +1515,7 @@ const server = createServer((req, res) => {
         || path === '/config-dark.css'
         || path.startsWith('/home/')
         || path.startsWith('/agent/')
+        || path.startsWith('/views/')
         || path.startsWith('/panels/') || path.startsWith('/icons/') || path.startsWith('/fonts/')
         || path.startsWith('/geo/')) {
         handleWebFile(path.slice(1), res, method);

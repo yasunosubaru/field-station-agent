@@ -54,3 +54,6 @@ NovAtel/
 # 远程会话的本机专用参数（主机名、私钥名各人一份）
 逆向/tools/remote/*.local.ps1
 
+# v4 本地依赖（venv / opencode / clickhouse，可达 1 GB 级）：绝不入库
+.deps/
+
