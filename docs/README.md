@@ -61,6 +61,7 @@
 | 文档 | 一句话 |
 |---|---|
 | [RPA 补完方案](operations/rpa-completion.md) | 8 条流程逐条怎么补、四件机器、十天拆法、补不了的部分 |
+| [RPA 点击处理方案](operations/rpa-click-engine.md) | 按 `cursor:pointer` 找目标、发真实鼠标事件、五条效果断言；剩余项的点击路径逐条列明 |
 | [质控与研判的边界](operations/agent-boundaries.md) | 两个最容易越权的智能体各自能做什么、不能做什么 |
 | [共享黑板](operations/blackboard.md) | 数据形状、并发语义与受控访问（M5-2） |
 | [运行看板](operations/dashboard.md) | 口径与数据流（M5-3；可选叠加心跳与调度台账） |

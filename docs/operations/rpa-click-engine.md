@@ -1,0 +1,156 @@
+# RPA 点击处理方案（把剩余项一次解决）
+
+- 日期：2026-11-04
+- 关联：ADR-010、`docs/operations/rpa-completion.md`
+- 一句话：**不再指望"元素有语义"——按人眼看到的样子找目标（有 pointer 光标、可见、有尺寸），发真实鼠标事件点它，再用效果断言确认点中了。**
+
+---
+
+## 0. 起因：实测数据说明语义选择器为什么不够
+
+同一张首页、同一个套件实例：
+
+| 找法 | 找到的可点击目标 |
+|---|---|
+| `querySelectorAll('a,button,input,select,textarea,[role=button]…')` | **4 个** |
+| CDP Accessibility 树（18,157 节点）里 role 属于可交互且有名 | **1 个** |
+| **`cursor:pointer` + 可见 + 尺寸 ≥8px** | **48 个（35 个有名字）** |
+
+首页那排 Manage / Playback / Convert / GRIT / Graph 卡片是 `div.application-container`，
+既不是 `button` 也没有 `role`，但**人一眼就知道能点**——它有 `cursor:pointer`。
+这就是"点击处理"要抓的东西。
+
+---
+
+## 1. 统一目标模型
+
+```
+Target {
+  key      : label（优先）或 id/class + 相对序号
+  label    : 元素可见文字 / aria-label / title
+  rect     : 中心点 (x, y) + 宽高
+  source   : pointer | role | ax | uia
+  danger   : 命中危险词表？（Add/Install/Update/Apply/Delete/Remove/Quit…）
+}
+```
+
+### 三个采集器（合并去重，按 rect 与 label）
+
+| 采集器 | 规则 | 覆盖 |
+|---|---|---|
+| `pointer` | `getComputedStyle(el).cursor === 'pointer'` 且可见、尺寸 ≥8px | **div 卡片、图标块**（主力） |
+| `role` | 标签 ∈ {a, button, input, select, textarea} 或 `role` ∈ 可交互集合 | 原生表单控件 |
+| `ax` | CDP `Accessibility.getFullAXTree` 中有名字的可交互节点 | 无 DOM 的覆盖层、Canvas 内元素 |
+| `uia` | PowerShell UIA 读原生窗口控件树 | 原生文件对话框、Graph 窗口 |
+
+每个目标都带 `key`，写进 `tools/rpa_targets.json`，作为流程里 locator 的**唯一来源**
+（流程不再直接写"文字"，而是写 `target:key`）。
+
+---
+
+## 2. 怎么点
+
+```
+scrollIntoView(center)
+  → Input.dispatchMouseEvent(mouseMoved)       # 触达 hover，弹出 hover 菜单
+  → 80 ms
+  → Input.dispatchMouseEvent(mousePressed,  左键, clickCount=1)
+  → Input.dispatchMouseEvent(mouseReleased, 左键, clickCount=1)
+  → wait_for(效果断言, 超时)
+```
+
+**为什么不用 `element.click()`**：
+
+1. 不发 `pointerdown` / `mousedown`，很多框架把逻辑挂在这两个上；
+2. 不触发 `:hover`，下拉菜单永远不出现；
+3. 不更新焦点与 `:active`，后续键盘输入会打错地方；
+4. 对 `pointer-events` 与层叠关系完全不敏感——**点不到被遮挡的东西也不报错**。
+
+`Input.dispatchMouseEvent` 是真实输入事件，走浏览器命中测试，点不到会体现为"效果断言失败"。
+
+---
+
+## 3. 效果断言（点了没反应必须报错）
+
+点完在 `wait_for` 里等下面任意一条成立，超时即 `click_no_effect`：
+
+| # | 断言 | 适用 |
+|---|---|---|
+| 1 | URL / hash 变化 | 页面跳转 |
+| 2 | 指定文本出现或消失 | 弹窗、状态文字 |
+| 3 | 指定 target 出现或消失 | 新面板、对话框 |
+| 4 | 目标自身属性变化（`aria-selected` / class / value） | 页签、单选、下拉 |
+| 5 | 目标区域截图 hash 变化 | **兜底**：其余四条都不适用时 |
+
+第 5 条只做兜底，因为它证明"画面变了"，不证明"变对了"——流程里必须再补一条语义断言。
+
+---
+
+## 4. 安全：能点 ≠ 该点
+
+| 机制 | 规则 |
+|---|---|
+| 危险词表 | 目标 label 命中 `Add / Install / Update / Apply / Delete / Remove / Quit / Restart / Write` → **必须先过闸门**，不允许静默点击 |
+| dry-run | `--dry-run` 只 hover + 高亮 + 记录，不按下；用于校准与评审 |
+| 目标来源 | 坐标只能来自目标自身的 bounding box；UIA 取的 bounds 要记审计 |
+| 盲坐标 | **禁止**；除非 `screen` 后端且 UIA 提供 bounds，且该次点击在台账里标 `blind:true` |
+| 幂等 | 同一次 job 内，同一 target 连续点击间隔 <300 ms 视为异常，报 `double_click_guard` |
+
+---
+
+## 5. 四个后端与覆盖范围
+
+| 后端 | 用于 | 实现 |
+|---|---|---|
+| `cdp-pointer` | 套件渲染进程内的 div/卡片/按钮 | `Input.dispatchMouseEvent` |
+| `cdp-css` | 无文字纯图标（齿轮、帮助） | `querySelector` → `DOM.getBoxModel` → 同上 |
+| `uia` | 原生文件对话框、Graph 独立窗口 | PowerShell UIA：优先 InvokePattern，退化为按 bounds 点 |
+| `screen` | UIA 拿不到 bounds 的最后兜底 | `SendInput` + 强制审计 |
+
+Graph 窗口的可行性前提：启动时带 `--force-renderer-accessibility`，
+否则 Chromium 不为 UIA 暴露内部控件树；带了之后 UIA 能看到向导按钮。
+
+---
+
+## 6. 八条流程逐条落到"点哪里、用哪个后端"
+
+| # | 流程 | 关键点击（按顺序） | 后端 | 剩余风险 |
+|---|---|---|---|---|
+| 1 | suite.autoupdate | 齿轮 `#settings-banner` → `Check For Updates` | cdp-css + cdp-pointer | 低：已跑通，改成点击引擎后重验 |
+| 2 | graph.export | 无 GUI 点击（Node API） | — | 低 |
+| 3 | device.add | `Manage` 卡片(div) → `+ Add Device` → `Serial` → 端口/波特下拉 → **Add（闸门）** | cdp-pointer | 中：下拉是自定义控件，用效果断言 4 校验 |
+| 4 | app.install | `+ Add application` → 原生对话框：文件名框输入 ZIP 路径 → `打开` → **Add（闸门）** | cdp-pointer + uia | 中：对话框控件名随系统语言变，用 UIA 自动化 ID 兜底 |
+| 5 | app.update | 更新横幅(div) → `Update application` → 选应用 → **Update（闸门）** | cdp-pointer | 中：需要先造"有更新"的场景 |
+| 6 | device.update | 连接设备 → `Device` 菜单 → `Update` → `Browse`（原生）→ **Apply（闸门）** | cdp-pointer + uia | 高：缺真机，菜单不出现 |
+| 7 | graph.newproject | Graph 窗口：`New Project` → 字段 → `Finish` → **Plot（闸门）** | uia（主）+ screen（兜底） | 高：独立进程，UIA 树需实测 |
+| 8 | device.restart | 无 GUI（命令通道 + 审批） | — | 高：缺真机 |
+
+**结论**：第 4、7 条从"人工"变成"可点"的关键就是这套引擎——
+它们的共同点是"没有语义但有位置"，正好是代价最小、最稳的那一类。
+
+---
+
+## 7. 十天怎么排（更新版）
+
+| 天 | 内容 | 当天验收 |
+|---|---|---|
+| D1 | 目标采集器 + `targets.json` 基线（首页已实测 48 个） | 六个页面都能 dump 出可读清单 |
+| D2 | 点击执行（真实鼠标事件）+ 五条断言 + dry-run | 能点开 Manage 卡片并断言页面变化 |
+| D3 | 把四条已验证流程改成"点击引擎 + 目标 key" | 4 条流程跑通，日志里有 before/after |
+| D4 | fixture 采集 + 回放 + lint（禁盲坐标/禁裸 sleep） | 故意改坏目标，CI 能红 |
+| D5 | UIA 文件对话框（app.install） | 自动选中 ZIP 到闸门 |
+| D6 | Graph 窗口 UIA 探测 | 能读到 `New Project` 控件 |
+| D7 | graph.newproject 到 `Plot` 闸门 | auto 或确认只能 assisted |
+| D8 | 条件等待 + 八类错误分类 | 全仓无裸 `sleep` |
+| D9 | app.update 造场景 + device.* 推到硬件边界 | 5 auto / 3 blocked |
+| D10 | 回归 + 状态表 + 文档 | fixture 绿、状态表可核对 |
+
+---
+
+## 8. 验收口径
+
+1. 每条流程**点击成功率 ≥ 98%**，且连续 3 次全绿；
+2. 每次点击都有 `target + before/after 截图 hash + 断言结果`；
+3. 点击日志可回放（fixture）；
+4. **0 盲坐标**（UIA bounds 除外，且台账标 `blind:true`）；
+5. 危险目标 100% 停在闸门前，拒绝有审计。
