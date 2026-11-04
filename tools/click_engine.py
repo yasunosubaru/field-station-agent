@@ -1,0 +1,238 @@
+# -*- coding: utf-8 -*-
+"""点击引擎：按"人眼看到的样子"找目标，发真实鼠标事件，再用效果断言确认。
+
+设计依据见 docs/operations/rpa-click-engine.md。三个要点：
+
+1. **目标发现不看语义**：首页那排 Manage/Playback/... 是 ``div.application-container``，
+   既不是 button 也没有 role，但有 ``cursor: pointer``。实测同一页：
+   语义选择器 4 个、AX 树 1 个、``cursor:pointer`` 48 个。所以以 pointer 为主力。
+2. **点击不用 element.click()**：它不发 pointerdown/mousedown、不触发 :hover、
+   不更新焦点、对被遮挡元素也"成功"。改为 CDP ``Input.dispatchMouseEvent``，
+   走浏览器命中测试——点不到会表现为断言失败，而不是假成功。
+3. **点完必须验**：URL / 文本 / 目标出现消失 / 自身属性 / 区域截图，五选一，
+   超时即 ``ClickNoEffect``。危险词（Add/Install/Update/Apply/...）一律先过闸门。
+
+只依赖标准库 + 本仓库的 ``cdp_driver``。
+"""
+from __future__ import annotations
+
+import json
+import re
+import time
+from dataclasses import dataclass, field
+
+DANGER_WORDS = (
+    "add", "install", "update", "apply", "delete", "remove", "quit",
+    "restart", "write", "erase", "reset", "flash", "upload",
+)
+
+#: 读操作里含危险词的白名单：先判断这些，避免 "Check For Updates" 被当成写操作。
+SAFE_PHRASES = (
+    "check for update", "check for updates", "cancel", "close", "help",
+    "details", "view", "refresh", "manage", "plot", "download log",
+)
+
+#: 采集可点击目标：pointer 光标 + 可见 + 有一定尺寸。
+#: 采集时顺手打上 data-fsa-idx，后续点击靠它精确定位（避免二次模糊匹配）。
+COLLECT_JS = r"""
+(() => {
+  document.querySelectorAll('[data-fsa-idx]').forEach(n => n.removeAttribute('data-fsa-idx'));
+  const out = [];
+  const seen = new Set();
+  const all = document.querySelectorAll('*');
+  let idx = 0;
+  for (const n of all) {
+    const st = getComputedStyle(n);
+    if (st.cursor !== 'pointer') continue;
+    const r = n.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) continue;
+    if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) continue;
+    const key = Math.round(r.x) + ':' + Math.round(r.y) + ':' + Math.round(r.width);
+    if (seen.has(key)) continue;              // 只留最外层，避免父子重复
+    seen.add(key);
+    const label = (n.innerText || n.getAttribute('aria-label') || n.title || n.id || '')
+      .trim().replace(/\s+/g, ' ').slice(0, 60);
+    n.setAttribute('data-fsa-idx', String(idx));
+    out.push({ idx: idx, tag: n.tagName.toLowerCase(), id: n.id || '',
+               cls: (n.className || '').toString().slice(0, 40),
+               label: label, w: Math.round(r.width), h: Math.round(r.height) });
+    idx += 1;
+  }
+  return JSON.stringify(out);
+})()
+"""
+
+RECT_JS = ("(() => { const n = document.querySelector('[data-fsa-idx=\"%d\"]');"
+           " if (!n) return null; n.scrollIntoView({block: 'center', inline: 'center'});"
+           " const r = n.getBoundingClientRect();"
+           " return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2}); })()")
+
+
+@dataclass
+class Target:
+    idx: int
+    tag: str
+    id: str
+    cls: str
+    label: str
+    w: int
+    h: int
+    danger: bool = field(default=False)
+
+    @property
+    def key(self) -> str:
+        return self.label or ("%s#%s" % (self.tag, self.id or self.cls)) or ("idx:%d" % self.idx)
+
+
+class ClickError(RuntimeError):
+    """点击前置条件不满足（找不到目标 / 需审批 / 元素不可见）。"""
+
+
+class ClickNoEffect(ClickError):
+    """点下去了，但效果断言没通过。"""
+
+
+def is_danger(label: str) -> bool:
+    """危险动作判定：先放行读操作白名单，再按整词匹配危险词。
+
+    只用子串匹配会把 "Check For Updates" 判成写操作——它是只读的检查。
+    """
+    low = (label or "").lower()
+    if any(phrase in low for phrase in SAFE_PHRASES):
+        return False
+    return any(re.search(r"\b%s\b" % re.escape(word), low) for word in DANGER_WORDS)
+
+
+def parse_targets(raw) -> list[Target]:
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    return [Target(idx=d["idx"], tag=d["tag"], id=d["id"], cls=d["cls"],
+                   label=d["label"], w=d["w"], h=d["h"],
+                   danger=is_danger(d["label"])) for d in data]
+
+
+def pick(targets: list[Target], key: str) -> Target:
+    """按 key 找目标：先精确 label，再包含匹配（且必须唯一）。"""
+    exact = [t for t in targets if t.key == key]
+    if len(exact) == 1:
+        return exact[0]
+    fuzzy = [t for t in targets if key.lower() in t.key.lower() and t.key]
+    if len(fuzzy) == 1:
+        return fuzzy[0]
+    if not fuzzy:
+        raise ClickError("找不到目标 %r（当前页 %d 个可点目标）" % (key, len(targets)))
+    raise ClickError("目标 %r 不唯一：%s" % (key, [t.key for t in fuzzy[:6]]))
+
+
+class ClickEngine:
+    """一个 driver（CdpDriver）+ 一套断言，就够点任何东西了。"""
+
+    def __init__(self, driver, *, dry_run: bool = False, hover_ms: int = 80):
+        self.driver = driver
+        self.dry_run = dry_run
+        self.hover_ms = hover_ms
+        self.log: list[dict] = []
+
+    # -- 采集 ---------------------------------------------------------
+    def collect(self) -> list[Target]:
+        raw = self.driver.evaluate(COLLECT_JS)
+        return parse_targets(raw)
+
+    # -- 点击 ---------------------------------------------------------
+    def click(self, key: str, *, expect: dict | None = None, timeout: float = 6.0,
+              allow_danger: bool = False) -> dict:
+        targets = self.collect()
+        target = pick(targets, key)
+        if target.danger and not allow_danger:
+            raise ClickError("目标 %r 命中危险词，必须先过闸门（allow_danger=True 仅由审批流使用）"
+                             % target.key)
+
+        rect = self.driver.evaluate(RECT_JS % target.idx)
+        if not rect:
+            raise ClickError("目标 %r 已消失（页面可能刚刷新）" % target.key)
+        pos = json.loads(rect) if isinstance(rect, str) else rect
+        x, y = float(pos["x"]), float(pos["y"])
+
+        before = self._snapshot()
+        if not self.dry_run:
+            self._hover(x, y)
+            self._press(x, y)
+            self._release(x, y)
+
+        ok = True if self.dry_run else self._wait_effect(expect, before, timeout)
+        entry = {"target": target.key, "idx": target.idx, "x": x, "y": y,
+                 "danger": target.danger, "dry_run": self.dry_run,
+                 "expect": expect or {}, "ok": ok,
+                 "before": before.get("hash"), "after": self._snapshot().get("hash")}
+        self.log.append(entry)
+        if not ok:
+            raise ClickNoEffect("点了 %r 但没有预期效果（expect=%s）" % (target.key, expect))
+        return entry
+
+    def _hover(self, x: float, y: float) -> None:
+        self.driver.call("Input.dispatchMouseEvent",
+                         {"type": "mouseMoved", "x": x, "y": y, "button": "none"})
+        time.sleep(self.hover_ms / 1000.0)
+
+    def _press(self, x: float, y: float) -> None:
+        self.driver.call("Input.dispatchMouseEvent",
+                         {"type": "mousePressed", "x": x, "y": y,
+                          "button": "left", "clickCount": 1})
+
+    def _release(self, x: float, y: float) -> None:
+        # 真鼠标的按下/抬起之间隔 30~80ms；太短会被某些框架判成抖动
+        time.sleep(0.04)
+        self.driver.call("Input.dispatchMouseEvent",
+                         {"type": "mouseReleased", "x": x, "y": y,
+                          "button": "left", "clickCount": 1})
+
+    # -- 断言 ---------------------------------------------------------
+    def _snapshot(self) -> dict:
+        raw = self.driver.evaluate(
+            "(() => { const t = document.body ? document.body.innerText : '';"
+            " return JSON.stringify({url: location.href, text: t.slice(0, 20000)}); })()")
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        text = data.get("text") or ""
+        data["hash"] = "%08x" % (hash(text) & 0xFFFFFFFF)
+        return data
+
+    def _wait_effect(self, expect: dict | None, before: dict, timeout: float) -> bool:
+        if not expect:
+            # 没给断言时只要求"画面/文本有变化"，否则视为点空
+            expect = {"changed": True}
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._check(expect, before):
+                return True
+            time.sleep(0.2)
+        return False
+
+    def _check(self, expect: dict, before: dict) -> bool:
+        now = self._snapshot()
+        if expect.get("url_changed") and now["url"] != before["url"]:
+            return True
+        if expect.get("changed") and now["text"] != before["text"]:
+            return True
+        if "text" in expect and expect["text"] in (now["text"] or ""):
+            return True
+        if "text_gone" in expect and expect["text_gone"] not in (now["text"] or ""):
+            return True
+        if "target_appears" in expect:
+            try:
+                pick(self.collect(), expect["target_appears"])
+                return True
+            except ClickError:
+                return False
+        if "target_gone" in expect:
+            try:
+                pick(self.collect(), expect["target_gone"])
+                return False
+            except ClickError:
+                return True
+        if expect.get("attr"):
+            spec = expect["attr"]
+            raw = self.driver.evaluate(
+                "(() => { const n = document.querySelector('%s');"
+                " return n ? String(n.getAttribute('%s')) : null; })()"
+                % (spec["selector"].replace("'", "\\'"), spec["name"]))
+            return raw == spec.get("value")
+        return False

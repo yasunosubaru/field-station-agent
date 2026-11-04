@@ -1,8 +1,8 @@
 野外台站智能体运行与评估系统 V1.0 —— 源程序文档
-共 353 页（每页 50 行）；本文件展示前 30 页与后 30 页。
+共 358 页（每页 50 行）；本文件展示前 30 页与后 30 页。
 只含本仓原创代码；派生自作者前序项目的模块见 PROVENANCE.md，不在本文件中展示。
 
-野外台站智能体运行与评估系统 V1.0                                          第 1 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 1 页 / 共 358 页
 # ===== 文件：src/fieldstation/agents/__init__.py =====
 
 # ===== 文件：src/fieldstation/agents/approval.py =====
@@ -55,7 +55,7 @@ class ApprovalRequest:
 
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 2 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 2 页 / 共 358 页
 
 @dataclass
 class ApprovalRecord:
@@ -108,7 +108,7 @@ class ApprovalGate:
     —— 不给低风险动作增加打扰，一次纯统计查询不该走一遍审批。
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 3 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 3 页 / 共 358 页
     """
 
     def __init__(
@@ -161,7 +161,7 @@ M5-1 把「agent 之间的数据通道」钉成消息总线；本模块补上另
 
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 4 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 4 页 / 共 358 页
 * **进程内、线程安全**：所有操作在一把 ``threading.RLock`` 下原子完成；值进出都
   深拷贝 —— 读到的对象与黑板内部不共享引用。
 * **写分三种，默认路径是 CAS**：
@@ -214,7 +214,7 @@ class BoardError(Exception):
 class BoardConflict(BoardError):
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 5 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 5 页 / 共 358 页
     """版本或存在性与期望不符（CAS 失败）。调用方重读当前版本后重试。"""
 
     def __init__(self, key: str, expected: object, actual: object) -> None:
@@ -267,7 +267,7 @@ def check_key(key: object) -> str:
 
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 6 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 6 页 / 共 358 页
 def check_prefix(prefix: object) -> str:
     """校验**前缀**（命名空间或条目键）：``snapshot`` 的子树过滤与范围模式用。"""
     if not isinstance(prefix, str) or not prefix.strip():
@@ -320,7 +320,7 @@ def _copy_entry(entry: BoardEntry) -> BoardEntry:
 class Blackboard:
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 7 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 7 页 / 共 358 页
     """进程内共享上下文：受控读写、CAS 写、真线程安全。
 
     ``on_event`` 收到的是变更事件（``op`` ∈ create/update/upsert/delete，
@@ -373,7 +373,7 @@ class Blackboard:
             self._versions[key] = version
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 8 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 8 页 / 共 358 页
             self._notify("create", entry)
             return _copy_entry(entry)
 
@@ -426,7 +426,7 @@ class Blackboard:
         self._on_event({"op": op, "key": entry.key,
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 9 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 9 页 / 共 358 页
                         "version": entry.version,
                         "by": entry.by if by is None else by})
 
@@ -479,7 +479,7 @@ class BoardView:
                      if _matches(key, self.reads))
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 10 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 10 页 / 共 358 页
 
     # 写
     def create(self, key: str, value: dict) -> BoardEntry:
@@ -532,7 +532,7 @@ call_id 引用。本模块用序列化检查把「不可序列化的东西」挡
 * **``inbox`` 对未订阅的名字抛 KeyError**：接线错（名字拼错）应该在链路的第一轮
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 11 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 11 页 / 共 358 页
   就炸出来，而不是让某个阶段拿到空收件箱继续跑。
 * **payload 浅拷贝后保存**：发布后再改原 dict 不改变已发布的消息与 trace。
 
@@ -585,7 +585,7 @@ class MessageBus:
         if not (topic or "").strip():
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 12 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 12 页 / 共 358 页
             raise ValueError("订阅主题不能为空")
         subs = self._subscribers.setdefault(topic, [])
         if name in subs:
@@ -638,7 +638,7 @@ class MessageBus:
         if self._trace is not None:
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 13 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 13 页 / 共 358 页
             self._trace.write("message", message.to_dict())
         return message
 
@@ -691,7 +691,7 @@ class ConclusionContract:
     当前只有置信度范围与“是否要求证据”两个可调项。契约字段本身改动必须走
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 14 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 14 页 / 共 358 页
     ADR，不能在这里静默放宽。
     """
 
@@ -744,7 +744,7 @@ def _successful_calls(trace_events: list[dict]) -> dict[str, dict]:
     return calls
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 15 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 15 页 / 共 358 页
 
 
 def validate_conclusion(
@@ -797,7 +797,7 @@ def validate_conclusion(
     if not isinstance(evidence, list):
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 16 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 16 页 / 共 358 页
         errors.append("attribution.evidence 必须是数组")
         evidence = []
     if contract.require_evidence and not evidence:
@@ -850,7 +850,7 @@ def validate_conclusion(
 """声明式 agent 配置：读配置 → 组装 Agent + 白名单注册表，运行时代码零改动。
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 17 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 17 页 / 共 358 页
 
 spec §4 的承诺是「新增 agent 只加配置，不改代码」。本模块把承诺落成约定：
 
@@ -903,7 +903,7 @@ def load_agent_config(path: str) -> AgentConfig:
         raw = json.load(f)
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 18 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 18 页 / 共 358 页
     if not isinstance(raw, dict):
         raise ValueError(f"agent 配置必须是 JSON object（文件：{path}）")
     missing = [k for k in REQUIRED_FIELDS if not raw.get(k)]
@@ -956,7 +956,7 @@ def build(cfg: AgentConfig, provider: Provider, base: ToolRegistry) -> tuple[Age
 # -*- coding: utf-8 -*-
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 19 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 19 页 / 共 358 页
 """确定性演示 provider（WP2）：不联网，也不假装是模型。
 
 桌面版第一次启动时没有 API key，契约 §7 要求回退到 ``fake``。``FakeProvider``
@@ -1009,7 +1009,7 @@ class DemoProvider(Provider):
 
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 20 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 20 页 / 共 358 页
     name = "fake"
 
     def __init__(self, *, model: str = "demo") -> None:
@@ -1062,7 +1062,7 @@ class DemoProvider(Provider):
                     "args": _slip_args(),
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 21 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 21 页 / 共 358 页
                     "reason": "再对固定双频序列做周跳检测",
                     "confidence": 0.85,
                 })
@@ -1115,7 +1115,7 @@ class DemoProvider(Provider):
                 lines.append(_describe_heartbeat(data))
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 22 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 22 页 / 共 358 页
             elif name == "robust_stats":
                 lines.append(_describe_robust_stats(data))
             elif name == "slip_detect":
@@ -1168,7 +1168,7 @@ def _heartbeat_args() -> dict:
                 or row["last_seen_at"] > latest_by_device[device]["last_seen_at"]):
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 23 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 23 页 / 共 358 页
             latest_by_device[device] = row
     heartbeats = [latest_by_device[key] for key in sorted(latest_by_device)]
     latest = max(row["last_seen_at"] for row in heartbeats)
@@ -1221,7 +1221,7 @@ def _describe_heartbeat(data: dict) -> str:
     if alerts:
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 24 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 24 页 / 共 358 页
         line += f" 需要关注：{'、'.join(str(a) for a in alerts)}。"
     else:
         line += " 没有告警。"
@@ -1274,7 +1274,7 @@ def _last_user_text(messages: list[ChatMessage]) -> str:
 
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 25 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 25 页 / 共 358 页
 def _tool_results(messages: list[ChatMessage]) -> list[dict]:
     """把 orchestrator 写回的工具消息解析成结构化结果。
 
@@ -1327,7 +1327,7 @@ from .tools import ToolResult
 
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 26 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 26 页 / 共 358 页
 REQUIRED_DOC_FIELDS = ("doc_id", "title", "category", "body", "source")
 
 
@@ -1380,7 +1380,7 @@ def _fallback_terms(query: str) -> list[str]:
     terms: list[str] = []
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 27 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 27 页 / 共 358 页
     for piece in pieces:
         if re.fullmatch(r"[A-Za-z0-9_.+-]+", piece):
             terms.append(piece.lower())
@@ -1433,7 +1433,7 @@ class KnowledgeBase:
         with closing(self._connect()) as con:
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 28 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 28 页 / 共 358 页
             rows = con.execute(
                 "SELECT doc_id,title,category,body,source,bm25(knowledge_fts) AS score "
                 "FROM knowledge_fts WHERE knowledge_fts MATCH ? "
@@ -1486,7 +1486,7 @@ class KnowledgeSearchTool:
             return ToolResult(ok=False, error="参数 limit 必须是正整数")
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 29 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 29 页 / 共 358 页
         try:
             rows = self.kb.search(query, limit=limit)
         except (ValueError, sqlite3.Error) as exc:
@@ -1539,7 +1539,7 @@ from __future__ import annotations
 import json
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 30 页 / 共 353 页
+野外台站智能体运行与评估系统 V1.0                                          第 30 页 / 共 358 页
 import time
 import urllib.error
 import urllib.request
@@ -1592,17 +1592,7 @@ def build_payload(alert: dict, *, generated_at: str,
         "version": 1,
 
 ------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 324 页 / 共 353 页
-    for key in ("checks", "summary", "sample"):
-        if fixture.get(key) != log.get(key):
-            problems.append(f"{key} 与 fixture 不一致")
-    if fixture.get("sha256") != log.get("sha256"):
-        problems.append(
-            f"顶层 sha256 不一致：fixture {_short(str(fixture.get('sha256')))} / "
-            f"实跑 {_short(str(log.get('sha256')))}")
-    return stage_ok, problems
-
-
+野外台站智能体运行与评估系统 V1.0                                          第 329 页 / 共 358 页
 def verify_log(path: Path) -> int:
     """复校一份回放日志：内部一致性 + 证据引用有效性（不重跑链路）。"""
     try:
@@ -1643,9 +1633,6 @@ def verify_log(path: Path) -> int:
                     != {k: m.get(k) for k in ("msg_id", "topic", "sender", "refs", "payload")}:
                 problems.append(f"消息 {m.get('msg_id')} 与 trace 不一致")
 
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 325 页 / 共 353 页
     segments = _stage_segments(trace)
     if len(segments) != len(stages):
         problems.append(f"阶段段数 {len(segments)} != 阶段记录数 {len(stages)}")
@@ -1656,6 +1643,9 @@ def verify_log(path: Path) -> int:
                        if cid not in results]
             if missing:
                 problems.append(
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 330 页 / 共 358 页
                     f"{record.get('stage')} 证据引用 {missing} 在本地段里没有对应工具结果")
             # 结论内部的证据列表也要逐条落到本阶段的工具结果上 —— 只看顶层
             # evidence_call_ids 会漏掉「结论正文被改、字段没动」的篡改。
@@ -1696,9 +1686,6 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="M5-1 全链回放：观测数据进，工单与归档出")
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE,
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 326 页 / 共 353 页
                         help="基线 fixture 路径（默认 %(default)s）")
     parser.add_argument("--log-dir", type=Path, default=ROOT / "logs",
                         help="回放日志与耗时 sidecar 的目录（默认 %(default)s）")
@@ -1709,6 +1696,9 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.verify_log is not None:
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 331 页 / 共 358 页
         return verify_log(args.verify_log)
 
     try:
@@ -1749,9 +1739,6 @@ def main(argv=None) -> int:
           f"{log['summary']['checks']}, {log['summary']['messages']} 条消息, "
           f"tokens {log['summary']['tokens']['prompt']}/"
           f"{log['summary']['tokens']['completion']}")
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 327 页 / 共 353 页
     print(f"  expected    {fixture.get('sha256')}")
     print(f"sha256: {log['sha256']}")
     if problems:
@@ -1762,6 +1749,9 @@ def main(argv=None) -> int:
     print("PASS M5 回放基线与 fixture 一致")
     return 0
 
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 332 页 / 共 358 页
 
 if __name__ == "__main__":
     sys.exit(main())
@@ -1802,9 +1792,6 @@ for _p in (str(ROOT / "src"), str(ROOT / "harness")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 328 页 / 共 353 页
 from fact_provider import FactProvider, STAGE_PLANS  # noqa: E402
 from m5_pipeline_replay import (  # noqa: E402
     CONFIG_DIR,
@@ -1815,6 +1802,9 @@ from m5_pipeline_replay import (  # noqa: E402
     _sha256_canonical,
 )
 from public_data_replay import (  # noqa: E402
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 333 页 / 共 358 页
     apply_low_temp_rule,
     readings_from_open_meteo,
 )
@@ -1855,9 +1845,6 @@ LOG_VERSION = 1
 DEVICE_SAMPLE = (ROOT / "data" / "public" / "samples" /
                  "openmeteo_badg_202401_d01.json")
 ARCHIVE_PATH = "pipeline/m5_public/chain_summary.json"
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 329 页 / 共 353 页
 LOW_TEMP_C = -10.0
 
 
@@ -1868,6 +1855,9 @@ def device_payload() -> tuple[dict, dict]:
                                    threshold_c=LOW_TEMP_C)
     payload = {
         "station": STATION,
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 334 页 / 共 358 页
         "n_readings": len(readings),
         "readings": reading_payloads(readings),
         "source": {
@@ -1908,9 +1898,6 @@ def _checks(result, trace: list[dict], payload: dict, archive_root: Path) -> dic
         "chain_complete": len(result.outcomes) == 5 and len(result.messages) == 7,
         "device_input_is_public": payload.get("source", {}).get("kind") == "public",
         "messages_in_trace": (
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 330 页 / 共 353 页
             len(message_events) == len(result.messages)
             and [e.get("msg_id") for e in message_events]
             == [m.msg_id for m in result.messages]),
@@ -1921,6 +1908,9 @@ def _checks(result, trace: list[dict], payload: dict, archive_root: Path) -> dic
         "approval_recorded": (
             len(approvals) == 1
             and approvals[0].get("verdict") == "approved"
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 335 页 / 共 358 页
             and approvals[0].get("by") == "approve_all"
             and approvals[0].get("action") == "execute_device_action"
             and approvals[0].get("risk") == "high"),
@@ -1961,9 +1951,6 @@ def run(out_path: Path) -> dict:
              "dispatch.work_order", ("fault.diagnosis",),
              partial(STAGE_PLANS["operations_dispatch"][0], station=STATION)),
             ("archive", "archive.json", "archive.done",
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 331 页 / 共 353 页
              ("dispatch.work_order",),
              partial(STAGE_PLANS["archive"][0], relative_path=ARCHIVE_PATH)),
         )
@@ -1974,6 +1961,9 @@ def run(out_path: Path) -> dict:
             provider = FactProvider(plan or default_plan, compose)
             agent, scoped = build(cfg, provider, base)
             stages.append(PipelineStage(
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 336 页 / 共 358 页
                 name=name, agent=agent, registry=scoped, topic=topic,
                 consumes=consumes,
                 note=f"{name} 阶段：按上游消息调用工具并据返回下结论",
@@ -2014,9 +2004,6 @@ def run(out_path: Path) -> dict:
         "stages": stage_records,
         "messages": [message.to_dict() for message in result.messages],
         "checks": checks,
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 332 页 / 共 353 页
         "summary": {
             "stages": len(stage_records),
             "messages": len(result.messages),
@@ -2027,6 +2014,9 @@ def run(out_path: Path) -> dict:
         },
         "trace": trace,
         "trace_sha256": _sha256_canonical(trace),
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 337 页 / 共 358 页
     }
     log["sha256"] = _sha256_canonical({
         key: log[key] for key in ("scenario", "data_sources", "stages",
@@ -2067,9 +2057,6 @@ if __name__ == "__main__":
 
     python harness/public_data_replay.py \
         --input data/public/samples/openmeteo_badg_202401_d01.json \
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 333 页 / 共 353 页
         --out logs/public_data_device_202401d01.json
 
 数据源登记在 ``data/public/manifest.json``（来源、许可、校验和、用途），
@@ -2080,6 +2067,9 @@ if __name__ == "__main__":
 from __future__ import annotations
 
 import argparse
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 338 页 / 共 358 页
 import hashlib
 import json
 import sys
@@ -2120,9 +2110,6 @@ def readings_from_open_meteo(data: dict, station: str = STATION) -> list[Station
     for index, stamp in enumerate(times):
         observed_at = datetime.fromisoformat(stamp).replace(tzinfo=timezone.utc)
         for key, (sensor, metric, unit) in METRICS.items():
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 334 页 / 共 353 页
             values = hourly.get(key) or []
             value = values[index] if index < len(values) else None
             readings.append(StationReading(
@@ -2133,6 +2120,9 @@ def readings_from_open_meteo(data: dict, station: str = STATION) -> list[Station
 
 
 def apply_low_temp_rule(readings: list[StationReading], *,
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 339 页 / 共 358 页
                         threshold_c: float = -10.0) -> list[StationReading]:
     """演示规则：气温低于阈值记 ``low_temp`` 质量标记（**示例阈值，非工程判据**）。
 
@@ -2173,9 +2163,6 @@ def run(input_path: Path, out_path: Path) -> dict:
     times = data["hourly"]["time"]
     try:
         shown = input_path.resolve().relative_to(ROOT).as_posix()
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 335 页 / 共 353 页
     except ValueError:
         shown = input_path.name
     log = {
@@ -2186,6 +2173,9 @@ def run(input_path: Path, out_path: Path) -> dict:
             "path": shown,
             "sha256": digest,
             "records": len(times),
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 340 页 / 共 358 页
             "window": [times[0], times[-1]],
         },
         "mapping": {
@@ -2227,9 +2217,6 @@ def main(argv=None) -> int:
           f"缺测 {log['health']['summary']['missing']}")
     return 0
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 336 页 / 共 353 页
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
@@ -2239,6 +2226,9 @@ if __name__ == "__main__":
 # -*- coding: utf-8 -*-
 """M3-3：质量校验 Agent 的结构化结论回放基线。
 
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 341 页 / 共 358 页
 与 M0 的 ``harness/replay.py`` 分开：后者保留原有单轮自由文本基线；本脚本使用
 M3 的真实装配路径（声明式配置 + 过滤注册表 + 结论契约 + 工具证据）跑一条
 确定性回放，并能从已落盘日志重新校验证据引用。
@@ -2279,9 +2269,6 @@ from fieldstation.agents.trace.reader import read_trace  # noqa: E402
 from fieldstation.agents.trace.writer import TraceWriter  # noqa: E402
 from fieldstation.store import product  # noqa: E402
 
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 337 页 / 共 353 页
 FIXTURE_KIND = "fieldstation.qc_agent_replay.fixture"
 FIXTURE_VERSION = 1
 LOG_KIND = "fieldstation.qc_agent_replay.log"
@@ -2292,6 +2279,9 @@ CONFIG_PATH = ROOT / "config" / "agents" / "qc.json"
 CONCLUSION = {
     "attribution": {
         "fault_type": "nonphysical_rmse",
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 342 页 / 共 358 页
         "evidence": [{
             "call_id": "t0001",
             "tool": "magnitude_verdict",
@@ -2332,9 +2322,6 @@ def _registry() -> ToolRegistry:
     for tool in (
         robust_stats_tool(),
         slip_detect_tool(),
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 338 页 / 共 353 页
         continuity_verdict_tool(),
         magnitude_verdict_tool(),
     ):
@@ -2345,6 +2332,9 @@ def _registry() -> ToolRegistry:
 def run_once(log_dir: Path) -> dict:
     cfg = load_agent_config(CONFIG_PATH)
     base = _registry()
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 343 页 / 共 358 页
     provider = FakeProvider(list(RESPONSES))
     agent, scoped = build(cfg, provider, base)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -2386,9 +2376,6 @@ def run_once(log_dir: Path) -> dict:
         "actual_sha256": actual,
     }
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 339 页 / 共 353 页
-
 
 def _write_json(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -2398,6 +2385,9 @@ def _write_json(path: Path, obj: dict) -> None:
 
 
 def _write_fixture(path: Path, record: dict) -> None:
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 344 页 / 共 358 页
     _write_json(path, {
         "kind": FIXTURE_KIND,
         "version": FIXTURE_VERSION,
@@ -2439,9 +2429,6 @@ def main(argv=None) -> int:
     ap.add_argument("--verify-log", help="只重新校验一份已落盘日志")
     args = ap.parse_args(argv)
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 340 页 / 共 353 页
-
     if args.verify_log:
         return verify_log(Path(args.verify_log))
     if not args.fixture:
@@ -2451,6 +2438,9 @@ def main(argv=None) -> int:
     fixture_path = Path(args.fixture)
     if not fixture_path.is_absolute():
         fixture_path = (Path.cwd() / fixture_path).resolve()
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 345 页 / 共 358 页
     fixture = None
     if fixture_path.exists():
         try:
@@ -2491,9 +2481,6 @@ def main(argv=None) -> int:
         print("PASS 结构化结论、证据引用与 trace 基线一致")
         return 0
     print("FAIL 结构化结论、证据引用或 trace 基线不一致")
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 341 页 / 共 353 页
     return 1
 
 
@@ -2504,6 +2491,9 @@ if __name__ == "__main__":
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """回放式评测器：合成 fixture -> 智能体单轮 -> 归因结论 + trace -> SHA256 对拍。
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 346 页 / 共 358 页
 
 用法::
 
@@ -2545,9 +2535,6 @@ trace 设计上就不含时间戳与随机量（`agents/trace/writer.py` 顶部�
 """
 from __future__ import annotations
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 342 页 / 共 353 页
-
 import argparse
 import hashlib
 import json
@@ -2557,6 +2544,9 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 ROOT = _HERE.parent
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 347 页 / 共 358 页
 for _p in (str(ROOT / "src"), str(ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -2597,9 +2587,6 @@ def derive_user_input(merged: dict, obs: list, truth: list) -> str:
     parts = [f"台站 {merged['station']}：{len(obs)} 条观测 / {len(truth)} 个历元，"
              f"注入异常 {len(slips)} 处"]
     if slips:
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 343 页 / 共 353 页
         s0 = slips[0]
         series = [o.adr_cycles for o in obs
                   if o.system == s0["system"] and o.sv == s0["sv"]
@@ -2610,6 +2597,9 @@ def derive_user_input(merged: dict, obs: list, truth: list) -> str:
             parts.append(f"{s0['system']} {s0['sv']} {s0['signal']} 历元 {i} "
                          f"二阶差分 {d2:.4f} cycle")
         else:
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 348 页 / 共 358 页
             parts.append(f"{s0['system']} {s0['sv']} {s0['signal']} 序列长度 "
                          f"{len(series)}（注入点 {i} 不在可差分区间）")
     return "；".join(parts) + "。请给出归因结论。"
@@ -2651,9 +2641,6 @@ def run_once(seed: int) -> dict:
         "actual_sha256": _sha256_canonical(payload),
     }
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 344 页 / 共 353 页
-
 
 def _compare_rows(fixture: dict, record: dict) -> list[tuple[str, str, str, bool]]:
     """返回 [(项, 期望, 实测, 是否一致), ...]。缺字段由调用方先行拦截（退出码 2）。"""
@@ -2663,6 +2650,9 @@ def _compare_rows(fixture: dict, record: dict) -> list[tuple[str, str, str, bool
         ("config_hash", str(fixture["config_hash"]), record["config_hash"],
          str(fixture["config_hash"]) == record["config_hash"]),
     ]
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 349 页 / 共 358 页
 
 
 def _write_json(path: Path, obj: dict) -> None:
@@ -2703,9 +2693,6 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     fx_path = Path(args.fixture)
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 345 页 / 共 353 页
     if not fx_path.is_absolute():
         fx_path = (Path.cwd() / fx_path).resolve()
 
@@ -2716,6 +2703,9 @@ def main(argv=None) -> int:
         except (OSError, ValueError) as exc:
             print(f"[阻断] 读不了 fixture {fx_path}: {exc}")
             return 2
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 350 页 / 共 358 页
         if not isinstance(fixture, dict) or fixture.get("kind") != FIXTURE_KIND:
             print(f"[阻断] {fx_path} 不是本脚本的 fixture"
                   f"（kind != {FIXTURE_KIND}），拒绝处理")
@@ -2756,9 +2746,6 @@ def main(argv=None) -> int:
     if not log_dir.is_absolute():
         log_dir = (Path.cwd() / log_dir).resolve()
     log_path = log_dir / f"replay_{seed}.json"
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 346 页 / 共 353 页
     _write_json(log_path, record)
     print(f"  日志        {log_path}")
 
@@ -2769,6 +2756,9 @@ def main(argv=None) -> int:
 
     for name, expected, got, good in rows:
         print(f"  {name:<12} 期望 {expected} 实测 {got}  -> {'PASS' if good else 'FAIL'}")
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 351 页 / 共 358 页
     if all(good for _, _, _, good in rows):
         print("PASS 归因输出与 fixture 期望一致")
         return 0
@@ -2809,9 +2799,6 @@ if __name__ == "__main__":
 
 用法：
     python harness/station_loop.py                 # 确定性演示，写 logs/
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 347 页 / 共 353 页
     python harness/station_loop.py --out <路径> --summary-out <路径>
 """
 from __future__ import annotations
@@ -2822,6 +2809,9 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 352 页 / 共 358 页
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -2862,9 +2852,6 @@ class SystemClock:
 class ManualClock:
     """测试 / 演示时钟：``sleep_until`` 直接把指针拨到目标时刻。
 
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 348 页 / 共 353 页
     任务 runner 也可以调 ``advance`` 模拟「这一趟跑了很久」——超时与错过的判据
     都从时钟取，因此两者都可复现。
     """
@@ -2875,6 +2862,9 @@ class ManualClock:
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
         self._now = start
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 353 页 / 共 358 页
 
     def now(self) -> datetime:
         return self._now
@@ -2916,9 +2906,6 @@ def _iso(value: datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 349 页 / 共 353 页
-
 def _sanitize(text) -> str:
     """台账要入库：把本机家目录换成 ``<home>``。"""
     value = "" if text is None else str(text)
@@ -2928,6 +2915,9 @@ def _sanitize(text) -> str:
             value = value.replace(form, "<home>")
     return value
 
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 354 页 / 共 358 页
 
 def _row(*, ts: datetime, run_id: str, task: TaskSpec, started: datetime | None,
          finished: datetime, status: str, failure_class: str | None,
@@ -2969,9 +2959,6 @@ class StationLoop:
         self.run_id = run_id
         self.max_rows = int(max_rows)
 
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 350 页 / 共 353 页
-
     def run_until(self, end: datetime, *, start: datetime | None = None) -> list[dict]:
         """从 ``start`` 跑到 ``end``（含端点），返回台账行。"""
         if end.tzinfo is None:
@@ -2981,6 +2968,9 @@ class StationLoop:
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
         if end < start:
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 355 页 / 共 358 页
             raise ValueError("end 不能早于 start")
 
         next_due = {task.task_id: start for task in self.tasks}
@@ -3021,9 +3011,6 @@ class StationLoop:
                 started = self.clock.now()
                 failure_class = None
                 status = "ok"
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 351 页 / 共 353 页
                 notes = ""
                 try:
                     task.runner(due)
@@ -3034,6 +3021,9 @@ class StationLoop:
                 finished = self.clock.now()
                 duration_s = (finished - started).total_seconds()
                 if (status == "ok" and task.timeout_s is not None
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 356 页 / 共 358 页
                         and duration_s > task.timeout_s):
                     status = "failed"
                     failure_class = TIMEOUT
@@ -3074,9 +3064,6 @@ def summarize(rows: list[dict]) -> dict:
         "success_rate": round(ok / total, 3) if total else None,
         "missed": by_class.get(MISSED, 0),
         "timeouts": by_class.get(TIMEOUT, 0),
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 352 页 / 共 353 页
     }
 
 
@@ -3087,6 +3074,9 @@ def write_rows(path: str | Path, rows: list[dict]) -> Path:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False,
                                     sort_keys=True) + "\n")
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 357 页 / 共 358 页
     return target
 
 
@@ -3127,9 +3117,6 @@ def demo(out: Path, summary_out: Path) -> tuple[list[dict], dict]:
 
     tasks = (
         TaskSpec("collect", 300.0, collect, grace_s=60.0),
-
-------------------------------------------------------------------------------
-野外台站智能体运行与评估系统 V1.0                                          第 353 页 / 共 353 页
         TaskSpec("qc", 600.0, qc, grace_s=600.0),
         TaskSpec("flush", 1800.0, flush),
         TaskSpec("poll", 600.0, poll, timeout_s=60.0),
@@ -3140,6 +3127,9 @@ def demo(out: Path, summary_out: Path) -> tuple[list[dict], dict]:
     write_rows(out, rows)
     write_summary(summary_out, summary)
     return rows, summary
+
+------------------------------------------------------------------------------
+野外台站智能体运行与评估系统 V1.0                                          第 358 页 / 共 358 页
 
 
 def main(argv=None) -> int:
