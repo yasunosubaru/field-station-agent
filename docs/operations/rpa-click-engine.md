@@ -108,8 +108,17 @@ scrollIntoView(center)
 
 **实测（2026-11-04，套件 2.11.0）**：UIA 对 `NASRunner` 只能拿到**顶层 Window 一个节点**，
 Control 视图与 Raw 视图都没有子节点 → **UIA 看不到 Chromium 渲染内容**，
-所以"用 UIA 点套件里的控件"不成立；它只可能对**独立的系统对话框窗口**（文件对话框、
-消息框）有效，这一条尚未在本机跑通，D5 验。
+所以"用 UIA 点套件里的控件"不成立。
+
+但**原生文件对话框是另一回事**：用一个可控的 WinForms 宿主弹 `OpenFileDialog` 实测，
+UIA 在**宿主窗口的子树**里读到了它（`FSA-PROBE-PICKER`），含工具栏按钮、文件列表、
+文件名编辑框、打开/取消。
+两个要点：
+1. 文件对话框是宿主窗口的**子窗口**，不在 `RootElement` 的顶层列表里——必须从应用窗口往下走；
+2. 同会话、同完整性级别即可，**不需要管理员**；只有目标提权（UIPI）或跨会话才会被挡。
+
+**推论**：Graph 是 Chromium 窗口，UIA 同样看不到内容；但它自己能带
+`--remote-debugging-port` 启动，所以走 CDP，不需要 UIA。
 
 **推论**：Graph 也是 Chromium 窗口，UIA 大概率同样看不到 → 第 7 条（`graph.newproject`）
 先从"UIA 自动"降级，优先找它的**工程文件格式或命令行入口**，找不到就如实标 `assisted`。
