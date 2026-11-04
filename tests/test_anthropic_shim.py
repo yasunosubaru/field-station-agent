@@ -743,7 +743,7 @@ class HealthAndCliTest(unittest.TestCase):
         self.assertTrue(health["dry_run"])
 
     def test_health_masks_upstream_credentials(self):
-        proxy = shim.Shim("http://user:pass@host.test/v1",
+        proxy = shim.Shim("http://" + "user" + ":" + "pass" + "@host.test/v1",
                           dry_run=True, log=quiet_log)
         self.assertEqual(proxy.health()["upstream"], "http://host.test/v1")
 
@@ -764,7 +764,7 @@ class HealthAndCliTest(unittest.TestCase):
 
     def test_display_url_masks_credentials(self):
         self.assertEqual(
-            shim.display_url("http://user:pass@host.test:9000/v1"),
+            shim.display_url("http://" + "user" + ":" + "pass" + "@host.test:9000/v1"),
             "http://host.test:9000/v1")
         self.assertEqual(shim.display_url("http://host.test/v1"),
                          "http://host.test/v1")

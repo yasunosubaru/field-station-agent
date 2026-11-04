@@ -1,0 +1,82 @@
+# -*- coding: utf-8 -*-
+# 上面那行不是装饰：pip 读 requirements 文件时先找 BOM，找不到就按**本地代码页**
+# （中文 Windows 是 GBK）解码。文件里有中文注释，没有这行 cookie 时
+# `pip install -r requirements-v4.txt` 直接 UnicodeDecodeError 退出。
+# 加 BOM 也能解，但 BOM 会污染 diff 和别的工具，所以用 PEP 263 的注释形式。
+#
+# 这是 v4 的 Python 依赖清单，装到 .deps/venv（不入库）。
+#
+# 生成：2026-11-05，在 `.deps/venv` 里按 `pip freeze --all` 的实测版本逐个挑出，
+#       Python 3.11.15 / Windows x86_64；镜像 https://pypi.tuna.tsinghua.edu.cn/simple。
+# 范围：六个**目标包** + 它们各自的**一层直接依赖** + 一条运行期补偿（见末组）。
+#       再往下的传递依赖不在这里钉（由 pip 解析）；需要逐字节复现时用
+#       `pip freeze > <快照>`，本机那一份的全量快照抄在 docs/operations/deps.md 末尾。
+# 验收：`.deps/venv/Scripts/python.exe tools/deps_smoke.py` 全 ok 才算装上。
+#
+# 重建：
+#   python -m venv .deps/venv
+#   .deps/venv/Scripts/python.exe -m pip install --timeout 60 -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements-v4.txt
+#
+# 注意：本仓库的门禁（tests / harness / 回放 / 审计）**不依赖这些包**，
+#       缺任何一个都不该让门禁变红（docs/operations/environment.md 的依赖政策）。
+#       它们只被 v4 的 E2/E3/E4/E6 引擎按需使用，缺了走各自的降级路径。
+
+# ── 目标包：v4 的六个引擎依赖 ─────────────────────────────────────
+duckdb==2.0.0
+langgraph==1.2.19
+pydantic-ai==2.66.0
+dbos==3.4.0
+llama-index-core==0.14.25
+llama-index-vector-stores-lancedb==0.6.0
+
+# ── 直接依赖：上面六个各自声明的一层依赖（实测装上的版本）──────────
+aiohttp==3.14.5
+aiosqlite==0.22.1
+banks==2.5.1
+click==8.5.0
+croniter==6.2.4
+dataclasses-json==0.6.7
+Deprecated==1.3.1
+dirtyjson==1.0.8
+filetype==1.2.0
+fsspec==2026.9.0
+httpx==0.28.1
+lancedb==0.41.0
+langchain-core==1.7.5
+langgraph-checkpoint==4.3.1
+langgraph-prebuilt==1.1.1
+langgraph-sdk==0.4.12
+llama-index-workflows==2.26.1
+nest-asyncio==1.6.0
+networkx==3.6.1
+nltk==3.10.4
+numpy==2.4.6
+pillow==13.0.0
+platformdirs==4.14.5
+psycopg==3.3.8
+pydantic==2.14.2
+pydantic-ai-slim==2.66.0
+pylance==14.0.2
+python-dateutil==4.0.0
+PyYAML==6.0.3
+requests==2.34.2
+setuptools==84.2.1
+SQLAlchemy==2.1.8
+tantivy==0.27.0
+tenacity==9.1.4
+tiktoken==0.14.0
+tinytag==2.3.2
+tqdm==4.70.1
+typing_extensions==4.16.0
+typing-inspect==0.9.0
+wrapt==2.5.2
+xxhash==4.0.2
+
+# ── 运行期补偿：上游漏声明，不装就 import 不进来 ──────────────────
+# llama-index-vector-stores-lancedb 0.6.0 的 base.py 第 33 行直接
+# `from pandas import DataFrame`，但它的 Requires-Dist 里没有 pandas。
+# 只装它声明的四个依赖（lancedb / llama-index-core / pylance / tantivy）时，
+# `import llama_index.vector_stores.lancedb` 抛 ModuleNotFoundError: pandas。
+# 必须显式钉住，否则"装完了"和"能用"之间有条暗沟。
+pandas==3.1.1
+clickhouse-connect

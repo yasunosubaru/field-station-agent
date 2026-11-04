@@ -168,7 +168,7 @@ curl.exe -s http://127.0.0.1:7810/chat | Select-String 'data-view="chat"'
 | 二进制补下载 | `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` + `node node_modules/electron/install.js`，**116.6 s** |
 | 磁盘占用 | `node_modules/electron/dist` **356.5 MB**，其中 `electron.exe` 249,469,440 B |
 | 窗口 | 加载 `http://127.0.0.1:7810/chat`（`--attach`，Node 服务另起）；标题 **“对话 · Agent 工作台”**（页面 `<title>` 覆盖了 BrowserWindow 的默认标题） |
-| 截图 | `C:\Users\SunCh\AppData\Local\Temp\opencode\electron-shot.png`，**142,537 字节**（2056×1200 设备像素） |
+| 截图 | `%TEMP%\opencode\electron-shot.png`，**142,537 字节**（2056×1200 设备像素） |
 
 为什么是 7810 而不是 7803：本机 7803 是改动**之前**启动的旧进程（`/chat` 返回 404，
 `/api/health` 里没有 `views`），按任务里的兜底条款在 7810 起了当前代码的服务再指过去。
@@ -191,7 +191,7 @@ npx electron . --attach --port 7810 --view chat --screenshot "$env:TEMP\opencode
 ```
 [shell] http://127.0.0.1:7810 就绪（探测 1 次）
 [shell] 窗口标题：对话 · Agent 工作台
-[shell] 截图已保存：C:\Users\SunCh\AppData\Local\Temp\opencode\electron-shot.png（142537 字节）
+[shell] 截图已保存：%TEMP%\opencode\electron-shot.png（142537 字节）
 ```
 
 没有装任何截图库：`--screenshot` 走 `webContents.capturePage().toPNG()`，拍完 `app.quit()`；

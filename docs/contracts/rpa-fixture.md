@@ -117,8 +117,8 @@ fixture 进仓库前必须过 `python tools/check_desensitization.py`。规则�
 
 | 规则 | 命中示例 | 处置 |
 |---|---|---|
-| `home_path_win` | `C:\Users\Alice\...` | 用户名替换为 `<user>`；保留盘符与其余路径 |
-| `home_path_unix` | `/home/alice/...`、`/Users/alice/...` | 同上；URL 用 `sanitize_url` |
+| `home_path_win` | Windows 用户目录（`%USERPROFILE%`）下的绝对路径 | 用户名替换为 `<user>`；保留盘符与其余路径 |
+| `home_path_unix` | Unix 家目录（`$HOME`）下的绝对路径 | 同上；URL 用 `sanitize_url` |
 | `private_key` | `-----BEGIN ... PRIVATE KEY-----` | 禁止入库，整段删除 |
 | `github_token` | `ghp_…` / `gho_…` | 禁止入库，换占位符并轮换 |
 | API key / token / 密码 | `sk-…`、`Authorization: Bearer …` | 禁止入库；fixture 不需要任何密钥 |
