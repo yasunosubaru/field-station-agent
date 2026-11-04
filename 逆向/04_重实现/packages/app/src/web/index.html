@@ -12,8 +12,12 @@
 <link rel="stylesheet" href="/home.css">
 <!-- Agent 工作台的 token 与全部界面样式；只在 body[data-mode="agent"] 下生效 -->
 <link rel="stylesheet" href="/agent.css">
+<!-- 专业面板的现代皮肤：覆盖式，最后加载。全部规则挂在
+     body[data-skin="modern"][data-mode="pro"] 下，去掉 <body> 上的 data-skin
+     就整份失效、回到原版外观（panels/*.css 依旧由面板 JS 按需注入）。 -->
+<link rel="stylesheet" href="/panels/modern.css">
 </head>
-<body data-mode="agent" data-agent-theme="dark">
+<body data-mode="agent" data-agent-theme="dark" data-skin="modern">
 
 <!-- ⓪ 产品条：48px，只在 Agent 模式下显示。专业面板保持原版观感，不加这一层。 -->
 <header class="fsa-bar" id="fsa-bar">

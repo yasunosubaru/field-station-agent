@@ -39,14 +39,16 @@
 > 样本 / 原版套件便携副本），使用说明见 [`docs/product/`](docs/product/README.md)。
 > 未配模型 key 时以 `fake` 演示模式启动；设置里可切 OpenAI 兼容 API 或本机 Ollama。
 
-> **v3 方向（2026-11-04 定稿，未实施）**：**四个等价视角**（对话 / 编队 / 数据 / 套件）——
-> 能力不分区，只是看同一套东西的角度不同；**两个 Agent 运行时**（OpenChamber+OpenCode 与
-> Claude Agent SDK）都做，各自能独立完成全部任务、互不依赖；Bot 由 **DBOS + LangGraph + Letta**
-> 各持一类真相协作；数据是**一份 Parquet + DuckDB（默认）/ ClickHouse（随包可选）**。
+> **v4 实施基线（2026-11-04 定稿，未实施）**：**Electron 壳**（OpenChamber 源码）+ **四个等价视角**
+> （对话 / 编队 / 数据 / 套件）+ **两个互不依赖的 Agent 运行时**（OpenChamber+OpenCode 与
+> Claude Agent SDK）+ **Bot 三组件**（DBOS 管时间 / LangGraph 管判断 / Letta 管记忆）+
+> **数据双引擎**（一份 Parquet，DuckDB 默认、ClickHouse 随包）。**套件台重做**（不叠皮），
+> **RPA 先收口**（校准工具 + DOM fixture 回放 + 通道升级 + 真机清单）。体积不再设上限。
 > 决策：[ADR-008](docs/decisions/2026-11-04-界面底座与四台.md) ·
-> [ADR-009](docs/decisions/2026-11-04-七引擎与工具面.md)；
-> 基线：[`docs/spec/2026-11-04-v3-四视角双运行时.md`](docs/spec/2026-11-04-v3-四视角双运行时.md)。
-> 上面的 0.2.0 仍是**当前可用版本**，v3 在 `v2/four-consoles` 分支上做（分支名先沿用）。
+> [ADR-009](docs/decisions/2026-11-04-七引擎与工具面.md) ·
+> [ADR-010](docs/decisions/2026-11-04-套件台重做与RPA收口.md)；
+> 基线：[`docs/spec/2026-11-04-v4-实施基线.md`](docs/spec/2026-11-04-v4-实施基线.md)。
+> 上面的 0.2.0 仍是**当前可用版本**。
 
 <!-- 目录 -->
 <details>

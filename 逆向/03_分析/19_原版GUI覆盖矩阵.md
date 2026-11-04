@@ -48,7 +48,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 |---|---|---|---|---|
 | `entry.manage` | Manage 主界面（tab、状态带、状态 tile、配置页容器） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/setUpMonitor.html:2 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:15；[观察] B 的 manage.js 复刻 tab、50 px 黑色菜单条、状态带与 tile 容器；tile 集合见 status/ 包。 |
 | `entry.menu` | 套件菜单栏（Status / Configuration / Settings / Tools / Device / Events） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.html:5 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1570；[观察] B 的 manage.js 以 MENU 数组 + menuBar() 复刻同一组菜单项与下拉层级；页面本体由配置页类提供。 |
-| `entry.shell` | 套件外壳（页签栏、抓包条、设置/帮助/主题入口） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/index.html:320 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:118；[观察] 原版外壳在 01_解包/app/view/html/index.html；B 在 web/index.html 复刻了页签栏与设置/帮助/主题入口，主题语义见 18 台账 §Q。 |
+| `entry.shell` | 套件外壳（页签栏、抓包条、设置/帮助/主题入口） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/index.html:320 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:122；[观察] 原版外壳在 01_解包/app/view/html/index.html；B 在 web/index.html 复刻了页签栏与设置/帮助/主题入口，主题语义见 18 台账 §Q。 |
 
 ### 状态 tile
 
@@ -134,7 +134,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
-| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:147；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。；固定流程 `gui.app.install` |
+| `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:151；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。；固定流程 `gui.app.install` |
 | `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/updateApplication/updateApplication.js:1 | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路，缺口由 gui.app.update 兜住（覆盖安装不可逆，必须人工闸门）。；固定流程 `gui.app.update` |
 | `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/autoUpdates/autoUpdates.js:1 | [观察] 逆向/04_重实现/packages/view/src/config/localSettings.ts:246；[观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源。处置从「补更新源」改为「明确不做 + 只读审计流程」，故保留 partial 但缺口有归宿。；固定流程 `gui.suite.autoupdate` |
 
@@ -143,7 +143,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
 | `page.dynamicTiles` | Dynamic Tiles 布局（拖动、撤销、重置、持久化） | B 已覆盖 | [观察] 逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html:1 | [观察] 逆向/04_重实现/packages/view/src/layout.ts:2；[观察] B 的 layout.ts 实现 packery 布局与持久化；原版行为见 01_Manage 文档 §3.4/§6.5。 |
-| `page.home` | My Applications 主页（五张应用卡片、连接数、Add application） | B 已覆盖 | [观察] 逆向/01_解包/app/view/welcome/welcome.html:124 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:142；[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。 |
+| `page.home` | My Applications 主页（五张应用卡片、连接数、Add application） | B 已覆盖 | [观察] 逆向/01_解包/app/view/welcome/welcome.html:124 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:146；[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。 |
 | `page.menuBar` | 菜单栏行为（切换到状态页/配置页、Settings/Tools/Device 下拉） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1283；[观察] B 的 manage.js 有同一组菜单切换与抽屉挂载逻辑；配置页由 config-host 提供。 |
 | `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:11；[观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 的多档案仍未补，故保留 partial，缺口由 gui.device.add 兜住。；固定流程 `gui.device.add` |
 
