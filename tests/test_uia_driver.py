@@ -58,6 +58,10 @@ class Selectors(unittest.TestCase):
         for path in sorted(suite_root.glob("*.yaml")):
             data = yaml_lite.load(path)
             for step in data.get("steps") or []:
+                if step.get("port"):
+                    # 带 port 的步骤指向另一个进程（例如 Graph 的 9224），
+                    # 它们的控件不属于套件的 UIA 选择器表。
+                    continue
                 for action in step.get("actions") or []:
                     if action.get("locator"):
                         used.add(str(action["locator"]))

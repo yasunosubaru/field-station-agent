@@ -147,8 +147,11 @@ python tools/workflow_cli.py run <flow> --root . --engine http://127.0.0.1:7803 
 | 证据存哪 | `artifacts/graph-project.json`、`artifacts/context.json`、`artifacts/gui-*-launch_graph.png`；失败时 `failure.json` |
 | 通过判据 | `status = succeeded`；`graph-project.json` 里 `source` 哈希与本地文件一致；Graph 里出现该工程目录与名字 |
 
-> 已知不一致：这份 YAML 的 `summary` 仍写着"CDP 到不了 Graph，只能人工"（v2 写作时的结论），与 rpa-completion 的实测打通结论相反。以本文与 rpa-completion 为准；YAML 文案待改。
-> 另：`plot` 需要驱动连到 **9224**；用默认 9223 跑会在 `plot` 停下（`selector_drift` / `capability`），这是端口不对，不是流程错。
+> 已更新（2026-11-05）：这份 YAML 已按 9224 改写（17 步，`port: 9224` 的步骤走 Graph）。
+> 实测可自动走到 `Project Folder` 的原生对话框前；`Select Folder` 与 Receiver Data 的
+> `Open` 两个原生对话框仍由人工（`human_gate`），其余向导步骤（New Project / Next /
+> 填 Project Name 与 Description / File Validation）都是自动的。
+> 注意：Graph 必须带 `--remote-debugging-port=9224` 启动，套件卡片拉起的实例没有端口。
 
 ---
 

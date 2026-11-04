@@ -28,7 +28,7 @@
 | 4 | `gui.app.install` | 卡在原生对话框 | **GUI 路径可自动；但优先改走文件层** | 实测：非核心应用装在 `%APPDATA%\NovAtelApplicationSuite\noncoreapps\<name>\`（Perception Viewer 已就位，含 `perceptionViewer.zip` 12 MB），目录旁有 `NonCoreAppsData.zip` 作登记表。**首选**：打包预置 + 首次启动铺文件（无需 GUI）；GUI 路径保留作通用能力 |
 | 5 | `gui.app.update` | 到闸门（本机没更新） | auto（到闸门） | 需要**造场景**：装一个旧版非核心应用，才有横幅可点；场景脚本进 `examples/` |
 | 6 | `gui.device.update` | 卡在 `ensure_link` | assisted + `blocked: hardware` | 代码推进到 `Apply` 闸门前；真机清单写清"插上接收机后跑什么、看什么" |
-| 7 | `gui.graph.newproject` | 人工 | **✅ auto（实测打通）** | 套件启动的是 `C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe`（不是 payload 副本）。用该 exe 加 `--remote-debugging-port=9224` 启动，CDP 直接可用（1 个页面）；点击引擎在其页面找到 14 个目标，含 `New Project` / `Open Project`。**注意**：payload 自带的那份 Graph 缺 `jszip`，直接启动会崩，不能用来做自动化 |
+| 7 | `gui.graph.newproject` | 人工 | **✅ auto 到两个原生对话框** | 流程已按 9224 改写（17 步，逐步骤 `port`）；实测自动跑完 New Project → Next → 填 Project Name/Description，停在 `Project Folder` 的原生对话框前。`Select Folder` 与 Receiver Data 的 `Open` 仍人工（`human_gate`），其余自动。前提：Graph 必须以 `--remote-debugging-port=9224` 启动 |
 | 8 | `script.device.restart` | 未验 | `blocked: hardware` | 命令通道已通；重启后"真的回来了"要真机 |
 
 **关键判断**：第 4 条和第 7 条不是"做不到"，是"之前只试了 CDP 一条路"。原生对话框和 Graph 窗口都是 Windows 窗口，UIA 能看见——这正是仓库里 `uia_driver` 存在的理由，之前一直没让它上主战场。

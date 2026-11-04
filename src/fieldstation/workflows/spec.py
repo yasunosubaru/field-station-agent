@@ -72,10 +72,10 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
     }),
     "mark_cursor": frozenset(),
     "file_digest": frozenset({"path"}),
-    "gui": frozenset({"action", "actions", "page", "locator", "value", "option", "screenshot", "assisted"}),
-    "verify_ui": frozenset({"control", "expect", "assisted"}),
+    "gui": frozenset({"action", "actions", "page", "locator", "value", "option", "screenshot", "assisted", "port"}),
+    "verify_ui": frozenset({"control", "expect", "assisted", "port"}),
     "wait_ui": frozenset({
-        "control", "expect", "timeout", "timeout_s", "poll_ms", "assisted",
+        "control", "expect", "timeout", "timeout_s", "poll_ms", "assisted", "port",
     }),
     "human_gate": frozenset({"reason", "prompt", "risk"}),
     "assert": frozenset({"checks"}),
@@ -406,6 +406,10 @@ def _check_steps(value: object, errors: list[str]) -> list[dict]:
             errors.append(f"{where}.on_fail 只能是 stop / continue")
         if "timeout_s" in step and not _is_positive_or_template(step["timeout_s"]):
             errors.append(f"{where}.timeout_s 必须是正数或 ${{...}} 模板")
+        if "port" in step:
+            port = step["port"]
+            if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+                errors.append(f"{where}.port 必须是 1–65535 的整数（CDP 端口）")
         if "seconds" in step and not _is_positive_or_template(step["seconds"]):
             errors.append(f"{where}.seconds 必须是正数或 ${{...}} 模板")
         for key in ("timeout", "poll_ms"):

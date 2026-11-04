@@ -15,154 +15,471 @@
   },
   "controls": {
     "Device": [
-      { "names": ["Device"], "controlType": "MenuItem" },
-      { "names": ["Device"], "controlType": "Button" }
+      {
+        "names": [
+          "Device"
+        ],
+        "controlType": "MenuItem"
+      },
+      {
+        "names": [
+          "Device"
+        ],
+        "controlType": "Button"
+      }
     ],
     "Update": [
-      { "names": ["Update"], "controlType": "MenuItem" },
-      { "names": ["Update"], "controlType": "Button" },
-      { "names": ["Update"], "controlType": "TabItem" }
+      {
+        "names": [
+          "Update"
+        ],
+        "controlType": "MenuItem"
+      },
+      {
+        "names": [
+          "Update"
+        ],
+        "controlType": "Button"
+      },
+      {
+        "names": [
+          "Update"
+        ],
+        "controlType": "TabItem"
+      }
     ],
     "Restart": [
-      { "names": ["Restart"], "controlType": "MenuItem" },
-      { "names": ["Restart"], "controlType": "Button" }
+      {
+        "names": [
+          "Restart"
+        ],
+        "controlType": "MenuItem"
+      },
+      {
+        "names": [
+          "Restart"
+        ],
+        "controlType": "Button"
+      }
     ],
     "Manage": [
-      { "names": ["Manage"], "controlType": "TabItem", "cdpText": "Manage" }
+      {
+        "names": [
+          "Manage"
+        ],
+        "controlType": "TabItem",
+        "cdpText": "Manage"
+      }
     ],
     "Add Device": [
-      { "names": ["Add Device", "+ Add Device"], "controlType": "Button", "automationId": "add_device_btn", "cdpText": "Add Device" }
+      {
+        "names": [
+          "Add Device",
+          "+ Add Device"
+        ],
+        "controlType": "Button",
+        "automationId": "add_device_btn",
+        "cdpText": "Add Device"
+      }
     ],
     "Refresh ports": [
-      { "names": [], "controlType": "Button", "note": "No such button. The New Connection dialog enumerates serial ports when it opens (button#ports-selected -> ul#serial-port-input-list; COM3..COM6 on this machine, matching /api/ports). There is nothing to refresh manually." }
+      {
+        "names": [],
+        "controlType": "Button",
+        "note": "No such button. The New Connection dialog enumerates serial ports when it opens (button#ports-selected -> ul#serial-port-input-list; COM3..COM6 on this machine, matching /api/ports). There is nothing to refresh manually."
+      }
     ],
     "Connect": [
-      { "names": ["Connect"], "controlType": "Text", "note": "Per-tile toggle: div.device-tile .toggle-switch .disConnectedState reads 'Connect'; when connected the same switch reads 'Disconnect' / 'Open'. With several tiles the text is ambiguous - select the tile first." }
+      {
+        "names": [
+          "Connect"
+        ],
+        "controlType": "Text",
+        "note": "Per-tile toggle: div.device-tile .toggle-switch .disConnectedState reads 'Connect'; when connected the same switch reads 'Disconnect' / 'Open'. With several tiles the text is ambiguous - select the tile first."
+      }
     ],
     "Settings": [
-      { "names": [], "controlType": "Hyperlink", "automationId": "settings-banner", "note": "Icon-only anchor (a#settings-banner): innerText is empty, title empty, no aria-label. CDP text lookup cannot click it. Menu that opens: heading 'Settings', 'Check For Updates', heading 'Theme', 'Light', 'Dark', 'Quit'." }
+      {
+        "names": [],
+        "controlType": "Hyperlink",
+        "automationId": "settings-banner",
+        "note": "Icon-only anchor (a#settings-banner): innerText is empty, title empty, no aria-label. CDP text lookup cannot click it. Menu that opens: heading 'Settings', 'Check For Updates', heading 'Theme', 'Light', 'Dark', 'Quit'."
+      }
     ],
     "Check For Updates": [
-      { "names": ["Check For Updates"], "controlType": "MenuItem" },
-      { "names": ["Check For Updates"], "controlType": "Button" }
+      {
+        "names": [
+          "Check For Updates"
+        ],
+        "controlType": "MenuItem"
+      },
+      {
+        "names": [
+          "Check For Updates"
+        ],
+        "controlType": "Button"
+      }
     ],
     "Auto Updates": [
-      { "names": [], "controlType": "MenuItem", "note": "Does not exist in this build. The Settings menu has no auto-update switch, only the manual 'Check For Updates'." }
+      {
+        "names": [],
+        "controlType": "MenuItem",
+        "note": "Does not exist in this build. The Settings menu has no auto-update switch, only the manual 'Check For Updates'."
+      }
     ],
     "Auto Updates status": [
-      { "names": [], "controlType": "Text", "note": "No settings page. The only status is the popup div.update-software-popup: title 'NovAtel Application Suite Update', line 'NovAtel Application Suite is up to date' (or a new-version message), line 'Current Version: x.y.z', button 'Close'." }
+      {
+        "names": [],
+        "controlType": "Text",
+        "note": "No settings page. The only status is the popup div.update-software-popup: title 'NovAtel Application Suite Update', line 'NovAtel Application Suite is up to date' (or a new-version message), line 'Current Version: x.y.z', button 'Close'."
+      }
     ],
     "NovatEl Application Suite Update Novat": [
-      { "names": ["NovAtel Application Suite Update", "Current Version"], "controlType": "Text", "note": "Region read: this literal is a CDP prefix trick that resolves to the whole dialog text (div.update-software-popup). Reading just 'NovAtel Application Suite Update' returns only the title; appending a fragment of the next line ('...Update Novat') forces the container match, so the value carries both the verdict line and 'Current Version: x.y.z'." }
+      {
+        "names": [
+          "NovAtel Application Suite Update",
+          "Current Version"
+        ],
+        "controlType": "Text",
+        "note": "Region read: this literal is a CDP prefix trick that resolves to the whole dialog text (div.update-software-popup). Reading just 'NovAtel Application Suite Update' returns only the title; appending a fragment of the next line ('...Update Novat') forces the container match, so the value carries both the verdict line and 'Current Version: x.y.z'."
+      }
     ],
     "Firmware file": [
-      { "names": ["Select File", "Browse"], "controlType": "Edit", "note": "Inside the per-device Update window, not on the Manage page. The window only exists after the device is connected; Browse opens the native Open dialog." }
+      {
+        "names": [
+          "Select File",
+          "Browse"
+        ],
+        "controlType": "Edit",
+        "note": "Inside the per-device Update window, not on the Manage page. The window only exists after the device is connected; Browse opens the native Open dialog."
+      }
     ],
     "Device > Update > Firmware file": [
-      { "names": ["Select File"], "controlType": "Text", "note": "The chosen file name shows up on the 'Select File' line after Browse. Help text: 'The Update window appears with the name of the selected file in the Select File field.'" }
+      {
+        "names": [
+          "Select File"
+        ],
+        "controlType": "Text",
+        "note": "The chosen file name shows up on the 'Select File' line after Browse. Help text: 'The Update window appears with the name of the selected file in the Select File field.'"
+      }
     ],
     "Select File": [
-      { "names": ["Select File"], "controlType": "Text", "cdpText": "Select File" }
+      {
+        "names": [
+          "Select File"
+        ],
+        "controlType": "Text",
+        "cdpText": "Select File"
+      }
     ],
     "Model": [
-      { "names": ["Model"], "controlType": "Text" },
-      { "automationId": "model" }
+      {
+        "names": [
+          "Model"
+        ],
+        "controlType": "Text"
+      },
+      {
+        "automationId": "model"
+      }
     ],
     "Apply": [
-      { "names": ["Apply"], "controlType": "Button", "note": "In the per-device Update window. Irreversible: flashes firmware, receiver restarts." }
+      {
+        "names": [
+          "Apply"
+        ],
+        "controlType": "Button",
+        "note": "In the per-device Update window. Irreversible: flashes firmware, receiver restarts."
+      }
     ],
     "Browse": [
-      { "names": ["Browse", "Browse..."], "controlType": "Button", "note": "Opens the native Windows Open dialog - not reachable over CDP." }
+      {
+        "names": [
+          "Browse",
+          "Browse..."
+        ],
+        "controlType": "Button",
+        "note": "Opens the native Windows Open dialog - not reachable over CDP."
+      }
     ],
     "New Connection": [
-      { "names": ["New Connection"], "controlType": "Text", "cdpText": "New Connection", "note": "jQuery UI dialog title (span.ui-dialog-title) of the Add Device dialog." }
+      {
+        "names": [
+          "New Connection"
+        ],
+        "controlType": "Text",
+        "cdpText": "New Connection",
+        "note": "jQuery UI dialog title (span.ui-dialog-title) of the Add Device dialog."
+      }
     ],
     "Serial": [
-      { "names": ["Serial"], "controlType": "ListItem", "cdpText": "Serial", "note": "li#serial inside ul#connection-type. Type choices are list items, not radio buttons: Network / Serial / USB. The 'Serial' panel heading (h3) only appears after the type is chosen." }
+      {
+        "names": [
+          "Serial"
+        ],
+        "controlType": "ListItem",
+        "cdpText": "Serial",
+        "note": "li#serial inside ul#connection-type. Type choices are list items, not radio buttons: Network / Serial / USB. The 'Serial' panel heading (h3) only appears after the type is chosen."
+      }
     ],
     "Select": [
-      { "names": ["Select"], "controlType": "Button", "cdpText": "Select", "note": "Placeholder text of the two custom dropdowns button#ports-selected (Port) and button#baudrate-selected (Baud Rate). Click the button, then click the option li (COM3..COM6 / Auto,115200,230400,460800,921600)." }
+      {
+        "names": [
+          "Select"
+        ],
+        "controlType": "Button",
+        "cdpText": "Select",
+        "note": "Placeholder text of the two custom dropdowns button#ports-selected (Port) and button#baudrate-selected (Baud Rate). Click the button, then click the option li (COM3..COM6 / Auto,115200,230400,460800,921600)."
+      }
     ],
     "connection-name": [
-      { "automationId": "connection-name", "controlType": "Edit", "note": "input#connection-name name=connectionName maxlength=16. The CDP text driver cannot read input values, so the workflow reads the dialog region instead." }
+      {
+        "automationId": "connection-name",
+        "controlType": "Edit",
+        "note": "input#connection-name name=connectionName maxlength=16. The CDP text driver cannot read input values, so the workflow reads the dialog region instead."
+      }
     ],
     "Connection Name Type": [
-      { "names": ["Connection Name", "Type"], "controlType": "Text", "note": "Region read: resolves to div.connection-content inside the New Connection dialog. Value looks like 'Connection Name Type Network Serial USB Serial Port COM4 Baud Rate 115200 Passive Hardware Handshake PIM222A Receiver' - that is how the workflow proves the Port/Baud choices stuck (input values are invisible to CDP)." }
+      {
+        "names": [
+          "Connection Name",
+          "Type"
+        ],
+        "controlType": "Text",
+        "note": "Region read: resolves to div.connection-content inside the New Connection dialog. Value looks like 'Connection Name Type Network Serial USB Serial Port COM4 Baud Rate 115200 Passive Hardware Handshake PIM222A Receiver' - that is how the workflow proves the Port/Baud choices stuck (input values are invisible to CDP)."
+      }
     ],
     "Add": [
-      { "names": ["Add"], "controlType": "Button", "automationId": "connection-addbtn", "cdpText": "Add", "note": "New Connection dialog submit. Disabled (class customDisableButton) until name+port+baud are set. The same word 'Add' is also the Add application dialog button - scope by the open dialog." }
+      {
+        "names": [
+          "Add"
+        ],
+        "controlType": "Button",
+        "automationId": "connection-addbtn",
+        "cdpText": "Add",
+        "note": "New Connection dialog submit. Disabled (class customDisableButton) until name+port+baud are set. The same word 'Add' is also the Add application dialog button - scope by the open dialog."
+      }
     ],
     "Cancel": [
-      { "names": ["Cancel"], "controlType": "Button", "automationId": "connection-cancelbtn", "cdpText": "Cancel" }
+      {
+        "names": [
+          "Cancel"
+        ],
+        "controlType": "Button",
+        "automationId": "connection-cancelbtn",
+        "cdpText": "Cancel"
+      }
     ],
     "Graph": [
-      { "names": ["Graph"], "controlType": "Button", "cdpText": "Graph", "note": "Home card div#Graph-welcome.application-container.GraphApp.standAloneApp. Clicking it starts the separate process Graph.exe (parent = NASRunner). No CDP page appears; Graph also strips --remote-debugging-port." }
+      {
+        "names": [
+          "Graph"
+        ],
+        "controlType": "Button",
+        "cdpText": "Graph",
+        "note": "Home card div#Graph-welcome.application-container.GraphApp.standAloneApp. Clicking it starts the separate process Graph.exe (parent = NASRunner). No CDP page appears; Graph also strips --remote-debugging-port."
+      }
     ],
     "New Project": [
-      { "names": ["New Project"], "controlType": "Button", "note": "In the standalone Graph.exe welcome window (Graph i18n NEW_PROJECT). Not reachable over CDP." }
+      {
+        "names": [
+          "New Project"
+        ],
+        "controlType": "Button",
+        "note": "In the standalone Graph.exe welcome window (Graph i18n NEW_PROJECT). Not reachable over CDP."
+      }
     ],
     "Open Project": [
-      { "names": ["Open Project"], "controlType": "Button", "note": "Graph welcome window (i18n OPEN_PROJECT); opens *.gpf via native Open dialog." }
+      {
+        "names": [
+          "Open Project"
+        ],
+        "controlType": "Button",
+        "note": "Graph welcome window (i18n OPEN_PROJECT); opens *.gpf via native Open dialog."
+      }
     ],
     "Create from SBF": [
-      { "names": [], "controlType": "RadioButton", "note": "Does not exist. Graph has no SBF/CSV chooser radio; the file is picked on the Receiver Data page via Select (native Open dialog). i18n only has NEW_PROJECT / OPEN_PROJECT." }
+      {
+        "names": [],
+        "controlType": "RadioButton",
+        "note": "Does not exist. Graph has no SBF/CSV chooser radio; the file is picked on the Receiver Data page via Select (native Open dialog). i18n only has NEW_PROJECT / OPEN_PROJECT."
+      }
     ],
     "Create from CSV": [
-      { "names": [], "controlType": "RadioButton", "note": "Does not exist, same as Create from SBF." }
+      {
+        "names": [],
+        "controlType": "RadioButton",
+        "note": "Does not exist, same as Create from SBF."
+      }
     ],
     "SBF file": [
-      { "names": [], "controlType": "Edit", "note": "Does not exist by that name. The wizard field is 'NovAtel Receiver Data File' on the Receiver Data page." }
+      {
+        "names": [],
+        "controlType": "Edit",
+        "note": "Does not exist by that name. The wizard field is 'NovAtel Receiver Data File' on the Receiver Data page."
+      }
     ],
     "Project name": [
-      { "names": ["Project Name"], "controlType": "Edit", "note": "Graph Project Information page (i18n PROJECT_NAME). Next to it: Project Folder (chosen via 'Select' -> 'Select Folder' dialog) and Project Description (optional)." }
+      {
+        "names": [
+          "Project Name"
+        ],
+        "controlType": "Edit",
+        "note": "Graph Project Information page (i18n PROJECT_NAME). Next to it: Project Folder (chosen via 'Select' -> 'Select Folder' dialog) and Project Description (optional)."
+      }
     ],
     "Next": [
-      { "names": ["Next"], "controlType": "Button", "note": "Graph Project Wizard." }
+      {
+        "names": [
+          "Next"
+        ],
+        "controlType": "Button",
+        "note": "Graph Project Wizard."
+      }
     ],
     "Process": [
-      { "names": [], "controlType": "Button", "note": "Does not exist. Graph processes with the 'Plot' button (help text: 'Click the Plot button. The processing progress appears.')." }
+      {
+        "names": [],
+        "controlType": "Button",
+        "note": "Does not exist. Graph processes with the 'Plot' button (help text: 'Click the Plot button. The processing progress appears.')."
+      }
     ],
     "Plot": [
-      { "names": ["Plot"], "controlType": "Button", "note": "Graph Pre-Process window. Writes the processed project; the human gate sits before it." }
+      {
+        "names": [
+          "Plot"
+        ],
+        "controlType": "Button",
+        "note": "Graph Pre-Process window. Writes the processed project; the human gate sits before it."
+      }
     ],
     "Finish": [
-      { "names": ["Finish"], "controlType": "Button", "note": "Graph File Validation page; 'Click \"Finish\" to launch the Graph overview'. This is NOT the processing step." }
+      {
+        "names": [
+          "Finish"
+        ],
+        "controlType": "Button",
+        "note": "Graph File Validation page; 'Click \"Finish\" to launch the Graph overview'. This is NOT the processing step."
+      }
     ],
     "Graph > Pre-process > Flags": [
-      { "names": ["Flags"], "controlType": "Button", "note": "Bottom-left button of the Pre-Process window ('The number shown on the Flags button indicates the number of flags')." }
+      {
+        "names": [
+          "Flags"
+        ],
+        "controlType": "Button",
+        "note": "Bottom-left button of the Pre-Process window ('The number shown on the Flags button indicates the number of flags')."
+      }
     ],
     "Graph > Projects > Current": [
-      { "names": ["Home", "Recent Projects"], "controlType": "Text", "note": "Graph has a Home button and a Recent Projects list on the welcome window; there is no 'Projects' pane." }
+      {
+        "names": [
+          "Home",
+          "Recent Projects"
+        ],
+        "controlType": "Text",
+        "note": "Graph has a Home button and a Recent Projects list on the welcome window; there is no 'Projects' pane."
+      }
     ],
     "Add application": [
-      { "names": ["Add application", "Add Application"], "controlType": "Button", "automationId": "add_app_btn", "cdpText": "Add application", "note": "My Applications header button. Opens modal #popupModal.appInstallerPopup." }
+      {
+        "names": [
+          "Add application",
+          "Add Application"
+        ],
+        "controlType": "Button",
+        "automationId": "add_app_btn",
+        "cdpText": "Add application",
+        "note": "My Applications header button. Opens modal #popupModal.appInstallerPopup."
+      }
     ],
     "Import from your computer": [
-      { "names": ["Import from your computer"], "controlType": "Text", "cdpText": "Import from your computer", "note": "div.import-offline-container in the Add application modal footer. Handler calls remote.dialog.showOpenDialog (title 'Open', filters: ZIP Files) - a native dialog, not reachable over CDP." }
+      {
+        "names": [
+          "Import from your computer"
+        ],
+        "controlType": "Text",
+        "cdpText": "Import from your computer",
+        "note": "div.import-offline-container in the Add application modal footer. Handler calls remote.dialog.showOpenDialog (title 'Open', filters: ZIP Files) - a native dialog, not reachable over CDP."
+      }
     ],
     "Application package": [
-      { "names": [], "controlType": "Edit", "note": "Does not exist. A local .zip is chosen through 'Import from your computer', not typed into a field." }
+      {
+        "names": [],
+        "controlType": "Edit",
+        "note": "Does not exist. A local .zip is chosen through 'Import from your computer', not typed into a field."
+      }
     ],
     "Add application > Package": [
-      { "names": [], "controlType": "Text", "note": "Does not exist. After import, the modal shows application cards (.app-card-container) titled with the application name." }
+      {
+        "names": [],
+        "controlType": "Text",
+        "note": "Does not exist. After import, the modal shows application cards (.app-card-container) titled with the application name."
+      }
     ],
     "Install": [
-      { "names": [], "controlType": "Button", "note": "The Add application modal has no 'Install' button; it is 'Add' (class appAdd, disabled with customDisableAddBtn until a card is selected)." }
+      {
+        "names": [],
+        "controlType": "Button",
+        "note": "The Add application modal has no 'Install' button; it is 'Add' (class appAdd, disabled with customDisableAddBtn until a card is selected)."
+      }
     ],
     "Update application": [
-      { "names": [], "controlType": "Button", "note": "Only rendered when an update is offered: home banner button 'New noncore app version available' (or banner text 'Updates are available for N Applications', buttons Install / Dismiss). With 0 updates the node does not exist in the DOM at all (checked 2026-11-04)." }
+      {
+        "names": [],
+        "controlType": "Button",
+        "note": "Only rendered when an update is offered: home banner button 'New noncore app version available' (or banner text 'Updates are available for N Applications', buttons Install / Dismiss). With 0 updates the node does not exist in the DOM at all (checked 2026-11-04)."
+      }
     ],
     "Select the application(s) to update": [
-      { "names": ["Select the application(s) to update"], "controlType": "Text", "cdpText": "Select the application(s) to update", "note": "Body text of the Update application popup (i18n SELECTUPDATEAPPTEXT). The add-mode twin is 'Select the application(s) to add'." }
+      {
+        "names": [
+          "Select the application(s) to update"
+        ],
+        "controlType": "Text",
+        "cdpText": "Select the application(s) to update",
+        "note": "Body text of the Update application popup (i18n SELECTUPDATEAPPTEXT). The add-mode twin is 'Select the application(s) to add'."
+      }
     ],
     "Update application > Application": [
-      { "names": [], "controlType": "Text", "note": "The selectable item is the application card; its title is the application name, so the workflow reads that name directly." }
+      {
+        "names": [],
+        "controlType": "Text",
+        "note": "The selectable item is the application card; its title is the application name, so the workflow reads that name directly."
+      }
     ],
     "My Applications > Installed": [
-      { "names": ["My Applications", "Applications"], "controlType": "List", "note": "Home view: span.my-app-text 'My Applications' plus one div.application-container per app, name in span.appFullName (Manage / Playback / Convert / GRIT Monitor / Perception Viewer / Graph on this machine)." }
+      {
+        "names": [
+          "My Applications",
+          "Applications"
+        ],
+        "controlType": "List",
+        "note": "Home view: span.my-app-text 'My Applications' plus one div.application-container per app, name in span.appFullName (Manage / Playback / Convert / GRIT Monitor / Perception Viewer / Graph on this machine)."
+      }
     ],
     "My Applications > Version": [
-      { "names": [], "controlType": "Text", "note": "The home cards do not show a version in this build; the only version text is in the Check For Updates popup ('Current Version: x.y.z')." }
+      {
+        "names": [],
+        "controlType": "Text",
+        "note": "The home cards do not show a version in this build; the only version text is in the Check For Updates popup ('Current Version: x.y.z')."
+      }
+    ],
+    "project-name-input": [
+      {
+        "names": [],
+        "controlType": "Edit",
+        "automationId": "project-name-input",
+        "note": "Graph（独立进程）的 Project Name 输入框；CDP 9224 按 id 定位，不在套件窗口里。"
+      }
+    ],
+    "project-desc-input": [
+      {
+        "names": [],
+        "controlType": "Edit",
+        "automationId": "project-desc-input",
+        "note": "Graph 的 Project Description 多行输入框；CDP 9224 按 id 定位。"
+      }
     ]
   }
 }

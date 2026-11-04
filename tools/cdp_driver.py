@@ -328,7 +328,7 @@ const __visible = (el) => {
 };
 const __text = (el) => ((el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim());
 const __pool = () => Array.from(document.querySelectorAll(
-  'button,a,li,[role="menuitem"],[role="tab"],input,select,label,span,div'
+  'button,a,li,[role="menuitem"],[role="tab"],input,textarea,select,label,span,div'
 )).filter(__visible);
 """
 
@@ -388,12 +388,20 @@ _READ_JS = "(() => {" + _PRELUDE + r"""
 
 _TYPE_JS = "(() => {" + _PRELUDE + r"""
   let pool = __pool().filter((el) => ['INPUT','TEXTAREA'].includes(el.tagName));
-  let byName = pool.filter((el) => {
-    const label = [el.name, el.id, el.placeholder, el.getAttribute('aria-label'),
-      el.getAttribute('data-lang')].filter(Boolean).join(' ');
-    return label.toLowerCase().includes(String(__target).toLowerCase());
-  });
-  const el = (byName.length ? byName : pool)[0];
+  const want = String(__target);
+  // 1) 先按 id 精确匹配（页面里有同名 id 时取第一个）
+  let el = pool.find((n) => n.id === want) || pool.find((n) => n.name === want) || null;
+  // 2) 再按 placeholder / aria-label 等描述匹配
+  if (!el) {
+    const byName = pool.filter((n) => {
+      const label = [n.name, n.id, n.placeholder, n.getAttribute('aria-label'),
+        n.getAttribute('data-lang')].filter(Boolean).join(' ');
+      return label.toLowerCase().includes(want.toLowerCase());
+    });
+    el = byName[0] || null;
+  }
+  // 3) 只有一个输入框时才允许兜底；有多个就必须匹配到，否则写错字段比失败更糟
+  if (!el && pool.length === 1) el = pool[0];
   if (!el) return false;
   el.focus();
   el.value = __VALUE_JSON__;

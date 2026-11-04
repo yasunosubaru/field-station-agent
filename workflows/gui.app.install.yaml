@@ -86,11 +86,15 @@ steps:
         现在**不要**点 Add。完成后选 done。
 
   - id: wait_dialog
-    kind: sleep
-    seconds: 5.0
+    kind: wait_ui
+    control: Import from your computer
+    expect:
+      contains: Import from your computer
+    timeout: 12
     description: >
       弹窗打开前套件会去拉一次「可安装应用」清单：冷启动实测 3.1 秒才 display:block，
-      清单有缓存时 0.3 秒。紧接着 read 会读不到，所以这里等 5 秒（本机实测值，不是猜的）
+      清单有缓存时 0.3 秒。原来固定睡 5 秒——慢机器上不够、快机器上白等；
+      改成轮询读「Import from your computer」，出现就继续，12 秒还没出现才算失败
 
   - id: verify_modal
     kind: verify_ui

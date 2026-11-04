@@ -5,19 +5,22 @@ summary: >
   Graph 不是套件里的一个页面，而是**独立的 Electron 进程**：套件首页的 Graph 卡片
   （div#Graph-welcome.application-container.GraphApp.standAloneApp）点下去会启动
   C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe。
-  **2026-11-04 更正**：之前记的"CDP 到不了 Graph"是误判——当时用的是 payload 里那份
-  副本（缺 jszip，主进程启动即崩）。用系统安装的那份加 --remote-debugging-port=9224，
+
+  **2026-11-04 更正**：之前记的"CDP 到不了 Graph"是误判——当时用的是 payload 里那份副本
+  （缺 jszip，主进程启动即崩）。用系统安装的那份加 --remote-debugging-port=9224，
   CDP 正常（1 个页面），点击引擎在其页面实测到 14 个可点目标，含 New Project / Open Project。
-  所以这条流程可以自动，前提是**驱动指向 9224**（套件在 9233/9223 时是两个端口）。
-  真实路径（来自 Graph 自己的 i18n 与套件帮助原文）：Welcome 窗口 New Project →
-  Project Wizard 的 Next → Project Information（Select → Select Folder 对话框、
-  Project Folder、Project Name、Project Description (optional)）→ Next →
-  Receiver Data（Select → Open 对话框、NovAtel Receiver Data File）→ Next →
-  File Validation（Copy / Finish）→ Pre-Process 窗口（Map / Timeline / Flags）→
-  Plot 处理 → Processed 窗口。写盘发生在 Plot 之前，所以闸门放在 Plot 前。
+
+  **前置条件**：Graph 必须先带调试端口启动（套件卡片启动的实例不带端口，流程会明确报
+  environment 失败）：
+      "C:\Program Files\NovAtel Inc\NovAtel Application Suite\Graph\Graph.exe" --remote-debugging-port=9224
+
+  真实路径（来自 Graph 自己的 i18n 与实测）：Welcome → New Project → Project Wizard →
+  Project Information（Project Folder * Select、Project Name *、Project Description）→
+  Next → Receiver Data（Select → 原生 Open 对话框）→ Next → File Validation（Copy / Finish）→
+  Pre-Process（Map / Timeline / Flags）→ Plot。写盘发生在 Plot，所以闸门放在 Plot 前。
 intent: graph.newproject
 risk: medium
-tags: [graph, project, sbf, csv, gui, pre-process, standalone]
+tags: [graph, gui, wizard, independent-process]
 
 requires:
   engine: true
@@ -61,11 +64,12 @@ approval:
 
 failure:
   screenshot: true
-  classes: [environment, input, execution, artifact, capability]
+  classes: [environment, input, execution, policy, selector_drift, dialog_unavailable, gate_timeout, hardware_missing]
 
 docs:
   - 逆向/03_分析/19_原版GUI覆盖矩阵.md
   - 逆向/03_分析/18_1比1差距台账.md
+  - docs/operations/rpa-completion.md
 
 steps:
   - id: health
@@ -82,51 +86,142 @@ steps:
     save_as: source
     description: 先钉住输入文件的哈希，事后能证明工程是从哪一份数据建的
 
-  - id: launch_graph
-    kind: gui
+  - id: attach_graph
+    kind: wait_ui
+    port: 9224
+    control: New Project
+    expect:
+      contains: New Project
+    timeout: 20
     description: >
-      点首页的 Graph 卡片启动独立进程。只做到「把 Graph 拉起来」：点完之后
-      套件页面上再没有 Graph 的任何 DOM，后续向导都在另一个窗口里
+      等 Graph 的窗口出现。它必须是以 --remote-debugging-port=9224 启动的那个实例；
+      套件卡片拉起来的实例没有调试端口，这里会明确报 environment（不是"找不到按钮"）
+    assisted:
+      enabled: false
+      prompt: 这一步必须由驱动真读到值；没有 9224 就说明 Graph 启动方式不对。
+
+  - id: open_wizard
+    kind: gui
+    port: 9224
+    description: Welcome 窗口点 New Project，Project Wizard 第一步是介绍页
     actions:
       - action: click
-        locator: Graph
-    assisted:
-      enabled: true
-      prompt: |
-        请在 My Applications 首页点 Graph 卡片，等 Graph 窗口出现（独立程序，
-        标题栏是 Graph）。注意这一下不会让 Graph 出现在 CDP 里，后面的步骤都要人工做。
-        完成后选 done。
+        locator: "target:New Project"
+    screenshot: true
+
+  - id: wait_wizard
+    kind: wait_ui
+    port: 9224
+    control: Project Wizard
+    expect:
+      contains: Project Wizard
+    timeout: 10
+
+  - id: goto_information
+    kind: gui
+    port: 9224
+    description: 介绍页点 Next，进 Project Information
+    actions:
+      - action: click
+        locator: "target:Next"
+    screenshot: true
+
+  - id: wait_information
+    kind: wait_ui
+    port: 9224
+    control: Project Folder
+    expect:
+      contains: Project Folder
+    timeout: 10
+
+  - id: fill_information
+    kind: gui
+    port: 9224
+    description: >
+      填 Project Name 与 Project Description。Project Folder 不在这里填——它是
+      「Select」按钮开的原生 Select Folder 对话框，下一步人工选
+    actions:
+      - action: type
+        locator: project-name-input
+        value: ${params.project_name}
+      - action: type
+        locator: project-desc-input
+        value: ${params.station}
+    screenshot: true
+
+  - id: choose_folder
+    kind: human_gate
+    risk: medium
+    reason: >
+      Project Folder 的「Select」开的是 Windows 原生 Select Folder 对话框（不是网页元素），
+      CDP 点不到，只能人工选。
+    prompt: |
+      请在 Graph 的 Project Wizard 里点「Project Folder」旁边的「Select」，
+      选中本 job 的 params.project_dir，然后选 approved。
+      注意：Project Name 与 Description 已经由流程填好，不要改。
+
+  - id: next_receiver
+    kind: gui
+    port: 9224
+    description: 目录选好后点 Next，进 Receiver Data
+    actions:
+      - action: click
+        locator: "target:Next"
+    screenshot: true
+
+  - id: wait_receiver
+    kind: wait_ui
+    port: 9224
+    control: NovAtel Receiver Data File
+    expect:
+      contains: NovAtel Receiver Data File
+    timeout: 10
+
+  - id: choose_file
+    kind: human_gate
+    risk: medium
+    reason: >
+      Receiver Data 的「Select」开的也是原生 Open 对话框；和 app.install 一样，
+      网页里没有可点的元素。
+    prompt: |
+      请点「NovAtel Receiver Data File」旁边的「Select」，选中本 job 的 params.source，
+      确认文件名出现在那一行，然后选 approved。
+
+  - id: next_validate
+    kind: gui
+    port: 9224
+    description: 文件选好后点 Next，进 File Validation
+    actions:
+      - action: click
+        locator: "target:Next"
+    screenshot: true
+
+  - id: wait_validation
+    kind: wait_ui
+    port: 9224
+    control: File Validation
+    expect:
+      contains: File Validation
+    timeout: 20
 
   - id: approve_plot
     kind: human_gate
     risk: medium
     reason: >
-      Graph 没有 CDP 页面（独立进程、调试端口被吃掉），向导里的 Select Folder /
-      Open 都是原生对话框；Plot 会把结果写进工程目录，所以人工做完向导再批准。
+      Plot 会把处理结果写进工程目录（不可逆），所以在这之前停一次。
     prompt: |
-      请在 Graph 窗口里完成向导（这些都是界面上的真实文字）：
-        1. Welcome 窗口点「New Project」；
-        2. 点「Next」进 Project Information：
-             · 「Select」→ 原生「Select Folder」对话框，选 params.project_dir 指定的工程目录
-             · 「Project Name」填 params.project_name
-             · 需要的话在「Project Description (optional)」写台站 params.station
-        3. 点「Next」进 Receiver Data：
-             · 「Select」→ 原生「Open」对话框，选 params.source 指定的数据文件
-             · 确认「NovAtel Receiver Data File」一行就是它
-        4. 点「Next」，等「File Validation」通过（失败会提示原因，可用「Back」换文件）；
-        5. 点「Finish」进 Pre-Process 窗口，核对 Map / Timeline / Flags
-           （时间范围按 params.start_utc ~ params.end_utc）。
-      到这里**先不要**点「Plot」。确认无误后选 approved，下一步才是 Plot。
+      确认 File Validation 通过后，点「Finish」进 Pre-Process，核对 Map / Timeline / Flags
+      （时间范围按 params.start_utc ~ params.end_utc）。到这里**先不要**点 Plot。
+      确认无误后选 approved，下一步才是 Plot。
 
   - id: plot
     kind: gui
-    description: >
-      点 Pre-Process 窗口的「Plot」开始处理。CDP 下这一步必然 capability 失败——
-      Graph 不在任何可连的调试端口上；这行留在这里是为了把「真正做什么」写清楚，
-      并让 assisted 模式能生成人工任务
+    port: 9224
+    description: 点 Pre-Process 窗口的 Plot 开始处理（写盘已在上一道闸门批准）
     actions:
       - action: click
-        locator: Plot
+        locator: "target:Plot"
+    screenshot: true
     assisted:
       enabled: true
       prompt: |
@@ -145,5 +240,5 @@ steps:
       start_utc: ${params.start_utc}
       end_utc: ${params.end_utc}
       driver_note: >
-        Graph 是独立 Electron 进程（Graph.exe，父进程 NASRunner），不出现在 CDP
-        /json/list；带 --remote-debugging-port 启动也拿不到调试端口，故本流程只能人工执行。
+        Graph 是独立 Electron 进程，走 CDP 9224；两个原生对话框（Select Folder / Open）
+        仍由人工完成，其余向导步骤自动。

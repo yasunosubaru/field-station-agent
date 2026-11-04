@@ -98,6 +98,8 @@ class WorkflowRunner:
         self.store = store
         self.engine = engine or engine_mod.EngineClient()
         self.driver = driver or gui_mod.AssistedDriver()
+        #: 按端口缓存的额外驱动（套件 9223 / Graph 9224 各一个）
+        self._port_drivers: dict[int, object] = {}
         self.sleep = sleep
         self.clock = clock
 
@@ -319,7 +321,7 @@ class WorkflowRunner:
                 "options": ["approved", "rejected"],
                 "opened_at": _utcnow(),
             }
-        if kind in ("gui", "verify_ui", "wait_ui") and not getattr(self.driver, "available", False):
+        if kind in ("gui", "verify_ui", "wait_ui") and not self._available_for(step):
             assisted = step.get("assisted") or {}
             if assisted.get("enabled") is False:
                 raise StepFailure(
@@ -447,12 +449,18 @@ class WorkflowRunner:
             "screenshot": None,
         }
         if workflow.failure.get("screenshot"):
-            driver_available = bool(getattr(self.driver, "available", False))
+            shot_driver = self.driver
+            if step is not None:
+                try:
+                    shot_driver = self._driver_for(step)
+                except Exception:  # noqa: BLE001 —— 截图驱动建不起来就用默认的
+                    shot_driver = self.driver
+            driver_available = bool(getattr(shot_driver, "available", False))
             if driver_available and step is not None:
                 name = f"failure-{step['id']}.png"
                 try:
                     path = self.store.artifacts_dir(job.job_id) / name
-                    written = self.driver.screenshot(path)
+                    written = shot_driver.screenshot(path)
                     evidence["screenshot"] = written
                 except Exception as exc:  # noqa: BLE001 —— 截图失败不能盖住原失败
                     evidence["screenshot_error"] = f"{type(exc).__name__}: {exc}"
@@ -717,7 +725,31 @@ class WorkflowRunner:
             .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         }
 
+    def _available_for(self, step: dict) -> bool:
+        """按步骤的端口判断驱动是否可用；端口驱动建不起来也算不可用。"""
+        try:
+            return bool(getattr(self._driver_for(step), "available", False))
+        except Exception:  # noqa: BLE001 —— 端口没起/模块加载失败都按"不可用"处理
+            return False
+
+    def _driver_for(self, step: dict):
+        """步骤带 ``port`` 时用那个端口的驱动（例如 Graph 的 9224），否则用默认驱动。"""
+        port = step.get("port")
+        if not port:
+            return self.driver
+        key = int(port)
+        cached = self._port_drivers.get(key)
+        if cached is not None:
+            return cached
+        extra = gui_mod.load_cdp_driver(key)
+        if not getattr(extra, "available", False):
+            raise StepFailure(
+                "environment", f"端口 {key} 上没有可用的 CDP 驱动（对应进程没起来？）")
+        self._port_drivers[key] = extra
+        return extra
+
     def _step_gui(self, step: dict, job: Job, ctx: dict) -> dict:
+        driver = self._driver_for(step)
         actions = step.get("actions") or [step]
         performed: list[dict] = []
         try:
@@ -725,16 +757,16 @@ class WorkflowRunner:
                 name = str(action.get("action", "click"))
                 if name == "open":
                     page = str(spec_mod.resolve(action.get("page"), ctx))
-                    self.driver.open(page)
+                    driver.open(page)
                     performed.append({"action": "open", "page": page})
                 elif name == "click":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
-                    self.driver.click(locator)
+                    driver.click(locator)
                     performed.append({"action": "click", "locator": locator})
                 elif name == "click_optional":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     try:
-                        self.driver.click(locator)
+                        driver.click(locator)
                     except Exception as exc:  # noqa: BLE001 —— 找不到就跳过
                         if "危险词" in str(exc):
                             # 危险目标不能被"可选"吞掉：该停闸门的仍然要停
@@ -749,17 +781,17 @@ class WorkflowRunner:
                 elif name == "type":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     value = str(spec_mod.resolve(action.get("value"), ctx))
-                    self.driver.type_text(locator, value)
+                    driver.type_text(locator, value)
                     performed.append({"action": "type", "locator": locator})
                 elif name == "select":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     option = str(spec_mod.resolve(action.get("option"), ctx))
-                    self.driver.select(locator, option)
+                    driver.select(locator, option)
                     performed.append({"action": "select", "locator": locator, "option": option})
                 elif name == "read":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     performed.append({"action": "read", "locator": locator,
-                                      "value": self.driver.read(locator)})
+                                      "value": driver.read(locator)})
                 else:
                     raise StepFailure("capability", f"不支持的 GUI 动作：{name!r}")
         except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
@@ -771,7 +803,7 @@ class WorkflowRunner:
             name = f"gui-{job.step_index:02d}-{step['id']}.png"
             path = self.store.artifacts_dir(job.job_id) / name
             try:
-                produced = self.driver.screenshot(path)
+                produced = driver.screenshot(path)
             except Exception as exc:  # noqa: BLE001
                 raise StepFailure("artifact", f"截图失败：{exc}") from exc
             if produced:
@@ -783,10 +815,11 @@ class WorkflowRunner:
         return {"actions": performed, "screenshot": screenshot}
 
     def _step_verify_ui(self, step: dict, job: Job, ctx: dict) -> dict:
+        driver = self._driver_for(step)
         control = str(spec_mod.resolve(step["control"], ctx))
         expected = spec_mod.resolve(step.get("expect") or {}, ctx)
         try:
-            value = self.driver.read(control)
+            value = driver.read(control)
         except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
             if not is_gui_unavailable(exc):
                 raise
@@ -828,6 +861,7 @@ class WorkflowRunner:
         字段：``control``（必填）、``expect``（必填）、
         ``timeout``（秒，默认 10，兼容别名 ``timeout_s``）、``poll_ms``（可选，默认 200）。
         """
+        driver = self._driver_for(step)
         control = str(spec_mod.resolve(step["control"], ctx))
         expected = spec_mod.resolve(step.get("expect") or {}, ctx)
         if not isinstance(expected, dict) or not expected:
@@ -866,7 +900,7 @@ class WorkflowRunner:
         while True:
             polls += 1
             try:
-                value = self.driver.read(control)
+                value = driver.read(control)
             except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
                 # 读不到 ≠ 失败：弹窗/标签页可能还没画出来。
                 if not is_gui_unavailable(exc):

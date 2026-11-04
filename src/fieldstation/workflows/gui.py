@@ -182,7 +182,8 @@ def _factory(module: object, label: str) -> GuiDriver:
     return driver
 
 
-def _load_path(path: Path) -> GuiDriver:
+def load_driver_module(path: Path):
+    """按文件加载驱动模块（不调用 create），供需要自定义构造参数的场景使用。"""
     if not path.is_file():
         raise GuiUnavailable(f"GUI 驱动文件不存在：{path}")
     module_name = f"fieldstation_gui_driver_{path.stem}"
@@ -194,7 +195,20 @@ def _load_path(path: Path) -> GuiDriver:
         spec.loader.exec_module(module)
     except Exception as exc:  # noqa: BLE001 —— 驱动自己的导入错误要原样带出
         raise GuiUnavailable(f"GUI 驱动 {path} 导入失败：{exc}") from exc
-    return _factory(module, str(path))
+    return module
+
+
+def load_cdp_driver(port: int):
+    """按指定 CDP 端口建一个驱动实例（套件 9223 / Graph 9224 各一个）。"""
+    module = load_driver_module(_ROOT / "tools" / "cdp_driver.py")
+    cls = getattr(module, "CdpDriver", None)
+    if cls is None:
+        raise GuiUnavailable("cdp_driver 模块里没有 CdpDriver")
+    return cls(int(port))
+
+
+def _load_path(path: Path) -> GuiDriver:
+    return _factory(load_driver_module(path), str(path))
 
 
 def describe_driver(driver: GuiDriver) -> dict:
