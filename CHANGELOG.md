@@ -16,7 +16,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 产物 | `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe`，**904,169,047 B**，SHA256 `2ce2346bc4304edfe9070a3e35574f61848ae3736e74c28065333ed0eab70ce4` |
+| 产物 | `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe`，**904,181,335 B**，SHA256 `4cb3a0b90c8841d60803cb7a5a22164df9ef44ef31938788fe03a48d1d6796b4` |
 | payload | 5222 文件 / 1.7 GB → zip 812.6 MB；含 Node 24、Python 3.11、B 引擎、样本、解包视图、8 条流程、原版套件便携副本 |
 | 双模式 | 默认 **Agent 工作台**（三栏对话/工具卡/审批卡/产物卡/计划卡/失败卡/命令面板/深浅主题/窄屏收栏）；顶栏切 **专业面板**（原版 6 页） |
 | Agent 服务 | `tools/agent_server.py`：会话 JSONL、SSE、审批阻塞/超时、取消、409、5MB；默认 `fake` 演示，不联网 |

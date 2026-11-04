@@ -11,8 +11,8 @@
 | 项 | 值 |
 |---|---|
 | EXE | `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe` |
-| 字节 / SHA256 | 904,169,047 B / `2ce2346bc4304edfe9070a3e35574f61848ae3736e74c28065333ed0eab70ce4` |
-| payload | 852,065,709 B / 5223 项 / `6e9c4911df3fe32b6c716c11036638779f90271672676f53d06f6825f5f1c17a` |
+| 字节 / SHA256 | 904,181,335 B / `4cb3a0b90c8841d60803cb7a5a22164df9ef44ef31938788fe03a48d1d6796b4` |
+| payload | 852,065,709 B / 5223 项 / `01c87611ad997aa11f754c66e839216c4bb3d5fee074c6b6a39a61e31bcb5080` |
 | 内置 | Node 24、Python 3.11、B 引擎、样本、原版套件便携副本、8 条流程 |
 | 首次启动 | 解压 payload（约 1.7 GB）到 `%LOCALAPPDATA%\AllPoweredFSA\app-0.2.0.0`，然后起本地服务并打开 WebView2 |
 | 构建记录 | `dist/AllPoweredFSA-0.2.0-win-x64/release.json` |
