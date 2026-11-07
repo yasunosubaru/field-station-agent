@@ -4,6 +4,15 @@
 逐行可读、可直接 ``gzip``、DuckDB 的 ``read_ndjson_auto`` 与 ClickHouse 的
 ``JSONEachRow`` 都能读。等打包阶段再转 Parquet，分区布局不变。
 
+因此**默认永远是 NDJSON**。想让写入顺手带出 Parquet，只有两条显式路径：
+
+- ``NdjsonWriter(..., parquet=True)``（本模块，见下），只转**本次刚写的分区**；
+- ``fieldstation.data.parquet.convert_tree(root, out_root=...)``（独立一步，
+  可以整树批量转、可以幂等跳过）。
+
+两者都依赖可选包 pyarrow；没装时抛 ``parquet.ParquetUnavailable``，而不是
+把 NDJSON 也一起搞失败（NDJSON 已经写好了，转换失败只影响 Parquet 那份）。
+
 **幂等是硬要求**：同一个分区重写必须产生**逐字节相同**的文件。做法：
 
 1. 每行 ``json.dumps(sort_keys=True, separators=(",", ":"))`` —— 键序固定；
@@ -165,7 +174,13 @@ def _iso_utc(dt: datetime) -> str:
 
 
 class NdjsonWriter:
-    """按 station/date/hour 写分区，并同步维护 ``_manifest.json``。"""
+    """按 station/date/hour 写分区，并同步维护 ``_manifest.json``。
+
+    ``parquet=True`` 时，**每次写完一个分区**都会顺手用
+    :mod:`fieldstation.data.parquet` 转一份同名 ``.parquet``（幂等：源没变就跳过）。
+    默认 ``False``——NDJSON 是默认写入格式，Parquet 是打包/发布阶段的产物，不该
+    把「仓库能跑」绑在 pyarrow 上。转换失败只影响 Parquet 那份，NDJSON 已经落盘。
+    """
 
     def __init__(
         self,
@@ -173,10 +188,12 @@ class NdjsonWriter:
         *,
         time_field: str | None = None,
         filename: str = DEFAULT_DATA_FILENAME,
+        parquet: bool = False,
     ) -> None:
         self.root = Path(root)
         self.time_field = time_field
         self.filename = filename
+        self.parquet = bool(parquet)
         self.manifest = PartitionManifest.load(self.root)
         # 清单丢了但数据还在时，先认领盘上的分区；否则下一次写会把旧分区
         # 从清单里「挤掉」，看起来像数据消失了。
@@ -314,11 +331,24 @@ class NdjsonWriter:
         meta = inspect_file(
             path, root=self.root, relpath=path.relative_to(self.root).as_posix()
         )
+        if self.parquet:
+            self._write_parquet(path)
         self.manifest.upsert(meta)
         self.manifest.root = self.root
         if save_manifest:
             self.manifest.save(self.root)
         return meta
+
+    def _write_parquet(self, path: Path) -> None:
+        """可选：把刚写的分区同步转成 Parquet。
+
+        延迟 import——默认路径（``parquet=False``）连 ``fieldstation.data.parquet``
+        都不加载。缺 pyarrow 时抛 ``ParquetUnavailable``（明确异常，不是 ImportError），
+        此时 NDJSON 已经写好了，调用方可以选择忽略并把报告标成「仅 NDJSON」。
+        """
+        from .parquet import convert_partition
+
+        convert_partition(path, path.with_name(path.stem + ".parquet"))
 
 
 def write_ndjson(
@@ -326,7 +356,13 @@ def write_ndjson(
     records: Iterable[Any],
     *,
     time_field: str | None = None,
+    parquet: bool = False,
     **write_kwargs: Any,
 ) -> list[PartitionMeta]:
-    """一次写完一组记录（不保留 writer 实例）的便捷函数。"""
-    return NdjsonWriter(root, time_field=time_field).write(records, **write_kwargs)
+    """一次写完一组记录（不保留 writer 实例）的便捷函数。
+
+    ``parquet=True`` 时顺带写出同名 ``.parquet``；默认仍是纯 NDJSON。
+    """
+    return NdjsonWriter(root, time_field=time_field, parquet=parquet).write(
+        records, **write_kwargs
+    )
