@@ -62,6 +62,7 @@
 |---|---|
 | [RPA 补完方案](operations/rpa-completion.md) | 8 条流程逐条怎么补、四件机器、十天拆法、补不了的部分 |
 | [套件嵌入 spike](operations/suite-embed.md) | `user32.SetParent` 把原版窗口挂进面板：真机 16/16、样式裁剪、DPI 补偿、一键解挂 |
+| [Letta 记忆](operations/letta-memory.md) | 为什么不内嵌（78 MB 服务端 vs 418 KB 客户端）、映射、三条失败要分开、真机冒烟怎么跑 |
 | [RPA 点击处理方案](operations/rpa-click-engine.md) | 按 `cursor:pointer` 找目标、发真实鼠标事件、五条效果断言；剩余项的点击路径逐条列明 |
 | [质控与研判的边界](operations/agent-boundaries.md) | 两个最容易越权的智能体各自能做什么、不能做什么 |
 | [共享黑板](operations/blackboard.md) | 数据形状、并发语义与受控访问（M5-2） |
@@ -131,6 +132,8 @@
 | [`tools/env_snapshot.py`](../tools/env_snapshot.py) | 记录环境快照，供换机重跑比对 |
 | [`tools/probe_provider_live.py`](../tools/probe_provider_live.py) | 模型通道探活（不消耗额度的小请求） |
 | [`tools/trial_ledger.py`](../tools/trial_ledger.py) | 试运行台账读写（数据源六类 + 任务两类失败） |
+| [`tools/eval30_judge.py`](../tools/eval30_judge.py) | 30 条验收任务的 S1–S6 机械判分（口径从 `docs/contracts/eval-30.md` 现解析） |
+| [`tools/letta_smoke.py`](../tools/letta_smoke.py) | 对真 Letta 服务做一次 recall/remember 往返（要装 `letta-client` 且有服务） |
 | [`harness/heartbeat_replay.py`](../harness/heartbeat_replay.py) | 设备心跳回放：合成序列 → 三态判定（M6-5） |
 | [`harness/station_loop.py`](../harness/station_loop.py) | 任务调度演示：到点 / 错过 / 超时的确定性台账（M6-4） |
 | [`tools/workflow_cli.py`](../tools/workflow_cli.py) | 原版 GUI 缺口流程的命令行入口：目录、运行、审批门、人工任务、证据 |
