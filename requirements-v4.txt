@@ -8,7 +8,10 @@
 #
 # 生成：2026-11-05，在 `.deps/venv` 里按 `pip freeze --all` 的实测版本逐个挑出，
 #       Python 3.11.15 / Windows x86_64；镜像 https://pypi.tuna.tsinghua.edu.cn/simple。
-# 范围：六个**目标包** + 它们各自的**一层直接依赖** + 一条运行期补偿（见末组）。
+# 范围：六个**目标包** + 它们各自的**一层直接依赖** + 两条**运行期补偿**（见末组）。
+#       补偿项的共同点：上游漏声明、或声明了但只在运行期才需要，
+#       结果是"装完清单、门禁全绿、实际能力却缺失"。它们必须在这里，否则
+#       那个缺口没有任何检查能拦得住。
 #       再往下的传递依赖不在这里钉（由 pip 解析）；需要逐字节复现时用
 #       `pip freeze > <快照>`，本机那一份的全量快照抄在 docs/operations/deps.md 末尾。
 # 验收：`.deps/venv/Scripts/python.exe tools/deps_smoke.py` 全 ok 才算装上。
@@ -72,11 +75,26 @@ typing-inspect==0.9.0
 wrapt==2.5.2
 xxhash==4.0.2
 
-# ── 运行期补偿：上游漏声明，不装就 import 不进来 ──────────────────
-# llama-index-vector-stores-lancedb 0.6.0 的 base.py 第 33 行直接
-# `from pandas import DataFrame`，但它的 Requires-Dist 里没有 pandas。
-# 只装它声明的四个依赖（lancedb / llama-index-core / pylance / tantivy）时，
-# `import llama_index.vector_stores.lancedb` 抛 ModuleNotFoundError: pandas。
-# 必须显式钉住，否则"装完了"和"能用"之间有条暗沟。
+# ── 运行期补偿：上游漏声明，不装就跑不通（不是 import 失败，是运行期失败）──
+#
+# 补偿项一：llama-index-vector-stores-lancedb 漏声明 pandas
+#   它的 base.py 第 33 行直接 `from pandas import DataFrame`，但 Requires-Dist
+#   里没有 pandas。只装它声明的四个依赖（lancedb / llama-index-core / pylance /
+#   tantivy）时，`import llama_index.vector_stores.lancedb` 抛
+#   ModuleNotFoundError: pandas。必须显式钉住，否则"装完了"和"能用"之间有条暗沟。
 pandas==3.1.1
+#
+# 补偿项二：duckdb 漏声明 pytz
+#   duckdb 2.0.0 的 Requires-Dist 里**完全没有 pytz**（连 extra 都没有），
+#   但它在把 `TIMESTAMP WITH TIME ZONE` 转成 Python datetime 时要求它。
+#   实测：`read_ndjson_auto()` 读一个含 `2026-10-01T00:00:00+00:00` 的 NDJSON
+#   就直接抛 `Invalid Input Error: Required module 'pytz' failed to import` ——
+#   注意这**不是**只有时间桶查询才踩，**连纯读取都失败**。
+#
+#   后果不是算错，是**静默换引擎**：`knowledge.answer_question()` 的 auto 模式
+#   会回落到逐行 Python 扫盘（答案仍对，但慢一个数量级），只在 note 里写一句
+#   `engine=builtin`。这与 docs/operations/deps.md §4「引擎不可用必须明示、
+#   不许静默」冲突，所以钉进清单，让它不可能缺席。
+pytz==2026.6
+# clickhouse-connect 故意不钉版本：它是随包二进制侧的客户端，版本跟着 CH 服务端走。
 clickhouse-connect

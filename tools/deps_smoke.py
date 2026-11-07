@@ -69,6 +69,68 @@ PACKAGES = [
 TIERS = {"core": ["core"], "all": ["core", "all"]}
 
 
+# ── 运行期探针：import 成功不等于能用 ────────────────────────────────
+#
+# 为什么需要这一组：`requirements-v4.txt` 末尾那两个"运行期补偿"项的共同特征
+# 是**上游漏声明、且失败发生在运行期而不是 import 期**。
+#
+#   · lancedb 缺 pandas → `import llama_index.vector_stores.lancedb` 会失败，
+#     所以它其实能被 import 探针抓到（只是报错信息绕一层）。
+#   · duckdb 缺 pytz → **import 完全不报错**，只在把 `TIMESTAMP WITH TIME ZONE`
+#     转成 Python datetime 时才炸。实测连 `read_ndjson_auto()` 读一行带
+#     `+00:00` 的 JSON 都直接抛 `Invalid Input Error: Required module 'pytz'`。
+#
+# 也就是说：只靠上面那张 PACKAGES 表，duckdb 会显示 `ok 2.0.0`，而它实际上是
+# 坏的。这种"所有检查都说好、实际能力却缺失"正是本仓库一直在防的错法，
+# 所以真正的判据是**跑一次最少量的真实操作**，不是查包在不在。
+#
+# 每条探针：名字、依赖的包、能跑就返回空串、不能跑返回失败原因。
+def _probe_duckdb_temporal() -> str:
+    """DuckDB 能不能处理带时区的时间？
+
+    用一个 **UTC 偏移的时间戳**去读，因为真实数据（NDJSON 的 `epoch`）就是这个形状。
+    缺 pytz 时这里会抛 `Invalid Input Error: Required module 'pytz' failed to import`。
+    """
+    import tempfile
+    from pathlib import Path
+
+    try:
+        import duckdb
+    except BaseException as exc:  # noqa: BLE001 - 缺 DLL 的 OSError 也要报
+        return f"duckdb 不可用：{type(exc).__name__}: {exc}"
+
+    with tempfile.TemporaryDirectory() as td:
+        sample = Path(td) / "t.ndjson"
+        # 一个带 `+00:00` 偏移的时间戳：DuckDB 会把它读成 TIMESTAMP WITH TIME ZONE，
+        # 而转成 Python 对象时要 pytz。这就是缺包时的引爆点。
+        sample.write_text(
+            '{"epoch": "2026-10-01T00:00:00+00:00", "v": 1}\n', encoding="utf-8")
+        try:
+            con = duckdb.connect()
+            con.execute(
+                f"select epoch from read_ndjson_auto('{sample.as_posix()}')").fetchall()
+        except BaseException as exc:  # noqa: BLE001
+            msg = str(exc)
+            if "pytz" in msg:
+                return ("缺 pytz：DuckDB 无法把 TIMESTAMP WITH TIME ZONE 转成 Python 时间。"
+                        "不装时会静默回落到逐行 Python 扫盘（答案仍对但慢一个数量级），"
+                        "装法：pip install pytz（已在 requirements-v4.txt 的运行期补偿里）")
+            return f"{type(exc).__name__}: {msg[:160]}"
+        finally:
+            try:
+                con.close()
+            except BaseException:  # noqa: BLE001 - 关不掉不算失败
+                pass
+    return ""
+
+
+#: (探针名, 依赖的发行版, 档位, 用途, 探针函数)
+PROBES = [
+    ("duckdb-temporal", "duckdb", "core", "E4 带时区时间的时间桶查询",
+     _probe_duckdb_temporal),
+]
+
+
 def _version(module_name: str, module: object) -> str:
     """装的是哪个发行版。取不到就退模块自带属性，再取不到就是 unknown。"""
     dist = module_name.split(".")[0].replace("_", "-")
@@ -144,6 +206,23 @@ def main(argv: list[str] | None = None) -> int:
         if dist in wanted and not any(f[0] == dist for f in failed):
             print(f"版本钉住: {dist} == {wanted[dist]}")
 
+    # 运行期探针：import 成功不算过关，要真的跑一次最少量的操作。
+    probes = [p for p in PROBES if p[2] in tiers]
+    if probes:
+        print()
+        print(f"{'probe':<38} {'status':<6} purpose")
+        print("-" * 88)
+        for name, dist, _tier, purpose, fn in probes:
+            try:
+                detail = fn()
+            except BaseException as exc:  # noqa: BLE001 - 探针自己崩也要报，不要炸
+                detail = f"探针自身异常：{type(exc).__name__}: {exc}"
+            status = "ok" if not detail else "fail"
+            print(f"{name:<38} {status:<6} {purpose}")
+            if detail:
+                failed.append((name, f"probe:{dist}", detail))
+
+    print("-" * 88)
     if not failed:
         print(f"结果: {len(selected)}/{len(selected)} ok")
         return 0

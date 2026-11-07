@@ -23,7 +23,8 @@ v4 的 E2/E3/E4/E6 要用第三方库，而仓库原有的门禁（`unittest dis
 | `dbos` | 3.4.0 | 2.7 MB | 持久化执行：`bot.task.run` 的 workflow/step 表、队列、cron、崩溃续跑 | E2 |
 | `llama-index-core` | 0.14.25 | 25.8 MB | 索引「元数据卡 + 手册 + 报告」，带出处的检索 | E6 |
 | `llama-index-vector-stores-lancedb` | 0.6.0 | 0.1 MB（实体在 `lancedb` 235 MB / `pylance` 266 MB） | 上面的向量库后端 | E6 |
-| `pandas` | 3.1.1 | 72.9 MB | **补偿项**，见 §3 坑 1；不是我们选的，是上游漏声明的 | E6 |
+| `pandas` | 3.1.1 | 72.9 MB | **补偿项一**，见 §3 坑 1；不是我们选的，是上游漏声明的 | E6 |
+| `pytz` | 2026.6 | 0.5 MB | **补偿项二**，见 §3 坑 1b；duckdb 漏声明，缺它 DuckDB 连纯读取带时区都失败 | E4 |
 
 磁盘：`.deps/venv` 整目录 **1,143.4 MB / 37,528 个文件**；`site-packages` 记账口径
 1,143.0 MB / 167 个发行版。
@@ -64,13 +65,39 @@ python -m venv .deps/venv
 解析结果是 **166 个包、版本与本机 `pip freeze` 逐个相等，0 处差异**。
 也就是说这份清单不只是"装得上"，它当下解析出来的就是这台机器上那套。
 
-## 3. 三个会让人误判「已经装好了」的坑
+## 3. 四个会让人误判「已经装好了」的坑
 
 1. **`llama-index-vector-stores-lancedb` 漏声明 `pandas`。**
    它的 `base.py` 第 33 行写死 `from pandas import DataFrame`，但 `Requires-Dist` 里没有
    `pandas`。只装它声明的四个依赖（`lancedb`/`llama-index-core`/`pylance`/`tantivy`）后，
    `import llama_index.vector_stores.lancedb` 抛 `ModuleNotFoundError: pandas`。
    首次安装就是这样，冒烟当场报出来的。清单末尾的「运行期补偿」组就是为它留的。
+
+1b. **`duckdb` 漏声明 `pytz` —— 而且这个更阴，`import` 完全不报错。**
+   `duckdb 2.0.0` 的 `Requires-Dist` 里**根本没有 pytz**（连 extra 都没有），
+   但它把 `TIMESTAMP WITH TIME ZONE` 转成 Python datetime 时要它。实测：
+
+   ```
+   >>> duckdb.read_ndjson_auto('含 2026-10-01T00:00:00+00:00 的 ndjson')
+   InvalidInputException: Required module 'pytz' failed to import
+   ```
+
+   三个要点：
+
+   - **不是只有时间桶查询才踩，连纯读取都失败** —— DuckDB 把带 `+00:00` 的 ISO
+     时间串自动识别成 `TIMESTAMP WITH TIME ZONE`，读取阶段就要转 Python 对象；
+   - **`import duckdb` 完全成功**，所以只查 import 的冒烟会显示 `ok 2.0.0`，
+     而它实际上是坏的 —— 这就是"三重检查全绿、能力却缺失"；
+   - 后果不是算错，是**静默换引擎**：`knowledge.answer_question()` 的 auto 模式
+     回落到逐行 Python 扫盘（答案仍对，但慢一个数量级），只在 `note` 里写一句
+     `engine=builtin`。这与 §4「引擎不可用必须明示、不许静默」冲突。
+
+   所以除了把它钉进清单，`tools/deps_smoke.py` 还加了一条**运行期探针**
+   `duckdb-temporal`：真去读一行带时区的时间，而不是查包在不在。
+   缺 pytz 时它会点名报错、退出码非 0。缺 pytz 的行为由
+   `tests/test_deps_smoke.py` 在**子进程**里验（原因见该文件 docstring：
+   duckdb 是 C 扩展，进程内遮蔽 pytz 会毒化整个解释器）。
+
 2. **`requirements-v4.txt` 的第一行必须是 PEP 263 编码 cookie。**
    pip 读 requirements 文件时先找 BOM，找不到就按**本地代码页**解码（中文 Windows 是 GBK）。
    文件里有中文注释，没有 `# -*- coding: utf-8 -*-` 那行时
@@ -98,6 +125,7 @@ LangGraph 两条（同一节第三条是 Letta，Letta 不在本次装的包里�
 | `llama-index-core` | E6 的知识索引与「带出处」检索 | 退 E4 的 Text-to-SQL + SQLite FTS/台账全文检索；答案必须标「未建索引」，**不许编出处** | **待确认** |
 | `llama-index-vector-stores-lancedb` | 向量后端 | 换 Chroma（E5 本来就带它，ADR 把 Chroma 列为向量库）；换库要重建索引，台账里的向量 id 全部失效 | ADR-009 §4（E5 含 Chroma）；具体切换流程**待确认** |
 | `pandas` | 上一条根本 import 不进来 | 没有降级：等于整块向量库没有。装上即可 | 见 §3 坑 1 |
+| `pytz` | **DuckDB 的时间类型转换（不只是时间桶，连纯读取带时区都失败）** | 没有真正降级：`answer_question()` 的 auto 会回落到逐行 Python 扫盘，答案仍对但慢一个数量级；**必须在 `note` 里明示 `engine=builtin`，不许静默** | 见 §3 坑 1b；§4 共同纪律 |
 
 共同纪律（ADR-009 的原始要求，降级时不能破）：
 **降级必须显式**——UI/日志要说清"哪个引擎退到了哪条路"，并把降级写进当次产物；
