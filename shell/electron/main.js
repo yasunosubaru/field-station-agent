@@ -341,7 +341,7 @@ function viewOfWindow(win) {
   if (!win || win.isDestroyed()) return args.view;
   let pathname;
   try {
-    pathname = new URL(win.webContents.getURL()).pathname.replace(/\/+$/, '') || '/';
+    pathname = new URL(safeUrl(win) || baseUrl).pathname.replace(/\/+$/, '') || '/';
   } catch (error) {
     return args.view;
   }

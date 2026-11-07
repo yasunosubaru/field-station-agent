@@ -203,7 +203,7 @@ npx electron . --attach --port 7810 --view chat --screenshot "$env:TEMP\opencode
 ## 9. 已知边界 / 刻意没做的事
 
 - 已实测 Electron 45.2.2 起窗与截图；但 `node_modules` 不提交，打包（electron-builder）、
-  签名、自动更新、多窗口都还没有。
+  签名、自动更新都还没有。
 - `/fleet`、`/data` 的 iframe 源是现有页面里最接近的两个（地图 / Events），
   专用页面落地后只改 `routes.ts` 的一行。
 - 右栏检查器不轮询任何 API；`data-panel` 只是以后接 `/api/config/device/status`、
@@ -211,3 +211,57 @@ npx electron . --attach --port 7810 --view chat --screenshot "$env:TEMP\opencode
 - 没有改 `web/index.html`、`web/agent/**`、`web/panels/**` 或任何 API。
 - 回滚：`shell/` 整个是新增目录，删掉即可；视角路由是 additive 的四条 if 分支
   （`server.ts`）与 `web/views/**`，删除后 `/` 与 API 行为不变。
+
+## 10. W2 的五个验收缺口（2026-11-07 补上）
+
+计划 W2 的这五项此前**关键词命中 0**，现在都在 `main.js` 里：
+
+| 验收项 | 实现 | 命令行 |
+|---|---|---|
+| `fsa://job/<id>` 深链 | `registerProtocol()` + `parseDeepLink()` + `openJob()` | `electron . "fsa://job/j-001"` |
+| 托盘 | `createTray()` + `buildTrayMenu()`，图标是内嵌 16×16 PNG | `--no-tray` 可关 |
+| 崩溃守护 | `attachCrashGuard()`（渲染进程 / 无响应）+ `watchChildProcesses()`（子进程只记录） | — |
+| 主题 / 密度 | `nativeTheme.themeSource` 三档 + `density`；菜单可循环切 | `--theme system\|light\|dark` |
+| 多窗口 | `windows` 集合 + `canCreateWindow()`；关窗只隐藏、托盘菜单才真退出 | 菜单「在新窗口打开」 |
+
+### 10.1 深链只认 `fsa://job/<id>`
+
+id 的字符集收窄到 `[A-Za-z0-9._-]{1,128}`。它会被拼进 `/fleet?job=<id>` 交给页面，
+又可能来自**任意第三方程序**发起的协议调用，允许 `?` `&` `#` `/` 等于把注入点送出去。
+
+`parseDeepLink()` **刻意不解码百分号**：`fsa://job/%2e%2e` 这类编码绕过在解码后才显形，
+不 decode 时百分号直接通不过字符集校验，等于免费挡一层。
+
+畸形链接一律「记日志 + 忽略」，绝不让一个乱链接把主进程带崩。
+`fsa://device/<id>` 明确拒绝并留日志——现在假装支持会让点击落在一个没实现的页面上。
+
+### 10.2 托盘与「关窗」语义
+
+有托盘时**关窗只是隐藏**，不是退出：服务是全局的，重新拉起要再等 40 秒就绪探测。
+真正的退出只有三条路，都会先 `beginQuit()` 立标记：托盘菜单「退出」、`Ctrl+Q`、崩溃提示框。
+
+`--screenshot` 与 `--no-tray` **不建托盘**：否则 `window-all-closed` 的退出会被托盘挡掉，
+截图冒烟测试在 CI 上会挂住不返回。
+
+### 10.3 崩溃守护分清「崩了」和「正常关窗」
+
+关窗过程中 Chromium 也会发 `render-process-gone`（reason 可能是 `killed` 或 `clean-exit`），
+照崩处理就等于每次关窗都收获一个错误框。所以用 `meta.closing` 与 `quitting` 把正常关闭挡掉，
+只留日志。
+
+`child-process-gone` **只记录不弹框**：Node 服务自己的退出已由 `serverChild.on('exit')`
+弹过一次，两处都弹会连着出现两个框，用户分不清是哪一个进程没了。
+
+### 10.4 主题怎么"看得见"
+
+`preload.js` 这次**没有改**（它不在本次授权范围内），所以页面侧没有订阅通道。
+既要让主题真的生效，就只剩「主进程写一次 DOM 属性」这条路——`syncPageAppearance()`
+往 `document.body` 写 `data-agent-theme` 与 `data-density`，而 `web/index.html` 与
+`layout.html` 本来就是读这两个属性的，所以立刻可见，不需要改前端。
+
+### 10.5 与 W3 嵌入的关系（还没接）
+
+`embed.js` 已经是可用的模块（真机 16/16，见 [`docs/operations/suite-embed.md`](../docs/operations/suite-embed.md)），
+但 `main.js` 里**还没有**「打开套件台」的入口把它用起来。这是 W3 第 1 周剩的最后一步，
+要和 `embed.attach({ child, parent })` 的父句柄（`win.getNativeWindowHandle()`）对接。
+
