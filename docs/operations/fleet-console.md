@@ -528,7 +528,7 @@ summarize_kinds(board.pending())   # {'pause': 1, 'resume': 0, 'retry': 0, 'take
 ### 5.5 这段 JSON 怎么复现
 
 ```powershell
-$p  = "H:\...\野外台站智能体"
+$p  = "<仓库根>"
 $py = "$p\.deps\venv\Scripts\python.exe"
 Set-Location $p
 $env:PYTHONPATH = "src"

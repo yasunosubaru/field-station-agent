@@ -56,8 +56,10 @@ INTERVENTION_KINDS = ("pause", "resume", "retry", "takeover")
 #: 出故障时需要立刻停，让人去等审批是反的。
 NEEDS_APPROVAL = ("takeover",)
 
-#: 干预的终态。
-_TERMINAL_STATUS = ("resolved", "rejected", "cancelled", "expired")
+#: 干预的终态。与 `BotStore.resolve_intervention()` 的白名单**必须是同一份**：
+#: 之前这里多写了一个 `cancelled`，于是"终态判定"与"可写入状态"不一致，
+#: 表现为 `resolve(status="cancelled")` 抛 `ValueError` 而不是 `InterventionError`。
+_TERMINAL_STATUS = ("resolved", "rejected", "expired")
 
 
 class InterventionError(RuntimeError):
@@ -115,6 +117,10 @@ class InteractionBoard:
             "steps": len(merged),
             "done": sum(1 for s in merged if s.get("status") == "done"),
             "failed": sum(1 for s in merged if s.get("status") == "failed"),
+            # `skipped` 必须单列：`STEP_STATUSES` 有五个值，只数三档会让
+            # done+failed+pending != steps（有一步 skipped 时），而进度条按
+            # 前三个算就会永远卡在 N/N+1。
+            "skipped": sum(1 for s in merged if s.get("status") == "skipped"),
             "pending": sum(1 for s in merged
                            if s.get("status") in ("pending", "running")),
         }
@@ -181,7 +187,14 @@ class InteractionBoard:
             elif status == "failed":
                 flow.append({**base, "phase": "failed",
                              "label": f"失败：{name}",
-                             "error": step.get("last_error") or ""})
+                             # `step` 表的列名是 `error`；`last_error` 是 **task** 表的列。
+                             # 拿错列名的后果不是报错，是永远取到空串——事件流上
+                             # 看得见"失败"却看不到原因，排查时最需要的那句话没了。
+                             "error": step.get("error") or ""})
+            elif status == "skipped":
+                # `skipped` 是 STEP_STATUSES 里的合法值。归到 queued 会写成
+                # "待执行：跳过的一步"，读起来像还在排队，而它其实已经结束了。
+                flow.append({**base, "phase": "skipped", "label": f"跳过：{name}"})
             elif status == "running":
                 flow.append({**base, "phase": "running", "label": f"执行中：{name}"})
             else:
@@ -273,16 +286,24 @@ class InteractionBoard:
     ) -> Dict[str, Any]:
         """给一条干预一个结论。
 
-        `status` 只允许 `resolved` / `rejected` / `cancelled`。
+        允许三种：`resolved` / `rejected` / `expired`。
+
+        **刻意不支持 `cancelled`**：`BotStore.resolve_intervention()` 的白名单是
+        前三个，而 `_TERMINAL_STATUS` 里原先多写了一个 `cancelled` —— 三处定义不一致，
+        调用方 `except InterventionError` 会漏掉它抛出的 `ValueError`。现在两边对齐成
+        同一份：这里的校验就是唯一入口，越过它不可能写进库。
+
         已经终态的不能再改：干预是审计记录，允许反复改写等于允许篡改。
         """
-        if status not in ("resolved", "rejected", "cancelled"):
+        allowed = ("resolved", "rejected", "expired")
+        if status not in allowed:
             raise InterventionError(
-                f"status 只能是 resolved / rejected / cancelled，收到 {status!r}")
+                f"status 只能是 {' / '.join(allowed)}，收到 {status!r}")
         current = self.store.get_intervention(str(intervention_id))
-        if str(current.get("status") or "") in _TERMINAL_STATUS:
+        current_status = str(current.get("status") or "")
+        if current_status in _TERMINAL_STATUS:
             raise InterventionError(
-                f"干预 {intervention_id!r} 已经是终态 {current.get('status')!r}，"
+                f"干预 {intervention_id!r} 已经是终态 {current_status!r}，"
                 "审计记录不允许改写")
         return self.store.resolve_intervention(intervention_id, str(response or ""),
                                                status=status)

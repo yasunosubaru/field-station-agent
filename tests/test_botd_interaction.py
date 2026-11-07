@@ -277,5 +277,74 @@ class KindsTest(unittest.TestCase):
         self.assertNotIn("unknown_kind", counts, "未知类型不进计数，免得界面出现幽灵项")
 
 
+class RegressionTest(Base):
+    """三个由组合测试发现的 bug 的回归钉。
+
+    这三条都是"单测全绿、组合起来才暴露"的错法，所以每条都要留测试——
+    只修不加测试，下次重构会原样复活。
+    """
+
+    def test_failed_step_error_is_not_empty(self) -> None:
+        """`step` 表的列名是 `error`，`last_error` 是 task 表的。
+
+        拿错列名不报错，只是永远取到空串：事件流上看得见"失败"却看不到原因。
+        """
+        run = self.make_run(steps=1)
+        step = self.store.list_steps(run.task_id)[0]
+        self.store.update_step(step["id"], status="failed",
+                               error="阈值超限 8 > 5")
+        flow = self.board.event_stream(run.task_id)
+        failed = next(e for e in flow if e["phase"] == "failed")
+        self.assertEqual(failed["error"], "阈值超限 8 > 5",
+                         "失败原因必须是 step.error，不是 task.last_error")
+
+    def test_cancelled_status_rejected_as_intervention_error(self) -> None:
+        """`BotStore` 的白名单是 resolved/rejected/expired，没有 cancelled。
+
+        三处定义不一致时，调用方 `except InterventionError` 会漏掉 `ValueError`。
+        """
+        run = self.make_run()
+        row = self.board.request("pause", task_id=run.task_id)
+        with self.assertRaises(InterventionError) as ctx:
+            self.board.resolve(row["id"], "算了", status="cancelled")
+        self.assertIn("resolved", str(ctx.exception))
+        # 关键：拒绝之后状态没被改
+        self.assertEqual(self.store.get_intervention(row["id"])["status"], "pending")
+
+    def test_expired_status_is_supported(self) -> None:
+        """`expired` 是白名单里有的，必须真的能写进去。"""
+        run = self.make_run()
+        row = self.board.request("pause", task_id=run.task_id)
+        out = self.board.resolve(row["id"], "超时未处理", status="expired")
+        self.assertEqual(out["status"], "expired")
+        self.assertEqual(self.board.pending(), [])
+
+    def test_skipped_step_counted_and_labelled(self) -> None:
+        """`skipped` 是 STEP_STATUSES 的合法值。
+
+        不单列时 done+failed+pending != steps，进度条会卡在 N/N+1；
+        归进 queued 又会写成"待执行：跳过的一步"，读起来像还在排队。
+        """
+        run = self.make_run(steps=2)
+        steps = self.store.list_steps(run.task_id)
+        self.store.update_step(steps[0]["id"], status="done")
+        self.store.update_step(steps[1]["id"], status="skipped")
+
+        tree = self.board.tree(run.task_id)
+        counts = tree["counts"]
+        self.assertEqual(counts["skipped"], 1)
+        self.assertEqual(counts["done"], 1)
+        # 五个状态必须能完整覆盖，否则合计对不上
+        self.assertEqual(
+            counts["done"] + counts["failed"] + counts["skipped"] + counts["pending"],
+            counts["steps"],
+            f"合计与步骤数不符：{counts}")
+
+        flow = self.board.event_stream(run.task_id)
+        skipped = [e for e in flow if e.get("phase") == "skipped"]
+        self.assertEqual(len(skipped), 1)
+        self.assertIn("跳过", skipped[0]["label"])
+
+
 if __name__ == "__main__":
     unittest.main()
