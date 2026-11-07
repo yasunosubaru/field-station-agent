@@ -6,12 +6,17 @@
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "smoke:embed": "electron embed-smoke.js"
   },
   "engines": {
     "node": ">=22.18"
   },
   "devDependencies": {
     "electron": "^45.2.2"
+  },
+  "dependencies": {
+    "koffi": "^3.3.7"
   }
 }

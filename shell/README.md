@@ -32,7 +32,10 @@
 |---|---|
 | `electron/main.js` | 主进程：单实例、启动编排、窗口、菜单占位、就绪探测、退出清理 |
 | `electron/preload.js` | `window.nasShell` 契约（`info()` / `navigate()` / `versions` / `platform`） |
-| `electron/package.json` | `name/version/main`；`electron` 仅在 `devDependencies`（本机已装 45.2.2，`node_modules` 不提交） |
+| `electron/embed.js` | W3 嵌入层：`user32.SetParent` 把别的进程的窗口挂进面板，含样式裁剪 / DPI 补偿 / 一键解挂 |
+| `electron/embed-smoke.js` | 嵌入的真机冒烟（起第二个 Electron 进程当目标，16 条断言） |
+| `electron/test/embed.test.js` | 嵌入状态机的单测（假 user32，不需要 Windows 也不需要 koffi） |
+| `electron/package.json` | `name/version/main`；`electron` 在 `devDependencies`，`koffi` 在 `dependencies`（`node_modules` 不提交） |
 | `README.md` | 本文 |
 
 视角路由表不在 `shell/`，而在

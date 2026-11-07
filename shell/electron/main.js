@@ -1,26 +1,45 @@
 'use strict';
 /**
- * Electron 主进程 —— 骨架；本机已用 Electron 45.2.2 实测起窗与截图（见 shell/README.md §8）。
+ * Electron 主进程 —— 外壳；本机已用 Electron 45.2.2 实测起窗与截图（见 shell/README.md §8）。
  * 仓库里不提交 node_modules，换机器按 README §7 重新安装。
  *
- * 职责只有四件：
- *   1. 单实例：第二个进程把已有窗口叫到前面，然后自己退出。
+ * 职责：
+ *   1. 单实例：第二个进程把已有窗口叫到前面，然后自己退出；顺带取 argv 里的
+ *      `fsa://job/<id>`——Windows 把协议 URL 当命令行参数递进来，所以单实例回调
+ *      和冷启动都走同一条解析，不必写两套。
  *   2. 启动编排：拉起现有零依赖 Node 服务（`逆向/04_重实现/packages/app/src/server.ts`），
  *      轮询 `/api/health` 最多 40 秒；失败弹错误框并清理。
- *   3. 一个窗口：加载 Node 服务自己的 `/chat` `/fleet` `/data` `/suite` 外壳页，
- *      不自己拼 UI、也不改这些页面。
- *   4. 退出清理：窗口全关 / 退出 / Ctrl-C 时把 Node 子进程连同它的子进程一起结束。
+ *   3. 窗口：加载 Node 服务自己的 `/chat` `/fleet` `/data` `/suite` 外壳页，
+ *      不自己拼 UI、也不改这些页面；可以开多个，每个窗口独立记录。
+ *   4. 退出清理：真的退出时把 Node 子进程连同它的子进程一起结束。
+ *      关掉最后一个窗口**不等于**退出——有托盘就藏进托盘，服务留着；
+ *      服务是全局的，任何一个窗口关掉都不许把它杀掉。
+ *   5. 托盘 / 崩溃守护 / 主题密度：这三件解决的都是“窗口看不见的时候怎么办”。
+ *      没有它们，渲染进程一崩就只剩一个空白窗口，用户既不知道发生了什么也没法恢复。
  *
  * 命令行：
- *   --port 7810     用指定端口（默认 7803；也认 NAS_SHELL_PORT）
- *   --view chat     首屏视角（chat / fleet / data / suite，默认 chat）
- *   --attach        不启动 Node 服务，直接连接已经在跑的那个端口
+ *   --port 7810       用指定端口（默认 7803；也认 NAS_SHELL_PORT）
+ *   --view chat       首屏视角（chat / fleet / data / suite，默认 chat）
+ *   --attach          不启动 Node 服务，直接连接已经在跑的那个端口
+ *   --theme dark      起始主题（system / light / dark，默认 system）
+ *   --density compact 起始密度（comfortable / compact，默认 comfortable）
+ *   --no-tray         不建托盘，关窗就退出（冒烟测试 / 无桌面环境用）
  *   --screenshot <文件>  冒烟测试用：窗口加载完 3.5 秒后 capturePage() 存 PNG，然后退出
  *
  * 这里没有任何打包/签名逻辑，也不写业务代码——它只是把已有的 Node 服务装进一个窗口。
  */
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  dialog,
+  ipcMain,
+  nativeImage,
+  nativeTheme,
+  shell,
+} = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -50,6 +69,42 @@ const VIEW_PATHS = {
   data: '/data',
   suite: '/suite',
 };
+const VIEW_LABELS = { chat: '对话', fleet: '机队', data: '数据', suite: '专业面板' };
+
+/**
+ * 深链只认 `fsa://job/<id>`。id 的字符集是刻意收窄的：
+ * 它会被拼进 URL 查询串交给页面，又可能来自任意第三方程序发起的协议调用，
+ * 允许 `?` `&` `#` `/` 之类就等于把注入点直接送给外部调用方。
+ * 校验失败一律“记日志 + 忽略”，绝不让一个畸形链接把主进程带崩。
+ */
+const PROTOCOL = 'fsa';
+const JOB_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
+ * 同一窗口连续崩溃的重载上限。超过就不再自动重载——
+ * 否则一个必然崩的页面会变成无限重载循环，用户连菜单都点不到。
+ */
+const RENDER_RELOAD_LIMIT = 2;
+
+const THEMES = ['system', 'light', 'dark'];
+const DENSITIES = ['comfortable', 'compact'];
+const THEME_LABELS = { system: '跟随系统', light: '浅色', dark: '深色' };
+const DENSITY_LABELS = { comfortable: '舒适', compact: '紧凑' };
+
+/**
+ * 窗口底色取 `agent.css` 的 `--bg`（深 `#121212` / 浅 `#f2f0e5`），
+ * 这样首帧到页面画完之间闪的那一下也是同一个颜色，而不是白闪。
+ */
+const BACKGROUND = { dark: '#121212', light: '#f2f0e5' };
+
+/**
+ * 托盘图标。仓库里没有 .ico/.png，也不想为一张 16×16 的图新增二进制资源
+ * （打包时还得在 electron-builder 里另配 icon，反而多一个会漂的地方），
+ * 所以内嵌一张自己画的 16×16 RGBA PNG：三根柱子，正好是“台站数据”的意思。
+ * 限制：Windows 上这是 1× 位图，高 DPI 屏幕会被系统放大得略糊；真要出正式版，
+ * 应换成 .ico（含 16/24/32/48/256 多尺寸）再 `nativeImage.createFromPath`。
+ */
+const TRAY_ICON_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIUlEQVR4nGNgGFngxo0b/2F4JBiATfEgNoBYxcPZgAEFACts6M/lAwNNAAAAAElFTkSuQmCC';
 
 /* ---------------------------------------------------------------------------------------------
  * 参数
@@ -61,6 +116,9 @@ function parseArgs(argv) {
     view: 'chat',
     attach: false,
     screenshot: '',
+    theme: 'system',
+    density: 'comfortable',
+    tray: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
@@ -69,6 +127,11 @@ function parseArgs(argv) {
     else if (token === '--view') parsed.view = String(argv[++i] || '');
     else if (token.startsWith('--view=')) parsed.view = token.slice('--view='.length);
     else if (token === '--attach') parsed.attach = true;
+    else if (token === '--theme') parsed.theme = String(argv[++i] || '');
+    else if (token.startsWith('--theme=')) parsed.theme = token.slice('--theme='.length);
+    else if (token === '--density') parsed.density = String(argv[++i] || '');
+    else if (token.startsWith('--density=')) parsed.density = token.slice('--density='.length);
+    else if (token === '--no-tray') parsed.tray = false;
     else if (token === '--screenshot') parsed.screenshot = String(argv[++i] || '');
     else if (token.startsWith('--screenshot=')) parsed.screenshot = token.slice('--screenshot='.length);
   }
@@ -77,6 +140,12 @@ function parseArgs(argv) {
   }
   if (!VIEW_IDS.includes(parsed.view)) {
     throw new Error(`--view 必须是 ${VIEW_IDS.join(' / ')}（收到 ${parsed.view || '空'}）`);
+  }
+  if (!THEMES.includes(parsed.theme)) {
+    throw new Error(`--theme 必须是 ${THEMES.join(' / ')}（收到 ${parsed.theme || '空'}）`);
+  }
+  if (!DENSITIES.includes(parsed.density)) {
+    throw new Error(`--density 必须是 ${DENSITIES.join(' / ')}（收到 ${parsed.density || '空'}）`);
   }
   return parsed;
 }
@@ -95,12 +164,32 @@ const baseUrl = args ? `http://127.0.0.1:${args.port}` : '';
  * 状态
  * ------------------------------------------------------------------------------------------- */
 
-let mainWindow = null;
+/** 所有窗口（多窗口要“全关才算全关”，所以不能只留一个引用）。插入顺序即创建顺序。 */
+const windows = new Set();
+/** 最近一次获得焦点的窗口；`BrowserWindow.getFocusedWindow()` 在弹对话框后会返回 null。 */
+let lastFocusedWindow = null;
+/** 第一个窗口。`--screenshot` 只拍它，否则多开会拍出一堆同名文件。 */
+let firstWindow = null;
+let tray = null;
+
 let serverChild = null;
 /** 子进程最近的 stderr，失败时原样递给错误框，避免只看到一句“启动超时”。 */
 let serverStderr = '';
 let stopping = false;
 let quitting = false;
+/**
+ * 服务就绪了没有。第二个实例可能在启动编排还没跑完时就到达，
+ * 那时开窗口只会加载一个还没监听端口的地址，所以先看这个标记。
+ */
+let serverReady = false;
+
+/** 当前密度；菜单切换时改它，窗口创建和切换后都用它。 */
+let density = args ? args.density : DENSITIES[0];
+/**
+ * 冷启动那一份深链。协议 URL 在 `app.whenReady()` 之前就躺在 argv 里，
+ * 那时窗口和服务都还没有，只能先存下来、等首个窗口建好再喂给它。
+ */
+let pendingJob = '';
 
 /* ---------------------------------------------------------------------------------------------
  * Node 服务
@@ -150,7 +239,8 @@ function startServer() {
     if (stopping) return;
     console.log(`[shell] Node 服务退出：code=${code} signal=${signal}`);
     // 窗口已经开着、服务却没了：说清楚，而不是留一个空白 iframe。
-    if (mainWindow && !quitting) {
+    // 这里用“还有窗口”而不是“有主窗口”——多开之后没有唯一的主窗口了。
+    if (windows.size > 0 && !quitting) {
       dialog.showErrorBox(
         'Node 服务已退出',
         `退出码 ${code ?? signal}\n${serverStderr.trim() || '（没有 stderr 输出）'}`,
@@ -225,8 +315,37 @@ async function waitForHealth() {
  * 窗口
  * ------------------------------------------------------------------------------------------- */
 
-function viewUrl(view) {
-  return `${baseUrl}${VIEW_PATHS[view] || VIEW_PATHS.chat}`;
+/**
+ * 视角地址。`job` 不是路由而是查询串：路由表（`routes.ts`）只认 pathname，
+ * 多一个查询串不会让它 404，页面侧却能直接 `location.search` 拿到 id。
+ */
+function viewUrl(view, job) {
+  const base = `${baseUrl}${VIEW_PATHS[view] || VIEW_PATHS.chat}`;
+  if (!job) return base;
+  return `${base}?job=${encodeURIComponent(job)}`;
+}
+
+/** 焦点窗口；托盘/菜单这类“对当前窗口做事”的入口都从这里取，避免各自猜一个。 */
+function focusedWindow() {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && !focused.isDestroyed()) return focused;
+  if (lastFocusedWindow && !lastFocusedWindow.isDestroyed()) return lastFocusedWindow;
+  for (const win of windows) {
+    if (!win.isDestroyed()) return win;
+  }
+  return null;
+}
+
+/** 窗口里当前是哪个视角：从实际 URL 反查，菜单“在新窗口打开当前视角”才不会指错。 */
+function viewOfWindow(win) {
+  if (!win || win.isDestroyed()) return args.view;
+  let pathname;
+  try {
+    pathname = new URL(win.webContents.getURL()).pathname.replace(/\/+$/, '') || '/';
+  } catch (error) {
+    return args.view;
+  }
+  return VIEW_IDS.find((id) => VIEW_PATHS[id] === pathname) || args.view;
 }
 
 /**
@@ -251,14 +370,128 @@ function captureAndQuit(win, target) {
   }, 3500);
 }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+/** 读 URL 的安全版：窗口/渲染进程已经在销毁过程中时 `getURL()` 会抛。 */
+function safeUrl(win) {
+  try {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return '';
+    return win.webContents.getURL() || '';
+  } catch (error) {
+    return '';
+  }
+}
+
+/**
+ * 每个窗口自己的记录。多开之后“崩溃重载计数 / 是否正在关闭”
+ * 放进同一个对象，避免用一堆并行数组按索引对齐——那种写法关掉一个窗口就会错位。
+ */
+const windowMeta = new Map();
+
+/** 该关窗，还是该收进托盘？托盘存在且不是真退出时一律收起。 */
+function shouldHideOnClose() {
+  return Boolean(tray) && !app.isQuitting;
+}
+
+/**
+ * 挂上渲染进程的异常监听。
+ * 这里必须先分清“崩了”和“用户正常关窗”：关窗过程中 Chromium 也会报
+ * `render-process-gone`（reason 可能是 killed），照崩处理就等于每次关窗都收获一个错误框。
+ * 所以用 meta.closing 把正常关闭挡掉，它只在 close 真的放行时才立起来。
+ */
+function attachCrashGuard(win, meta) {
+  win.webContents.on('render-process-gone', (_event, details) => {
+    const reason = details && details.reason ? details.reason : 'unknown';
+    const exitCode = details && details.exitCode !== undefined ? details.exitCode : '?';
+    const url = safeUrl(win);
+    console.error(`[shell] 渲染进程退出：reason=${reason} exitCode=${exitCode} url=${url}`);
+    // 正常关闭（窗口正在关 / app 正在退出）不算故障，只留日志。
+    if (reason === 'clean-exit' || meta.closing || quitting) return;
+    if (win.isDestroyed()) return;
+
+    const canReload = meta.reloads < RENDER_RELOAD_LIMIT;
+    if (canReload) meta.reloads += 1;
+    const detail = [
+      `原因：${reason}`,
+      `退出码：${exitCode}`,
+      `地址：${url || '（空）'}`,
+      canReload ? '' : '已经连续崩溃多次，自动重载可能一直失败，建议退出后重开。',
+    ].filter(Boolean).join('\n');
+
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: '页面崩溃',
+      message: '页面进程已崩溃，窗口内容是空白的。',
+      detail,
+      buttons: canReload ? ['重新加载', '退出外壳'] : ['退出外壳'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    }).then(({ response }) => {
+      if (canReload && response === 0) {
+        if (!win.isDestroyed()) win.reload();
+        return;
+      }
+      beginQuit();
+      app.quit();
+    }).catch((error) => {
+      console.error('[shell] 崩溃提示框失败：', error);
+    });
+  });
+
+  win.webContents.on('unresponsive', () => {
+    const url = safeUrl(win);
+    console.warn(`[shell] 页面无响应：${url}`);
+    if (meta.closing || quitting || win.isDestroyed()) return;
+    dialog.showMessageBox(win, {
+      type: 'warning',
+      title: '页面无响应',
+      message: '页面暂时没有响应，可能正在做很重的计算。',
+      detail: `地址：${url || '（空）'}\n可以继续等，也可以重新加载这个窗口。`,
+      buttons: ['继续等待', '重新加载'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    }).then(({ response }) => {
+      if (response === 1 && !win.isDestroyed()) win.reload();
+    }).catch((error) => {
+      console.error('[shell] 无响应提示框失败：', error);
+    });
+  });
+}
+
+/**
+ * `child-process-gone` 是 app 级事件，只有一条通路。
+ * 这里**只记录不弹框**：Node 服务自己的退出已经由 `serverChild.on('exit')` 弹过一次，
+ * 两处都弹就会连着出现两个框，用户根本分不清是哪一个进程没了。
+ */
+function watchChildProcesses() {
+  app.on('child-process-gone', (_event, details) => {
+    const info = details || {};
+    const line = `type=${info.type || '?'} reason=${info.reason || '?'} exitCode=${info.exitCode ?? '?'}`
+      + (info.serviceName ? ` service=${info.serviceName}` : '')
+      + (info.name ? ` name=${info.name}` : '');
+    if (info.reason === 'clean-exit') {
+      console.log(`[shell] 子进程正常退出：${line}`);
+      return;
+    }
+    console.error(`[shell] 子进程异常退出：${line}`);
+  });
+}
+
+/**
+ * 建一个窗口。`options.view` / `options.job` 让托盘、深链、菜单都能直接指定首屏，
+ * 不必“先建窗再跳一次”——那会白加载一遍页面。
+ */
+function createWindow(options = {}) {
+  const view = options.view && VIEW_IDS.includes(options.view) ? options.view : args.view;
+  const job = typeof options.job === 'string' ? options.job : '';
+
+  const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: '#121212', // 与 agent.css 的 --bg 一致，闪一下也是深色
+    backgroundColor: windowBackground(), // 与 agent.css 的 --bg 一致，闪一下也是同一个底色
     title: '野外台站智能体',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -269,43 +502,373 @@ function createWindow() {
     },
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('closed', () => { mainWindow = null; });
+  const meta = { reloads: 0, closing: false };
+  windows.add(win);
+  windowMeta.set(win, meta);
+  lastFocusedWindow = win;
+  if (!firstWindow) firstWindow = win;
+
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) win.show();
+  });
+  win.on('focus', () => { lastFocusedWindow = win; });
+
+  /*
+   * 关窗两种语义：
+   *   · 有托盘 → 只藏起来，服务继续跑（用户按 × 通常只是想收起来）；
+   *   · 没托盘（或正在真退出）→ 照原来那样销毁，全部关完就退出。
+   * `preventDefault()` 之后窗口不进销毁流程，所以 `render-process-gone` 不会被误报成崩溃。
+   */
+  win.on('close', (event) => {
+    if (!shouldHideOnClose() || win.isDestroyed()) {
+      meta.closing = true;
+      return;
+    }
+    event.preventDefault();
+    win.hide();
+    console.log('[shell] 窗口已收进托盘');
+  });
+
+  win.on('closed', () => {
+    meta.closing = true;
+    windows.delete(win);
+    windowMeta.delete(win);
+    if (firstWindow === win) firstWindow = null;
+    if (lastFocusedWindow === win) lastFocusedWindow = null;
+  });
+
+  attachCrashGuard(win, meta);
 
   // 外壳不接管外部链接：交给系统浏览器，也不让页面自己开新窗口。
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  mainWindow.webContents.once('did-finish-load', () => {
-    if (!mainWindow) return;
+  win.webContents.on('did-finish-load', () => {
+    if (win.isDestroyed()) return;
     // 页面自己的 <title> 会覆盖 BrowserWindow 的 title，实测值以这里为准。
-    console.log(`[shell] 窗口标题：${mainWindow.getTitle()}`);
-    if (args.screenshot) captureAndQuit(mainWindow, args.screenshot);
+    console.log(`[shell] 窗口标题：${win.getTitle()}`);
+    // 页面自己不会读主题（preload 不在这次改动范围内），只能在每次加载完后写一次属性。
+    // 必须用 on 而不是 once：切视角也是 loadURL，换页之后属性就没了。
+    syncPageAppearance(win, appearanceState());
+    if (args.screenshot && win === firstWindow) captureAndQuit(win, args.screenshot);
   });
 
-  mainWindow.loadURL(viewUrl(args.view)).catch((error) => {
-    dialog.showErrorBox('页面加载失败', `${viewUrl(args.view)}\n${error.message}`);
+  win.loadURL(viewUrl(view, job)).catch((error) => {
+    dialog.showErrorBox('页面加载失败', `${viewUrl(view, job)}\n${error.message}`);
   });
-  return mainWindow;
+  return win;
 }
 
-/** 菜单里的视角跳转：重新加载外壳页，Node 服务不动。 */
-function navigate(view) {
+/** 对指定窗口切视角；未知 id 返回 false，交给调用方决定要不要提示。 */
+function navigateToWindow(win, view) {
   if (!VIEW_IDS.includes(view)) return false;
-  if (!mainWindow) return false;
-  mainWindow.loadURL(viewUrl(view));
+  if (!win || win.isDestroyed()) return false;
+  win.loadURL(viewUrl(view));
   return true;
 }
 
+/** 菜单用的切视角：作用在聚焦窗口上，Node 服务不动。 */
+function navigate(view) {
+  return navigateToWindow(focusedWindow(), view);
+}
+
+/** 把窗口提到前面（最小化时先还原）。托盘“显示窗口”和第二个实例共用。 */
+function showWindow(win) {
+  if (!win || win.isDestroyed()) return false;
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  win.focus();
+  return true;
+}
+
+/**
+ * 现在能不能开新窗口。服务还没就绪时开窗口，只会得到一个连不上端口的空白页——
+ * 那比什么都不发生更难解释，所以统一挡在这里。
+ */
+function canCreateWindow() {
+  return Boolean(baseUrl) && serverReady;
+}
+
+/**
+ * 显示窗口。全被藏进托盘之后点托盘时可能一个窗口都不剩下（用户从任务栏关掉了），
+ * 这时开一个新的——总比点了托盘什么都不发生强。
+ */
+function showOrCreateWindow() {
+  const win = focusedWindow();
+  if (win) return showWindow(win);
+  if (!canCreateWindow()) return false;
+  return showWindow(createWindow());
+}
+
+/** 隐藏所有窗口。显式“隐藏窗口”按“都收起来”理解，只藏一个会让用户以为没生效。 */
+function hideAllWindows() {
+  let hidden = 0;
+  for (const win of windows) {
+    if (!win.isDestroyed() && win.isVisible()) {
+      win.hide();
+      hidden += 1;
+    }
+  }
+  return hidden;
+}
+
 /* ---------------------------------------------------------------------------------------------
- * 菜单（占位：只放应用 / 四个视角 / 开发者 / 帮助）
+ * 深链 `fsa://job/<id>`
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * 解析一条深链。返回 `{ kind, id }` 或 `null`（null = 不认识/不合法，调用方忽略即可）。
+ *
+ * 这里刻意不用 `decodeURIComponent`：`fsa://job/%2e%2e` 这类编码绕过在解码后才显形，
+ * 不decode 时百分号直接通不过 `JOB_ID_PATTERN`，等于免费挡掉一层。
+ * 整段包在 try 里是因为 `new URL` 对畸形串会抛异常，而这条路径的输入来自外部程序。
+ */
+function parseDeepLink(raw) {
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  if (!/^fsa:/i.test(text)) return null;
+
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch (error) {
+    console.warn('[shell] 深链不是合法 URL，忽略：', text.slice(0, 200));
+    return null;
+  }
+  if (parsed.protocol.toLowerCase() !== 'fsa:') return null;
+
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  /*
+   * 三种写法都可能出现，统一成 (kind, rest)：
+   *   fsa://job/abc   → hostname=job,      pathname=/abc
+   *   fsa:///job/abc  → hostname='',       pathname=/job/abc   （多一条斜杠，手工输入常见）
+   *   fsa:job/abc     → hostname='',       pathname=job/abc    （部分浏览器/命令行的规范化）
+   * 把判定集中在这里，后面就只需要认一种形状。
+   */
+  let kind = String(parsed.hostname || '').toLowerCase();
+  let rest = segments;
+  if (!kind && segments.length > 0) {
+    kind = segments[0].toLowerCase();
+    rest = segments.slice(1);
+  }
+
+  if (kind === 'device') {
+    // 计划里有 `fsa://device/<id>`，但那是 W3 套件台的事；
+    // 现在假装支持会让点击落到一个没有实现的页面上，不如明确拒绝。
+    console.warn('[shell] fsa://device 深链暂未实现，忽略：', text.slice(0, 200));
+    return null;
+  }
+  if (kind !== 'job') {
+    console.warn(`[shell] 不认识的深链主机名 "${kind}"，忽略：`, text.slice(0, 200));
+    return null;
+  }
+
+  const id = rest[0] || '';
+  if (rest.length > 1) {
+    // `fsa://job/a/b` 不是 `fsa://job/<id>` 的形状。只取第一段等于悄悄忽略后半截，
+    // 那会让“拼错的链接”看起来像成功，所以宁可整条拒绝并留下日志。
+    console.warn('[shell] 深链多余路径段，忽略：', text.slice(0, 200));
+    return null;
+  }
+  if (!JOB_ID_PATTERN.test(id)) {
+    console.warn('[shell] 深链 job id 不合法，忽略：', JSON.stringify(id).slice(0, 200));
+    return null;
+  }
+  return { kind, id };
+}
+
+/** 从一整条 argv 里挑第一个认识的深链；Windows 把协议 URL 当普通参数递进来。 */
+function jobFromArgv(argv) {
+  for (const token of argv || []) {
+    const link = parseDeepLink(token);
+    if (link) return link.id;
+  }
+  return '';
+}
+
+/**
+ * 打开一个 job：切到 `/fleet` 并把 id 挂进查询串。
+ * 三种时序都要有去处，不能把 id 丢了：
+ *   · 有窗口 → 直接在那个窗口里打开；
+ *   · 一个窗口都没有但服务已就绪 → 开一个新窗口直接落在那个 job 上；
+ *   · 服务还没起来（冷启动） → 先记进 `pendingJob`，由 `boot()` 建首个窗口时消费。
+ */
+function openJob(jobId) {
+  if (!jobId) return false;
+  const win = focusedWindow();
+  if (win) {
+    win.loadURL(viewUrl('fleet', jobId));
+    showWindow(win);
+    console.log(`[shell] 深链跳转：/fleet?job=${jobId}`);
+    return true;
+  }
+  if (canCreateWindow()) {
+    showWindow(createWindow({ view: 'fleet', job: jobId }));
+    console.log(`[shell] 深链开窗：/fleet?job=${jobId}`);
+    return true;
+  }
+  pendingJob = jobId;
+  return false;
+}
+
+/** 注册 `fsa://`。开发态（`electron .`）必须把启动脚本一起登记，否则协议拉起的是裸 electron。 */
+function registerProtocol() {
+  try {
+    if (process.defaultApp && process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+    } else {
+      app.setAsDefaultProtocolClient(PROTOCOL);
+    }
+  } catch (error) {
+    // 注册失败只影响“从浏览器点链接”，不该拦住窗口本身。
+    console.warn('[shell] 注册 fsa:// 失败（不影响正常启动）：', error instanceof Error ? error.message : error);
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * 主题 / 密度
+ * ------------------------------------------------------------------------------------------- */
+
+function windowBackground() {
+  return nativeTheme.shouldUseDarkColors ? BACKGROUND.dark : BACKGROUND.light;
+}
+
+/** 当前外观快照。菜单标签、窗口底色、发给页面的 IPC 都从这一个函数取，避免三处各算一遍。 */
+function appearanceState() {
+  return {
+    source: nativeTheme.themeSource,
+    dark: nativeTheme.shouldUseDarkColors,
+    density,
+  };
+}
+
+/**
+ * 通知页面。preload 这次不改，所以没有订阅通道给页面用；
+ * 既要让主题真的看得见，就只剩“主进程写一次 DOM 属性”这条路
+ * （`web/index.html` 与 `layout.html` 本来就是读 `data-agent-theme` 的）。
+ * 页面还没 body / 已经导航走时这里会 reject，属正常情况，吞掉即可。
+ */
+function syncPageAppearance(win, state) {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  const theme = state.dark ? 'dark' : 'light';
+  const script = '(() => { const b = document.body; if (!b) return;'
+    + ` b.setAttribute('data-agent-theme', '${theme}');`
+    + ` b.setAttribute('data-density', '${state.density}'); })();`;
+  win.webContents.executeJavaScript(script, true).catch(() => { /* 页面已跳走，不算故障 */ });
+}
+
+/** 把当前外观刷到所有窗口；系统主题变化、菜单切换、新窗口加载完都调它。 */
+function applyAppearance() {
+  const state = appearanceState();
+  for (const win of windows) {
+    if (win.isDestroyed()) continue;
+    win.setBackgroundColor(windowBackground());
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send('shell:theme', state);
+      syncPageAppearance(win, state);
+    }
+  }
+  if (tray) tray.setToolTip(trayTooltip());
+  return state;
+}
+
+/** 循环切主题。重建菜单是因为那一项的文字要跟着变，否则用户不知道现在在哪一档。 */
+function cycleTheme() {
+  const index = THEMES.indexOf(nativeTheme.themeSource);
+  nativeTheme.themeSource = THEMES[(index + 1) % THEMES.length];
+  applyAppearance();
+  Menu.setApplicationMenu(buildMenu());
+  console.log(`[shell] 主题：${nativeTheme.themeSource}（深色=${nativeTheme.shouldUseDarkColors}）`);
+}
+
+function cycleDensity() {
+  density = DENSITIES[(DENSITIES.indexOf(density) + 1) % DENSITIES.length];
+  applyAppearance();
+  Menu.setApplicationMenu(buildMenu());
+  console.log(`[shell] 密度：${density}`);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * 托盘
+ * ------------------------------------------------------------------------------------------- */
+
+function trayTooltip() {
+  const state = appearanceState();
+  return `野外台站智能体 · ${baseUrl || '未连接'}\n主题 ${THEME_LABELS[state.source] || state.source} · 密度 ${DENSITY_LABELS[state.density] || state.density}`;
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: '显示窗口', click: () => { showOrCreateWindow(); } },
+    { label: '隐藏窗口', click: () => { hideAllWindows(); } },
+    { type: 'separator' },
+    ...VIEW_IDS.map((id) => ({
+      label: `打开${VIEW_LABELS[id]}`,
+      click: () => {
+        const win = focusedWindow();
+        if (win) {
+          showWindow(win);
+          navigateToWindow(win, id);
+        } else if (canCreateWindow()) {
+          showWindow(createWindow({ view: id }));
+        }
+      },
+    })),
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        // 托盘里的“退出”是唯一能真正结束进程的入口（关窗只会隐藏），
+        // 所以必须先立标记，否则 window-all-closed 会把它又藏回托盘。
+        beginQuit();
+        app.quit();
+      },
+    },
+  ]);
+}
+
+/**
+ * 建托盘。`--screenshot` 与 `--no-tray` 时跳过：
+ * 截图冒烟测试要能在拍完之后自己退出，托盘会把 window-all-closed 的退出挡掉，
+ * 那种场景下托盘只会让 CI 挂住。
+ */
+function createTray() {
+  if (!args.tray || args.screenshot) {
+    console.log('[shell] 未创建托盘（--no-tray 或 --screenshot）');
+    return null;
+  }
+  if (tray) return tray;
+
+  const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL);
+  // 空图会让托盘在 Windows 上完全看不见；宁可留个日志，也不要“好像没启动”。
+  if (icon.isEmpty()) console.warn('[shell] 托盘图标解码为空，托盘可能不显示');
+  try {
+    tray = new Tray(icon);
+  } catch (error) {
+    console.error('[shell] 创建托盘失败（不影响窗口）：', error);
+    tray = null;
+    return null;
+  }
+  tray.setToolTip(trayTooltip());
+  tray.setContextMenu(buildTrayMenu());
+  // 单击 = 把窗口叫回来。隐藏之后用户最容易做的动作就是点图标。
+  tray.on('click', () => { showOrCreateWindow(); });
+  tray.on('double-click', () => { showOrCreateWindow(); });
+  // 图标是内嵌的，出问题时最容易怀疑它；把尺寸打出来，省得猜。
+  const size = icon.getSize();
+  console.log(`[shell] 托盘已创建（图标 ${size.width}×${size.height}）`);
+  return tray;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * 菜单（应用 / 视角 / 外观 / 开发者 / 帮助）
  * ------------------------------------------------------------------------------------------- */
 
 function buildMenu() {
   const viewItems = VIEW_IDS.map((id) => ({
-    label: { chat: '对话', fleet: '机队', data: '数据', suite: '专业面板' }[id],
+    label: VIEW_LABELS[id],
     type: 'normal',
     click: () => navigate(id),
   }));
@@ -316,12 +879,49 @@ function buildMenu() {
       submenu: [
         { label: '关于野外台站智能体', role: 'about' },
         { type: 'separator' },
+        {
+          label: '新建窗口',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => { if (canCreateWindow()) createWindow(); },
+        },
+        {
+          label: '在新窗口打开当前视角',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => {
+            const win = focusedWindow();
+            if (canCreateWindow()) createWindow({ view: viewOfWindow(win) });
+          },
+        },
+        { type: 'separator' },
         { label: '退出', accelerator: 'CmdOrCtrl+Q', role: 'quit' },
       ],
     },
     {
       label: '视角',
       submenu: viewItems,
+    },
+    {
+      label: '外观',
+      submenu: [
+        {
+          // 单项循环而不是三个 radio：菜单每次切换都要重建，
+          // radio 的勾选状态在重建后容易和 nativeTheme 的真实值对不上。
+          label: `主题：${THEME_LABELS[nativeTheme.themeSource] || '跟随系统'}`,
+          click: () => cycleTheme(),
+        },
+        {
+          label: `密度：${DENSITY_LABELS[density] || density}`,
+          click: () => cycleDensity(),
+        },
+        { type: 'separator' },
+        {
+          label: '隐藏到托盘',
+          accelerator: 'CmdOrCtrl+H',
+          click: () => {
+            if (!hideAllWindows()) console.log('[shell] 没有可隐藏的窗口');
+          },
+        },
+      ],
     },
     {
       label: '开发者',
@@ -351,11 +951,31 @@ function buildMenu() {
 }
 
 /* ---------------------------------------------------------------------------------------------
+ * 退出
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * 立“真的要退出”的标记。Electron 没有 `isQuitting` 这个属性，自己挂一个：
+ * 托盘菜单、崩溃提示、before-quit 三处都要看同一个标记，
+ * 各写一份布尔量迟早会有一天不一致，然后表现为“点了退出又弹回托盘”。
+ */
+function beginQuit() {
+  quitting = true;
+  app.isQuitting = true;
+}
+
+/* ---------------------------------------------------------------------------------------------
  * 启动
  * ------------------------------------------------------------------------------------------- */
 
 async function boot() {
   if (!args) return;
+
+  registerProtocol();
+  // 系统主题变化（跟随系统时）要实时反映到窗口底色和页面属性上。
+  nativeTheme.themeSource = args.theme;
+  nativeTheme.on('updated', () => { applyAppearance(); });
+
   Menu.setApplicationMenu(buildMenu());
 
   ipcMain.handle('shell:info', () => ({
@@ -365,14 +985,26 @@ async function boot() {
     attach: args.attach,
     views: VIEW_IDS,
     versions: { electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome },
+    // 附加字段：preload 现在读不到，但页面将来加订阅时不必再改主进程的契约。
+    appearance: appearanceState(),
+    windows: windows.size,
   }));
-  ipcMain.handle('shell:navigate', (_event, view) => navigate(String(view)));
+  ipcMain.handle('shell:navigate', (event, view) => {
+    // 用发送者的窗口，不用“主窗口”：多开之后切视角必须切用户正在点的那个。
+    const win = BrowserWindow.fromWebContents(event.sender) || focusedWindow();
+    return navigateToWindow(win, String(view));
+  });
 
   try {
     if (!args.attach) startServer();
     const attempts = await waitForHealth();
     console.log(`[shell] ${baseUrl} 就绪（探测 ${attempts} 次）`);
-    createWindow();
+    serverReady = true;
+    // 冷启动时 argv 里的深链在这里消费：首屏直接就是那个 job 的机队视角。
+    const firstView = pendingJob ? 'fleet' : args.view;
+    createWindow({ view: firstView, job: pendingJob });
+    pendingJob = '';
+    createTray();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[shell] 启动失败：', message);
@@ -382,16 +1014,22 @@ async function boot() {
   }
 }
 
-/* 单实例：第二个进程只负责把已有窗口叫到前面。 */
+/* 单实例：第二个进程只负责把已有窗口叫到前面，并处理它带来的深链。 */
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
+  // 冷启动的深链可能已经到了（从浏览器点链接直接拉起本程序）。
+  pendingJob = jobFromArgv(process.argv.slice(1));
+
+  app.on('second-instance', (_event, argv) => {
+    const job = jobFromArgv(argv);
+    // 带 job 时先走深链：有窗口就在那个窗口里跳，没窗口（且服务已就绪）就直接开一个
+    // 落在 /fleet?job= 上的窗口——先 showOrCreateWindow() 再跳会白白加载两次页面。
+    if (job && openJob(job)) return;
+    showOrCreateWindow();
   });
+
+  watchChildProcesses();
 
   app.whenReady().then(boot).catch((error) => {
     dialog.showErrorBox('启动失败', error instanceof Error ? error.message : String(error));
@@ -400,21 +1038,35 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('activate', () => {
     // macOS: 点 Dock 图标时窗口全关了就再开一个（服务还在）。
-    if (BrowserWindow.getAllWindows().length === 0 && baseUrl) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0 && canCreateWindow()) createWindow();
   });
 
   app.on('window-all-closed', () => {
+    /*
+     * 有托盘就不退出，只把状态留在这里等着被叫回来：
+     * 服务是全局的，用户关窗往往只是想收起来，重新拉起一次要再等 40 秒就绪探测。
+     * 真正的退出走托盘菜单 / Ctrl+Q，两条路都会先 `beginQuit()`。
+     */
+    if (tray && !app.isQuitting) {
+      console.log('[shell] 窗口已全部关闭，留在托盘');
+      return;
+    }
     stopServer();
     if (process.platform !== 'darwin') app.quit();
   });
 
   app.on('before-quit', () => {
-    quitting = true;
+    beginQuit();
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
     stopServer();
   });
 
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
+      beginQuit();
       stopServer();
       app.quit();
     });

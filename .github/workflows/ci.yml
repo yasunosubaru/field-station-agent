@@ -116,6 +116,19 @@ jobs:
           for f in "${files[@]}"; do test -f "$f"; done
           node --test --test-force-exit "${files[@]}"
 
+      # Electron 外壳里不依赖 FFI 的部分（W3 嵌入的状态机）。
+      # 用假 user32 跑，因此 Linux 上也能跑、也不需要 npm install：
+      # `embed.js` 只在 createWin32() 里才 require('koffi')，模块加载本身不碰它。
+      # 真机冒烟（embed-smoke.js）要 Windows + 真窗口，不进 CI —— 那条只能在
+      # docs/operations/suite-embed.md §7 的命令里手工跑，并写明是手工证据。
+      - name: 外壳嵌入状态机测试
+        working-directory: shell/electron
+        run: |
+          set -euo pipefail
+          test -f embed.js
+          test -f test/embed.test.js
+          node --test test/embed.test.js
+
       - name: 重实现全量（仅本机有解包目录时）
         working-directory: 逆向/04_重实现
         run: |

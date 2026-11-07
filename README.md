@@ -75,6 +75,7 @@
         <li><a href="#保真度约定">保真度约定</a></li>
         <li><a href="#证据与不入库的东西">证据与不入库的东西</a></li>
         <li><a href="#覆盖边界">覆盖边界</a></li>
+        <li><a href="#套件级RPA">套件级 RPA 的八条流程</a></li>
       </ul>
     </li>
     <li><a href="#质量门禁">质量门禁</a></li>
@@ -360,7 +361,34 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | 固件 Update | 只读：没有可牺牲的单元，写路径未开放；Factory Reset 需人工确认 |
 | 硬件与授权类 | SPAN/IMU、RTK fixed、双天线 ALIGN、Wi-Fi AP、LUA/API、内置存储、Galileo/GLONASS/NavIC/SBAS、HDR 与带通滤波、PIM/G-III/Longhorn 不在实现范围 |
 | 地图底图 | Google 瓦片在当前网络不可达，GRIT 与 PDF 第二页改用 Esri World Imagery |
-| 套件级 RPA | Auto Updates、Displays Settings、Dynamic Tiles、Add Application、Device Management、Update Application 不实现 |
+| 套件级 RPA | 不再是「不实现」：见下方[套件级 RPA 的八条流程](#套件级RPA)。八条已推到硬件边界，其中 3 条待真机 |
+
+<!-- 套件级RPA -->
+<a id="套件级RPA"></a>
+### 套件级 RPA 的八条流程
+
+`覆盖边界` 里原先写作「不实现」的那几条，现在的口径是**先收口**：代码已经推到硬件边界，
+设备到位后每条流程只剩「通过 / 不通过」两个答案。状态分三档——`已自动`（无人值守跑完，
+只在不可逆动作前停一次闸门）、`assisted`（自动走到写清楚的人工点，人做完后自动接着验证）、
+`blocked: hardware`（代码到硬件边界为止，真机到位后照清单一次验完）。
+
+| 流程 | 状态 | 为什么 |
+|---|---|---|
+| `gui.suite.autoupdate` | 已自动 | 条件等待弹窗文本，末尾 `Close` 收尾；2026-11-04 实跑 14~15 次轮询、4.4~4.6 s 后成功 |
+| `gui.graph.export` | 已自动 | 走 `/api/graph/*`，不碰 Electron |
+| `gui.device.add` | **blocked: hardware** | 前 8 步到 `approve_add` 闸门已通；「添加后设备卡出现」要真端口 |
+| `gui.app.install` | assisted | 「Import from your computer」是原生 Open 对话框，CDP 点不到；主路径改走文件层 |
+| `gui.app.update` | assisted | 本机没有可更新的应用；更新源是 AWS，要装一个旧版造场景 |
+| `gui.device.update` | **blocked: hardware** | 到 `approve_apply` 之前全部自动；刷写与「回来」要设备 |
+| `gui.graph.newproject`（文件 `gui.graph.new-project.yaml`） | 已自动 | Graph 带 `--remote-debugging-port=9224` 启动后 CDP 可用；驱动默认连 9223，跑 `plot` 前要指到 9224。`Select Folder` 与 Receiver Data 的 `Open` 两个原生对话框仍由人工 |
+| `script.device.restart` | **blocked: hardware** | 命令通道已通；「重启后真的回来了」要设备 |
+
+八条里 **3 条被硬件卡住**——`gui.device.add`、`gui.device.update`、`script.device.restart`
+都要接一台真的接收机（本机 `/api/ports` 目前只有蓝牙串口）。它们不是没做完，是边界在这里：
+点击路径、闸门、截图与失败分类都已验到硬件边界之前。
+
+每条怎么跑、看什么、证据存哪，见 [`docs/operations/rpa-checklist.md`](docs/operations/rpa-checklist.md)（真机清单）；
+三档状态的定义与逐条补完结论，见 [`docs/operations/rpa-completion.md`](docs/operations/rpa-completion.md)。
 
 <a href="#readme-top">回到顶部</a>
 
@@ -428,9 +456,9 @@ python tools/check_desensitization.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**182** 个
-- 入库 Python 行数：**41,540** 行
-- 入库测试文件数：**98** 个
+- 入库 Python 文件数：**183** 个
+- 入库 Python 行数：**42,033** 行
+- 入库测试文件数：**99** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，
