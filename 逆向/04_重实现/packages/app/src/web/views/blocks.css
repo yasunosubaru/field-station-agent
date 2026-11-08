@@ -702,6 +702,85 @@
   overflow-wrap: anywhere;
 }
 
+/* 检查器四列：右栏 280px 放得下（240px 会换行成两行，很乱 —— 25.6.2 的定宽理由）。 */
+.vw-inspector-wrap {
+  min-width: 0;
+  max-height: 52vh;
+  overflow: auto;
+}
+
+/*
+ * 四列在 280px 里必须**横向滚动**，不能靠压缩每列。
+ *
+ * 实测：不设最小宽度时四列各被分成 65px，`convert.html:103` 与
+ * `convertFileUploadInput（Browse your files）` 都被截成不可辨认的片段 ——
+ * 「四个字一行」和「只剩前缀」都等于读不到。给整表一个最小宽度之后，
+ * 每列能保持可读长度，多出来的部分横向滚（右栏本来就是一个独立的滚动区）。
+ */
+.vw-inspector-wrap table.clean {
+  table-layout: fixed;
+  min-width: 420px;
+}
+
+.vw-inspector-wrap table.clean th,
+.vw-inspector-wrap table.clean td {
+  padding: 3px 4px;
+  font-size: var(--fs-tiny);
+  line-height: 1.4;
+  /* 四列挤在 280px 里：单元格必须能省略，否则会变成「一个字一行」。 */
+  white-space: nowrap;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 字段名：等宽，能分辨 `cv-affix` 与 `cv-dest`。 */
+.vw-field-name {
+  font-family: var(--mono);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 位置列：只显示 `文件名:行号`，全路径在 title 里。 */
+.vw-inspector-wrap .vw-path {
+  font-family: var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 状态列最窄，给它一个下限，免得被挤成两行；并固定在右侧。 */
+.vw-inspector-wrap table.clean td:last-child,
+.vw-inspector-wrap table.clean th:last-child {
+  width: 68px;
+  max-width: 68px;
+  min-width: 68px;
+  /*
+   * 状态是检查器的**核心信息**（用户关心的是对不上的），所以横向滚动时它必须留在视野里。
+   * 不固定的话，滚到右边看 B 侧位置时状态就被推出去了 —— 而那正是要看的东西。
+   */
+  position: sticky;
+  right: 0;
+  background: var(--panel);
+  /* 一条左边界，把固定列和滚动内容分开。用 border 而不是阴影 —— 规矩不许阴影。 */
+  border-left: 1px solid var(--border);
+}
+
+.vw-inspector-wrap table.clean thead th:last-child {
+  background: var(--panel);
+  z-index: 1;
+}
+
+/* 全部对得上时的绿字。规格说「不是必须」，但有它更省一次心算。 */
+.vw-ok-note {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--ok);
+}
+
 /* ================================================================
  * ⑥ 窄屏
  * ================================================================ */
