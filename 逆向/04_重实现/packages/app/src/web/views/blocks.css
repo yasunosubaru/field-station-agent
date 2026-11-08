@@ -120,6 +120,38 @@
   background: var(--panel);
 }
 
+/*
+ * 输入区 + 它上方的审批门提示。
+ *
+ * 包一层是因为提示必须紧跟输入框（在它上面），而不是飘在消息流里 ——
+ * 飘在流里会被新消息顶走，而它说的正是「现在不能发」。
+ */
+.vw-chat-composer-host {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.vw-chat-composer-host .vw-chat-composer {
+  border-top: 0;
+}
+
+/* 右栏的证据 call_id 列表。 */
+.vw-rail-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vw-rail-calls .ag-call-id {
+  padding: 0;
+  font-size: var(--fs-tiny);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+
 .vw-chat-input {
   flex: 1 1 auto;
   min-width: 0;
