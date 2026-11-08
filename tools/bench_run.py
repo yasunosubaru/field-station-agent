@@ -1012,15 +1012,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.workdir and workdir.exists():
         # 复用同一个 workdir 时先清掉旧产物：分区器用 `os.replace` 覆盖
         # `_manifest.json`，旧文件若被别的进程占着会 WinError 5。
-        # 只在**显式指定**的 workdir 上做，且只删这个目录内部。
-        for child in workdir.iterdir():
+        #
+        # **只清「本脚本造的那四张表」**，不清整个目录：两个基准进程共用
+        # 同一个 `--workdir` 时，清整个目录会把对方刚写的数据删掉，
+        # 表现是「视图注册不上、每条都报 table does not exist」。
+        for name in ("obs", "tec", "agg_hour", "agg_daily"):
+            child = workdir / name
             if child.is_dir():
                 shutil.rmtree(child, ignore_errors=True)
-            else:
-                try:
-                    child.unlink()
-                except OSError:
-                    pass
     try:
         if not args.quiet:
             print(f"造数据 -> {workdir}")
