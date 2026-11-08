@@ -12,6 +12,8 @@
 * :mod:`fieldstation.botd.daemon`  —— 一次 tick：回收→领取→执行→记账
 * :mod:`fieldstation.botd.executors` —— 记忆工具执行器（`memory.recall` / `memory.remember`）
 * :mod:`fieldstation.botd.interaction` —— 任务树 / 事件流 / 受控干预（编队台后端）
+* :mod:`fieldstation.botd.orchestrator` —— DBOS 编排层：一个任务 = 一个工作流，
+  崩溃续跑、闸门等人、同一任务只跑一次
 
 外部框架（DBOS / Letta / Chroma）只保留接口与 import 探测：缺包时降级，
 不把"没装依赖"变成启动失败。
@@ -34,6 +36,14 @@ from .memory import (
     LettaBackend,
     MemoryBackend,
     probe_external,
+)
+from .orchestrator import (
+    Orchestrator,
+    OrchestratorError,
+    TaskOutcome,
+    GateDecision,
+    approve,
+    active,
 )
 from .queue import TaskQueue
 from .sandbox import SandboxViolation, WorkspaceSandbox
@@ -89,4 +99,10 @@ __all__ = [
     "InterventionError",
     "INTERVENTION_KINDS",
     "summarize_kinds",
+    "Orchestrator",
+    "OrchestratorError",
+    "TaskOutcome",
+    "GateDecision",
+    "approve",
+    "active",
 ]
