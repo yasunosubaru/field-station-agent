@@ -472,6 +472,15 @@
   letter-spacing: 0.04em;
 }
 
+/* 分区路径：等宽小字，能逐字读（要对着它去磁盘上找）。 */
+.vw-path {
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 /* SQL：格式化，多行带缩进。不要一行到底（25.11.3）。 */
 .vw-sql-wrap {
   min-width: 0;

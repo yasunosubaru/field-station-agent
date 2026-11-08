@@ -29,7 +29,24 @@
  * @param {object} [options.data]     data-* （键不用带前缀）
  * @param {Array<Node|string>} [options.children]
  */
-export function el(tag, options = {}) {
+/**
+ * 建一个元素。
+ *
+ * @param {string} tag
+ * @param {object} [options]
+ * @param {string} [options.cls]      class
+ * @param {string} [options.text]     文本（走 textContent）
+ * @param {string} [options.title]    title 属性
+ * @param {object} [options.attr]     其余属性
+ * @param {object} [options.data]     data-* （键不用带前缀）
+ * @param {Array<Node|string>} [options.children]
+ * @param {Array<Node|string>} [rest] 第三个位置参数也能给子节点
+ *
+ * 第三个位置参数是特意支持的：`el('div', { cls }, [...])` 是 JS 里最顺手的写法，
+ * 而只收两个参数时它会**静默丢掉所有子节点** —— 元素建出来了、class 对了、
+ * 就是空的，看起来像「样式没生效」。实测在探针页上踩过一次（质控与评测两块全空）。
+ */
+export function el(tag, options = {}, rest) {
   const node = document.createElement(tag);
   if (options.cls) node.className = options.cls;
   // 用 `!== undefined` 而不是真值判断：`''` 与 `0` 都是合法文本。
@@ -47,7 +64,8 @@ export function el(tag, options = {}) {
       node.dataset[name] = String(value);
     }
   }
-  for (const child of options.children ?? []) {
+  const children = options.children ?? rest ?? [];
+  for (const child of children) {
     if (child === null || child === undefined || child === false) continue;
     node.append(child);
   }

@@ -336,10 +336,11 @@ test('shell.js 与四个视角模块都能被服务端取到（MIME 是 JS）', 
 });
 
 test('浏览器侧的七个模块语法合法，且不 import .ts', async () => {
-  // 这一条是从一次真实翻车里补来的：`densityToggle?.textContent = ...` 这类
-  // 「可选链做赋值目标」是**语法错误**，而静态 grep 与单元测试都看不出来 ——
-  // 页面打开后整块 JS 不执行，界面却「看起来正常」（骨架是服务端渲染的）。
-  // 所以这里真的让 Node 解析一遍每一个模块。
+  // 这一条是从两次真实翻车里补来的：
+  //   ① `densityToggle?.textContent = ...` —— 可选链做赋值目标是**语法错误**；
+  //   ② `] }));` 多一个右括号 —— 括号不平衡。
+  // 两者都让整块 JS 不执行，而页面**看起来正常**（骨架是服务端渲染的），
+  // 控制台也只有一条不指行的报错。所以这里真让 Node 解析一遍每个模块。
   const { execFileSync } = await import('node:child_process');
   const files = ['shell.js', 'state.js', 'dom.js', 'routes.js', ...VIEWS.map((view) => view.module.split('/').pop())];
   for (const name of files) {
@@ -353,7 +354,34 @@ test('浏览器侧的七个模块语法合法，且不 import .ts', async () => 
     // 浏览器跑不了 .ts（服务端 MIME 表没有 .ts 且 nosniff），所以不能 import 它。
     const source = stripComments(readFileSync(full, 'utf8'));
     assert.doesNotMatch(source, /from\s+['"][^'"]*\.ts['"]/, `${name} 不能 import .ts`);
+    // `.js` 里不能有 TypeScript 的类型标注 —— 浏览器不认，而 Node 会因为同目录有
+    // `.ts` 而按 TS 规则剥离，两边行为不同，最容易漏。
+    assert.doesNotMatch(
+      source,
+      /\(\s*[A-Za-z_$][\w$]*\s*:\s*(string|number|boolean|any|unknown)\s*[,)]/,
+      `${name} 不能在 .js 里写 TS 类型标注`,
+    );
   }
+});
+
+test('括号不平衡会被 node 抓住（负例：证明守卫真的有效）', async () => {
+  // 这一条是**负例**：故意造一个多右括号的模块，确认守卫会拦。
+  // 起因是真实翻车 —— `] }));` 多一个 `)`，`node --check` 报
+  // `Unexpected token ')'` 但不给行号，控制台只说模块加载失败，
+  // 而服务端渲染的骨架看起来完全正常。
+  //
+  // 为什么不自己写括号扫描器：第一版写了，结果被正则字面量
+  // `/"/g` 里的引号骗过（把后面的代码全当字符串吃掉），误报 routes.js。
+  // 自己写词法器是重复造轮子且不可靠；`node --check` 就是那个轮子。
+  const { execFileSync } = await import('node:child_process');
+  const broken = 'export function f() { return [1, 2] }));\n';
+  assert.throws(
+    () => execFileSync(process.execPath, ['--input-type=module', '--check'], {
+      input: broken,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }),
+    'node --check 必须拦住多出来的右括号',
+  );
 });
 
 test('原有入口与 API 不受影响', async () => {
