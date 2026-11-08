@@ -584,5 +584,69 @@ class TestReaderIntegration(unittest.TestCase):
         self.assertNotIn("若为 SBF", reader._FIX["UNKNOWN"])
 
 
+class TestSbfFromChannel(unittest.TestCase):
+    """设-3 的联动：通道输出的字节喂给 SBF 解析。
+
+    这条证明「通道只搬字节、解析仍在 sbf」这一分工是真的 ——
+    两者之间没有第二套缓冲。
+    """
+
+    def test_parses_same_frames_from_loopback_as_from_file(self):
+        from fieldstation.ingest import channels
+        capture = SAMPLES / "b7-20261101.sbf"
+        if not capture.is_file():
+            return
+        blob = capture.read_bytes()
+
+        # 从文件
+        from_file = sbf.SbfFile(str(capture))
+
+        # 从通道（把整个文件当一段流喂进去）
+        ch = channels.LoopbackChannel().open()
+        ch.feed(blob)
+        from_channel = sbf.SbfFile("loopback", channel=ch, idle_polls=2)
+
+        self.assertEqual(from_channel.stats.frames, from_file.stats.frames)
+        self.assertEqual(from_channel.stats.text_records, from_file.stats.text_records)
+        self.assertEqual(from_channel.stats.by_name, from_file.stats.by_name)
+        self.assertEqual(from_channel.stats.dropped, from_file.stats.dropped)
+
+    def test_chunked_channel_read_keeps_partial_frames(self):
+        """通道按小段喂，半帧必须由 `sbf` 缓冲 —— 通道层不许自己缓冲。"""
+        from fieldstation.ingest import channels
+        frame = build_long_frame(
+            43, range_payload([(7, 0, 2.0e7, -1.0e8, 1.0, 40.0, 1.0, 0)]))
+        blob = frame * 3
+
+        ch = channels.LoopbackChannel().open()
+        ch.feed(blob)
+        f = sbf.SbfFile("loopback", channel=ch, idle_polls=2)
+        self.assertEqual(f.stats.frames, 3)
+        self.assertEqual(f.stats.truncated_tail, 0)
+
+    def test_channel_death_surfaces_as_error_not_silent_truncation(self):
+        """设备掉线要**看得见**：抛出来，不能悄悄停在一半当成解析完毕。"""
+        from fieldstation.ingest import channels
+        frame = build_long_frame(
+            43, range_payload([(7, 0, 2.0e7, -1.0e8, 1.0, 40.0, 1.0, 0)]))
+        ch = channels.LoopbackChannel().open()
+        ch.feed(frame)
+        ch.drop()
+        f = sbf.SbfFile("loopback", channel=ch, idle_polls=2)
+        with self.assertRaises(channels.ChannelClosed):
+            f.stats
+
+    def test_max_read_bytes_stops_a_live_stream(self):
+        """直播流没有 EOF；给上限才停得下来。"""
+        from fieldstation.ingest import channels
+        frame = build_long_frame(
+            43, range_payload([(7, 0, 2.0e7, -1.0e8, 1.0, 40.0, 1.0, 0)]))
+        ch = channels.LoopbackChannel().open()
+        ch.feed(frame * 100)
+        f = sbf.SbfFile("loopback", channel=ch, max_read_bytes=len(frame) * 2,
+                        idle_polls=2)
+        self.assertEqual(f.stats.frames, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

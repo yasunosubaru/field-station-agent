@@ -839,12 +839,24 @@ def signal_of(system: str, signal_type: int) -> tuple[str, float] | None:
 class SbfFile:
     """一份 SBF 采集的解析入口。
 
+    `path` 可以是本地文件路径，也可以是通道写法（`tcp:host:port` /
+    `serial:COM3@115200`）—— 通道只负责搬字节，解帧仍在本模块，
+    所以「从文件读」与「从设备读」走同一条解析路径，不存在两套真相。
+
     用法与 `reader.ObservationFile` 对齐：`observations()` 逐条吐
     `fieldstation.model.Observation`，`capability_report()` 给「读到了什么」。
     """
 
     path: str
     crc_mode: str = "validate"
+    #: 显式给一条通道（测试与回放用）。给了就忽略 `path` 里的通道语义，
+    #: 只把它当名字记在报告里。
+    channel: "object | None" = None
+    #: 从通道读时，最多收这么多字节就停（`None` = 读到通道关闭/空闲）。
+    #: 直播流没有「文件末尾」，不给上限会一直挂着。
+    max_read_bytes: int | None = None
+    #: 从通道读时的空闲判定：连续多少次空读认为这一段结束。
+    idle_polls: int = 3
     _deframer: SbfDeframer | None = None
     _frames: list[SbfFrame] | None = None
     _texts: list[TextRecord] | None = None
@@ -852,22 +864,75 @@ class SbfFile:
     _satvis: dict[int, SatVis] = field(default_factory=dict)
 
     # -- 读 ----------------------------------------------------------
+    def _iter_chunks(self):
+        """统一的数据来源：文件还是通道，这里收敛成「一串 chunk」。"""
+        if self.channel is not None:
+            yield from self._iter_channel_chunks(self.channel)
+            return
+        from .channels import CHANNEL_SCHEMES
+
+        scheme = self.path.split(":", 1)[0].strip().lower()
+        if ":" in self.path and scheme in CHANNEL_SCHEMES:
+            from .channels import open_channel
+            ch = open_channel(self.path)
+            try:
+                yield from self._iter_channel_chunks(ch)
+            finally:
+                ch.close()
+            return
+        with open(self.path, "rb") as fh:
+            while True:
+                chunk = fh.read(1 << 20)
+                if not chunk:
+                    return
+                yield chunk
+
+    def _iter_channel_chunks(self, channel):
+        """从通道读字节。**只搬字节**，不认帧边界。
+
+        直播流没有 EOF，所以用「连续 `idle_polls` 次空读」当这一段的结尾；
+        断线则尝试 `reconnect()`，用完 `max_retries` 把 `ChannelClosed` 抛给调用方
+        —— 设备掉了要**看得见**，不能悄悄让解析停在半截。
+        """
+        from .channels import ChannelClosed
+
+        total = 0
+        streak = 0
+        while True:
+            try:
+                data = channel.read(1 << 20)
+            except ChannelClosed:
+                # 通道自己已经用完重试次数；这里不再兜一圈，
+                # 直接上抛，让调用方知道「这段数据不完整」。
+                raise
+            if data:
+                streak = 0
+                total += len(data)
+                if self.max_read_bytes is not None:
+                    over = total - self.max_read_bytes
+                    if over > 0:
+                        # 最后一块要按上限裁掉尾巴 —— 不然 `max_read_bytes`
+                        # 只能限制「取到第几块」，一块有多大仍然不可控。
+                        yield data[:len(data) - over]
+                        return
+                yield data
+                continue
+            streak += 1
+            if streak >= self.idle_polls:
+                return
+
     def _load(self) -> None:
         if self._frames is not None:
             return
         deframer = SbfDeframer(crc_mode=self.crc_mode)
         frames: list[SbfFrame] = []
         texts: list[TextRecord] = []
-        with open(self.path, "rb") as fh:
-            while True:
-                chunk = fh.read(1 << 20)
-                if not chunk:
-                    break
-                for rec in deframer.push(chunk):
-                    if isinstance(rec, SbfFrame):
-                        frames.append(rec)
-                    else:
-                        texts.append(rec)
+        for chunk in self._iter_chunks():
+            for rec in deframer.push(chunk):
+                if isinstance(rec, SbfFrame):
+                    frames.append(rec)
+                else:
+                    texts.append(rec)
         deframer.end()
         self._deframer = deframer
         self._frames = frames
@@ -1039,21 +1104,16 @@ def _phase_pair(signals: list[str]) -> tuple[str, str] | None:
     return None
 
 
-def sniff_sbf(path: str) -> dict:
-    """只看前若干字节判断是不是 SBF。**不整文件载入。**"""
-    import os
+def sniff_sbf_bytes(head: bytes) -> dict:
+    """从一段字节头判断是不是 SBF。**通道场景用这个**（没有文件路径）。
 
-    with open(path, "rb") as fh:
-        head = fh.read(65536)
-    info: dict = {
-        "path": path,
-        "basename": os.path.basename(path),
-        "size_bytes": os.path.getsize(path),
-    }
+    `sniff_sbf()` 是它的文件包装。分开写是为了让「从设备读」不必先落盘。
+    """
+    info: dict = {}
     at = head.find(_AA)
     if at < 0 or at + 2 >= len(head):
         info.update(format="UNKNOWN", supported=False,
-                    reason="前 64 KB 里没有 0xAA 同步字，不是 SBF")
+                    reason="给到的头部里没有 0xAA 同步字，不是 SBF")
         return info
     if head[at + 1] != SYNC_2 or head[at + 2] not in (SYNC_BINARY_FULL, SYNC_BINARY_SHORT):
         info.update(format="UNKNOWN", supported=False,
@@ -1076,12 +1136,25 @@ def sniff_sbf(path: str) -> dict:
     return info
 
 
+def sniff_sbf(path: str) -> dict:
+    """只看前若干字节判断是不是 SBF。**不整文件载入。**"""
+    import os
+
+    with open(path, "rb") as fh:
+        head = fh.read(65536)
+    info = {"path": path, "basename": os.path.basename(path),
+            "size_bytes": os.path.getsize(path)}
+    info.update(sniff_sbf_bytes(head))
+    return info
+
+
 __all__ = [
     "SYNC_1", "SYNC_2", "SYNC_BINARY_FULL", "SYNC_BINARY_SHORT",
     "LONG_HEADER_LENGTH", "SHORT_HEADER_LENGTH", "CRC32_POLYNOMIAL",
     "SbfHeader", "SbfFrame", "TextRecord", "SbfStats",
     "SbfDeframer", "SbfFile", "RangeObservation", "BestPos", "SatVis",
-    "novatel_crc32", "crc_hex", "parse_header", "sniff_sbf", "message_name",
+    "novatel_crc32", "crc_hex", "parse_header", "sniff_sbf",
+    "sniff_sbf_bytes", "message_name",
     "decode_range", "decode_bestpos", "decode_satvis2",
     "SYSTEM_BY_CODE", "signal_of", "glonass_freq", "MESSAGE_NAMES",
 ]

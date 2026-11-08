@@ -98,3 +98,17 @@ pandas==3.1.1
 pytz==2026.6
 # clickhouse-connect 故意不钉版本：它是随包二进制侧的客户端，版本跟着 CH 服务端走。
 clickhouse-connect
+
+# ── 可选：设备串口通道（设-3）────────────────────────────────────────
+#
+# `ingest/channels.py` 的 `SerialChannel` 用它；`TcpChannel` / `UdpChannel` /
+# `LoopbackChannel` 只用标准库，**不需要**它。
+#
+# 为什么放最后、且允许缺席：仓库的依赖政策是「测试与五项门禁只用标准库」
+# （docs/operations/environment.md）。串口只有「接真机采集」才用得上，
+# 缺了不该让门禁变红。
+#
+# **缺包时的行为是明确报错，不是静默降级**：`SerialChannel.__init__` 会抛
+# `ChannelUnavailable` 并附 `pip install pyserial`。
+# 「设备没插」和「库没装」必须能区分开 —— 否则运维会去查线。
+pyserial==3.5
