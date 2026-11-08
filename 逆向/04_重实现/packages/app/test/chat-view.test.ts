@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, '..');
 const viewsDir = join(appDir, 'src', 'web', 'views');
+const agentDir = join(appDir, 'src', 'web', 'agent');
 const chatPath = join(viewsDir, 'chat.js');
 
 function codeOf(): string {
@@ -97,6 +98,37 @@ test('流式增量收 token + delta，且 message 走替换不是追加', () => 
 test('用户那条不重复贴（发时已贴过）', () => {
   const source = codeOf();
   assert.match(source, /if \(who === 'user'\) return assistant/, '跳过用户消息事件');
+});
+
+test('审批事件的类型叫 approval（不是 approval_request），且按 id 复用同一张卡', () => {
+  const source = codeOf();
+  // 实测：类型就是 `approval`。第一版只认 `approval_request`，于是审批卡
+  // **从来没出现过** —— 不报错，只是「未决时禁用输入框」那条规矩永远不触发。
+  assert.match(source, /type === 'approval'/, '认 approval');
+  assert.match(source, /type === 'approval_request'/, '兼容旧名');
+  // 同一条审批会发两次（pending → rejected/approved），按 id 复用而不是新加。
+  assert.match(source, /entry\.type === 'approval' && entry\.id === approvalId/, '按 id 找已存在的卡');
+  assert.match(source, /Object\.assign\(existing, patch\)/, '有就更新');
+});
+
+test('tool_result 的 call_id 在 evidence 里，不在顶层', () => {
+  const source = codeOf();
+  // 实测样本：{"type":"tool_result","id":"c-3d561b10","evidence":{"call_id":"t0001"}}
+  // 第一版读 data.call_id 得到空串 → 匹配不上 → 卡片永远停在「运行中」。
+  assert.match(source, /data\.evidence\?\.call_id/, '从 evidence 取 call_id');
+  // 事件自己的 `id`（c-xxx）才是把 call/result 配对的键。
+  assert.match(source, /entry\.callRef === callRef/, '用事件 id 配对');
+  assert.match(source, /callRef: data\.id/, '记下事件 id');
+});
+
+test('工具失败时显示原因（summary），不只是「失败」', () => {
+  const source = codeOf();
+  // {"ok":false,"summary":"未获批准，工具未执行","data":{}} —— data 是空的，
+  // 真正要看的是 summary。只显示「失败」用户分不清「没批准」还是「工具坏了」。
+  assert.match(source, /card\.note\s*=\s*data\.summary/, '把 summary 记成 note');
+  const cards = readFileSync(join(agentDir, 'cards.js'), 'utf8');
+  assert.match(cards, /ag-tool-note/, '工具卡渲染 note');
+  assert.match(cards, /card\.note/, '读 card.note');
 });
 
 test('认不得的事件不丢，记在最后一条消息上', () => {

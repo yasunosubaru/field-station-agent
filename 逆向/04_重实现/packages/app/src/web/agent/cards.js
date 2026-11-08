@@ -234,6 +234,18 @@ export function renderToolCard(card, handlers = {}) {
     }))
     : null;
 
+  /*
+   * 失败时的原因（`note`）。
+   *
+   * agent server 的 `tool_result` 形如
+   *   {"ok": false, "summary": "未获批准，工具未执行", "data": {}, ...}
+   * `data` 是空的，真正要看的是 `summary` 那句。只显示「失败」而不给原因，
+   * 用户没法判断是「没批准」还是「工具坏了」—— 这两种的处理方式完全不同。
+   */
+  const noteLine = card.note
+    ? el('p', { class: 'ag-tool-note' }, [el('span', { text: card.note })])
+    : null;
+
   // 「查看 trace」是展开入口的名字 —— 规格明确不要叫「详情」。
   const traceButton = el('button', {
     type: 'button',
@@ -270,6 +282,7 @@ export function renderToolCard(card, handlers = {}) {
     'data-call-id': card.callId || null,
   }, [
     head,
+    noteLine,
     summaryLine,
     el('div', { class: 'ag-tool-foot' }, [traceButton]),
     body,
@@ -442,9 +455,17 @@ export function renderApprovalCard(card, handlers = {}) {
     card.prompt ? el('p', { class: 'ag-approval-prompt' }, [
       el('span', { class: 'ag-approval-what', text: card.prompt }),
     ]) : null,
-    card.reason || card.impact ? el('p', { class: 'ag-approval-impact' }, [
+    // 「为什么要审批」是第三个问题，与「做什么 / 后果」都不同。
+    // 后端给了 `reason` 就单独一行 —— 混进 prompt 会让人读不出重点。
+    card.reason ? el('p', { class: 'ag-approval-reason' }, [
+      el('span', { class: 'unit', text: '依据' }),
+      el('span', { text: card.reason }),
+    ]) : null,
+    // 「影响」只在后端真给了 `impact` 时显示。没有就不编 ——
+    // 把 `reason` 混进来会让人以为「用户要求重启」等于「会中断采集」。
+    card.impact ? el('p', { class: 'ag-approval-impact' }, [
       el('span', { class: 'ag-approval-impact-label', text: '影响' }),
-      el('span', { text: card.impact || card.reason }),
+      el('span', { text: card.impact }),
     ]) : null,
     pending ? noteField : null,
     pending ? reasonField : null,

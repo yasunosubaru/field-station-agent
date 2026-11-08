@@ -1319,6 +1319,15 @@ body[data-mode="agent"] [hidden] {
   color: var(--border-hover);
 }
 
+/* 失败原因（agent 的 tool_result.summary）：比摘要更该被看到，所以用 bad 色。 */
+.ag-tool-note {
+  margin: 0;
+  padding: 0 10px 8px 38px;
+  font-size: var(--fs-small, 11.5px);
+  color: var(--bad);
+  line-height: 1.5;
+}
+
 /* 「查看 trace」是展开入口，做成文字按钮，不抢头部的眼。 */
 .ag-tool-foot {
   display: flex;

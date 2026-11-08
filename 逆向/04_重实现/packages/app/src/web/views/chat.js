@@ -397,8 +397,14 @@ export function mount(ctx) {
         type: 'tool',
         id: nextCardId(),
         name: data.name || '工具',
-        callId: data.call_id || data.callId || '',
+        // `tool_call` 事件本身**不带 call_id**（实测），它在 `tool_result` 的
+        // `evidence.call_id` 里。所以这里先留空，等结果事件按 `id` 匹配回来。
+        callId: data.call_id || data.callId || data.evidence?.call_id || '',
+        // 事件里的 `id`（如 `c-f4927bff`）是**这次调用的 id**，用来把
+        // tool_call 与 tool_result 配成一对 —— 不是 call_id，但同样唯一。
+        callRef: data.id || '',
         status: 'running',
+        risk: data.risk || '',
         args: data.arguments ?? data.args ?? null,
       });
       paintThread();
@@ -406,32 +412,77 @@ export function mount(ctx) {
     }
 
     if (type === 'tool_result') {
-      // 找到同 call_id 的那张卡并就地更新 —— 不新加一张，否则一次调用会出现两张。
-      const callId = data.call_id || data.callId || '';
-      const card = [...thread.cards].reverse().find(
-        (entry) => entry.type === 'tool' && (!callId || entry.callId === callId) && entry.status === 'running',
+      /*
+       * 找到这次调用的那张卡并就地更新 —— 不新加一张，否则一次调用会出现两张。
+       *
+       * 匹配键有讲究（实测两次才对）：
+       *   ① 事件里的 `id`（`c-f4927bff`）在 tool_call 与 tool_result 上是同一个；
+       *   ② **call_id 不在顶层**，它在 `evidence.call_id`（如 `t0001`）。
+       * 第一版读 `data.call_id` 得到空串，于是匹配不上 —— 表现是卡片永远停在
+       * 「运行中」，而消息流已经结束。控制台没有报错，只有一张不动的卡。
+       */
+      const callId = data.call_id || data.callId || data.evidence?.call_id || '';
+      const callRef = data.id || '';
+      const card = [...thread.cards].reverse().find((entry) => {
+        if (entry.type !== 'tool') return false;
+        if (callRef) return entry.callRef === callRef;
+        if (callId) return entry.callId === callId;
+        return entry.status === 'running';
+      }) || [...thread.cards].reverse().find(
+        (entry) => entry.type === 'tool' && entry.status === 'running',
       );
+
       if (card) {
         card.status = data.ok === false || data.error ? 'failed' : 'ok';
-        card.data = data.result ?? data.data ?? null;
+        card.data = data.data ?? data.result ?? null;
         card.durationMs = data.duration_ms ?? data.durationMs ?? null;
+        // call_id 在结果事件里才出现，补上（它是回源的唯一入口）。
+        if (callId) card.callId = callId;
+        // 失败时把原因也带上 —— `{"ok":false,"summary":"未获批准，工具未执行"}`
+        // 里 summary 才是人要看的那句。
+        if (card.status === 'failed' && data.summary) card.note = data.summary;
       }
       paintThread();
       return null;
     }
 
-    if (type === 'approval_request') {
-      thread.cards.push({
+    /*
+     * 审批事件 —— 类型就叫 `approval`（不是 `approval_request`，实测）。
+     *
+     * 同一条审批会**发两次**：一次 `status: "pending"`，决定后再发一次
+     * `status: "rejected"` 带 `decision` / `decided_at` / `note`。
+     * 所以按 `id` 复用同一张卡，不能每次新加一张。
+     *
+     * 字段对应（实测样本）：
+     *   {"type":"approval","id":"a-689a55d5","call_id":"c-3d561b10","risk":"high",
+     *    "reason":"用户要求重启设备","prompt":"是否允许执行 workflow_run？…",
+     *    "status":"pending"}
+     * `prompt` 是「做什么」，`reason` 是「为什么」。两者都不是「后果」——
+     * 后果得从工具调用的参数推，所以 `impact` 留空时界面不编一个。
+     */
+    if (type === 'approval' || type === 'approval_request') {
+      const approvalId = data.id || data.approval_id || nextCardId();
+      const existing = thread.cards.find(
+        (entry) => entry.type === 'approval' && entry.id === approvalId,
+      );
+      const status = data.status === 'pending' ? 'pending' : (data.decision || data.status || 'pending');
+      const patch = {
         type: 'approval',
-        id: data.approval_id || data.id || nextCardId(),
-        status: 'pending',
+        id: approvalId,
+        status,
         risk: data.risk || 'medium',
+        // 「做什么」：prompt 已经把那句话写全了，直接用它。
         prompt: data.prompt || data.action || '',
+        // 「后果」：后端没给就不编。`reason` 是「为什么」不是「后果」，
+        // 混进去会让用户把「用户要求重启」当成「会中断采集」。
         impact: data.impact || data.consequence || '',
-        callId: data.call_id || '',
+        // 为什么要审批 —— 单独一行显示，因为它回答的是另一个问题。
+        reason: data.reason || '',
+        callId: data.call_id || data.callId || '',
         args: data.arguments ?? null,
-        evidence: data.evidence ?? null,
-      });
+      };
+      if (existing) Object.assign(existing, patch);
+      else thread.cards.push(patch);
       paintThread();
       return null;
     }
