@@ -1,0 +1,627 @@
+@charset "utf-8";
+/*
+ * 四个视角块的样式 —— 视-0 新增。
+ *
+ * 与 `views.css` 分工：`views.css` 只管**五块的骨架**（顶栏 / 左导航 / 主内容 / 右栏 /
+ * 底栏），本文件管**块内的内容**（对话、编队、数据、套件）。
+ *
+ * 颜色同样一律取 agent.css 的 token，不写十六进制。三个不许用照旧：
+ * 无渐变、无阴影、圆角 ≤ 4px。
+ */
+
+/* ================================================================
+ * 通用：数字 + 单位挨在一起
+ * ================================================================ */
+
+.vw-num-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  justify-content: flex-end;
+}
+
+/* 骨架屏（> 300ms 才出现，见 dom.js::skeleton）。 */
+.vw-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 4px;
+}
+
+.vw-skeleton-row {
+  display: block;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--panel-2);
+}
+
+.vw-skeleton-row:nth-child(2) { width: 82%; }
+.vw-skeleton-row:nth-child(3) { width: 64%; }
+
+/* ================================================================
+ * ① 对话
+ * ================================================================ */
+
+.vw-chat-stream {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 14px;
+}
+
+/* 空态：一张居中的窄列，三个例子。不给卡片阴影 —— 只靠留白。 */
+.vw-chat-hero {
+  max-width: 480px;
+  margin: 8vh auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vw-chat-hero-title {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.vw-chat-hero-note {
+  margin: 0 0 10px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.vw-chat-hero-examples-label {
+  margin: 0;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
+.vw-chat-hero-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vw-chat-hero-example {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* 例子是可点的按钮，但看起来像一行文字 —— 它不该抢输入框的眼。 */
+.vw-chat-example-btn {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-small);
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+
+.vw-chat-example-btn:hover {
+  border-bottom-color: var(--border-hover);
+}
+
+/* 输入区固定在下方。 */
+.vw-chat-composer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.vw-chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  resize: vertical;
+  max-height: 40vh;
+}
+
+.vw-chat-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 审批未决时输入框禁用 —— 并且要说清原因（附录 C.3 点三）。 */
+.vw-chat-input:disabled {
+  color: var(--muted);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+/* ================================================================
+ * ② 编队
+ * ================================================================ */
+
+.vw-fleet,
+.vw-data {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 20px;
+  min-width: 0;
+}
+
+/* 概览四个数字：等宽、右对齐的值 + 小一号的单位。 */
+.vw-overview-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.vw-overview-item-sep::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--border-hover);
+}
+
+.vw-overview-value {
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+/* 「等人批」是唯一需要用户做事的数字，要能一眼找到（25.10.2）。 */
+.vw-overview-item[data-overview-key="awaiting"] .vw-overview-value {
+  color: var(--warn);
+}
+
+.vw-overview-item[data-overview-key="failed"] .vw-overview-value {
+  color: var(--bad);
+}
+
+/* 任务树：五列，耗时列右对齐。表格只画横线。 */
+.vw-fleet-tree {
+  min-width: 0;
+}
+
+.vw-tree-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 62px 62px 68px;
+  align-items: baseline;
+  gap: 8px;
+  min-height: var(--row-h);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
+.vw-tree-row:last-child {
+  border-bottom: 0;
+}
+
+.vw-tree-row-head {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  border-bottom-color: var(--border-hover);
+}
+
+.vw-tree-glyph {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.vw-tree-name {
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-tree-status {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 耗时列：右对齐 + 等宽。正在跑的显示「已跑多久」。 */
+.vw-tree-duration {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.vw-tree-progress {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 事件流：时间 + 一句话。时间用 --fs-tiny，不抢。 */
+.vw-fleet-flow {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vw-flow-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: calc(var(--row-h) - 4px);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
+.vw-flow-row:last-child {
+  border-bottom: 0;
+}
+
+.vw-flow-time {
+  flex: 0 0 42px;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vw-flow-label {
+  min-width: 0;
+  color: var(--text);
+}
+
+.vw-flow-row[data-phase="failed"] .vw-flow-label { color: var(--bad); }
+.vw-flow-row[data-phase="running"] .vw-flow-label { color: var(--accent); }
+
+/* 三种干预。 */
+.vw-fleet-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 暂停文案：必须能在界面上被读到，所以它是可见的一行小字，藏起来就等于没写。 */
+.vw-pause-notice {
+  margin: 0;
+  font-size: var(--fs-tiny);
+  color: var(--warn);
+}
+
+.vw-pause-notice[hidden] {
+  display: none;
+}
+
+/* ================================================================
+ * ③ 数据
+ * ================================================================ */
+
+.vw-batch-picker {
+  max-width: 260px;
+  padding: 2px 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: var(--fs-small);
+}
+
+/* 质控三列：绝对数 + 比例。绝对数在上、比例在下（附录 C.5 点二）。 */
+.vw-data-qc {
+  min-width: 0;
+}
+
+.vw-qc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.vw-qc-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--panel);
+}
+
+.vw-qc-label {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
+.vw-qc-value {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.vw-qc-ratio {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 检索区：问 / 答 / 回源，三样同在一屏。 */
+.vw-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vw-search-q,
+.vw-search-a {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-small);
+}
+
+.vw-search-q .unit,
+.vw-search-a .unit {
+  flex: 0 0 auto;
+}
+
+.vw-search-answer {
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+/* 回源块：**不折叠**。这是 25.11.2 的唯一硬要求。 */
+.vw-provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left-width: 2px;
+  border-radius: 3px;
+  background: var(--panel);
+  min-width: 0;
+}
+
+.vw-provenance-head {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+/* SQL：格式化，多行带缩进。不要一行到底（25.11.3）。 */
+.vw-sql-wrap {
+  min-width: 0;
+  max-height: 200px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.vw-sql {
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* 评测：✓ ✗ 不用颜色（色盲用户）。 */
+.vw-data-eval {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.vw-eval-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.vw-eval-mark[data-ok="true"] { color: var(--ok); }
+.vw-eval-mark[data-ok="false"] { color: var(--bad); }
+
+/* ================================================================
+ * ④ 套件台（三栏）
+ * ================================================================ */
+
+.vw-suite {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 六个应用。Perception 之前有分隔线（附录 C.6 点一）。 */
+.vw-app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 8px 6px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.vw-app-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-small);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vw-app-item:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.vw-app-item-current {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.vw-app-item:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
+}
+
+/* nonCoreApp：视觉上再淡一档，因为它是「可能没装」的那一个。 */
+.vw-app-item-noncore .vw-app-label {
+  color: var(--muted);
+}
+
+.vw-app-glyph {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: inherit;
+}
+
+.vw-app-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 分隔线：一条横线，不是竖线（视觉规矩三）。 */
+.vw-app-sep {
+  height: 0;
+  margin: 5px 7px;
+  border-top: 1px solid var(--border);
+}
+
+/* 「未安装」不是灰掉不说为什么 —— 它是可见的一行小字。 */
+.vw-app-missing {
+  margin-left: auto;
+  font-size: var(--fs-tiny);
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.vw-suite-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vw-app-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.vw-app-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 中栏底部三个按钮。 */
+.vw-app-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* ================================================================
+ * ⑤ 检查器（右栏里的四列）
+ * ================================================================ */
+
+/*
+ * 状态标记。matched 必须「不出眼」（灰），b_only 蓝，a_only 橙。
+ *
+ * 为什么 matched 不绿：用户关心的是**对不上的**。一屏 100 个绿会让 3 个橙淹没掉
+ * （25.12.3）。所以这里 matched 只有 `·` 和极淡的颜色。
+ */
+.vw-tag[data-tone="quiet"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--dim);
+}
+
+.vw-tag[data-tone="add"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.vw-tag[data-tone="miss"] {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* 检查器的表：四列，位置列用等宽小字（路径要能逐字读）。 */
+.vw-inspector-table td {
+  font-size: var(--fs-tiny);
+  vertical-align: top;
+}
+
+.vw-inspector-table .vw-path {
+  font-family: var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ================================================================
+ * ⑥ 窄屏
+ * ================================================================ */
+
+@media (max-width: 900px) {
+  /* 套件台的两栏在窄屏叠成上下：六个应用在上面一行。 */
+  .vw-suite {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vw-app-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vw-app-sep {
+    display: none;
+  }
+}
