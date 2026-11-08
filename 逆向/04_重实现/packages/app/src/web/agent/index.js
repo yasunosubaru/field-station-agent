@@ -440,6 +440,12 @@ export async function mount(root, ctx = {}) {
     renderRight();
   }
 
+  /**
+   * 审批门的状态。放在这里而不是 state 里，是因为它**派生自 DOM**（有没有未决审批卡），
+   * 不是独立的数据源 —— 存两份就会出现「state 说没卡、DOM 里还有卡」这种不一致。
+   */
+  const approvalGate = { blocked: false };
+
   const handlers = {
     isExpanded: (id) => state.expanded.has(id),
     setExpanded: (id, open) => {
@@ -475,12 +481,17 @@ export async function mount(root, ctx = {}) {
       toast(`已切到专业面板：${panel}`, 'info');
     },
     onOpenSettings: () => openSettingsDialog(),
-    onApproval: async (card, decision, note) => {
+    onApproval: async (card, decision, payload) => {
       if (!state.currentId) throw new Error('没有当前会话');
+      // 第三个参数是对象（`{ note, reason }`）：拒绝时理由必须一起进审批记录，
+      // 不能只留在界面上 —— 否则事后查不到「为什么没做」（规格 25.9.2）。
+      const note = payload && typeof payload === 'object' ? payload.note : payload;
+      const reason = payload && typeof payload === 'object' ? payload.reason : '';
       await api.approval(state.currentId, {
         approval_id: card.id,
         decision,
         ...(note ? { note } : {}),
+        ...(reason ? { reason } : {}),
       });
       commit(applyEvent(state.cards, {
         type: 'approval',
@@ -489,10 +500,22 @@ export async function mount(root, ctx = {}) {
         risk: card.risk,
         status: decision,
         by: '操作员',
-        note: note || '',
+        note: reason ? `${note || ''}${note ? ' / ' : ''}理由：${reason}` : (note || ''),
         ts: new Date().toISOString(),
       }));
       toast(decision === 'approved' ? '已批准，等待执行结果' : '已拒绝，动作不会执行', decision === 'approved' ? 'ok' : 'warn');
+    },
+    onEvidence: (card) => {
+      // 「查看证据」跳到这一步的真实调用详情，而不是弹一个自己编的面板。
+      if (card.callId) {
+        document.dispatchEvent(new CustomEvent('fsa:show-trace', { detail: { callId: card.callId } }));
+      }
+      toast('证据在同名 call_id 的工具卡里（展开「查看 trace」）', 'info');
+    },
+    onTrace: (card) => {
+      document.dispatchEvent(new CustomEvent('fsa:show-trace', { detail: { callId: card.callId || card.id } }));
+      const node = els.list?.querySelector(`[data-call-id="${card.callId}"] .ag-card-body`);
+      if (node) node.hidden = false;
     },
   };
 
@@ -517,6 +540,42 @@ export async function mount(root, ctx = {}) {
       else els.list.appendChild(node);
     }
     while (children.length > cards.length) children[children.length - 1].remove();
+    syncApprovalGate();
+  }
+
+  /**
+   * 规矩一：审批卡未决时禁用输入框（规格 6.3 + S5 契约「pending 期间同 call_id 无 tool.result」）。
+   *
+   * 为什么必须禁：审批没处理，用户又发一条新消息，会出现「两个操作并发」的状态 ——
+   * 而这两个操作里有一个还没被批准，另一个已经开始了，事后没人能说清顺序。
+   *
+   * 为什么还要**说明原因**（附录 C.3 点三）：灰掉但不说为什么，比不禁用更糟——
+   * 用户会以为是界面坏了，然后反复点。
+   */
+  function syncApprovalGate() {
+    if (!composer || !els.list) return;
+    const pending = els.list.querySelector('[data-card-type="approval"][data-pending="true"]');
+    const blocked = Boolean(pending);
+    if (blocked === approvalGate.blocked) return;
+    approvalGate.blocked = blocked;
+
+    composer.input.disabled = blocked;
+    composer.element.classList.toggle('is-gated', blocked);
+
+    const existing = els.list.querySelector('.ag-gate-note');
+    if (!blocked) {
+      if (existing) existing.remove();
+      composer.setBusy(false);
+      return;
+    }
+
+    // 提示贴在输入框上方，说清「要做什么」而不是只说「不能用」。
+    const gate = document.createElement('p');
+    gate.className = 'ag-gate-note';
+    gate.setAttribute('role', 'status');
+    gate.textContent = '需要先处理上面的审批 — 批准或拒绝之后才能继续发消息。';
+    const host = composer.element.parentElement;
+    if (host && !existing) host.insertBefore(gate, composer.element);
   }
 
   function stickToBottom() {

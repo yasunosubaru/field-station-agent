@@ -120,6 +120,73 @@ function jsonPreview(args, data) {
   }
 }
 
+/**
+ * 从真实返回里挑 3–4 个「最能改变判断」的数字做摘要。
+ *
+ * 规格 25.8.2 把理由说得很直接：这是「结论的支撑」，不是「数据浏览器」。
+ * 用户要的是「这次调用大概说明了什么」，细节在 trace 里。
+ *
+ * 所以**不是**把返回全摊开（`p05 p25 p75 p95 mad` 那些进 trace），而是：
+ *   · 样本量 / 行数 —— 决定可信不可信；
+ *   · 核心指标（中位数、比率）—— 结论本身；
+ *   · 缺测 / 丢弃数 —— 决定能不能用。
+ *
+ * ## 为什么只取命中清单的字段
+ *
+ * 第一版是「命中的排前面，没命中的按原顺序补足到 4 个」。实测立刻出问题：
+ * `robust_stats` 的返回里 `p05` 排在第 4 位，于是摘要显示成
+ * `n=86,400 · cn0_median=44.2 · missing=604 · p05=30` —— 分位数挤掉了
+ * 真正该看的字段，正是规格点名不要进摘要的那一类。
+ *
+ * 现在改成**只从清单里取**：取不满 4 个就少显示几个，宁可信息少，
+ * 也不让「无关数字占掉一个位置」。挑不到就返回空数组，由调用方决定不显示摘要行。
+ */
+const SUMMARY_PREFERRED = [
+  // 样本量：决定可信不可信
+  'n', 'rows', 'total', 'count', 'samples',
+  // 核心指标：结论本身
+  'cn0_median', 'median', 'mean', 'rate', 'ratio', 'value', 'health', 'score',
+  // 缺测 / 丢弃：决定能不能用
+  'missing', 'missing_rate', 'dropped', 'failed', 'errors',
+];
+
+export function resultSummary(data, limit = 4) {
+  if (data === null || data === undefined) return [];
+  if (typeof data !== 'object') return [{ key: '', text: String(data) }];
+
+  const picked = [];
+  const seen = new Set();
+  for (const key of SUMMARY_PREFERRED) {
+    if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+    const value = data[key];
+    // 只挑标量：对象与数组是细节，属于 trace，不属于摘要。
+    if (value === null || typeof value === 'object') continue;
+    seen.add(key);
+    picked.push([key, value]);
+    if (picked.length >= limit) break;
+  }
+  if (!picked.length) return [];
+
+  return picked.map(([key, value]) => {
+    const text = typeof value === 'number'
+      ? (Number.isInteger(value) ? value.toLocaleString('en-US') : String(value))
+      : String(value);
+    return { key, text };
+  });
+}
+
+/**
+ * 工具卡 —— 五个必需元素（规格 25.8.1）。
+ *
+ * | # | 元素 | 为什么 |
+ * |---|---|---|
+ * | 1 | 工具名 | 等宽字体，一眼分辨 `robust_stats` 与 `slope_stats` |
+ * | 2 | 状态 + 耗时 | 同一行右侧，右对齐，让一列卡片能对齐 |
+ * | 3 | 结果摘要 | 只显示 3–4 个关键数字，不是全部返回 |
+ * | 4 | 展开入口 | 叫「查看 trace」，不是「详情」 |
+ * | 5 | call_id | 铺在背景里（浅色小字），不抢眼，但**必须在** ——
+ *               它是回源的唯一入口（规格 6.3 规矩三） |
+ */
 export function renderToolCard(card, handlers = {}) {
   const expanded = typeof handlers.isExpanded === 'function' ? handlers.isExpanded(card.id) : false;
   const bodyId = uniqueId('ag-tool-body');
@@ -134,7 +201,11 @@ export function renderToolCard(card, handlers = {}) {
     'aria-controls': bodyId,
   }, [
     el('span', { class: 'ag-tool-icon' }, [iconSvg(card.icon)]),
-    el('span', { class: 'ag-tool-label', text: card.label || card.name }),
+    // 标签与名字同名时只显示一次 —— `label` 默认就是 `name`，两处都分会重复。
+    el('span', {
+      class: 'ag-tool-label',
+      text: card.label && card.label !== card.name ? card.label : '',
+    }),
     el('code', { class: 'ag-tool-name', text: card.name || '' }),
     el('span', { class: `ag-pill ag-pill-${status}`, 'data-status': status, text: statusLabel(status) }),
     card.durationMs != null ? el('span', { class: 'ag-dur', text: formatDuration(card.durationMs) }) : null,
@@ -149,6 +220,49 @@ export function renderToolCard(card, handlers = {}) {
     if (typeof handlers.setExpanded === 'function') handlers.setExpanded(card.id, !open);
   });
 
+  const summaryParts = Array.isArray(card.summary)
+    ? card.summary.map((part) => ({ key: '', text: String(part) }))
+    : resultSummary(card.data);
+
+  const summaryLine = summaryParts.length
+    ? el('p', { class: 'ag-tool-summary' }, summaryParts.flatMap((part, index) => {
+      const nodes = [];
+      if (index > 0) nodes.push(el('span', { class: 'ag-tool-sep', text: '·' }));
+      if (part.key) nodes.push(el('span', { class: 'ag-tool-key', text: `${part.key}=` }));
+      nodes.push(el('span', { class: 'ag-tool-val', text: part.text }));
+      return nodes;
+    }))
+    : null;
+
+  /*
+   * 失败时的原因（`note`）。
+   *
+   * agent server 的 `tool_result` 形如
+   *   {"ok": false, "summary": "未获批准，工具未执行", "data": {}, ...}
+   * `data` 是空的，真正要看的是 `summary` 那句。只显示「失败」而不给原因，
+   * 用户没法判断是「没批准」还是「工具坏了」—— 这两种的处理方式完全不同。
+   */
+  const noteLine = card.note
+    ? el('p', { class: 'ag-tool-note' }, [el('span', { text: card.note })])
+    : null;
+
+  // 「查看 trace」是展开入口的名字 —— 规格明确不要叫「详情」。
+  const traceButton = el('button', {
+    type: 'button',
+    class: 'ag-tool-trace',
+    text: '查看 trace',
+    'aria-label': `${card.name || '工具'} 的调用详情`,
+  });
+  traceButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (typeof handlers.onTrace === 'function') {
+      handlers.onTrace(card);
+      return;
+    }
+    // 没有 trace 处理器时退化成就地展开 —— 不要让按钮点了没反应。
+    head.click();
+  });
+
   const body = el('div', { class: 'ag-card-body', id: bodyId }, [
     el('div', { class: 'ag-kv' }, [
       el('span', { class: 'ag-kv-key', text: '证据' }),
@@ -159,40 +273,117 @@ export function renderToolCard(card, handlers = {}) {
   ]);
   body.hidden = !expanded;
 
-  const summary = card.summary
-    ? el('p', { class: 'ag-tool-summary', text: card.summary })
-    : null;
-
   return el('article', {
     class: `ag-card ag-tool${status === 'failed' ? ' ag-tool-failed' : ''}`,
     'data-card-id': card.id,
     'data-card-type': 'tool',
     'data-status': status,
-  }, [head, summary, body]);
+    // call_id 同时进属性：回源跳转与测试都按它找，不必去解析背景小字。
+    'data-call-id': card.callId || null,
+  }, [
+    head,
+    noteLine,
+    summaryLine,
+    el('div', { class: 'ag-tool-foot' }, [traceButton]),
+    body,
+    // call_id 铺在卡片底部背景里：浅色小字，不抢眼，但一定在。
+    card.callId ? el('code', { class: 'ag-call-id ag-tool-call-id', title: `call_id ${card.callId}`, text: card.callId }) : null,
+  ]);
 }
 
 /* ================================================================
    审批卡
    ================================================================ */
 
+/**
+ * 审批卡 —— 四个必需元素（规格 25.9.1 + 6.3）。
+ *
+ * | # | 元素 | 为什么 |
+ * |---|---|---|
+ * | 1 | 风险等级 | `[high]` 这样的标，一眼看出轻重 |
+ * | 2 | 动作描述 + **后果** | 两件事**必须分开写** —— 「归档」听起来无害，但「写 120 MB 到磁盘」可能是用户不想的 |
+ * | 3 | 批准 / 拒绝 | 批准在前（大概率是批准），但拒绝不做成红色大按钮（会让人不敢拒绝） |
+ * | 4 | 查看证据 | 让用户能当场核对，而不是盲批 |
+ *
+ * ## 规矩二：拒绝必须填理由（规格 6.3 + 25.9.2）
+ *
+ * 这条是硬要求，不是建议：
+ *
+ * | 不填理由 | 填了理由 |
+ * |---|---|
+ * | 事后无法解释「为什么没做」 | 能查 |
+ * | 无法判断「是不是误点」 | 能看出意图 |
+ *
+ * 所以点「拒绝」不是直接提交，而是先展开一个必填的理由框；
+ * 空着点提交按钮**不生效**，且给出明确的错误提示。
+ * 但「不是必填长文本」—— 填「1」或「暂不」都算，只要能区分「我看到了并且拒绝了」。
+ */
 export function renderApprovalCard(card, handlers = {}) {
   const pending = card.status === 'pending';
+  // 审批结论一旦落下就不再可改：批准是「已经发生的事」，允许改会让审计失效（25.9.3）。
+  const decided = !pending;
+
   const buttons = [];
-  const note = el('textarea', {
-    class: 'ag-note',
-    rows: '2',
-    placeholder: '备注（可选，写进审批记录）',
-    'aria-label': '审批备注',
+  const decisionEl = el('p', {
+    class: 'ag-decision',
+    hidden: !decided,
+    'data-tone': card.status === 'rejected' ? 'bad' : card.status === 'approved' ? 'ok' : null,
+    text: decided
+      ? `${card.status === 'approved' ? '已批准' : '已拒绝'}${card.decidedBy ? ` · ${card.decidedBy}` : ' · 操作员'}${card.decidedAt ? ` · ${formatClock(card.decidedAt)}` : ''}`
+      : '',
   });
+
+  /* —— 拒绝的理由框：默认收起，点「拒绝」才出现 —— */
+  const reasonField = el('label', { class: 'ag-reason-field', hidden: true }, [
+    el('span', { class: 'ag-reason-label', text: '拒绝理由（必填）' }),
+    el('textarea', {
+      class: 'ag-note',
+      rows: '2',
+      placeholder: '写一句就够，例如「暂不」「时间不对」——只要能说明你看过了',
+      'aria-label': '拒绝理由',
+      'aria-required': 'true',
+    }),
+  ]);
+  const reasonInput = reasonField.querySelector('textarea');
+  const reasonError = el('p', { class: 'ag-reason-error', hidden: true, 'data-tone': 'bad' });
+
+  const noteField = el('label', { class: 'ag-note-field' }, [
+    el('span', { text: '备注' }),
+    el('textarea', {
+      class: 'ag-note',
+      rows: '2',
+      placeholder: '备注（可选，写进审批记录）',
+      'aria-label': '审批备注',
+    }),
+  ]);
+  const note = noteField.querySelector('textarea');
   note.value = card.note || '';
 
-  const decide = (decision) => async () => {
+  /** 提交。`decision === 'rejected'` 时先验理由。 */
+  const submit = async (decision) => {
     if (!pending) return;
+
+    if (decision === 'rejected') {
+      const reason = reasonInput.value.trim();
+      if (!reason) {
+        // 空理由不提交 —— 但要**说清为什么没提交**，不能静默不动。
+        reasonError.hidden = false;
+        reasonError.textContent = '拒绝必须填一句理由：事后要靠它解释「为什么没做」。';
+        reasonInput.focus();
+        return;
+      }
+      reasonError.hidden = true;
+    }
+
     for (const button of buttons) button.disabled = true;
     decisionEl.hidden = false;
     decisionEl.textContent = decision === 'approved' ? '正在提交批准…' : '正在提交拒绝…';
+    // 拒绝时把理由一起送上去：它要进审批记录，不能只留在界面上。
+    const payload = decision === 'rejected'
+      ? { note: note.value.trim(), reason: reasonInput.value.trim() }
+      : { note: note.value.trim() };
     try {
-      await handlers.onApproval?.(card, decision, note.value.trim());
+      await handlers.onApproval?.(card, decision, payload);
     } catch (error) {
       for (const button of buttons) button.disabled = false;
       decisionEl.hidden = false;
@@ -206,44 +397,80 @@ export function renderApprovalCard(card, handlers = {}) {
     class: 'ag-btn ag-btn-primary',
     'data-decision': 'approved',
     text: '批准',
-    onclick: decide('approved'),
+    onclick: () => submit('approved'),
   });
   const reject = el('button', {
     type: 'button',
-    class: 'ag-btn ag-btn-danger',
+    // 次要色，**不是红色大按钮** —— 那会让人不敢拒绝（附录 C.3 点四）。
+    class: 'ag-btn ag-btn-quiet',
     'data-decision': 'rejected',
     text: '拒绝',
-    onclick: decide('rejected'),
+    onclick: () => {
+      // 第一次点只展开理由框，不提交。
+      if (reasonField.hidden) {
+        reasonField.hidden = false;
+        reasonInput.focus();
+        return;
+      }
+      submit('rejected');
+    },
+  });
+  const evidence = el('button', {
+    type: 'button',
+    class: 'ag-btn ag-btn-text',
+    'data-action': 'evidence',
+    text: '查看证据',
+    onclick: () => {
+      if (typeof handlers.onEvidence === 'function') {
+        handlers.onEvidence(card);
+        return;
+      }
+      // 没有证据面板时退化成展开 JSON —— 不能让这个按钮点了没反应。
+      const detail = el('pre', { class: 'ag-json', text: jsonPreview(card.args, card.evidence) });
+      decisionEl.hidden = false;
+      decisionEl.dataset.tone = 'neutral';
+      decisionEl.replaceWith(detail);
+    },
   });
   buttons.push(approve, reject);
   if (!pending) for (const button of buttons) button.disabled = true;
 
-  const decided = !pending;
-  const decisionEl = el('p', {
-    class: 'ag-decision',
-    hidden: !decided,
-    'data-tone': card.status === 'rejected' ? 'bad' : card.status === 'approved' ? 'ok' : null,
-    text: decided
-      ? `${card.status === 'approved' ? '已批准' : '已拒绝'}${card.decidedBy ? ` · ${card.decidedBy}` : ' · 操作员'}${card.decidedAt ? ` · ${formatClock(card.decidedAt)}` : ''}`
-      : '',
-  });
-
   return el('article', {
-    class: 'ag-card ag-approval',
+    // 已决的卡片不带 `ag-approval-pending`：那个类是「需要我」的橙底，
+    // 而决定已经落下，还染着橙底会让人以为还得再点一次。
+    class: `ag-card ag-approval${pending ? ' ag-approval-pending' : ' ag-approval-decided'}`,
     'data-card-id': card.id,
     'data-card-type': 'approval',
     'data-status': card.status || 'pending',
+    // 未决标记：对话页据此禁用输入框（规矩一）。
+    'data-pending': pending ? 'true' : null,
   }, [
     el('header', { class: 'ag-approval-head' }, [
       iconSvg('shield', 'ag-icon ag-approval-icon'),
-      el('h3', { text: '需要你确认' }),
+      el('h3', { text: '需要你批准' }),
       el('span', { class: `ag-risk ag-risk-${card.risk || 'medium'}`, text: riskLabel(card.risk) }),
       card.callId ? el('code', { class: 'ag-call-id', text: card.callId }) : null,
     ]),
-    card.prompt ? el('p', { class: 'ag-approval-prompt', text: card.prompt }) : null,
-    card.reason ? el('p', { class: 'ag-approval-reason', text: card.reason }) : null,
-    pending ? el('label', { class: 'ag-note-field' }, [el('span', { text: '备注' }), note]) : null,
-    el('div', { class: 'ag-actions' }, buttons),
+    // 「做什么」与「后果」分两行写 —— 这是 25.9.1 点明的要求。
+    card.prompt ? el('p', { class: 'ag-approval-prompt' }, [
+      el('span', { class: 'ag-approval-what', text: card.prompt }),
+    ]) : null,
+    // 「为什么要审批」是第三个问题，与「做什么 / 后果」都不同。
+    // 后端给了 `reason` 就单独一行 —— 混进 prompt 会让人读不出重点。
+    card.reason ? el('p', { class: 'ag-approval-reason' }, [
+      el('span', { class: 'unit', text: '依据' }),
+      el('span', { text: card.reason }),
+    ]) : null,
+    // 「影响」只在后端真给了 `impact` 时显示。没有就不编 ——
+    // 把 `reason` 混进来会让人以为「用户要求重启」等于「会中断采集」。
+    card.impact ? el('p', { class: 'ag-approval-impact' }, [
+      el('span', { class: 'ag-approval-impact-label', text: '影响' }),
+      el('span', { text: card.impact }),
+    ]) : null,
+    pending ? noteField : null,
+    pending ? reasonField : null,
+    reasonError,
+    el('div', { class: 'ag-actions' }, [...buttons, evidence]),
     decisionEl,
   ]);
 }

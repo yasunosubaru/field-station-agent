@@ -43,6 +43,9 @@ const {
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+// 深链解析单独成模块：它是外部输入的第一道门，需要逐条测试，
+// 而 main.js 一 require 就会去建 Electron 应用、起服务，没法在单元测试里加载。
+const { parseDeepLink, linkFromArgv } = require('./deeplink.js');
 
 /* ---------------------------------------------------------------------------------------------
  * 路径与常量
@@ -72,13 +75,16 @@ const VIEW_PATHS = {
 const VIEW_LABELS = { chat: '对话', fleet: '机队', data: '数据', suite: '专业面板' };
 
 /**
- * 深链只认 `fsa://job/<id>`。id 的字符集是刻意收窄的：
- * 它会被拼进 URL 查询串交给页面，又可能来自任意第三方程序发起的协议调用，
- * 允许 `?` `&` `#` `/` 之类就等于把注入点直接送给外部调用方。
- * 校验失败一律“记日志 + 忽略”，绝不让一个畸形链接把主进程带崩。
+ * 深链认 `fsa://job/<id>` 与 `fsa://device/<id>` 两种。
+ *
+ * id 的字符集**刻意收窄**：它会被拼进 URL 查询串交给页面，又可能来自任意第三方
+ * 程序发起的协议调用，允许 `?` `&` `#` `/` 之类就等于把注入点直接送给外部调用方。
+ * 收窄是为了防注入，不要为了「支持更多 id」而放宽（规格 25.15.2 原话）。
+ *
+ * 解析与校验都在 `deeplink.js` 里（那里可单独测试）；这里只剩这个常量。
+ * 校验失败一律「记日志 + 忽略」，绝不让一个畸形链接把主进程带崩。
  */
 const PROTOCOL = 'fsa';
-const JOB_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
  * 同一窗口连续崩溃的重载上限。超过就不再自动重载——
@@ -186,10 +192,12 @@ let serverReady = false;
 /** 当前密度；菜单切换时改它，窗口创建和切换后都用它。 */
 let density = args ? args.density : DENSITIES[0];
 /**
- * 冷启动那一份深链。协议 URL 在 `app.whenReady()` 之前就躺在 argv 里，
- * 那时窗口和服务都还没有，只能先存下来、等首个窗口建好再喂给它。
+ * 冷启动那一份深链（`{ kind, id }` 或 `null`）。协议 URL 在 `app.whenReady()` 之前
+ * 就躺在 argv 里，那时窗口和服务都还没有，只能先存下来、等首个窗口建好再喂给它。
+ *
+ * 存整个对象而不只是 id：`device` 与 `job` 要去不同的视角，丢了 kind 就只能猜。
  */
-let pendingJob = '';
+let pendingLink = null;
 
 /* ---------------------------------------------------------------------------------------------
  * Node 服务
@@ -316,13 +324,15 @@ async function waitForHealth() {
  * ------------------------------------------------------------------------------------------- */
 
 /**
- * 视角地址。`job` 不是路由而是查询串：路由表（`routes.ts`）只认 pathname，
+ * 视角地址。深链参数不是路由而是查询串：路由表（`routes.ts`）只认 pathname，
  * 多一个查询串不会让它 404，页面侧却能直接 `location.search` 拿到 id。
+ *
+ * `param` 给键名：`job` → 编队台，`device` → 套件台。默认 `job` 是为了不动老调用点。
  */
-function viewUrl(view, job) {
+function viewUrl(view, id, param = 'job') {
   const base = `${baseUrl}${VIEW_PATHS[view] || VIEW_PATHS.chat}`;
-  if (!job) return base;
-  return `${base}?job=${encodeURIComponent(job)}`;
+  if (!id) return base;
+  return `${base}?${param}=${encodeURIComponent(id)}`;
 }
 
 /** 焦点窗口；托盘/菜单这类“对当前窗口做事”的入口都从这里取，避免各自猜一个。 */
@@ -483,7 +493,11 @@ function watchChildProcesses() {
  */
 function createWindow(options = {}) {
   const view = options.view && VIEW_IDS.includes(options.view) ? options.view : args.view;
-  const job = typeof options.job === 'string' ? options.job : '';
+  // 深链参数：编队台用 `job`，套件台用 `device`。两者都是「选中某个东西」，
+  // 只是去的地方不同，所以合并成一份深链参数处理。
+  const linkParam = typeof options.device === 'string' && options.device
+    ? { name: 'device', id: options.device }
+    : { name: 'job', id: typeof options.job === 'string' ? options.job : '' };
 
   const win = new BrowserWindow({
     width: 1440,
@@ -555,8 +569,9 @@ function createWindow(options = {}) {
     if (args.screenshot && win === firstWindow) captureAndQuit(win, args.screenshot);
   });
 
-  win.loadURL(viewUrl(view, job)).catch((error) => {
-    dialog.showErrorBox('页面加载失败', `${viewUrl(view, job)}\n${error.message}`);
+  const initialUrl = viewUrl(view, linkParam.id, linkParam.name);
+  win.loadURL(initialUrl).catch((error) => {
+    dialog.showErrorBox('页面加载失败', `${initialUrl}\n${error.message}`);
   });
   return win;
 }
@@ -615,101 +630,46 @@ function hideAllWindows() {
 }
 
 /* ---------------------------------------------------------------------------------------------
- * 深链 `fsa://job/<id>`
+ * 深链：把已解析的 `{kind, id}` 送到位
+ *
+ * 解析与校验在 `deeplink.js`（那里可逐条测试，覆盖 14 类畸形输入）。
+ * 这一段只管「送去哪」。
  * ------------------------------------------------------------------------------------------- */
 
+/** 深链被拒时的日志出口。日志里的原文截断到 200 字符，避免畸形输入把终端刷满。 */
+function deepLinkLog(message, detail) {
+  console.warn(`[shell] ${message}，忽略：`, String(detail ?? '').slice(0, 200));
+}
+
 /**
- * 解析一条深链。返回 `{ kind, id }` 或 `null`（null = 不认识/不合法，调用方忽略即可）。
+ * 打开一个深链目标。
  *
- * 这里刻意不用 `decodeURIComponent`：`fsa://job/%2e%2e` 这类编码绕过在解码后才显形，
- * 不decode 时百分号直接通不过 `JOB_ID_PATTERN`，等于免费挡掉一层。
- * 整段包在 try 里是因为 `new URL` 对畸形串会抛异常，而这条路径的输入来自外部程序。
- */
-function parseDeepLink(raw) {
-  if (typeof raw !== 'string') return null;
-  const text = raw.trim();
-  if (!/^fsa:/i.test(text)) return null;
-
-  let parsed;
-  try {
-    parsed = new URL(text);
-  } catch (error) {
-    console.warn('[shell] 深链不是合法 URL，忽略：', text.slice(0, 200));
-    return null;
-  }
-  if (parsed.protocol.toLowerCase() !== 'fsa:') return null;
-
-  const segments = parsed.pathname.split('/').filter(Boolean);
-  /*
-   * 三种写法都可能出现，统一成 (kind, rest)：
-   *   fsa://job/abc   → hostname=job,      pathname=/abc
-   *   fsa:///job/abc  → hostname='',       pathname=/job/abc   （多一条斜杠，手工输入常见）
-   *   fsa:job/abc     → hostname='',       pathname=job/abc    （部分浏览器/命令行的规范化）
-   * 把判定集中在这里，后面就只需要认一种形状。
-   */
-  let kind = String(parsed.hostname || '').toLowerCase();
-  let rest = segments;
-  if (!kind && segments.length > 0) {
-    kind = segments[0].toLowerCase();
-    rest = segments.slice(1);
-  }
-
-  if (kind === 'device') {
-    // 计划里有 `fsa://device/<id>`，但那是 W3 套件台的事；
-    // 现在假装支持会让点击落到一个没有实现的页面上，不如明确拒绝。
-    console.warn('[shell] fsa://device 深链暂未实现，忽略：', text.slice(0, 200));
-    return null;
-  }
-  if (kind !== 'job') {
-    console.warn(`[shell] 不认识的深链主机名 "${kind}"，忽略：`, text.slice(0, 200));
-    return null;
-  }
-
-  const id = rest[0] || '';
-  if (rest.length > 1) {
-    // `fsa://job/a/b` 不是 `fsa://job/<id>` 的形状。只取第一段等于悄悄忽略后半截，
-    // 那会让“拼错的链接”看起来像成功，所以宁可整条拒绝并留下日志。
-    console.warn('[shell] 深链多余路径段，忽略：', text.slice(0, 200));
-    return null;
-  }
-  if (!JOB_ID_PATTERN.test(id)) {
-    console.warn('[shell] 深链 job id 不合法，忽略：', JSON.stringify(id).slice(0, 200));
-    return null;
-  }
-  return { kind, id };
-}
-
-/** 从一整条 argv 里挑第一个认识的深链；Windows 把协议 URL 当普通参数递进来。 */
-function jobFromArgv(argv) {
-  for (const token of argv || []) {
-    const link = parseDeepLink(token);
-    if (link) return link.id;
-  }
-  return '';
-}
-
-/**
- * 打开一个 job：切到 `/fleet` 并把 id 挂进查询串。
  * 三种时序都要有去处，不能把 id 丢了：
- *   · 有窗口 → 直接在那个窗口里打开；
- *   · 一个窗口都没有但服务已就绪 → 开一个新窗口直接落在那个 job 上；
- *   · 服务还没起来（冷启动） → 先记进 `pendingJob`，由 `boot()` 建首个窗口时消费。
+ *   · 有窗口 → 直接在那个窗口里加载；
+ *   · 一个窗口都没有但服务已就绪 → 开一个新窗口直接落在那个目标上；
+ *   · 服务还没起来（冷启动） → 先记进 `pendingLink`，由 `boot()` 建首个窗口时消费。
+ *
+ * `device` 与 `job` 只是去的地方不同，时序处理一模一样 —— 所以共用这一份。
  */
-function openJob(jobId) {
-  if (!jobId) return false;
+function openLink(link) {
+  if (!link || !link.id) return false;
+  const view = link.kind === 'device' ? 'suite' : 'fleet';
+  const param = link.kind === 'device' ? 'device' : 'job';
+  const url = viewUrl(view, link.id, param);
+
   const win = focusedWindow();
   if (win) {
-    win.loadURL(viewUrl('fleet', jobId));
+    win.loadURL(url);
     showWindow(win);
-    console.log(`[shell] 深链跳转：/fleet?job=${jobId}`);
+    console.log(`[shell] 深链跳转：/${view}?${param}=${link.id}`);
     return true;
   }
   if (canCreateWindow()) {
-    showWindow(createWindow({ view: 'fleet', job: jobId }));
-    console.log(`[shell] 深链开窗：/fleet?job=${jobId}`);
+    showWindow(createWindow({ view, [param]: link.id }));
+    console.log(`[shell] 深链开窗：/${view}?${param}=${link.id}`);
     return true;
   }
-  pendingJob = jobId;
+  pendingLink = link;
   return false;
 }
 
@@ -1000,10 +960,14 @@ async function boot() {
     const attempts = await waitForHealth();
     console.log(`[shell] ${baseUrl} 就绪（探测 ${attempts} 次）`);
     serverReady = true;
-    // 冷启动时 argv 里的深链在这里消费：首屏直接就是那个 job 的机队视角。
-    const firstView = pendingJob ? 'fleet' : args.view;
-    createWindow({ view: firstView, job: pendingJob });
-    pendingJob = '';
+    // 冷启动时 argv 里的深链在这里消费：首屏直接就是那个目标（编队的 job / 套件的设备）。
+    if (pendingLink) {
+      const view = pendingLink.kind === 'device' ? 'suite' : 'fleet';
+      createWindow({ view, [pendingLink.kind === 'device' ? 'device' : 'job']: pendingLink.id });
+      pendingLink = null;
+    } else {
+      createWindow({ view: args.view });
+    }
     createTray();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1019,13 +983,13 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   // 冷启动的深链可能已经到了（从浏览器点链接直接拉起本程序）。
-  pendingJob = jobFromArgv(process.argv.slice(1));
+  pendingLink = linkFromArgv(process.argv.slice(1), deepLinkLog);
 
   app.on('second-instance', (_event, argv) => {
-    const job = jobFromArgv(argv);
-    // 带 job 时先走深链：有窗口就在那个窗口里跳，没窗口（且服务已就绪）就直接开一个
-    // 落在 /fleet?job= 上的窗口——先 showOrCreateWindow() 再跳会白白加载两次页面。
-    if (job && openJob(job)) return;
+    const link = linkFromArgv(argv, deepLinkLog);
+    // 带深链时先走它：有窗口就在那个窗口里跳，没窗口（且服务已就绪）就直接开一个
+    // 落在目标上的窗口 —— 先 showOrCreateWindow() 再跳会白白加载两次页面。
+    if (link && openLink(link)) return;
     showOrCreateWindow();
   });
 

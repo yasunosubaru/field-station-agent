@@ -1,25 +1,63 @@
-@charset "utf-8";
+﻿@charset "utf-8";
 /*
- * 四个视角共用的外壳布局（W2 骨架）。
+ * 五个块的布局 —— 视-0 之后的外壳。
  *
- * 只写布局：左导航 / 中内容（iframe）/ 右检查器三栏，窄屏逐级收起。
- * 颜色一律取 agent.css 里已有的 token（--bg / --panel / --panel-2 / --border /
- * --text / --muted / --accent / --accent-soft / --accent-line / --radius），
- * 本文件不定义任何颜色值，也不引入新主题。
+ * ## 只写布局，颜色一律取 token
+ *
+ * 颜色全部来自 agent.css 已有的 token（--bg / --panel / --panel-2 / --border /
+ * --text / --muted / --accent / --ok / --warn / --bad / --radius）。本文件不定义任何
+ * 颜色值 —— `test/views.test.ts` 有一条断言守着这件事（不许出现十六进制 / rgb）。
+ *
+ * ## 视觉规矩三条（25.13.1）
+ *
+ *   .num  数字等宽右对齐 —— 一列数字的目的是「让人比较大小」，不等宽会破坏它
+ *   .unit 单位小一号、更淡  —— 数字要显眼，单位不该抢
+ *   table.clean 只画横线   —— 竖线在数据密集的表格里是纯噪声
+ *
+ * ## 三个不许用（25.13.5）
+ *
+ * 不用渐变、不用阴影、圆角 ≤ 4px。这三条是「运维台」与「消费级应用」的分界。
+ * 所以本文件里 `--radius` 的用量被压到 3px 一档，且没有任何 box-shadow / gradient。
+ *
+ * ## 五块的网格
+ *
+ *   ┌──────────────────────────────┐
+ *   │ 顶栏（跨两列）                │
+ *   ├────┬─────────────────────────┤
+ *   │ 左 │ 主内容 │ 右栏            │
+ *   ├────┴─────────────────────────┤
+ *   │ 底栏（跨两列）                │
+ *   └──────────────────────────────┘
  */
 
 /* ================================================================
-   ① 外壳骨架
-   ================================================================ */
+ * ① 字号与密度
+ * ================================================================ */
+
+body[data-view] {
+  --fs-h1: 15px;
+  --fs-body: 13px;
+  --fs-small: 11px;
+  --fs-tiny: 10px;
+  /* 行高：默认 30px，紧凑 24px（25.13.3）。 */
+  --row-h: 30px;
+  --nav-w: 88px;
+  --rail-w: 280px;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fs-body);
+}
+
+/* 紧凑档只改行高与字号，**不重排数据**。 */
+:root[data-density="compact"] body[data-view],
+body[data-view][data-density="compact"] {
+  --row-h: 24px;
+  --fs-body: 12px;
+}
 
 html,
 body {
   height: 100%;
-}
-
-body[data-view] {
-  margin: 0;
-  overflow: hidden;
 }
 
 .vw-skip {
@@ -31,7 +69,7 @@ body[data-view] {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 3px;
 }
 
 .vw-skip:focus {
@@ -39,318 +77,637 @@ body[data-view] {
   top: 12px;
 }
 
+/* ================================================================
+ * ② 五块网格
+ * ================================================================ */
+
 .vw-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 304px;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top  top"
+    "nav  body"
+    "foot foot";
   height: 100dvh;
-  min-height: 0;
-}
-
-/* ================================================================
-   ② 左导航
-   ================================================================ */
-
-.vw-nav {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  gap: 14px;
-  padding: 14px 10px 10px;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-
-.vw-brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 2px 6px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.vw-brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.vw-brand-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 1px;
-}
-
-.vw-brand-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.vw-brand-sub {
-  font-size: 10.5px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.vw-nav-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vw-nav-cell {
-  margin: 0;
-}
-
-.vw-nav-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 9px 8px 11px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.vw-nav-item:hover {
-  background: var(--panel-2);
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.vw-nav-index {
-  flex: 0 0 auto;
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-}
-
-.vw-nav-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 1px;
-}
-
-.vw-nav-name {
-  font-size: 12.5px;
-  line-height: 1.3;
-  color: inherit;
-}
-
-.vw-nav-hint {
-  font-size: 10.5px;
-  line-height: 1.3;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 当前视角：由 body[data-view] 决定，四条链接共用同一套规则。 */
-body[data-view="chat"] [data-view-link="chat"],
-body[data-view="fleet"] [data-view-link="fleet"],
-body[data-view="data"] [data-view-link="data"],
-body[data-view="suite"] [data-view-link="suite"] {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  color: var(--text);
-}
-
-body[data-view="chat"] [data-view-link="chat"]::before,
-body[data-view="fleet"] [data-view-link="fleet"]::before,
-body[data-view="data"] [data-view-link="data"]::before,
-body[data-view="suite"] [data-view-link="suite"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-
-body[data-view="chat"] [data-view-link="chat"] .vw-nav-index,
-body[data-view="fleet"] [data-view-link="fleet"] .vw-nav-index,
-body[data-view="data"] [data-view-link="data"] .vw-nav-index,
-body[data-view="suite"] [data-view-link="suite"] .vw-nav-index {
-  color: var(--accent);
-}
-
-.vw-nav-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: auto 0 0;
-  padding: 10px 6px 2px;
-  border-top: 1px solid var(--border);
-  font-size: 10.5px;
-  color: var(--muted);
-}
-
-.vw-nav-foot-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-/* ================================================================
-   ③ 中内容
-   ================================================================ */
-
-.vw-main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
   min-height: 0;
   background: var(--bg);
 }
 
-.vw-head {
+/* ================================================================
+ * ③ 顶栏（五样）
+ * ================================================================ */
+
+.vw-top {
+  grid-area: top;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex: 0 0 auto;
-  padding: 10px 16px;
+  gap: 16px;
+  min-width: 0;
+  padding: 8px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
 
-.vw-head-text {
+.vw-top-brand {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  min-width: 0;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
-.vw-title {
-  margin: 0;
+.vw-top-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--accent-line);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+
+.vw-top-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
 }
 
-.vw-hint {
-  margin: 0;
-  font-size: 11px;
+.vw-top-version {
+  font-size: var(--fs-tiny);
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vw-top-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vw-top-field {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.vw-top-label {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 模型名与运行时是「要能看清算什么」的信息，用等宽。 */
+.vw-top-value {
+  font-size: var(--fs-small);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.vw-badge {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 10.5px;
-  color: var(--muted);
+.vw-top-picker {
+  max-width: 130px;
+  padding: 2px 4px;
   background: var(--panel-2);
-  white-space: nowrap;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: var(--fs-small);
 }
 
-/* iframe 页面的模式开关（agent / pro）在 `.vw-badge` 上留一个可读标记。 */
-.vw-badge[data-frame-mode="agent"] {
-  border-color: var(--accent-line);
-  color: var(--accent);
+/* 连接状态：文字 + 点。不只靠颜色（色盲用户）—— 文字本身就说清了。 */
+.vw-top-conn::before {
+  content: "●";
+  margin-right: 4px;
+  color: var(--muted);
 }
 
-.vw-badge[data-frame-mode="pro"] {
-  border-color: var(--accent-line);
-  color: var(--accent);
-}
+.vw-top-conn[data-connection="connected"]::before { color: var(--ok); }
+.vw-top-conn[data-connection="connecting"]::before { color: var(--warn); }
+.vw-top-conn[data-connection="offline"]::before { color: var(--bad); }
 
-.vw-frame-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-}
-
-.vw-frame {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: var(--bg);
-  color-scheme: light dark;
+.vw-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 /* ================================================================
-   ④ 右检查器
-   ================================================================ */
+ * ④ 按钮（全局唯一一套）
+ * ================================================================ */
 
-.vw-inspector {
+.vw-btn {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vw-btn:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  background: var(--subtle);
+}
+
+.vw-btn:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.vw-btn-quiet {
+  background: transparent;
+  color: var(--muted);
+}
+
+.vw-btn-quiet:hover {
+  color: var(--text);
+}
+
+.vw-btn-primary {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 拒绝是次要色，**不是红色大按钮** —— 做成红色会让人不敢点（附录 C.3 点四）。 */
+.vw-btn-danger-quiet {
+  color: var(--bad);
+  background: transparent;
+}
+
+.vw-btn-text {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 3px 4px;
+}
+
+.vw-btn-text:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+/* ================================================================
+ * ⑤ 左导航：图标 + 一行小字
+ * ================================================================ */
+
+.vw-nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-height: 0;
+  padding: 8px 6px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.vw-nav-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.vw-nav-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* 当前项：三个手段用满 —— 左侧竖条（最明显）+ 背景色（次明显）+ 文字变深。
+   规格要求至少用两个：只靠文字颜色在低对比度屏幕上几乎看不出（25.4.3）。 */
+.vw-nav-item[aria-current="page"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.vw-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.vw-nav-glyph {
+  font-size: 15px;
+  line-height: 1;
+  color: inherit;
+}
+
+.vw-nav-item[aria-current="page"] .vw-nav-glyph {
+  color: var(--accent);
+}
+
+.vw-nav-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vw-nav-name {
+  font-size: var(--fs-small);
+  line-height: 1.3;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.vw-nav-hint {
+  font-size: var(--fs-tiny);
+  line-height: 1.3;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ================================================================
+ * ⑥ 主内容 + 右栏
+ * ================================================================ */
+
+.vw-body {
+  grid-area: body;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * 页头 + 主内容的竖排容器。
+ *
+ * 页头必须和 `<main>` 并列，不能是它的子节点：`main.replaceChildren()` 每次
+ * 换视角都会清空主内容，页头若在内侧会被一起摘掉 —— 之后往那个游离节点里塞
+ * 什么都没用，页面上永远不会出现。实测踩过一次（编队台的概览整块消失）。
+ */
+.vw-center {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * `min-width: 0` 是整条任务的技术核心（25.5.3）。
+ *
+ * Flex 子元素的默认 min-width 是 auto，意思是「不小于内容的固有宽度」。
+ * 内容里有一个宽表格，子元素就会被撑开，然后整个页面出现横向滚动条。
+ * `min-width: 0` 打破这个默认，让子元素可以比内容窄（内部自己滚动）——
+ * 这是「1280 不溢出」的落点。
+ */
+.vw-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+}
+
+.vw-main:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.vw-view-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.vw-view-title {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* 页头右侧的操作组：由视角自己往里塞按钮。 */
+.vw-view-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* 页头里的上下文（当前批次 / 概览数字）。 */
+.vw-view-context {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  overflow: hidden;
+}
+
+.vw-rail {
+  flex: 0 0 var(--rail-w);
+  width: var(--rail-w);
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 0;
-  padding: 12px;
+  padding: 10px;
   background: var(--panel);
   border-left: 1px solid var(--border);
   overflow-y: auto;
 }
 
-.vw-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-2);
+/* 折叠成 0 但留 8px 抓手（25.6.3）：完全消失就找不回来了。 */
+body[data-rail-state="collapsed"] .vw-rail {
+  flex-basis: 8px;
+  width: 8px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
 }
 
-.vw-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
+body[data-rail-state="collapsed"] .vw-rail > * {
+  display: none;
 }
 
-.vw-panel-title {
+/*
+ * 窄屏（< 1150）右栏改成抽屉（25.6.2 / 附录 C.8）。
+ *
+ * 关键：抽屉**覆盖**在主内容上，不挤压它。挤压会重排 —— 用户正在看的那一行
+ * 会跳到别处，比没有右栏更烦。所以用 absolute 定位 + 右侧贴边。
+ */
+@media (max-width: 1150px) {
+  .vw-body {
+    position: relative;
+    /* 抽屉滑到屏幕外时不能撑出滚动条 —— 见下面对 right 的说明。 */
+    overflow: hidden;
+  }
+
+  .vw-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    width: var(--rail-w);
+    flex-basis: auto;
+    display: flex;
+    /*
+     * 收起时整个人移到容器右边界之外。
+     *
+     * **不能用 `transform: translateX(100%)`**：位移不改变布局盒，它仍然参与
+     * 文档的滚动宽度计算，于是在 1024 下量到 scrollWidth=1264（1024+240）——
+     * 一打开就多一条横向滚动条。用 `right` 的负值把它移出边距盒，
+     * 配合 `.vw-body { overflow: hidden }`，既不占位也不产生滚动。
+     *
+     * 这里刻意不用 `display:none`：那样「打开」只能是瞬间切换，且读屏与焦点会跳。
+     */
+    right: calc(-1 * var(--rail-w));
+    visibility: hidden;
+  }
+
+  body[data-rail-state="drawer"] .vw-rail {
+    right: 0;
+    visibility: visible;
+  }
+}
+
+/* 两个入口按钮：宽屏用「右栏」，窄屏用「详情」。 */
+.vw-rail-drawer {
+  display: none;
+}
+
+@media (max-width: 1150px) {
+  .vw-rail-inline {
+    display: none;
+  }
+
+  .vw-rail-drawer {
+    display: inline-block;
+  }
+}
+
+.vw-rail-empty {
   margin: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.vw-panel-state {
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 10px;
+  padding: 10px 4px;
+  font-size: var(--fs-small);
+  line-height: 1.5;
   color: var(--muted);
 }
 
+/* ================================================================
+ * ⑦ 底栏（四个状态灯）
+ * ================================================================ */
+
+.vw-foot {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px 8px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-tiny);
+}
+
+.vw-lamp {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-tiny);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vw-lamp:hover {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+.vw-lamp-dot {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.vw-lamp[data-state="ok"] .vw-lamp-dot { color: var(--ok); }
+.vw-lamp[data-state="idle"] .vw-lamp-dot { color: var(--muted); }
+.vw-lamp[data-state="degraded"] .vw-lamp-dot { color: var(--warn); }
+.vw-lamp[data-state="down"] .vw-lamp-dot { color: var(--bad); }
+.vw-lamp[data-state="unknown"] .vw-lamp-dot { color: var(--dim); }
+
+.vw-lamp-name {
+  color: var(--muted);
+}
+
+.vw-lamp-text {
+  color: var(--text);
+}
+
+/* 降级与不可用要显眼 —— 藏起来让界面好看等于骗用户（附录 C.9 第 5 条）。 */
+.vw-lamp[data-state="degraded"] .vw-lamp-text { color: var(--warn); }
+.vw-lamp[data-state="down"] .vw-lamp-text { color: var(--bad); }
+
+/* 原因只在悬停时展开成完整一句，避免底栏变长。 */
+.vw-lamp-reason {
+  display: none;
+}
+
+.vw-lamp:hover .vw-lamp-reason,
+.vw-lamp:focus-visible .vw-lamp-reason {
+  display: inline;
+  margin-left: 4px;
+  color: var(--muted);
+}
+
+.vw-foot-tail {
+  margin-left: auto;
+  padding-right: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vw-foot-tail[data-connection="connected"] { color: var(--ok); }
+.vw-foot-tail[data-connection="offline"] { color: var(--bad); }
+
+/* ================================================================
+ * ⑧ 视觉规矩三条（正文任何地方都能用）
+ * ================================================================ */
+
+/* 规矩一：数字等宽右对齐。 */
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 规矩二：单位小一号、更淡 —— 数字要显眼，单位不该抢。 */
+.unit {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+/* 规矩三：表格只画横线，不画竖线。 */
+table.clean {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+}
+
+table.clean th,
+table.clean td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  border-left: 0;
+  border-right: 0;
+  vertical-align: baseline;
+}
+
+table.clean thead th {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  border-bottom-color: var(--border-hover);
+  white-space: nowrap;
+}
+
+table.clean tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ================================================================
+ * ⑨ 通用小组件
+ * ================================================================ */
+
+/* 一节（右栏与主内容都用）：标题 + 内容，只有上边框分隔，不用卡片阴影。 */
+.vw-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.vw-sec:last-child {
+  border-bottom: 0;
+}
+
+.vw-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vw-sec-title {
+  margin: 0;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.vw-sec-meta {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 键值对：左名右值，值右对齐（数字用 .num）。 */
 .vw-kv {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   margin: 0;
 }
 
@@ -360,161 +717,167 @@ body[data-view="suite"] [data-view-link="suite"] .vw-nav-index {
   justify-content: space-between;
   gap: 10px;
   margin: 0;
+  min-width: 0;
+  min-height: 20px;
 }
 
 .vw-kv-row dt {
-  font-size: 11px;
+  flex: 0 1 auto;
+  font-size: var(--fs-small);
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .vw-kv-row dd {
+  flex: 0 0 auto;
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-small);
   color: var(--text);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.vw-list,
-.vw-log {
+/* 空态：一句话 + 一个下一步动作。四种空态靠调用方给不同的话（25.11.4）。 */
+.vw-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 4px;
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.vw-empty-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.vw-empty-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* 空态里的动作组：两个及以上按钮时横排、可换行。 */
+.vw-empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 降级 / 警告条：内联，不弹窗（四级错误里的「警告」）。 */
+.vw-warn {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--warn-line);
+  border-left-width: 2px;
+  border-radius: 3px;
+  background: var(--warn-soft);
+  font-size: var(--fs-small);
+  color: var(--text);
+}
+
+/* 错误条：说清三件事（发生了什么 / 错误码 / 该做什么）。 */
+.vw-error {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vw-list-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.vw-list-dot {
-  flex: 0 0 auto;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--border);
-}
-
-.vw-log-row {
-  display: flex;
-  gap: 8px;
-  font-size: 10.5px;
-  line-height: 1.45;
-  color: var(--muted);
-}
-
-.vw-log-time {
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-
-.vw-log-text {
-  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--bad-line);
+  border-left-width: 2px;
+  border-radius: 3px;
+  background: var(--bad-soft);
+  font-size: var(--fs-small);
   color: var(--text);
-  overflow-wrap: anywhere;
 }
 
-.vw-panel-note {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.45;
+.vw-error-code {
+  font-size: var(--fs-tiny);
   color: var(--muted);
+}
+
+.vw-block-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px;
+  padding: 12px;
+  border: 1px solid var(--bad-line);
+  border-left-width: 2px;
+  border-radius: 3px;
+  background: var(--bad-soft);
+}
+
+.vw-block-error p {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text);
+}
+
+.vw-block-error-what { font-size: var(--fs-body); }
+.vw-block-error-code { font-size: var(--fs-tiny); color: var(--muted); }
+.vw-block-error-hint { color: var(--muted); }
+
+/* 状态标记：文字 + 颜色，不只靠颜色（检查器也要按这个原则来）。 */
+.vw-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: var(--fs-tiny);
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 /* ================================================================
-   ⑤ 窄屏逐级收起
-   ================================================================ */
+ * ⑩ 断点（附录 C.8）
+ * ================================================================ */
 
+/* 1280：右栏窄一档（抽屉宽度，见上面的 1150 断点）。 */
 @media (max-width: 1280px) {
-  .vw-shell {
-    grid-template-columns: 200px minmax(0, 1fr) 260px;
+  body[data-view] {
+    --rail-w: 240px;
   }
 }
 
-/* 先收右检查器：中栏是主视图，不能被挤窄。 */
-@media (max-width: 1100px) {
-  .vw-shell {
-    grid-template-columns: 200px minmax(0, 1fr);
+/* 1024：左导航只留图标。 */
+@media (max-width: 1024px) {
+  body[data-view] {
+    --nav-w: 56px;
   }
 
-  .vw-inspector {
-    display: none;
-  }
-}
-
-/* 再收左导航成顶部横条。 */
-@media (max-width: 820px) {
-  .vw-shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .vw-nav {
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .vw-brand {
-    padding: 0 10px 0 0;
-    border-right: 1px solid var(--border);
-    border-bottom: 0;
-  }
-
-  .vw-brand-text {
-    display: none;
-  }
-
-  .vw-nav-list {
-    flex-direction: row;
-    gap: 2px;
-  }
-
-  .vw-nav-item {
-    padding: 6px 9px;
-  }
-
-  .vw-nav-index,
   .vw-nav-hint {
     display: none;
   }
 
-  .vw-nav-foot {
-    display: none;
+  .vw-nav-name {
+    font-size: var(--fs-tiny);
   }
 
-  .vw-head {
-    padding: 8px 12px;
-  }
-
-  .vw-hint {
-    display: none;
+  .vw-top-info {
+    gap: 10px;
   }
 }
 
-@media (max-width: 520px) {
-  .vw-brand {
-    border-right: 0;
-    padding-right: 0;
+/* 更窄：顶栏的模型 / 运行时收进一行省略，其余不动。 */
+@media (max-width: 820px) {
+  .vw-top {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .vw-brand-mark {
-    width: 26px;
-    height: 26px;
-    font-size: 9px;
-  }
-
-  .vw-title {
-    font-size: 12px;
+  .vw-top-info {
+    order: 3;
+    width: 100%;
   }
 }
