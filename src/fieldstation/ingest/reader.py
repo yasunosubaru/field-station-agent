@@ -15,7 +15,7 @@
 | RINEX 4 观测 | ✅ | ❌ | 能识别、会报「不支持」，不静默失败 |
 | CRINEX / Hatanaka（真 `d` 记录） | ✅ | ❌ | 本项目无真实样本，解码器未验证 |
 | gfzrnx 私有紧缩（`3&`） | ✅ | ❌ | BKG / GSSC 的 `.crx.gz` 全是这种，已确认非 Hatanaka |
-| 厂商原始格式（SBF/OEM/ASC） | 部分 | ❌ | 需要用户先导出 RINEX |
+| **SBF（NovAtel 二进制）** | ✅ | ✅ | 见 `ingest/sbf.py`；三条真实采集逐条对上厂商 Summary |
 
 **设计原则**：宁可报「不支持 + 说明缺什么」，也绝不静默给出错误结果。
 """
@@ -30,7 +30,7 @@ from typing import Any
 
 # model 在上一级包（fieldstation.model），不是 fieldstation.ingest 的一部分
 from .. import model as S
-from . import rinex2, rinex3
+from . import rinex2, rinex3, sbf
 
 GZ_MAGIC = b"\x1f\x8b"
 
@@ -196,10 +196,33 @@ def sniff(path: str) -> dict:
         info.update(format="CSV", ncols=len(lines[0].split(",")),
                     header=lines[0].strip()[:200], supported=True)
         return info
+    # SBF 必须用**原始字节**判，不能用上面的 latin-1 文本 ——
+    # 二进制帧过一遍 latin-1 仍是任意字节，靠文本特征判必然误伤。
+    if not gz and _looks_like_sbf(head):
+        sub = sbf.sniff_sbf(path)
+        for k in ("path", "basename", "size_bytes"):
+            sub.pop(k, None)
+        info.update(sub)
+        return info
     info.update(format="UNKNOWN", supported=False,
-                reason="既不是 RINEX 2/3/4，也不是 CRINEX/CSV。"
-                       "若是厂商原始格式（SBF/OEM/ASC），请先导出为 RINEX 3.04")
+                reason="既不是 RINEX 2/3/4，也不是 CRINEX/CSV/SBF。"
+                       "若是 OEM/ASC 等其它厂商格式，请先导出为 RINEX 3.04")
     return info
+
+
+def _looks_like_sbf(head: bytes) -> bool:
+    """SBF 判据：出现 `AA 44 12` 或 `AA 44 13`。
+
+    采集开头常带一串控制台文本（实测 `\\r\\n<OK\\r\\n[USB2]` 共 13 字节），
+    所以**不能只查开头**；但也只在这个已读入的头部窗口里找，不整文件扫。
+    """
+    at = head.find(b"\xaa\x44")
+    while at >= 0:
+        if at + 2 < len(head) and head[at + 2] in (sbf.SYNC_BINARY_FULL,
+                                                   sbf.SYNC_BINARY_SHORT):
+            return True
+        at = head.find(b"\xaa\x44", at + 1)
+    return False
 
 
 # ---------------------------------------------------------------- 统一观测
@@ -274,6 +297,13 @@ class ObservationFile:
             self._text, _ = _read_text(self.path)
             self._station = "CSV"
             self._hdr = {}
+        elif fmt == "SBF":
+            self._raw = sbf.SbfFile(self.path)
+            self._station = self._raw.station
+            self._hdr = {"version": "SBF", "gps_week": self._raw.header_week,
+                         "time_system": "GPS",
+                         "interval_s": self._raw.interval_s,
+                         "sbf_stats": self._raw.stats}
         else:
             raise UnsupportedFormat(self.info)
 
@@ -327,6 +357,8 @@ class ObservationFile:
             yield from self._from_rinex2(want_systems)
         elif fmt == "CSV":
             yield from self._from_csv()
+        elif fmt == "SBF":
+            yield from self._raw.observations(want_systems)
         else:
             raise UnsupportedFormat(self.info)
 
@@ -470,6 +502,12 @@ class ObservationFile:
             rep["blocked_by"] = info.get("reason", "未知原因")
             rep["how_to_fix"] = _FIX.get(info["format"], "请把文件头 20 行发出来")
             return rep
+        if info["format"] == "SBF":
+            # SBF 没有 RINEX 那套头段，能报的只有「读到什么、丢了什么」。
+            # 这些数字正是设-2 要求「坏帧要计数、不许静默丢」的落地。
+            rep.update(self._raw.capability_report())
+            rep["time_system"] = "GPS"
+            return rep
         rep["interval_s"] = self.interval_s
         rep["time_system"] = self._hdr.get("time_system", "")
         rep["receiver"] = self._hdr.get("receiver_type", "")
@@ -501,7 +539,8 @@ _FIX = {
                "`convbin -r 3 -od -os <file>`；或 `gfzrnx -r 3 < in.rnx4 > out.rnx`"),
     "RINEX3-NAV": ("这是导航电文（广播星历），不含观测。可作为上游项目的 rinexnav 读取器的输入。"),
     "UNKNOWN": ("请把文件前 20 行（或 `head -c 512 file`）发出来。"
-                "若为 SBF/OEM/ASC 等厂商格式，先用厂商工具或 RTKLIB `convbin` 转 RINEX。"),
+                "SBF（NovAtel 二进制）本仓库已能直接读；"
+                "OEM/ASC 等其它厂商格式请先用厂商工具或 RTKLIB `convbin` 转 RINEX。"),
 }
 
 
