@@ -57,3 +57,6 @@ NovAtel/
 # v4 本地依赖（venv / opencode / clickhouse，可达 1 GB 级）：绝不入库
 .deps/
 
+# 开发群聊的消息文件（运行态，不是证据；日志本身由工具生成）
+logs/dev_chat/
+
