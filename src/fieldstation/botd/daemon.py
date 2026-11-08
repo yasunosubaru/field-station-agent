@@ -28,7 +28,7 @@ def default_handler(task: dict) -> dict:
     """
     return {
         "ok": True,
-        "task_id": task["id"],
+        "task_id": task["task_id"],
         "kind": task["kind"],
         "note": "botd 默认执行器：仅确认领取与完成",
     }
@@ -81,10 +81,10 @@ class BotDaemon:
 
         base.update(
             {
-                "task_id": task["id"],
+                "task_id": task["task_id"],
                 "kind": task["kind"],
                 "attempts": int(task["attempts"]),
-                "parent_id": task.get("parent_id"),
+                "parent_task_id": task.get("parent_task_id"),
                 "step_id": task.get("step_id"),
             }
         )
@@ -92,7 +92,7 @@ class BotDaemon:
             result = self.handler(dict(task))
         except Exception as exc:  # noqa: BLE001 - 执行失败要落库，不能带走 daemon
             updated = self.queue.fail(
-                task["id"], exc, delay=self.retry_delay, now=now
+                task["task_id"], exc, delay=self.retry_delay, now=now
             )
             self._sync_step(task, updated, error=result_text(exc), now=now)
             base.update(
@@ -106,7 +106,7 @@ class BotDaemon:
 
         if is_failure_result(result):
             updated = self.queue.fail(
-                task["id"],
+                task["task_id"],
                 result_text(result),
                 delay=self.retry_delay,
                 now=now,
@@ -121,7 +121,7 @@ class BotDaemon:
             )
             return base
 
-        updated = self.queue.complete(task["id"], result, now=now)
+        updated = self.queue.complete(task["task_id"], result, now=now)
         self._sync_step(task, updated, output=result, now=now)
         base.update({"action": "ran", "status": updated["status"], "result": result})
         return base

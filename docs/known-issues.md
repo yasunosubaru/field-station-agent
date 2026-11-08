@@ -453,3 +453,23 @@
 2. 每条技术论断都要能指出证据出处；推断要标"未验证"。
 3. 条目被修复后不要删，改为在条目下追加"已于 <日期> 修复，见 <commit>"。
 4. `.superpowers/` 下的任务报告**不是**登记处 —— 那是过程记录，会被归档或丢失。
+
+### KI-15 v5 文档把本机路径写进了公开仓库：脱敏门禁红了【已于 2026-11-08 修复】
+
+- **位置**：`docs/plans/2026-11-08-v5-*.md`（五份，`5ed2fef` 新增）。
+- **症状**：`tools/check_desensitization.py` 报 27 处命中（`home_path_win` 18 处、
+  `local_path_cjk` 9 处）——两类真实本机路径：Windows 用户目录下的绝对路径，
+  以及本仓库所在的、含中文的归档盘路径。同时
+  `harness/selftest.py` 的 [1] 项（tests 全绿）由 `tests/test_desensitization.py::
+  TestCommandLine::test_repository_is_clean` 连带变红，五条门禁实际是 **2/5 FAIL**，
+  而 `5ed2fef` 的说明与交接文件都写着"五条全绿"。
+- **为什么会漏**：那五份文档是 AI 在一次会话里写的，写路径时直接复制了本机真实路径；
+  写完没有跑门禁就提交了。CI 上这类问题会红，但本地不跑就看不见。
+- **处理**：按 KI-12 已登记的约定替换为本仓库既有占位符 ——
+  Windows 用户目录换成 `%USERPROFILE%`，仓库绝对路径换成 `<仓库根>`。
+  纯替换，27 增 27 删。**本条登记也不写出具体路径**，否则登记本身就成了泄露源
+  （与 KI-12 里"词表本身不能入库"同一条道理）。
+- **回归**：`tests/test_desensitization.py::TestCommandLine::test_repository_is_clean`
+  重新变绿；`harness/selftest.py` 回到 5/5。
+- **教训**：**交接文件里"门禁全绿"这句话本身要能回源**。改文档也会破门禁，
+  所以"只改了文档"不是跳过门禁的理由。

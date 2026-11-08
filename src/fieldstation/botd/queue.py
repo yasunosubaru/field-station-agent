@@ -17,6 +17,11 @@
        |                                   \\-> dead（次数用尽）
        +--retry（人工/显式）------------------+
 
+另有两条**不进队列主循环**的状态（契约 §2.1）：``waiting_approval`` /
+``waiting_operator`` 表示任务停在闸门上等人。它们必须保持
+``status != 'pending'``，否则 ``lease`` 会把一个正在等人批的任务重新领走，
+闸门就形同虚设。``resume`` 的写法是把状态改回 ``pending``，而不是新开一条。
+
 ``attempts`` 在**领取时**加一，而不是失败时：这样"领取后进程直接崩掉"也算
 消耗了一次，不会无限重试同一个毒任务。
 """
@@ -27,6 +32,7 @@ from typing import Any, Mapping, Optional
 
 from .store import (
     BotStore,
+    TASK_STATUSES,
     _task_dict,
     add_seconds,
     dumps,
@@ -38,7 +44,7 @@ from .store import (
 #: enqueue 认识的字段；多传字段视为调用方写错，直接报错而不是悄悄吞掉。
 _TASK_FIELDS = frozenset(
     {
-        "kind", "bot_id", "parent_id", "step_id", "title", "payload",
+        "kind", "bot_id", "parent_task_id", "step_id", "title", "payload",
         "priority", "max_attempts", "available_at", "task_id",
     }
 )
@@ -84,7 +90,7 @@ class TaskQueue:
         return self.store.create_task(
             kind=task.get("kind", ""),
             bot_id=task.get("bot_id"),
-            parent_id=task.get("parent_id"),
+            parent_task_id=task.get("parent_task_id"),
             step_id=task.get("step_id"),
             title=task.get("title", ""),
             payload=task.get("payload"),
@@ -102,7 +108,7 @@ class TaskQueue:
         ttl: float = 60.0,
         *,
         now: Optional[datetime] = None,
-        parent_id: Optional[str] = None,
+        parent_task_id: Optional[str] = None,
         kind: Optional[str] = None,
     ) -> Optional[dict]:
         """领取一条到期任务；没有可领的返回 ``None``。
@@ -118,9 +124,9 @@ class TaskQueue:
         expires = to_iso(add_seconds(moment, ttl))
         clauses = ["status = 'pending'", "available_at <= ?"]
         params: list[Any] = [stamp]
-        if parent_id is not None:
-            clauses.append("parent_id = ?")
-            params.append(parent_id)
+        if parent_task_id is not None:
+            clauses.append("parent_task_id = ?")
+            params.append(parent_task_id)
         if kind is not None:
             clauses.append("kind = ?")
             params.append(kind)
@@ -128,7 +134,7 @@ class TaskQueue:
         with self.store.transaction() as conn:
             row = conn.execute(
                 f"""
-                SELECT id FROM task
+                SELECT task_id FROM task
                 WHERE {where}
                 ORDER BY priority DESC, available_at ASC, created_at ASC, rowid ASC
                 LIMIT 1
@@ -137,20 +143,20 @@ class TaskQueue:
             ).fetchone()
             if row is None:
                 return None
-            task_id = row["id"]
+            task_id = row["task_id"]
             updated = conn.execute(
                 """
                 UPDATE task
                 SET status = 'running', lease_owner = ?, lease_expires_at = ?,
                     attempts = attempts + 1, updated_at = ?
-                WHERE id = ? AND status = 'pending'
+                WHERE task_id = ? AND status = 'pending'
                 """,
                 (worker.strip(), expires, stamp, task_id),
             )
             if updated.rowcount != 1:  # pragma: no cover - 事务内理论上不会发生
                 return None
             fresh = conn.execute(
-                "SELECT * FROM task WHERE id = ?", (task_id,)
+                "SELECT * FROM task WHERE task_id = ?", (task_id,)
             ).fetchone()
         return _task_dict(fresh)
 
@@ -170,7 +176,7 @@ class TaskQueue:
             cur = conn.execute(
                 """
                 UPDATE task SET lease_expires_at = ?, updated_at = ?
-                WHERE id = ? AND status = 'running' AND lease_owner = ?
+                WHERE task_id = ? AND status = 'running' AND lease_owner = ?
                 """,
                 (to_iso(add_seconds(moment, ttl)), to_iso(moment), task_id, worker),
             )
@@ -191,7 +197,7 @@ class TaskQueue:
                 UPDATE task
                 SET status = 'done', result = ?, last_error = NULL,
                     lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-                WHERE id = ?
+                WHERE task_id = ?
                 """,
                 (_json(result), to_iso(moment), task_id),
             )
@@ -217,7 +223,7 @@ class TaskQueue:
                 UPDATE task
                 SET status = ?, result = ?, last_error = ?,
                     lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-                WHERE id = ?
+                WHERE task_id = ?
                 """,
                 (status, _json(result), error, to_iso(now or utcnow()), task_id),
             )
@@ -241,7 +247,7 @@ class TaskQueue:
         moment = now or utcnow()
         with self.store.transaction() as conn:
             row = conn.execute(
-                "SELECT attempts, max_attempts, status FROM task WHERE id = ?",
+                "SELECT attempts, max_attempts, status FROM task WHERE task_id = ?",
                 (task_id,),
             ).fetchone()
             if row is None:
@@ -260,7 +266,7 @@ class TaskQueue:
                 UPDATE task
                 SET status = ?, available_at = ?, last_error = ?,
                     lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-                WHERE id = ?
+                WHERE task_id = ?
                 """,
                 (status, available, _error_text(error), to_iso(moment), task_id),
             )
@@ -287,7 +293,7 @@ class TaskQueue:
                 UPDATE task
                 SET status = 'pending', available_at = ?, lease_owner = NULL,
                     lease_expires_at = NULL, updated_at = ?
-                WHERE id = ?
+                WHERE task_id = ?
                 """,
                 (to_iso(add_seconds(moment, delay)), to_iso(moment), task_id),
             )
@@ -302,7 +308,7 @@ class TaskQueue:
             raise ValueError("max_attempts 至少为 1")
         with self.store.transaction() as conn:
             cur = conn.execute(
-                "UPDATE task SET max_attempts = ?, updated_at = ? WHERE id = ?",
+                "UPDATE task SET max_attempts = ?, updated_at = ? WHERE task_id = ?",
                 (int(max_attempts), to_iso(now or utcnow()), task_id),
             )
             if cur.rowcount == 0:
@@ -315,7 +321,7 @@ class TaskQueue:
                 """
                 UPDATE task SET status = 'cancelled', lease_owner = NULL,
                                 lease_expires_at = NULL, updated_at = ?
-                WHERE id = ? AND status IN ('pending', 'running')
+                WHERE task_id = ? AND status IN ('pending', 'running')
                 """,
                 (to_iso(now or utcnow()), task_id),
             )
@@ -336,7 +342,7 @@ class TaskQueue:
         with self.store.transaction() as conn:
             rows = conn.execute(
                 """
-                SELECT id, attempts, max_attempts FROM task
+                SELECT task_id, attempts, max_attempts FROM task
                 WHERE status = 'running' AND lease_expires_at IS NOT NULL
                   AND lease_expires_at <= ?
                 ORDER BY lease_expires_at, rowid
@@ -360,13 +366,13 @@ class TaskQueue:
                     SET status = ?, available_at = ?,
                         last_error = COALESCE(last_error, '租约过期'),
                         lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
-                    WHERE id = ?
+                    WHERE task_id = ?
                     """,
-                    (status, available, stamp, row["id"]),
+                    (status, available, stamp, row["task_id"]),
                 )
                 reaped.append(
                     {
-                        "task_id": row["id"],
+                        "task_id": row["task_id"],
                         "status": status,
                         "attempts": attempts,
                         "available_at": available,
@@ -402,22 +408,22 @@ class TaskQueue:
                 """,
                 (to_iso(moment),),
             ).fetchone()[0]
-        counts = {status: 0 for status in ("pending", "running", "done", "failed", "dead", "cancelled")}
+        counts = {status: 0 for status in TASK_STATUSES}
         for row in rows:
             counts[row["status"]] = int(row["n"])
         counts["ready"] = int(ready)
         counts["expired_leases"] = int(expired)
         return counts
 
-    def pending_children(self, parent_id: str) -> int:
+    def pending_children(self, parent_task_id: str) -> int:
         with self.store.connect() as conn:
             return int(
                 conn.execute(
                     """
                     SELECT COUNT(*) FROM task
-                    WHERE parent_id = ? AND status IN ('pending', 'running')
+                    WHERE parent_task_id = ? AND status IN ('pending', 'running')
                     """,
-                    (parent_id,),
+                    (parent_task_id,),
                 ).fetchone()[0]
             )
 

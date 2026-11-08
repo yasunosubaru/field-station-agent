@@ -288,7 +288,7 @@ class Supervisor:
         child_ids: List[str] = []
         for idx, spec in enumerate(specs):
             step = self.store.create_step(
-                task_id=parent["id"],
+                task_id=parent["task_id"],
                 idx=idx,
                 name=spec.name,
                 kind=spec.kind,
@@ -300,7 +300,7 @@ class Supervisor:
                 {
                     "kind": spec.kind or kind,
                     "bot_id": bot_id,
-                    "parent_id": parent["id"],
+                    "parent_task_id": parent["task_id"],
                     "step_id": step["id"],
                     "title": spec.name,
                     "payload": {
@@ -314,8 +314,8 @@ class Supervisor:
                 },
                 now=now,
             )
-            self.store.update_step(step["id"], task_ref=child["id"], now=now)
-            child_ids.append(child["id"])
+            self.store.update_step(step["id"], task_ref=child["task_id"], now=now)
+            child_ids.append(child["task_id"])
 
         if executor is not None:
             self._drive(parent, child_ids, executor, now=now, max_turns=max_turns)
@@ -355,12 +355,12 @@ class Supervisor:
             len(child_ids) * (self.max_attempts + 1) + len(child_ids) + 5
         )
         for _ in range(int(budget)):
-            if self.queue.pending_children(parent["id"]) == 0:
+            if self.queue.pending_children(parent["task_id"]) == 0:
                 return
             child = self.queue.lease(
                 self.worker,
                 ttl=self.lease_ttl,
-                parent_id=parent["id"],
+                parent_task_id=parent["task_id"],
                 now=now,
             )
             if child is None:
@@ -370,7 +370,7 @@ class Supervisor:
                 result = executor(dict(child))
             except Exception as exc:  # noqa: BLE001 - 执行器的异常要变成任务失败
                 updated = self.queue.fail(
-                    child["id"], exc, delay=self.retry_delay, now=now
+                    child["task_id"], exc, delay=self.retry_delay, now=now
                 )
                 self.store.update_step(
                     step["id"],
@@ -382,7 +382,7 @@ class Supervisor:
                 continue
             if is_failure_result(result):
                 updated = self.queue.fail(
-                    child["id"],
+                    child["task_id"],
                     result_text(result),
                     delay=self.retry_delay,
                     now=now,
@@ -395,7 +395,7 @@ class Supervisor:
                     now=now,
                 )
                 continue
-            updated = self.queue.complete(child["id"], result, now=now)
+            updated = self.queue.complete(child["task_id"], result, now=now)
             self.store.update_step(
                 step["id"],
                 status="done",
@@ -413,8 +413,8 @@ class Supervisor:
         *,
         now: Optional[datetime],
     ) -> RunResult:
-        children = self.store.list_tasks(parent_id=parent["id"])
-        steps = self.store.list_steps(parent["id"])
+        children = self.store.list_tasks(parent_task_id=parent["task_id"])
+        steps = self.store.list_steps(parent["task_id"])
         statuses = Counter(child["status"] for child in children)
         attempts = sum(int(child["attempts"]) for child in children)
 
@@ -450,24 +450,24 @@ class Supervisor:
         }
         if final in ("done", "failed", "cancelled"):
             self.queue.finish(
-                parent["id"], final, result=summary, error=error or None, now=now
+                parent["task_id"], final, result=summary, error=error or None, now=now
             )
         else:
             # 父任务保持 running；这里只把结果写回去，状态由下一次 run/巡检推进。
             with self.store.transaction() as conn:
                 conn.execute(
-                    "UPDATE task SET result = ?, updated_at = ? WHERE id = ?",
-                    (dumps(summary), to_iso(now or utcnow()), parent["id"]),
+                    "UPDATE task SET result = ?, updated_at = ? WHERE task_id = ?",
+                    (dumps(summary), to_iso(now or utcnow()), parent["task_id"]),
                 )
 
         return RunResult(
-            task_id=parent["id"],
+            task_id=parent["task_id"],
             kind=parent["kind"],
             status=final,
             plan=[spec.to_dict() for spec in specs],
             children=[
                 {
-                    "task_id": child["id"],
+                    "task_id": child["task_id"],
                     "step_id": child["step_id"],
                     "kind": child["kind"],
                     "status": child["status"],

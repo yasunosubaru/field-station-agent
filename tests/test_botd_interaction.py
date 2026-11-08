@@ -59,7 +59,7 @@ class TreeTest(Base):
     def test_tree_links_steps_to_child_tasks(self):
         run = self.make_run(steps=3)
         tree = self.board.tree(run.task_id)
-        self.assertEqual(tree["root"]["id"], run.task_id)
+        self.assertEqual(tree["root"]["task_id"], run.task_id)
         self.assertEqual(len(tree["steps"]), 3)
         self.assertEqual(len(tree["children"]), 3)
         # 每个 step 都必须能指到执行它的那个子任务 —— 指不到的话，
@@ -84,15 +84,15 @@ class TreeTest(Base):
     def test_forest_only_top_level(self):
         run = self.make_run(steps=2)
         forest = self.board.forest()
-        ids = [f["task"]["id"] for f in forest]
+        ids = [f["task"]["task_id"] for f in forest]
         self.assertIn(run.task_id, ids)
         # 子任务不该出现在首屏列表里
-        for child in self.store.list_tasks(parent_id=run.task_id):
-            self.assertNotIn(child["id"], ids)
+        for child in self.store.list_tasks(parent_task_id=run.task_id):
+            self.assertNotIn(child["task_id"], ids)
 
     def test_forest_counts(self):
         run = self.make_run(steps=3)
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         self.assertEqual(entry["step_count"], 3)
         self.assertEqual(entry["done"] + entry["failed"], 0, "刚建的任务不该有完成/失败")
 
@@ -258,7 +258,7 @@ class PendingTest(Base):
     def test_forest_counts_open_interventions(self):
         run = self.make_run()
         self.board.request("pause", task_id=run.task_id)
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         self.assertEqual(entry["open_interventions"], 1)
 
 

@@ -157,7 +157,7 @@ class TreeAfterRealRun(Base):
         run = self.run_memory_task()
         for step in self.board.tree(run.task_id)["steps"]:
             self.assertIsNotNone(step["task"], f"步骤 {step['name']} 没关联到子任务")
-            self.assertEqual(step["task"]["id"], step["task_ref"])
+            self.assertEqual(step["task"]["task_id"], step["task_ref"])
             self.assertEqual(step["task"]["step_id"], step["id"])
 
 
@@ -239,11 +239,11 @@ class InterventionDoesNotRewriteState(Base):
     def test_open_interventions_count_tracks_pending_only(self):
         run = self.run_memory_task()
         row = self.board.request("pause", task_id=run.task_id)
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         self.assertEqual(entry["open_interventions"], 1)
 
         self.board.resolve(row["id"], "已停")
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         self.assertEqual(entry["open_interventions"], 0, "已结论的干预不该还算待办")
 
     def test_resolving_pause_does_not_resurrect_steps(self):
@@ -343,19 +343,19 @@ class ForestMatchesTree(Base):
     def test_forest_step_count_equals_tree_counts_steps(self):
         run = self.run_memory_task()
         tree = self.board.tree(run.task_id)
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         self.assertEqual(entry["step_count"], tree["counts"]["steps"])
 
     def test_forest_done_and_failed_equal_tree_counts(self):
         run = self.run_memory_task()
         tree = self.board.tree(run.task_id)
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         self.assertEqual(entry["done"], tree["counts"]["done"])
         self.assertEqual(entry["failed"], tree["counts"]["failed"])
 
     def test_forest_counts_failed_task(self):
         run = self.run_failing_task()
-        entry = next(f for f in self.board.forest() if f["task"]["id"] == run.task_id)
+        entry = next(f for f in self.board.forest() if f["task"]["task_id"] == run.task_id)
         tree = self.board.tree(run.task_id)
         self.assertEqual(entry["step_count"], 1)
         self.assertEqual(entry["failed"], 1)
@@ -363,10 +363,10 @@ class ForestMatchesTree(Base):
 
     def test_forest_lists_only_top_level_but_tree_sees_children(self):
         run = self.run_memory_task()
-        top_ids = [f["task"]["id"] for f in self.board.forest()]
+        top_ids = [f["task"]["task_id"] for f in self.board.forest()]
         self.assertIn(run.task_id, top_ids)
-        for child in self.store.list_tasks(parent_id=run.task_id):
-            self.assertNotIn(child["id"], top_ids, "首屏不该出现子任务")
+        for child in self.store.list_tasks(parent_task_id=run.task_id):
+            self.assertNotIn(child["task_id"], top_ids, "首屏不该出现子任务")
         self.assertEqual(len(self.board.tree(run.task_id)["children"]), 2)
 
 

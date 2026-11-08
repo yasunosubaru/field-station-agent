@@ -39,7 +39,7 @@ class QueueTestBase(unittest.TestCase):
 class TestConcurrentLease(QueueTestBase):
     def test_threads_never_lease_the_same_task(self) -> None:
         total = 40
-        ids = {self.enqueue(i)["id"] for i in range(total)}
+        ids = {self.enqueue(i)["task_id"] for i in range(total)}
 
         def drain(worker: str) -> list[str]:
             claimed: list[str] = []
@@ -47,7 +47,7 @@ class TestConcurrentLease(QueueTestBase):
                 task = self.queue.lease(worker, ttl=30.0, now=NOW)
                 if task is None:
                     return claimed
-                claimed.append(task["id"])
+                claimed.append(task["task_id"])
 
         with ThreadPoolExecutor(max_workers=8) as pool:
             batches = list(pool.map(drain, [f"w{i}" for i in range(8)]))
@@ -61,7 +61,7 @@ class TestConcurrentLease(QueueTestBase):
     def test_lease_is_exclusive_until_ttl(self) -> None:
         task = self.enqueue()
         first = self.queue.lease("w1", ttl=30.0, now=NOW)
-        self.assertEqual(first["id"], task["id"])
+        self.assertEqual(first["task_id"], task["task_id"])
         self.assertEqual(first["status"], "running")
         self.assertEqual(first["lease_owner"], "w1")
         self.assertIsNone(self.queue.lease("w2", ttl=30.0, now=NOW))
@@ -71,7 +71,7 @@ class TestLeaseLifecycle(QueueTestBase):
     def test_complete_clears_lease_and_marks_done(self) -> None:
         task = self.enqueue()
         leased = self.queue.lease("w1", ttl=30.0, now=NOW)
-        done = self.queue.complete(leased["id"], {"ok": True}, now=NOW)
+        done = self.queue.complete(leased["task_id"], {"ok": True}, now=NOW)
         self.assertEqual(done["status"], "done")
         self.assertEqual(done["result"], {"ok": True})
         self.assertIsNone(done["lease_owner"])
@@ -84,7 +84,7 @@ class TestLeaseLifecycle(QueueTestBase):
 
         self.assertIsNone(self.queue.lease("w2", ttl=10.0, now=later))
         reaped = self.queue.reap_expired(now=later)
-        self.assertEqual([item["task_id"] for item in reaped], [task["id"]])
+        self.assertEqual([item["task_id"] for item in reaped], [task["task_id"]])
         self.assertEqual(reaped[0]["status"], "pending")
         self.assertEqual(
             from_iso(reaped[0]["available_at"]),
@@ -97,7 +97,7 @@ class TestLeaseLifecycle(QueueTestBase):
         )
         again = self.queue.lease("w2", ttl=10.0, now=later + timedelta(seconds=10))
         self.assertIsNotNone(again)
-        self.assertEqual(again["id"], task["id"])
+        self.assertEqual(again["task_id"], task["task_id"])
         self.assertEqual(again["attempts"], 2, "领取时就要计入一次尝试")
 
     def test_reap_marks_dead_when_attempts_exhausted(self) -> None:
@@ -105,16 +105,16 @@ class TestLeaseLifecycle(QueueTestBase):
         self.queue.lease("w1", ttl=5.0, now=NOW)
         reaped = self.queue.reap_expired(now=NOW + timedelta(seconds=6))
         self.assertEqual(reaped[0]["status"], "dead")
-        stored = self.store.get_task(task["id"])
+        stored = self.store.get_task(task["task_id"])
         self.assertEqual(stored["status"], "dead")
         self.assertIsNone(stored["lease_owner"])
 
     def test_heartbeat_extends_only_for_owner(self) -> None:
         task = self.enqueue()
         self.queue.lease("w1", ttl=10.0, now=NOW)
-        self.assertFalse(self.queue.heartbeat(task["id"], "w2", 10.0, now=NOW))
-        self.assertTrue(self.queue.heartbeat(task["id"], "w1", 60.0, now=NOW))
-        stored = self.store.get_task(task["id"])
+        self.assertFalse(self.queue.heartbeat(task["task_id"], "w2", 10.0, now=NOW))
+        self.assertTrue(self.queue.heartbeat(task["task_id"], "w1", 60.0, now=NOW))
+        stored = self.store.get_task(task["task_id"])
         self.assertEqual(
             from_iso(stored["lease_expires_at"]), NOW + timedelta(seconds=60)
         )
@@ -126,7 +126,7 @@ class TestBackoff(QueueTestBase):
         leased = self.queue.lease("w1", ttl=30.0, now=NOW)
         self.assertEqual(leased["attempts"], 1)
 
-        failed = self.queue.fail(leased["id"], "第一次失败", now=NOW)
+        failed = self.queue.fail(leased["task_id"], "第一次失败", now=NOW)
         self.assertEqual(failed["status"], "pending")
         self.assertEqual(
             from_iso(failed["available_at"]), NOW + timedelta(seconds=10)
@@ -136,7 +136,7 @@ class TestBackoff(QueueTestBase):
 
         second = self.queue.lease("w1", ttl=30.0, now=NOW + timedelta(seconds=10))
         self.assertEqual(second["attempts"], 2)
-        failed = self.queue.fail(second["id"], "第二次失败", now=NOW + timedelta(seconds=10))
+        failed = self.queue.fail(second["task_id"], "第二次失败", now=NOW + timedelta(seconds=10))
         self.assertEqual(
             from_iso(failed["available_at"]),
             NOW + timedelta(seconds=10 + 20),
@@ -144,7 +144,7 @@ class TestBackoff(QueueTestBase):
 
         third = self.queue.lease("w1", ttl=30.0, now=NOW + timedelta(seconds=30))
         self.assertEqual(third["attempts"], 3)
-        dead = self.queue.fail(third["id"], "第三次失败", now=NOW + timedelta(seconds=30))
+        dead = self.queue.fail(third["task_id"], "第三次失败", now=NOW + timedelta(seconds=30))
         self.assertEqual(dead["status"], "dead")
         self.assertIn("第三次失败", dead["last_error"])
         self.assertEqual(self.queue.stats(now=NOW)["dead"], 1)
@@ -156,17 +156,17 @@ class TestBackoff(QueueTestBase):
 
         task = self.enqueue(max_attempts=5)
         self.queue.lease("w1", ttl=30.0, now=NOW)
-        failed = self.queue.fail(task["id"], "boom", delay=0.0, now=NOW)
+        failed = self.queue.fail(task["task_id"], "boom", delay=0.0, now=NOW)
         self.assertEqual(from_iso(failed["available_at"]), NOW)
         self.assertIsNotNone(self.queue.lease("w2", ttl=30.0, now=NOW))
 
     def test_retry_requeues_without_consuming_attempts(self) -> None:
         task = self.enqueue(max_attempts=1)
         self.queue.lease("w1", ttl=5.0, now=NOW)
-        self.queue.fail(task["id"], "毒任务", now=NOW)
-        self.assertEqual(self.store.get_task(task["id"])["status"], "dead")
+        self.queue.fail(task["task_id"], "毒任务", now=NOW)
+        self.assertEqual(self.store.get_task(task["task_id"])["status"], "dead")
 
-        revived = self.queue.retry(task["id"], delay=3.0, now=NOW)
+        revived = self.queue.retry(task["task_id"], delay=3.0, now=NOW)
         self.assertEqual(revived["status"], "pending")
         self.assertEqual(revived["attempts"], 1)
         self.assertEqual(from_iso(revived["available_at"]), NOW + timedelta(seconds=3))
@@ -199,8 +199,8 @@ class TestValidation(QueueTestBase):
                 call()
 
     def test_migration_is_idempotent_and_memory_db_is_rejected(self) -> None:
-        self.assertEqual(self.store.schema_version(), 1)
-        self.assertEqual(BotStore(self.db).schema_version(), 1)
+        self.assertEqual(self.store.schema_version(), 3)
+        self.assertEqual(BotStore(self.db).schema_version(), 3)
         with self.assertRaises(ValueError):
             BotStore(":memory:")
 
@@ -224,8 +224,8 @@ class TestDaemonTick(QueueTestBase):
         seen: list[str] = []
 
         def handler(row: dict) -> dict:
-            seen.append(row["id"])
-            return {"ok": True, "handled": row["id"]}
+            seen.append(row["task_id"])
+            return {"ok": True, "handled": row["task_id"]}
 
         daemon = BotDaemon(
             self.store,
@@ -237,9 +237,9 @@ class TestDaemonTick(QueueTestBase):
         )
         first = daemon.tick()
         self.assertEqual(first["action"], "ran")
-        self.assertEqual(first["task_id"], task["id"])
-        self.assertEqual(seen, [task["id"]])
-        self.assertEqual(self.store.get_task(task["id"])["status"], "done")
+        self.assertEqual(first["task_id"], task["task_id"])
+        self.assertEqual(seen, [task["task_id"]])
+        self.assertEqual(self.store.get_task(task["task_id"])["status"], "done")
 
         second = daemon.tick()
         self.assertEqual(second["action"], "idle")
@@ -263,7 +263,7 @@ class TestDaemonTick(QueueTestBase):
         self.assertEqual(result["action"], "failed")
         self.assertEqual(result["status"], "pending")
         self.assertIn("工具不可用", result["error"])
-        stored = self.store.get_task(task["id"])
+        stored = self.store.get_task(task["task_id"])
         self.assertEqual(stored["attempts"], 1)
         self.assertEqual(stored["status"], "pending")
 
@@ -277,15 +277,15 @@ class TestDaemonTick(QueueTestBase):
         )
 
         first = daemon.tick()
-        self.assertEqual(first["reaped"], [task["id"]])
+        self.assertEqual(first["reaped"], [task["task_id"]])
         self.assertEqual(first["action"], "idle", "回收后要等退避，不应立刻再领")
-        self.assertEqual(self.store.get_task(task["id"])["status"], "pending")
+        self.assertEqual(self.store.get_task(task["task_id"])["status"], "pending")
 
         clock[0] = later + timedelta(seconds=10)
         second = daemon.tick()
         self.assertEqual(second["reaped"], [])
         self.assertEqual(second["action"], "ran")
-        self.assertEqual(self.store.get_task(task["id"])["status"], "done")
+        self.assertEqual(self.store.get_task(task["task_id"])["status"], "done")
 
     def test_once_returns_single_result(self) -> None:
         daemon = BotDaemon(

@@ -2,7 +2,8 @@
 
 组成：
 
-* :mod:`fieldstation.botd.store`   —— SQLite schema v1 + 迁移
+* :mod:`fieldstation.botd.store`   —— SQLite schema v3 + 迁移（含契约 §2 的
+  ``thread`` / ``agent`` / ``work_order`` 与 ``run_link.kind``）
 * :mod:`fieldstation.botd.queue`   —— 持久队列（租约 / 退避 / 回收）
 * :mod:`fieldstation.botd.cron`    —— 5 段 cron 与下一跳
 * :mod:`fieldstation.botd.supervisor` —— 拆步、入队、汇总
@@ -36,7 +37,14 @@ from .memory import (
 )
 from .queue import TaskQueue
 from .sandbox import SandboxViolation, WorkspaceSandbox
-from .store import SCHEMA_VERSION, BotStore, from_iso, to_iso, utcnow
+from .store import (
+    SCHEMA_VERSION,
+    BotStore,
+    PreconditionError,
+    from_iso,
+    to_iso,
+    utcnow,
+)
 from .supervisor import (
     DEFAULT_PLANS,
     Planner,
@@ -50,6 +58,7 @@ from .supervisor import (
 __all__ = [
     "SCHEMA_VERSION",
     "BotStore",
+    "PreconditionError",
     "to_iso",
     "from_iso",
     "utcnow",

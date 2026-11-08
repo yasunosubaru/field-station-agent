@@ -95,15 +95,15 @@ class InteractionBoard:
         否则每次刷新位置都在跳，用户点错是迟早的事。
         """
         root = self.store.get_task(str(root_task_id))
-        steps = self.store.list_steps(root["id"])
+        steps = self.store.list_steps(root["task_id"])
         steps.sort(key=lambda s: int(s.get("idx") or 0))
 
-        children = self.store.list_tasks(parent_id=root["id"])
+        children = self.store.list_tasks(parent_task_id=root["task_id"])
         children.sort(key=lambda t: (int(t.get("priority") or 0) * -1,
                                      str(t.get("created_at") or "")))
 
         # 每个 step 关联到"执行它的那个子任务"（step.task_ref → task.id）。
-        by_id = {str(t["id"]): t for t in children}
+        by_id = {str(t["task_id"]): t for t in children}
         merged: List[Dict[str, Any]] = []
         for step in steps:
             child = by_id.get(str(step.get("task_ref") or ""))
@@ -132,11 +132,11 @@ class InteractionBoard:
         编队台的首屏要的是"现在在跑什么"，不是"全部历史"。所以默认只取顶层，
         子任务要点进去才看——一屏塞几百个嵌套节点，等于什么都看不到。
         """
-        top = [t for t in self.store.list_tasks() if not t.get("parent_id")]
+        top = [t for t in self.store.list_tasks() if not t.get("parent_task_id")]
         top.sort(key=lambda t: str(t.get("created_at") or ""), reverse=True)
         out: List[Dict[str, Any]] = []
         for task in top[: max(1, int(limit))]:
-            steps = self.store.list_steps(task["id"])
+            steps = self.store.list_steps(task["task_id"])
             out.append({
                 "task": task,
                 "step_count": len(steps),
@@ -144,7 +144,7 @@ class InteractionBoard:
                 "failed": sum(1 for s in steps if s.get("status") == "failed"),
                 "open_interventions": len([
                     i for i in self.store.list_interventions(status="pending")
-                    if str(i.get("task_id") or "") == str(task["id"])]),
+                    if str(i.get("task_id") or "") == str(task["task_id"])]),
             })
         return out
 
@@ -163,17 +163,17 @@ class InteractionBoard:
         让前端按顺序展示而不是编一个时间戳出来。
         """
         task = self.store.get_task(str(task_id))
-        steps = self.store.list_steps(task["id"])
+        steps = self.store.list_steps(task["task_id"])
         steps.sort(key=lambda s: int(s.get("idx") or 0))
         interventions = [i for i in self.store.list_interventions()
-                         if str(i.get("task_id") or "") == str(task["id"])]
+                         if str(i.get("task_id") or "") == str(task["task_id"])]
         interventions.sort(key=lambda i: str(i.get("created_at") or ""))
 
         flow: List[Dict[str, Any]] = [{
             "phase": "dispatched",
             "at": task.get("created_at"),
             "label": f"派发：{task.get('title') or task.get('kind')}",
-            "task_id": task["id"],
+            "task_id": task["task_id"],
         }]
 
         for step in steps:

@@ -261,3 +261,19 @@ WHERE l.link_id IS NULL AND t.status IN ('running','waiting_approval');
 | `detail` / `status` / 时间列 | 同名 | 保留 |
 
 迁移只加列、不改历史行；`kind` 用 `UPDATE` 回填一次，之后由写入方显式给。
+
+### 5.1 落地记录（2026-11-08，Bot-6 + Bot-7）
+
+`botd/store.py` 已按本契约迁移到 schema **v3**，实测结论写在
+`docs/operations/botd-schema.md`。三处与本节字面不同、需要说明的地方：
+
+| 项 | 本节原文 | 实际落地 | 为什么 |
+|---|---|---|---|
+| 版本台阶 | 「迁移只加列」 | v2（三表 + `kind`）与 v3（`task.id`→`task_id`）**连续执行**，不停在 v2 | §3 的五条查询写的是 `t.task_id`；停 v2 会得到一个「表建好、契约查不了」的中间态 |
+| `id` → `link_id` | 「改列名，值不变」 | 用 `ALTER TABLE ... RENAME COLUMN` 实现，值与方法名都保证不变 | 与本节一致 |
+| 索引 | `ux_run_link_external` + `ix_run_link_task` | 建这两条，同时 `DROP` 掉 v1 的同义索引 | v1 的 `idx_run_link_external` / `idx_run_link_task` 与它们重复；留着等于同一列上挂两个索引 |
+
+另外本契约 §1 第 1 条（「四张表互不设外键」）在实现上仍成立：`thread` / `agent` /
+`work_order` 三张表**没有任何指向 `task` 的外键**。`task` 自引用
+（`parent_task_id`）与 `step.task_id` 是 v1 既有结构，不在本契约的改动范围内。
+
