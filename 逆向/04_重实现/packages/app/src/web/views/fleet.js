@@ -76,6 +76,20 @@ const STEP_STATUS = {
   skipped: { glyph: '–', label: '跳过' },
 };
 
+/**
+ * 已结束的步数 = done + failed + **skipped**。
+ *
+ * 为什么必须有 skipped：`interaction.py::tree()` 的 counts 有五个键，
+ * `skipped` 是专门单列出来的。少算它，有一步 skipped 时分子永远追不上分母，
+ * 进度条看着卡在 N/N+1 —— 用户会以为任务卡住了，而它其实已经跑完。
+ *
+ * 这类「数字差一」的错最难发现：没有报错、没有空白，只有一个永远走不完的进度。
+ */
+function finishedSteps(counts) {
+  if (!counts) return 0;
+  return (counts.done || 0) + (counts.failed || 0) + (counts.skipped || 0);
+}
+
 /** 任务级状态（八态）。只列界面会用到的，其余原样显示。 */
 const TASK_STATUS = {
   pending: '待执行',
@@ -174,6 +188,10 @@ export function mount(ctx) {
       const isCurrent = id && id === state.get().selectedTaskId;
       const status = task.status || 'pending';
       const total = item.step_count || 0;
+      // `forest()` 的返回只有 step_count / done / failed / open_interventions ——
+      // **没有 skipped**。所以任务树这一列的进度是 `done+failed` 而不是完整的三档，
+      // 有 skipped 的步骤会显得「还差一步」。这不是 bug 而是数据形状的限制，
+      // 右侧详情栏（读 `tree()` 的 counts，五键齐全）给的是准确值。
       const finished = (item.done || 0) + (item.failed || 0);
 
       const row = el('div', {
@@ -366,7 +384,13 @@ export function mount(ctx) {
           ? kv([
             ['任务', selected],
             ['状态', TASK_STATUS[tree?.root?.status] || tree?.root?.status || '—'],
-            ['步骤', tree?.counts ? `${tree.counts.done + (tree.counts.failed || 0)}/${tree.counts.steps}` : '—'],
+            // 进度的分子必须是**已结束**的步数：done + failed + skipped。
+            //
+            // 只算 done + failed 会漏掉 skipped —— 而这个漏法很隐蔽：有一步 skipped 时
+            // 分子永远追不上分母，进度条看着卡在 N/N+1，用户会以为任务卡住了。
+            // `interaction.py::tree()` 的 counts 有五个键，`skipped` 是专门单列出来的
+            // （那边注释里也写了「只数三档会让 done+failed+pending != steps」）。
+            ['步骤', tree?.counts ? `${finishedSteps(tree.counts)}/${tree.counts.steps}` : '—'],
           ])
           : el('p', { cls: 'vw-rail-empty', text: '还没有选中任务。点左边任务树上的一行。' }),
       ]),

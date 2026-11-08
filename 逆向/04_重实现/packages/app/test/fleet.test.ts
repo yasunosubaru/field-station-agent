@@ -60,6 +60,34 @@ test('概览不显示 pending（排队不算用户要关心的事）', () => {
   assert.match(source, /排队/, 'pending 很多时给一行小字');
 });
 
+test('进度分子含 skipped（少算它会让进度卡在 N/N+1）', () => {
+  const source = codeOf('fleet.js');
+  // `interaction.py::tree()` 的 counts 有五个键，skipped 是专门单列的。
+  // 只算 done+failed 时，有一步 skipped 的进度条永远走不完 ——
+  // 没有报错、没有空白，只有一个永远差一格的进度。
+  assert.match(source, /function finishedSteps/, '有 finishedSteps');
+  assert.match(source, /counts\.skipped/, '把 skipped 算进去');
+  const fn = /function finishedSteps\(counts\)[\s\S]*?\n\}/.exec(source)?.[0] ?? '';
+  assert.match(fn, /done \|\| 0/, '算 done');
+  assert.match(fn, /failed \|\| 0/, '算 failed');
+  assert.match(fn, /skipped \|\| 0/, '算 skipped');
+
+  // 右侧详情栏用的是这个函数，不是手写 done+failed。
+  const rail = /section\('选中任务'[\s\S]{0,600}?\n      \]\),/.exec(source)?.[0] ?? '';
+  assert.match(rail, /finishedSteps\(tree\.counts\)/, '详情栏用 finishedSteps');
+  assert.doesNotMatch(rail, /counts\.done \+ \(tree\.counts\.failed/, '不再手写 done+failed');
+});
+
+test('任务树的进度列受 forest() 数据形状限制，已注明', () => {
+  // 这条说明写在**注释**里，所以要读原文（codeOf() 会剥掉注释）。
+  const raw = readFileSync(join(viewsDir, 'fleet.js'), 'utf8');
+  // forest() 只给 step_count / done / failed，没有 skipped —— 这是数据形状，
+  // 不是可以自己补的。所以任务树那列如实标注，详情栏给准确值。
+  // 注释里为了排版把 `forest()` 包了反引号，所以匹配要容忍它。
+  assert.match(raw, /forest\(\)`?\s*的返回只有/, '注明数据形状限制');
+  assert.match(raw, /没有\s*`?skipped/, '写明缺哪个键');
+});
+
 test('任务树有耗时列（25.10.3 点名最容易被砍的一列）', () => {
   const source = codeOf('fleet.js');
   const css = readFileSync(join(viewsDir, 'blocks.css'), 'utf8');
