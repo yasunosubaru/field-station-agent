@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         _settings = Settings.Load();
+        _settings.FillLocator();
         Title = "开发群聊";
 
         // 主题资源挂在窗口根元素上，先接上再建任何带颜色的控件
@@ -131,6 +132,25 @@ public sealed partial class MainWindow : Window
         }
         catch { /* 尺寸调整失败不影响使用 */ }
 
+        // ⚠ 关键：OnActivated 触发时视觉树可能还没好，XamlRoot 还是 null。
+        // 那时候弹 ContentDialog 会抛「This element does not have a XamlRoot」
+        // 并让整个进程崩掉（0xc000027b）。先等根元素 Loaded 再干活的。
+        var root = RootGrid();
+        if (root.XamlRoot is null)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            RoutedEventHandler? handler = null;
+            handler = (_, _) =>
+            {
+                root.Loaded -= handler;
+                tcs.TrySetResult(true);
+            };
+            root.Loaded += handler;
+            // 兜底：500ms 后无论如何继续（避免 Loaded 不触发时卡死）
+            var done = await Task.WhenAny(tcs.Task, Task.Delay(800));
+            if (done != tcs.Task) root.Loaded -= handler;
+        }
+
         if (_settings.EmbeddedMode)
         {
             await StartEmbeddedAsync();
@@ -148,15 +168,17 @@ public sealed partial class MainWindow : Window
     {
         SetStatus("正在启动本地服务…", ok: true);
 
-        // 关键：用仓库里的 logs/dev_chat/chat.jsonl，
-        // 这样内置服务与「另一处起着的 dev_chat.py」看到同一份历史，
-        // 不会出现「为什么这里 0 条」。
-        string logPath;
-        var repo = EmbeddedServer.FindRepoRoot();
-        if (!string.IsNullOrWhiteSpace(_settings.RepoRoot) && Directory.Exists(_settings.RepoRoot))
-            repo = _settings.RepoRoot;
+        // 仓库根：优先用定位配置（发布版），否则从 exe 往上找（开发态）
+        var repo = _settings.RepoRoot;
+        if (string.IsNullOrWhiteSpace(repo) || !Directory.Exists(repo))
+        {
+            repo = EmbeddedServer.FindRepoRoot() ?? "";
+            if (!string.IsNullOrWhiteSpace(repo)) _settings.RepoRoot = repo;
+        }
 
-        if (repo is not null && Directory.Exists(repo))
+        // 日志与仓库里那份共用，避免出现「两个房间」
+        string logPath;
+        if (!string.IsNullOrWhiteSpace(repo) && Directory.Exists(repo))
         {
             logPath = Path.Combine(repo, "logs", "dev_chat", "chat.jsonl");
         }
@@ -170,7 +192,7 @@ public sealed partial class MainWindow : Window
         }
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
 
-        var ok = await _embedded.StartAsync(_settings.RepoRoot, _settings.PythonPath, logPath);
+        var ok = await _embedded.StartAsync(repo, _settings.PythonPath, logPath);
         if (ok && _embedded.BaseUrl is { } url)
         {
             _settings.BaseUrl = url;
@@ -180,35 +202,69 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // 内置失败 → 退回连已有服务，并告诉用户
-        var fallbackUrl = string.IsNullOrWhiteSpace(_settings.BaseUrl)
-            ? "http://127.0.0.1:7805"
-            : _settings.BaseUrl;
-        _client = new ChatClient(fallbackUrl, _settings.Token);
-        SetStatus("内置服务没起来，尝试连已有服务", ok: false);
-
-        if (!await _client.PingAsync())
+        // 内置失败 → 尝试连一个已经在跑的服务。
+        // ⚠ 这里原来兜底成 http://127.0.0.1:7805，但用户机器上 7805 未必在跑，
+        // 于是就报「连不上 (127.0.0.1:7805)」，看起来像 bug 其实是猜错了端口。
+        // 现在只认真实配置过的地址，不猜。
+        var fallbackUrl = _settings.BaseUrl;
+        var canFallback = !string.IsNullOrWhiteSpace(fallbackUrl)
+                          && _settings.EmbeddedMode == false;
+        if (canFallback)
         {
-            var dlg = new ContentDialog
+            _client = new ChatClient(fallbackUrl!, _settings.Token);
+            SetStatus("内置服务没起来，尝试连已有服务", ok: false);
+            if (await _client.PingAsync()) return;
+        }
+
+        // 到这说明确实没服务可用。给出准确的手工指引，不猜端口。
+        _client = null;
+        SetStatus("没有可用的服务", ok: false);
+
+        var root = RootGrid();
+        if (root.XamlRoot is null)
+        {
+            // 连弹窗都弹不了（视觉树没就绪），只把原因写进状态栏 + 崩溃日志旁
+            SetStatus("启动不了群聊服务：找不到仓库根。跑 tools/make_devchat_locator.py", ok: false);
+            return;
+        }
+
+        var repoLine = string.IsNullOrWhiteSpace(repo)
+            ? "（没找到）"
+            : repo;
+        var dlg = new ContentDialog
+        {
+            Title = "启动不了群聊服务",
+            Content = new ScrollViewer
             {
-                Title = "连不上服务",
+                MaxHeight = 420,
                 Content = new TextBlock
                 {
-                    Text = "内置服务没能启动，也没有找到已在运行的服务。\n\n" +
-                           "可以这样处理：\n" +
-                           "· 点「设置」手动填服务地址和 token\n" +
-                           "· 或在仓库里跑：python tools/dev_chat.py --port 7805\n\n" +
-                           "内置服务的输出：\n" + Truncate(_embedded.Log, 800),
+                    Text =
+                        "找不到仓库根，或仓库根里没有 tools/dev_chat.py。\n\n" +
+                        "仓库根（当前）：\n" + repoLine + "\n\n" +
+                        "python（当前）：\n" +
+                        (string.IsNullOrWhiteSpace(_settings.PythonPath) ? "（没找到）" : _settings.PythonPath) +
+                        "\n\n" +
+                        "两种修法：\n\n" +
+                        "① 自动（推荐）\n" +
+                        "   在仓库里跑一次：\n" +
+                        "   python tools/make_devchat_locator.py\n" +
+                        "   它会在 exe 同目录写 devchat.json，钉死仓库根和 python。\n\n" +
+                        "② 手动\n" +
+                        "   点下面的「打开设置」，填「仓库根」和「python.exe」。\n\n" +
+                        "内置服务的输出：\n" + Truncate(_embedded.Log, 900),
                     TextWrapping = TextWrapping.Wrap,
                     IsTextSelectionEnabled = true,
-                    FontFamily = new FontFamily("Consolas"),
                     FontSize = 12,
                 },
-                CloseButtonText = "知道了",
-                XamlRoot = RootGrid().XamlRoot,
-            };
-            await dlg.ShowAsync();
-        }
+            },
+            PrimaryButtonText = "打开设置",
+            CloseButtonText = "知道了",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = root.XamlRoot,
+        };
+        if (await dlg.ShowAsync() == ContentDialogResult.Primary)
+            await ShowSettingsAsync();
     }
 
     private Grid RootGrid() => (Grid)Content;
@@ -614,6 +670,13 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            var root = RootGrid();
+            // XamlRoot 还没好时不能弹，否则整个进程崩
+            if (root.XamlRoot is null)
+            {
+                SetStatus(message, ok: false);
+                return;
+            }
             var dlg = new ContentDialog
             {
                 Title = "出错了",
@@ -623,7 +686,7 @@ public sealed partial class MainWindow : Window
                     IsTextSelectionEnabled = true,
                 },
                 CloseButtonText = "知道了",
-                XamlRoot = RootGrid().XamlRoot,
+                XamlRoot = root.XamlRoot,
             };
             await dlg.ShowAsync();
         }
@@ -637,7 +700,9 @@ public sealed partial class MainWindow : Window
 
     // ================= 设置 =================
 
-    private async void OnSettingsClick(object sender, RoutedEventArgs e)
+    private async void OnSettingsClick(object sender, RoutedEventArgs e) => await ShowSettingsAsync();
+
+    private async Task ShowSettingsAsync()
     {
         var modeSwitch = new ToggleSwitch
         {

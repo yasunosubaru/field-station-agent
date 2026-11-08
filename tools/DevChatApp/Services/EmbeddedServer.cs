@@ -71,12 +71,14 @@ public sealed class EmbeddedServer : IDisposable
     public async Task<bool> StartAsync(string? explicitRepoRoot, string? explicitPython,
                                       string logPath, CancellationToken ct = default)
     {
+        // 优先用外部给的仓库根（发布版从 devchat.json 读到的）
         var repo = explicitRepoRoot;
         if (string.IsNullOrWhiteSpace(repo) || !Directory.Exists(repo))
             repo = FindRepoRoot();
         if (repo is null)
         {
-            _log.AppendLine("找不到仓库根（往上 8 层都没有 tools/dev_chat.py）");
+            _log.AppendLine("找不到仓库根：外部没给，往上 8 层也没有 tools/dev_chat.py");
+            _log.AppendLine("发布版请先跑：python tools/make_devchat_locator.py");
             return false;
         }
 
