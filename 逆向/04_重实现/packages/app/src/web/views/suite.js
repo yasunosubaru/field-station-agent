@@ -196,7 +196,9 @@ export function mount(ctx) {
         appList.append(el('button', {
           cls: 'vw-app-install',
           attr: { type: 'button' },
-          data: { action: 'install', appId: app.id },
+          // 用 `data-install-app` 而不是 `data-app-id`：后者是「导航项」的标记，
+          // 两者混用会让「有哪些应用」这类遍历把安装按钮也数进去（实测数出 7 个）。
+          data: { action: 'install', installApp: app.id },
           text: `安装 ${app.label}`,
         }));
       }
@@ -254,7 +256,7 @@ export function mount(ctx) {
       appHost.replaceChildren(empty(
         `${app.label} 未安装。`,
         '它是非核心应用（nonCoreApp），可以单独装。装好之后这一栏会显示它的实际界面。',
-        button(`安装 ${app.label}`, { variant: 'primary', data: { action: 'install', appId: app.id } }),
+        button(`安装 ${app.label}`, { variant: 'primary', data: { action: 'install', installApp: app.id } }),
       ));
       return;
     }
@@ -369,7 +371,8 @@ export function mount(ctx) {
     const install = event.target.closest('[data-action="install"]');
     if (install) {
       // 安装要走 RPA / 原版安装器，不在界面里假装。
-      state.set({ selectedAppId: install.dataset.appId });
+      // 只把选中项切到它（让内容区显示「未安装」的说明），不伪造安装成功。
+      state.set({ selectedAppId: install.dataset.installApp });
       return;
     }
     const item = event.target.closest('[data-app-id]');
@@ -380,6 +383,13 @@ export function mount(ctx) {
   const handleAction = (event) => {
     const action = event.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
+    if (action === 'install') {
+      // 安装要走 RPA / 原版安装器（那是 workflow 的事），不在界面里假装成功。
+      // 这里只把选中项切到它，让用户看到「未安装」的完整说明与那颗按钮。
+      const appId = event.target.closest('[data-install-app]')?.dataset.installApp;
+      if (appId) state.set({ selectedAppId: appId });
+      return;
+    }
     if (action === 'new-task') {
       // 反向深链（视-6）：把当前设备带到编队台，交给它预填。
       // 只改 selection，不新开 store —— 与「下钻」同一条原则。
@@ -402,6 +412,9 @@ export function mount(ctx) {
 
   head.addEventListener('click', handleAction);
   appActions.addEventListener('click', handleAction);
+  // 内容区也要绑：未安装时那里有一颗「安装 X」的按钮，不绑就点了没反应。
+  // （实测发现：`appHost` 原来完全没监听。）
+  appHost.addEventListener('click', handleAction);
 
   const unsubscribe = state.subscribe((next, changed) => {
     if (!changed.has('selectedAppId')) return;

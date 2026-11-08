@@ -64,6 +64,28 @@ test('Perception 视觉分隔，且未装时给「未安装」+ 安装按钮', (
   assert.match(source, /if \(!app\.core && !sawNonCore\)/, '分隔只插一次');
 });
 
+test('应用导航用 data-app-id，安装按钮用 data-install-app（两者不能混）', () => {
+  const source = codeOf();
+  // 实测踩到：两者共用 `data-app-id` 时，「有哪些应用」的遍历会把安装按钮也数进去
+  // （数出 7 个）。而 `data-app-id` 的语义就是「导航项」。
+  const navItems = [...source.matchAll(/data: \{ appId: app\.id \}/g)];
+  assert.equal(navItems.length, 1, 'data-app-id 只用在导航项上');
+  const installs = [...source.matchAll(/installApp: app\.id/g)];
+  assert.ok(installs.length >= 2, '安装按钮（导航与内容区各一颗）都用 installApp');
+  assert.doesNotMatch(source, /action: 'install', appId:/, '安装按钮不能再用 appId');
+});
+
+test('内容区的事件也绑了（否则那颗「安装 X」点了没反应）', () => {
+  const source = codeOf();
+  // 实测发现：`appHost`（内容区）原来完全没监听，未安装时那颗按钮是死的。
+  assert.match(source, /appHost\.addEventListener\('click', handleAction\)/, '内容区要绑');
+  assert.match(source, /head\.addEventListener\('click', handleAction\)/, '页头要绑');
+  assert.match(source, /appActions\.addEventListener\('click', handleAction\)/, '底部要绑');
+  // handleAction 里要有 install 分支。
+  assert.match(source, /if \(action === 'install'\)/, 'handleAction 处理 install');
+  assert.match(source, /dataset\.installApp/, '从 installApp 读');
+});
+
 /* ---------------------------------------------------------------------------------------------
  * 2. 检查器
  * ------------------------------------------------------------------------------------------- */
