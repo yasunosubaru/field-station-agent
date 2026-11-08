@@ -367,6 +367,44 @@
   color: var(--warn);
 }
 
+/* 反向深链的预填条（视-6）：从套件台带过来的草稿。 */
+.vw-draft {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--accent-line);
+  border-left-width: 2px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  min-width: 0;
+}
+
+.vw-draft[hidden] {
+  display: none;
+}
+
+.vw-draft-label {
+  font-size: var(--fs-tiny);
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.vw-draft-title {
+  font-size: var(--fs-small);
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-draft-meta {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
 .vw-pause-notice[hidden] {
   display: none;
 }

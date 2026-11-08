@@ -381,9 +381,17 @@ export function mount(ctx) {
     const action = event.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
     if (action === 'new-task') {
-      // 反向深链（视-6）：跳到编队并预填当前应用与设备。
+      // 反向深链（视-6）：把当前设备带到编队台，交给它预填。
+      // 只改 selection，不新开 store —— 与「下钻」同一条原则。
       const device = state.get().selectedDeviceId;
-      if (device) state.set({ selectedTaskTitle: `从套件台建任务：${device}` });
+      const app = APPS.find((entry) => entry.id === state.get().selectedAppId);
+      state.set({
+        selectedTaskDraft: {
+          title: device ? `${app?.label || '套件'} · ${device}` : '从套件台建任务',
+          device: device || '',
+          app: app?.id || '',
+        },
+      });
       ctx.go('/fleet');
     }
     if (action === 'refresh') {

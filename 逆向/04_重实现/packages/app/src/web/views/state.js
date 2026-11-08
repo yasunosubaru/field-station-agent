@@ -78,6 +78,14 @@ function initialState() {
     selectedBatchId: null,
     selectedAppId: 'manage',
     selectedDeviceId: null,
+    /**
+     * 反向深链的预填草稿（视-6）。
+     *
+     * 套件台点「建任务」时写进来，编队台读它来预填。只放**草稿**，不建任务 ——
+     * 「跳到编队并预填」是两件事：跳过去是一次导航，建任务是用户按下去之后的事。
+     * 混在一起会出现「点了一下就产生了一个没人想要的空任务」。
+     */
+    selectedTaskDraft: null,
 
     // —— 缓存 ——
     cache: {

@@ -248,6 +248,33 @@ export function mount(ctx) {
   });
 
   /**
+   * 反向深链的预填提示（视-6）。
+   *
+   * 从套件台点「建任务」过来时，这里显示「要建什么」，并给一个明确的「建这个任务」按钮。
+   * **不自动创建**：跳过来是一次导航，建任务是用户按下去之后的事 ——
+   * 混在一起会出现「点了一下就产生了一个没人想要的空任务」。
+   */
+  const draftNote = el('div', { cls: 'vw-draft', data: { draft: '' }, attr: { hidden: '' } });
+
+  function paintDraft() {
+    const draft = state.get().selectedTaskDraft;
+    if (!draft) {
+      draftNote.hidden = true;
+      draftNote.replaceChildren();
+      return;
+    }
+    draftNote.hidden = false;
+    draftNote.replaceChildren(
+      el('span', { cls: 'vw-draft-label', text: '预填' }),
+      el('span', { cls: 'vw-draft-title', text: draft.title || '新任务' }),
+      draft.device ? el('span', { cls: 'vw-draft-meta', text: `设备 ${draft.device}` }) : null,
+      button('建这个任务', { variant: 'primary', data: { action: 'create-draft' } }),
+      button('取消', { variant: 'text', data: { action: 'dismiss-draft' } }),
+    );
+  }
+  paintDraft();
+
+  /**
    * 三个按钮的可用性（25.10.4）。
    *
    * | 按钮 | 什么时候可用 |
@@ -309,6 +336,7 @@ export function mount(ctx) {
   }
 
   main.append(el('div', { cls: 'vw-fleet', children: [
+    draftNote,
     section('任务树', '按创建时间倒序', [treeHost]),
     section('事件流', null, [flowHost]),
     section('干预', '暂停 / 改参重试 / 接管该步', [actions]),
@@ -442,8 +470,28 @@ export function mount(ctx) {
       : '接管该步需要审批结论（等接口接上）。';
   });
 
+  /* —— 反向深链的预填：建这个任务 / 取消 —— */
+  draftNote.addEventListener('click', (event) => {
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (!action) return;
+    if (action === 'dismiss-draft') {
+      state.set({ selectedTaskDraft: null });
+      return;
+    }
+    if (action === 'create-draft') {
+      // 建任务要写 botd 的 task 表（接口还没开）。所以这里**不假装建成**，
+      // 而是把「要建什么」留在界面上并说清卡在哪 —— 比造一条假任务强。
+      draftNote.dataset.tone = 'warn';
+      draftNote.append(el('span', {
+        cls: 'vw-draft-meta',
+        text: '建任务要写 botd 的 task 表，接口还没接上；草稿先留在这里。',
+      }));
+    }
+  });
+
   /* —— 订阅：选中任务变了，右栏跟着变 —— */
   const unsubscribe = state.subscribe((next, changed) => {
+    if (changed.has('selectedTaskDraft')) paintDraft();
     if (!changed.has('selectedTaskId')) return;
     if (next.selectedTaskId && next.selectedTaskId !== selectedTree?.root?.task_id) {
       // 由深链或其他视角改了选中项：同步取这一棵。

@@ -439,6 +439,38 @@ function boot() {
   const view = currentView();
   state.set({ view: view.id });
   navigate(view.path, { push: false });
+
+  // 深链参数在这一步消费：`?device=` → 套件台选中设备，`?job=` → 编队台选中任务。
+  applyDeepLink();
+}
+
+/**
+ * 消费深链参数。
+ *
+ * Electron 主进程把 `fsa://device/<id>` 送到 `/suite?device=<id>`、
+ * `fsa://job/<id>` 送到 `/fleet?job=<id>`（见 `shell/electron/deeplink.js`）。
+ * 页面这一侧只做**一件事**：把 id 写进 store 的 selection。
+ *
+ * 为什么不新建 store、也不开一个「深链模式」：规格 25.15 说深链只是「选中某个东西」，
+ * 而选中项本来就在 store 里共享（视-0）。这样从深链进来之后切视角、下钻、返回，
+ * 全都是同一个选择 —— 也正是 Bot-9「下钻只改 selection」的同一条原则。
+ *
+ * 参数解析完就从地址栏抹掉：留着它，用户每按一次刷新都会被「重新深链」一次，
+ * 而他可能已经在界面上换了选择 —— 那会被强行改回去。
+ */
+function applyDeepLink() {
+  const params = new URLSearchParams(location.search);
+  const device = params.get('device');
+  const job = params.get('job');
+  if (!device && !job) return;
+
+  const patch = {};
+  if (device) patch.selectedDeviceId = device;
+  if (job) patch.selectedTaskId = job;
+  state.set(patch);
+
+  // 抹掉参数，保留路径。
+  history.replaceState({ view: state.get().view }, '', location.pathname);
 }
 
 boot();
