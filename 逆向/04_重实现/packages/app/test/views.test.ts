@@ -387,13 +387,25 @@ test('原有入口与 API 不受影响', async () => {
  * ------------------------------------------------------------------------------------------- */
 
 test('「暂停」的文案是「将在当前步骤完成后生效」，绝不写「已暂停」', () => {
-  const fleet = stripComments(readFileSync(join(viewsDir, 'fleet.js'), 'utf8'));
+  const raw = readFileSync(join(viewsDir, 'fleet.js'), 'utf8');
+  // 断言只能看**真正会渲染出去的字符串**，不能看注释 —— 注释里写
+  // 「为什么不能写『已暂停』」正是这句设计的存在理由，把它当违规会逼人删掉解释。
+  const code = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  // 抽所有字符串字面量，逐个检查 —— 比在整个文件上 grep 精确得多。
+  const literals = [...code.matchAll(/'([^'\\]*(?:\\.[^'\\]*)*)'|"([^"\\]*(?:\\.[^"\\]*)*)"/g)]
+    .map((match) => match[1] ?? match[2]);
+
+  assert.ok(
+    literals.some((text) => text.includes('将在当前步骤完成后生效')),
+    '渲染文案里必须有「将在当前步骤完成后生效」',
+  );
   // 第 25.10.5 节：点下去那一刻任务还在跑（干预在步骤边界消费），
-  // 所以「已暂停」是谎话。这句必须写在代码里，不能只写进文档。
-  assert.match(fleet, /将在当前步骤完成后生效/, '必须说清生效时机');
-  assert.doesNotMatch(fleet, /已暂停/, '不能出现「已暂停」');
+  // 所以「已暂停」是谎话。
+  for (const text of literals) {
+    assert.ok(!text.includes('已暂停'), `文案里不能出现「已暂停」，发现：${text}`);
+  }
   // 文案要导出成常量，才可能被测试逐字断言。
-  assert.match(fleet, /export const PAUSE_NOTICE/, 'PAUSE_NOTICE 是可断言的常量');
+  assert.match(code, /export const PAUSE_NOTICE/, 'PAUSE_NOTICE 是可断言的常量');
 });
 
 test('任务树必须有耗时列', () => {
@@ -453,6 +465,19 @@ test('检查器：matched 不出眼（灰），b_only / a_only 才显眼', () =>
   // 反过来：b_only / a_only 要有颜色，否则「对不上的」也看不见。
   assert.match(css, /\.vw-tag\[data-tone="add"\]/, 'b_only 有样式');
   assert.match(css, /\.vw-tag\[data-tone="miss"\]/, 'a_only 有样式');
+});
+
+test('页头不在 <main> 内部（否则换视角会把它一起摘掉）', () => {
+  const template = stripComments(readFileSync(layoutPath, 'utf8'));
+  // 真实踩过：`main.replaceChildren()` 每次换视角清空主内容，页头若在 <main> 里
+  // 会被一起摘掉；之后往那个游离节点里塞什么都没用，页面上永远不出现
+  // （现象是编队台的概览整块消失，而控制台没有报错）。
+  const mainMatch = /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(template);
+  assert.ok(mainMatch, 'layout 里要有 <main>');
+  assert.doesNotMatch(mainMatch[1], /data-view-head/, '页头不能在 <main> 内部');
+  assert.match(template, /<header[^>]*data-view-head/, '页头仍然存在');
+  // 两者要在同一个容器里并列。
+  assert.match(template, /class="vw-center"/, '页头与主内容共用一个竖排容器');
 });
 
 test('右栏隐藏时必须能打开（< 1280 用详情抽屉，不挤压主内容）', () => {

@@ -367,6 +367,21 @@ body {
 }
 
 /*
+ * 页头 + 主内容的竖排容器。
+ *
+ * 页头必须和 `<main>` 并列，不能是它的子节点：`main.replaceChildren()` 每次
+ * 换视角都会清空主内容，页头若在内侧会被一起摘掉 —— 之后往那个游离节点里塞
+ * 什么都没用，页面上永远不会出现。实测踩过一次（编队台的概览整块消失）。
+ */
+.vw-center {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
  * `min-width: 0` 是整条任务的技术核心（25.5.3）。
  *
  * Flex 子元素的默认 min-width 是 auto，意思是「不小于内容的固有宽度」。

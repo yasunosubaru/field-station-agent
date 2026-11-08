@@ -98,11 +98,20 @@
 
   <!-- ③④ 主内容 + 右栏：只有这两块跟着视角变。 -->
   <div class="vw-body">
-    <main class="vw-main" id="vw-main" data-main data-content="{{VIEW_CONTENT}}" tabindex="-1">
+    <div class="vw-center">
+      <!--
+        页头是**内容区的一部分，不是顶栏的一部分**（附录 C.7）：
+        顶栏全局一份、切视角不变；页头换视角时要变。
+        所以它和主内容并列放在同一个容器里，而不是塞进 <main> ——
+        塞进去的话，`main.replaceChildren()` 会把页头本身一起摘掉，
+        之后无论怎么填都填不回页面上。
+      -->
       <header class="vw-view-head" data-view-head>
         <h1 class="vw-view-title">{{VIEW_TITLE}}</h1>
       </header>
-    </main>
+
+      <main class="vw-main" id="vw-main" data-main data-content="{{VIEW_CONTENT}}" tabindex="-1"></main>
+    </div>
 
     <aside class="vw-rail" id="vw-rail" data-rail aria-label="详情">
       <!-- 视角挂载后由 shell.js 的 renderRail 填；空着时给一句，不让用户以为这栏坏了。 -->

@@ -247,6 +247,75 @@
   white-space: nowrap;
 }
 
+/* 选中的那一行：左侧竖条 + 背景（两个手段，24.4.3 要求至少两个）。 */
+.vw-tree-row-current {
+  position: relative;
+  background: var(--accent-soft);
+}
+
+.vw-tree-row-current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.vw-tree-row[role="button"] {
+  cursor: pointer;
+}
+
+.vw-tree-row[role="button"]:hover {
+  background: var(--panel-2);
+}
+
+.vw-tree-row[role="button"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 概览里「拿不到」的数值与真值要能区分。 */
+.vw-dim {
+  color: var(--dim);
+}
+
+.vw-overview-queued {
+  margin-left: 8px;
+}
+
+/* 右栏的步骤列表：图标 / 名 / 状态 / 耗时。 */
+.vw-rail-step {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 6px;
+  min-height: calc(var(--row-h) - 6px);
+  padding: 0 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
+.vw-rail-step:last-child {
+  border-bottom: 0;
+}
+
+.vw-rail-step-name {
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-rail-step-status {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  white-space: nowrap;
+}
+
 /* 事件流：时间 + 一句话。时间用 --fs-tiny，不抢。 */
 .vw-fleet-flow {
   display: flex;
