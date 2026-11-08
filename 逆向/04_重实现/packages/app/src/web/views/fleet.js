@@ -157,17 +157,25 @@ export function mount(ctx) {
 
   function paintTree() {
     if (fleetState.unavailable) {
+      // 空态必须给一个能点的动作 —— 只写「等接口」的话用户在这里无事可做，
+      // 而他真正能做的往往是「重试一次」（后端刚起来、代理刚通都发生过）。
       treeHost.replaceChildren(empty(
         '任务树还拿不到数据。',
         '编队台要读 botd 的 forest() / tree()，那几个方法已经实现，但还没有 HTTP 出口。'
           + '接口定下来之后这一块会自己填上；现在不是「没有任务」，是「还没接上」。',
+        button('重试', { variant: 'primary', data: { action: 'retry-fleet' } }),
       ));
       return;
     }
     if (!fleetState.tasks.length) {
+      // 「还没有任务」的下一步很明确：去对话问一句，或去套件台建任务。
       treeHost.replaceChildren(empty(
         '还没有任务。',
         '在对话里问一句，或在套件台选设备后点「建任务」。任务会出现在这里。',
+        el('div', { cls: 'vw-empty-actions' }, [
+          button('去问一句', { variant: 'primary', data: { action: 'go-chat' } }),
+          button('去套件台', { data: { action: 'go-suite' } }),
+        ]),
       ));
       return;
     }
@@ -452,6 +460,20 @@ export function mount(ctx) {
   /* —— 交互 —— */
 
   treeHost.addEventListener('click', (event) => {
+    // 空态里的动作按钮：重试 / 去对话 / 去套件台。
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'retry-fleet') {
+      fetchFleet(true);
+      return;
+    }
+    if (action === 'go-chat') {
+      ctx.go('/chat');
+      return;
+    }
+    if (action === 'go-suite') {
+      ctx.go('/suite');
+      return;
+    }
     const row = event.target.closest('[data-task-id]');
     if (!row) return;
     selectTask(row.dataset.taskId);

@@ -196,6 +196,25 @@ test('接口没接上时显示「还没接上」，不显示「没有任务」',
   assert.match(source, /unavailable/, '有不可用状态');
 });
 
+test('空态必须有能点的下一步（只写说明等于死路）', () => {
+  const fleet = codeOf('fleet.js');
+  // 「拿不到」这种空态最容易写成一段纯说明 —— 用户在那里无事可做，
+  // 而他真正能做的往往是「重试一次」（后端刚起来、代理刚通都发生过）。
+  const unavailable = /if \(fleetState\.unavailable\)[\s\S]{0,700}?return;/.exec(fleet)?.[0] ?? '';
+  assert.match(unavailable, /button\(/, '「拿不到」的空态要给按钮');
+  assert.match(unavailable, /retry-fleet/, '给的是重试');
+
+  // 「还没有任务」也一样：下一步是去对话或去套件台，不能只写一句话。
+  const noTasks = /还没有任务。[\s\S]{0,500}?return;/.exec(fleet)?.[0] ?? '';
+  assert.match(noTasks, /go-chat/, '给「去问一句」');
+  assert.match(noTasks, /go-suite/, '给「去套件台」');
+
+  // 数据视角同理。
+  const data = codeOf('data.js');
+  const dataUnavailable = /dataState\.unavailable\) \{[\s\S]{0,700}?return;/.exec(data)?.[0] ?? '';
+  assert.match(dataUnavailable, /retry-batches/, '数据视角的「拿不到」也要给重试');
+});
+
 test('端点集中在一处，接口定了只改那一处', () => {
   const source = codeOf('fleet.js');
   assert.match(source, /export const BOTD_ENDPOINTS/, '端点集中导出');

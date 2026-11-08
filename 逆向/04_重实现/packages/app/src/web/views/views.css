@@ -762,6 +762,14 @@ table.clean tbody tr:last-child td {
   color: var(--muted);
 }
 
+/* 空态里的动作组：两个及以上按钮时横排、可换行。 */
+.vw-empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* 降级 / 警告条：内联，不弹窗（四级错误里的「警告」）。 */
 .vw-warn {
   display: flex;

@@ -140,10 +140,14 @@ export function mount(ctx) {
   function paintBatch() {
     // 接口拿不到 / 一个批次都没有：第一种空态，带「导入」（下一步很明确）。
     if (dataState.unavailable) {
+      // 这条空态**必须给一个能点的动作**。只写「等接口」的话，用户在这里
+      // 除了读一段说明什么都做不了 —— 而他真正能做的往往是「重试一次」
+      // （后端刚起来、代理刚通、端口刚换，都发生过）。
       batchHost.replaceChildren(empty(
         '批次还拿不到数据。',
         '数据视角要读 Parquet 批次，查询层已经实现，但还没有 HTTP 出口。'
           + '这一块不是「没有批次」，是「还没接上」。',
+        button('重试', { variant: 'primary', data: { action: 'retry-batches' } }),
       ));
       return;
     }
@@ -421,6 +425,7 @@ export function mount(ctx) {
 
   batchHost.addEventListener('click', (event) => {
     if (event.target.closest('[data-action="import"]')) ctx.go('/suite');
+    if (event.target.closest('[data-action="retry-batches"]')) fetchBatches(true);
   });
 
   const unsubscribe = state.subscribe((next, changed) => {
