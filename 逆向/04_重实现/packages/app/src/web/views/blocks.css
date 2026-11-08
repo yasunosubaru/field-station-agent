@@ -448,7 +448,8 @@
 
 .vw-suite {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
+  /* 132px 会把「Perception」截成「Percept」；六个应用里最长的是它，按它定宽。 */
+  grid-template-columns: 160px minmax(0, 1fr);
   align-items: start;
   gap: 0;
   min-width: 0;
@@ -514,6 +515,25 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 「安装 X」不是导航项，所以缩进、更淡、不占整行。 */
+.vw-app-install {
+  margin: 0 7px 4px 21px;
+  padding: 2px 6px;
+  border: 1px dashed var(--warn-line);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--warn);
+  font-family: inherit;
+  font-size: var(--fs-tiny);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vw-app-install:hover {
+  border-style: solid;
+  background: var(--warn-soft);
 }
 
 /* 分隔线：一条横线，不是竖线（视觉规矩三）。 */

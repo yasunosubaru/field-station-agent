@@ -110,6 +110,16 @@ export function mount(ctx) {
         item.append(el('span', { cls: 'vw-app-missing', text: '未安装' }));
       }
       appList.append(item);
+      // 未装的应用在它自己那一行下面给「安装」，而不是把整行做成死按钮：
+      // 「未安装 · [安装]」是附录 C.6 点一要求的形态。
+      if (!app.installed) {
+        appList.append(el('button', {
+          cls: 'vw-app-install',
+          attr: { type: 'button' },
+          data: { action: 'install', appId: app.id },
+          text: `安装 ${app.label}`,
+        }));
+      }
     }
   }
   paintApps();

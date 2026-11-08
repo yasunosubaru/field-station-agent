@@ -455,6 +455,62 @@ body[data-rail-state="collapsed"] .vw-rail > * {
   display: none;
 }
 
+/*
+ * 窄屏（< 1150）右栏改成抽屉（25.6.2 / 附录 C.8）。
+ *
+ * 关键：抽屉**覆盖**在主内容上，不挤压它。挤压会重排 —— 用户正在看的那一行
+ * 会跳到别处，比没有右栏更烦。所以用 absolute 定位 + 右侧贴边。
+ */
+@media (max-width: 1150px) {
+  .vw-body {
+    position: relative;
+    /* 抽屉滑到屏幕外时不能撑出滚动条 —— 见下面对 right 的说明。 */
+    overflow: hidden;
+  }
+
+  .vw-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    width: var(--rail-w);
+    flex-basis: auto;
+    display: flex;
+    /*
+     * 收起时整个人移到容器右边界之外。
+     *
+     * **不能用 `transform: translateX(100%)`**：位移不改变布局盒，它仍然参与
+     * 文档的滚动宽度计算，于是在 1024 下量到 scrollWidth=1264（1024+240）——
+     * 一打开就多一条横向滚动条。用 `right` 的负值把它移出边距盒，
+     * 配合 `.vw-body { overflow: hidden }`，既不占位也不产生滚动。
+     *
+     * 这里刻意不用 `display:none`：那样「打开」只能是瞬间切换，且读屏与焦点会跳。
+     */
+    right: calc(-1 * var(--rail-w));
+    visibility: hidden;
+  }
+
+  body[data-rail-state="drawer"] .vw-rail {
+    right: 0;
+    visibility: visible;
+  }
+}
+
+/* 两个入口按钮：宽屏用「右栏」，窄屏用「详情」。 */
+.vw-rail-drawer {
+  display: none;
+}
+
+@media (max-width: 1150px) {
+  .vw-rail-inline {
+    display: none;
+  }
+
+  .vw-rail-drawer {
+    display: inline-block;
+  }
+}
+
 .vw-rail-empty {
   margin: 0;
   padding: 10px 4px;
@@ -764,16 +820,10 @@ table.clean tbody tr:last-child td {
  * ⑩ 断点（附录 C.8）
  * ================================================================ */
 
-/* 1280：右栏收起成抽屉（不挤压主内容）。 */
+/* 1280：右栏窄一档（抽屉宽度，见上面的 1150 断点）。 */
 @media (max-width: 1280px) {
   body[data-view] {
     --rail-w: 240px;
-  }
-}
-
-@media (max-width: 1150px) {
-  .vw-rail {
-    display: none;
   }
 }
 

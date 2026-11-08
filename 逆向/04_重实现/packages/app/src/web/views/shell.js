@@ -26,7 +26,7 @@
  */
 
 import { store } from './state.js';
-import { VIEWS, viewById, viewForPath } from './routes.ts';
+import { VIEWS, viewById, viewForPath } from './routes.js';
 
 /* ================================================================
  * ① 元素
@@ -79,7 +79,10 @@ async function mountView(view) {
 
   let mod;
   try {
-    mod = await import(new URL(view.module, import.meta.url).href);
+    // 同目录模块：`module` 字段形如 `views/chat.js`，而本文件就在 `/views/` 下，
+    // 所以要从**上一级**取基准。写死 `../` 而不是依赖 `import.meta.url` 相对解析，
+    // 是因为 `module` 的值是相对仓库 web 根写的（与 routes.js 的其它字段同一套口径）。
+    mod = await import(new URL(`../${view.module}`, import.meta.url).href);
   } catch (error) {
     // 模块加载失败必须说清「哪一块没起来」，并且**不能让外壳跟着挂掉** ——
     // 顶栏、左导航、右栏、底栏都还能用，用户至少能切走。
@@ -261,13 +264,19 @@ function paintHeaderInfo() {
   const picker = root.querySelector('[data-station-picker]');
   if (picker) {
     picker.replaceChildren();
-    const recent = info.stationRecent;
+    // 占位项永远在：清空 options 会让下拉变成一个没有可选项的空壳。
+    picker.append(new Option(info.station || '未选择', ''));
+    const recent = info.stationRecent.filter((name) => name !== info.station);
     if (recent.length) {
       const group = document.createElement('optgroup');
       group.label = '最近使用';
       for (const name of recent) group.append(new Option(name, name));
       picker.append(group);
     }
+    picker.value = '';
+    picker.addEventListener('change', () => {
+      if (picker.value) state.rememberStation(picker.value);
+    });
   }
 }
 
@@ -327,6 +336,31 @@ railToggle?.addEventListener('click', () => {
   railToggle.setAttribute('aria-expanded', String(!next));
 });
 
+/* 折叠后的 8px 抓手也要能点回来 —— 完全消失就找不回来了（25.6.3）。 */
+railEl.addEventListener('click', () => {
+  if (!state.get().railCollapsed) return;
+  state.set({ railCollapsed: false });
+});
+
+/*
+ * 窄屏的「详情」抽屉（25.6.2 / 附录 C.8）。
+ *
+ * 与「折叠」是两件事：折叠是用户主动收起来，抽屉是**宽度不够**时的形态。
+ * 所以状态分开存：`data-rail-state` 取 `expanded` / `collapsed` / `drawer`。
+ */
+const drawerOpen = root.querySelector('[data-rail-drawer-open]');
+
+function setDrawer(open) {
+  document.body.dataset.railState = open ? 'drawer' : 'expanded';
+  drawerOpen?.setAttribute('aria-expanded', String(open));
+  // 抽屉是覆盖层：打开时主内容仍然在下面，但焦点要能进去。
+  if (open) railEl.querySelector('button, [href], input, select, textarea, [tabindex]')?.focus();
+}
+
+drawerOpen?.addEventListener('click', () => {
+  setDrawer(document.body.dataset.railState !== 'drawer');
+});
+
 /* 密度切换：只改行高与字号，**不重排数据**（25.13.3 的验收项）。 */
 const densityToggle = root.querySelector('[data-density-toggle]');
 densityToggle?.addEventListener('click', () => {
@@ -345,8 +379,10 @@ window.addEventListener('keydown', (event) => {
     navigate(VIEWS[(index + 1) % VIEWS.length].path);
   }
   if (event.key === 'Escape') {
-    // 关掉任何打开着的弹层：现在只有右栏抽屉。
-    if (state.get().railCollapsed === false && document.body.dataset.railDrawer === 'open') {
+    // 关掉任何打开着的弹层：抽屉优先（它是覆盖层，先关它才自然）。
+    if (document.body.dataset.railState === 'drawer') {
+      setDrawer(false);
+    } else if (state.get().railCollapsed === false && document.body.dataset.railDrawer === 'open') {
       document.body.dataset.railDrawer = '';
     }
   }
@@ -369,7 +405,10 @@ state.subscribe((next, changed) => {
   }
   if (changed.has('lamps') || changed.has('lampReasons')) paintFoot();
   if (changed.has('railCollapsed')) {
-    document.body.dataset.railState = next.railCollapsed ? 'collapsed' : 'expanded';
+    // 只在宽屏形态下反映折叠；窄屏由抽屉状态决定（两者互不覆盖）。
+    if (document.body.dataset.railState !== 'drawer') {
+      document.body.dataset.railState = next.railCollapsed ? 'collapsed' : 'expanded';
+    }
     railToggle?.setAttribute('aria-expanded', String(!next.railCollapsed));
   }
   if (changed.has('density')) {
@@ -387,8 +426,10 @@ function boot() {
   document.documentElement.dataset.density = state.get().density;
   document.body.dataset.railState = state.get().railCollapsed ? 'collapsed' : 'expanded';
   railToggle?.setAttribute('aria-expanded', String(!state.get().railCollapsed));
-  densityToggle?.textContent = state.get().density === 'compact' ? '紧凑' : '舒适';
   densityToggle?.setAttribute('aria-pressed', String(state.get().density === 'compact'));
+  if (densityToggle) {
+    densityToggle.textContent = state.get().density === 'compact' ? '紧凑' : '舒适';
+  }
 
   paintHeaderInfo();
   paintFoot();

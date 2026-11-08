@@ -80,7 +80,14 @@
     <div class="vw-top-actions">
       <!-- 密度两档：只改行高与字号，不重排数据（25.13.3）。 -->
       <button class="vw-btn vw-btn-quiet" type="button" data-density-toggle aria-pressed="false">舒适</button>
-      <button class="vw-btn vw-btn-quiet" type="button" data-rail-toggle aria-expanded="true" aria-label="右栏">右栏</button>
+      <!--
+        右栏两个入口，按宽度自动二选一（25.6.2 / 附录 C.8）：
+          · 宽屏：直接收/展右栏（它是布局的一部分）；
+          · < 1280：右栏改成抽屉，这个按钮变成「详情」，点开覆盖在主内容上。
+        抽屉**不挤压主内容** —— 挤压会重排，等于把用户的视线位置打乱。
+      -->
+      <button class="vw-btn vw-btn-quiet vw-rail-inline" type="button" data-rail-toggle aria-expanded="true" aria-label="右栏">右栏</button>
+      <button class="vw-btn vw-btn-quiet vw-rail-drawer" type="button" data-rail-drawer-open aria-expanded="false" aria-controls="vw-rail" aria-label="详情">详情</button>
     </div>
   </header>
 
@@ -97,7 +104,7 @@
       </header>
     </main>
 
-    <aside class="vw-rail" data-rail aria-label="详情">
+    <aside class="vw-rail" id="vw-rail" data-rail aria-label="详情">
       <!-- 视角挂载后由 shell.js 的 renderRail 填；空着时给一句，不让用户以为这栏坏了。 -->
       <p class="vw-rail-empty">还没有可显示的内容。</p>
     </aside>

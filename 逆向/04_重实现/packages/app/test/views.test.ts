@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 四个视角的自测（视-0 之后）。
  *
  *   node --test packages/app/test/views.test.ts
@@ -323,7 +323,7 @@ test('四个视角都由同一份 layout 渲染（只有占位不同）', async 
 });
 
 test('shell.js 与四个视角模块都能被服务端取到（MIME 是 JS）', async () => {
-  for (const asset of ['shell.js', 'state.js', 'dom.js', ...VIEWS.map((view) => view.module.split('/').pop())]) {
+  for (const asset of ['shell.js', 'state.js', 'dom.js', 'routes.js', ...VIEWS.map((view) => view.module.split('/').pop())]) {
     const response = await fetch(`${base}/views/${asset}`);
     assert.equal(response.status, 200, `/views/${asset} 状态码`);
     // nosniff 生效时，MIME 不是 JS 就执行不了 —— 所以这条必须验。
@@ -332,6 +332,27 @@ test('shell.js 与四个视角模块都能被服务端取到（MIME 是 JS）', 
       /^text\/javascript/,
       `/views/${asset} 必须以 JS 提供`,
     );
+  }
+});
+
+test('浏览器侧的七个模块语法合法，且不 import .ts', async () => {
+  // 这一条是从一次真实翻车里补来的：`densityToggle?.textContent = ...` 这类
+  // 「可选链做赋值目标」是**语法错误**，而静态 grep 与单元测试都看不出来 ——
+  // 页面打开后整块 JS 不执行，界面却「看起来正常」（骨架是服务端渲染的）。
+  // 所以这里真的让 Node 解析一遍每一个模块。
+  const { execFileSync } = await import('node:child_process');
+  const files = ['shell.js', 'state.js', 'dom.js', 'routes.js', ...VIEWS.map((view) => view.module.split('/').pop())];
+  for (const name of files) {
+    const full = join(viewsDir, name);
+    assert.ok(existsSync(full), `缺少模块：${name}`);
+    // `node --check` 对 .js 按脚本解析；这些文件都是 ESM，所以用 --input-type 显式声明。
+    execFileSync(process.execPath, ['--input-type=module', '--check'], {
+      input: readFileSync(full, 'utf8'),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    // 浏览器跑不了 .ts（服务端 MIME 表没有 .ts 且 nosniff），所以不能 import 它。
+    const source = stripComments(readFileSync(full, 'utf8'));
+    assert.doesNotMatch(source, /from\s+['"][^'"]*\.ts['"]/, `${name} 不能 import .ts`);
   }
 });
 
@@ -432,6 +453,21 @@ test('检查器：matched 不出眼（灰），b_only / a_only 才显眼', () =>
   // 反过来：b_only / a_only 要有颜色，否则「对不上的」也看不见。
   assert.match(css, /\.vw-tag\[data-tone="add"\]/, 'b_only 有样式');
   assert.match(css, /\.vw-tag\[data-tone="miss"\]/, 'a_only 有样式');
+});
+
+test('右栏隐藏时必须能打开（< 1280 用详情抽屉，不挤压主内容）', () => {
+  const template = stripComments(readFileSync(layoutPath, 'utf8'));
+  const css = stripCss(readFileSync(join(viewsDir, 'views.css'), 'utf8'));
+  // 25.6.2：< 1280 时右栏隐藏，用一个「详情」按钮打开抽屉；抽屉不能挤压主内容
+  // （挤压会重排，用户正在看的那一行会跳到别处）。
+  assert.match(template, /data-rail-drawer-open/, '窄屏要有打开右栏的入口');
+  assert.match(template, /aria-controls="vw-rail"/, '入口要指向右栏');
+  assert.match(template, /id="vw-rail"/, '右栏要有 id 供 aria-controls');
+  // 抽屉是 absolute 覆盖，不是占位挤开。
+  const drawerBlock = /@media \(max-width: 1150px\)[\s\S]*?\.vw-rail\s*\{([\s\S]*?)\}/.exec(css);
+  assert.ok(drawerBlock, '要有窄屏的右栏规则');
+  assert.match(drawerBlock[1], /position:\s*absolute/, '抽屉用 absolute 覆盖，不挤压主内容');
+  assert.doesNotMatch(drawerBlock[1], /display:\s*none/, '不能只是隐藏掉');
 });
 
 test('前端模块不读 task.id，只读 task.task_id（依赖 A 线 Bot-7）', () => {
