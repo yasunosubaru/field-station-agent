@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 from ..agents import runtime
 from ..agents.blackboard import Blackboard
@@ -92,6 +92,12 @@ INTAKE_TARGETS = ("qc", "device_monitor")
 #: 并行分支各写各的键 —— LangGraph 的默认通道是同一步单写，回写整份汇总字典
 #: 会在并行超步里互相覆盖（甚至直接报 InvalidUpdateError）。
 OUTCOME_PREFIX = "outcome_"
+
+#: 闸门结论：``gate_answer_<阶段名>`` -> ``{"approved":…, "by":…, "note":…}``
+GATE_KEY_PREFIX = "gate_answer_"
+#: 展示层：当前卡在哪个闸门。**故意与原生挂起并存**——前端要显示"卡在哪"，
+#: 关掉这一步会让看板失去"为什么停"的可见性。
+GATE_STATUS_KEY = "gate_status"
 
 
 def outcome_key(stage_name: str) -> str:
@@ -151,11 +157,28 @@ def _ordered_stages(
 def build_five_stage_graph(
     pipelines: Mapping[str, Pipeline],
     intake: Sequence[tuple[str, dict]],
+    *,
+    gate_stages: Sequence[str] = (),
+    gate_asks: Optional[Mapping[str, Any]] = None,
 ) -> StateGraph:
-    """把已经接好线的单阶段 Pipeline 装成五阶段状态图。"""
+    """把已经接好线的单阶段 Pipeline 装成五阶段状态图。
+
+    ``gate_stages`` 里的阶段会在**跑完之后**插一个原生闸门节点：图在那里原地
+    挂起，等人给结论。挂起用的是 :mod:`fieldstation.graph.gate` 的
+    ``interrupt()``，所以进程可以关掉，重启后 ``Command(resume=...)`` 继续。
+
+    闸门节点**不重跑阶段本体**：阶段的产物已经在状态里了，闸门只读它。
+    这一点很重要 —— 实测 ``interrupt()`` 所在节点在恢复时会从函数开头重跑，
+    所以闸门节点里 ``interrupt()`` 之前不能有副作用。
+    """
     missing = [name for name in STAGE_ORDER if name not in pipelines]
     if missing:
         raise ValueError(f"缺少阶段的 Pipeline：{missing}")
+
+    asks = dict(gate_asks or {})
+    unknown_gates = [n for n in gate_stages if n not in STAGE_ORDER]
+    if unknown_gates:
+        raise ValueError(f"闸门阶段不在五阶段里：{unknown_gates}")
 
     def intake_node(state: dict) -> dict:
         msg_ids: list[str] = []
@@ -177,10 +200,40 @@ def build_five_stage_graph(
         node.__name__ = f"stage_{name}"
         return node
 
+    def gate_node(name: str):
+        """闸门：原地挂起，等人批。
+
+        **``interrupt()`` 之前不许有副作用**（实测恢复时本节点从头重跑）。
+        这里只从 state 里读已经算好的阶段结论，不做任何写操作。
+        """
+        def node(state: dict) -> dict:
+            from .gate import GateAnswer, GateAsk, interrupt_value
+
+            ask = asks.get(name)
+            if ask is None:
+                record = state.get(outcome_key(name)) or {}
+                ask = GateAsk(
+                    stage=name,
+                    action=str((record.get("conclusion") or {}).get("action") or name),
+                    reason=str((record.get("conclusion") or {}).get("reason") or ""),
+                )
+            answer = GateAnswer.from_any(interrupt_value(ask))
+            return {
+                GATE_KEY_PREFIX + name: answer.to_dict(),
+                # 展示层：前端要显示"卡在哪个闸门"。原生挂起之外仍保留这个字段。
+                GATE_STATUS_KEY: {"stage": name, "verdict": (
+                    "approved" if answer.approved else "rejected")},
+            }
+        node.__name__ = f"gate_{name}"
+        return node
+
     graph = StateGraph(dict)
     graph.add_node("intake", intake_node)
     for name in STAGE_ORDER:
         graph.add_node(name, stage_node(name))
+    for name in gate_stages:
+        graph.add_node(f"gate_{name}", gate_node(name))
+
     for target in INTAKE_TARGETS:
         graph.add_edge("intake", target)
     # qc → device_monitor 是一条**顺序边**，不是数据依赖：五个阶段共用同一条
@@ -193,6 +246,10 @@ def build_five_stage_graph(
     graph.add_edge("device_monitor", "fault_diagnosis")
     graph.add_edge("fault_diagnosis", "operations_dispatch")
     graph.add_edge("operations_dispatch", "archive")
+
+    # 闸门插在阶段之后：阶段产物先落进状态，闸门再停下来。
+    for name in gate_stages:
+        graph.add_edge(name, f"gate_{name}")
     return graph
 
 
@@ -257,24 +314,57 @@ def run_five_stage(
     thread_id: str | None = None,
     checkpoint: object | None = None,
     resume: Iterable[str] | None = None,
+    gate_stages: Sequence[str] = (),
+    gate_asks: Mapping[str, Any] | None = None,
+    gate_resume: Any = None,
+    gate_checkpointer: object | None = None,
 ) -> FiveStageResult:
     """跑五阶段图，返回与 ``Pipeline.run`` 同形的结果。
 
     每个阶段用一条**单阶段** ``Pipeline``（共享 bus / trace / metrics / board）：
     阶段名互不相同，所以订阅不会重复；输入拼装只读总线，先跑的阶段发布的
     消息自然成为后跑阶段的输入，与串联执行完全一致。
+
+    ## 闸门（原生挂起）
+
+    传 ``gate_stages`` 就在这些阶段**之后**插一个闸门。闸门用
+    ``langgraph.types.interrupt()`` 原地挂起，需要三样东西同时到齐：
+
+    * ``engine="langgraph"``（自带 runner 没有挂起能力）
+    * ``gate_checkpointer``（持久化检查点，否则重启就丢）
+    * ``thread_id``（同一线程才能续跑）
+
+    第一次调用会停在闸门；拿到结论后用 :func:`resume_five_stage` 配上
+    同一个 ``thread_id`` 和 ``gate_resume`` 继续。
+
+    三个条件缺任何一个都会显式报错，**不静默降级** ——
+    "以为有闸门、其实没停"是这个功能最危险的失败方式。
     """
     if engine not in ("auto", "builtin", "langgraph"):
         raise ValueError(
             f"未知引擎 {engine!r}（可选 auto / builtin / langgraph）")
     ordered = _ordered_stages(stages)
     trace_path = Path(trace_path)
+
+    wants_gate = bool(gate_stages) or gate_resume is not None
+    if wants_gate:
+        if engine == "builtin":
+            raise ValueError(
+                "闸门需要 engine='langgraph'：自带 runner 没有 interrupt()，"
+                "用它会得到一个「看起来停了、其实没停」的结果")
+        if gate_checkpointer is None:
+            raise ValueError(
+                "闸门需要 gate_checkpointer：不落检查点的话重启就丢，等于没做")
+        if not thread_id:
+            raise ValueError("闸门需要 thread_id：续跑必须回到同一条线程")
+
     pipelines = {
         name: Pipeline(bus, trace_path, [stage], metrics=metrics,
                        max_turns=max_turns, board=board)
         for name, stage in ordered
     }
-    graph = build_five_stage_graph(pipelines, intake)
+    graph = build_five_stage_graph(
+        pipelines, intake, gate_stages=gate_stages, gate_asks=gate_asks)
     initial = {"intake": None}
 
     use_langgraph = engine == "langgraph" or (
@@ -285,7 +375,15 @@ def run_five_stage(
                 "checkpoint/resume 目前只由自带 runner 支持"
                 "（engine='builtin'）；langgraph 适配层不读写本包的检查点")
         runner = adapter_langgraph.compile_graph(graph.compile().spec)
-        state = runner.invoke(initial)
+        if wants_gate:
+            state = runner.invoke_resumable(
+                initial,
+                config=_gate_config(thread_id),
+                checkpointer=gate_checkpointer,
+                resume_value=gate_resume,
+            )
+        else:
+            state = runner.invoke(initial)
     else:
         state = graph.compile().invoke(
             initial, thread_id=thread_id, checkpoint=checkpoint, resume=resume)
@@ -295,7 +393,68 @@ def run_five_stage(
     }
     missing = [name for name, record in records.items() if record is None]
     if missing:
+        if _paused_at(state):
+            # 挂在闸门上是**正常状态**，不是缺产物。用专门的返回让调用方能区分
+            # "跑完了" 与 "停下来等人"，不用去猜异常字符串。
+            return FiveStageResult(
+                PipelineResult((), bus.messages, str(trace_path)),
+                {"paused": True, "gate": _gate_status(state),
+                 "completed_stages": [n for n, r in records.items() if r is not None]},
+            )
         raise RuntimeError(f"图执行结束但缺少阶段产物：{missing}")
     outcomes = tuple(_outcome_from_record(records[name]) for name in STAGE_ORDER)
     result = PipelineResult(outcomes, bus.messages, str(trace_path))
-    return FiveStageResult(result, _checks(result, intake, trace_path))
+    checks = _checks(result, intake, trace_path)
+    if gate_stages:
+        checks["gate"] = _gate_status(state)
+    return FiveStageResult(result, checks)
+
+
+def _gate_config(thread_id: str) -> dict:
+    from .gate import thread_config
+
+    return thread_config(thread_id)
+
+
+def _paused_at(state: Mapping) -> bool:
+    """图是不是停在闸门上（``__interrupt__`` 存在即表示挂起）。"""
+    return bool(state.get("__interrupt__"))
+
+
+def _gate_status(state: Mapping) -> Optional[dict]:
+    """展示层：卡在哪个闸门、等人批什么。"""
+    raw = state.get("__interrupt__")
+    if not raw:
+        return state.get(GATE_STATUS_KEY)
+    first = raw[0] if isinstance(raw, (list, tuple)) and raw else raw
+    value = getattr(first, "value", None)
+    if value is None and isinstance(first, Mapping):
+        value = first.get("value")
+    return {"paused": True, "ask": value}
+
+
+def resume_five_stage(
+    *,
+    thread_id: str,
+    decision: Any,
+    stages: Iterable[PipelineStage],
+    bus: MessageBus,
+    trace_path: str | Path,
+    gate_checkpointer: object,
+    intake: Sequence[tuple[str, dict]] = (),
+    metrics: TraceWriter | None = None,
+    board: Blackboard | None = None,
+    max_turns: int = runtime.MAX_TURNS_DEFAULT,
+    gate_stages: Sequence[str] = (),
+) -> FiveStageResult:
+    """有人批了：带着结论从闸门那行继续。
+
+    **必须用同一个 ``thread_id`` 和同一个 checkpointer 文件**，否则接不上 ——
+    LangGraph 靠 ``thread_id`` 找快照，换一个就是另一条线程。
+    """
+    return run_five_stage(
+        stages, bus=bus, trace_path=trace_path, intake=intake, metrics=metrics,
+        board=board, max_turns=max_turns, engine="langgraph",
+        thread_id=thread_id, gate_stages=gate_stages,
+        gate_resume=decision, gate_checkpointer=gate_checkpointer,
+    )

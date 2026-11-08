@@ -26,6 +26,20 @@ JSON sha256 前缀（见 ``state_graph.digest_of``）。检查点**只存摘要�
 
 同一 ``(thread_id, node)`` 出现多行时以**最后一行**为准（重跑覆盖旧结论）。
 
+## 与 trace / LangGraph 的关系（v5 Bot-4）
+
+这里有两件事要同时说清，否则会以为两套记录并存是冗余：
+
+1. **自建检查点与 trace 是两件事，不能合并成一份文件。** trace 要逐字节可复现
+   （所以不放时间戳），检查点要能跨进程找快照（所以有 ``ts``）。往 trace 里塞
+   时间戳会让回放基线失效；把摘要写真快照又还原不了状态。**两份文件、同一个
+   序号口径**才是对的。
+2. **原生闸门用的是 LangGraph 自己的 checkpointer**（:mod:`graph.gate` 的
+   ``make_checkpointer``，落在 ``<业务库目录>/graph-checkpoint.sqlite``）。
+   本模块这份 JSONL 仍然有用：它是**给人看、给 `thread.last_event_seq` 对齐**
+   的序号源，而 LangGraph 的那份是给框架恢复用的。两者的 ``thread_id`` 必须
+   相同 —— :class:`TraceLedger` 就是干这个的。
+
 本模块只用标准库。
 """
 from __future__ import annotations
@@ -33,7 +47,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 CHECKPOINT_KIND = "graph_checkpoint"
 RECORD_FIELDS = ("thread_id", "node", "input_digest", "output_digest", "ts")
@@ -136,3 +150,70 @@ class CheckpointStore:
             if record["thread_id"] not in seen:
                 seen.append(record["thread_id"])
         return seen
+
+
+class TraceLedger:
+    """把 trace 文件的**行号**与 ``thread.last_event_seq`` 绑在一起。
+
+    ## 它解决什么问题
+
+    续跑时要知道"从哪一行往后接"。如果这个序号和 trace 行号对不上，续跑会
+    **重复发消息** —— 而且不会报错，只是消息多了一条。
+
+    所以序号必须有唯一来源。这里的选择是：**trace 文件的行号就是序号**，
+    ``thread.last_event_seq`` 只是它的缓存。
+
+    ## 为什么不让 LangGraph 回调直接写序号
+
+    回调也能写，但那样有两个写者（回调和业务层），迟早不一致。这里保留
+    "谁写 trace 谁负责报行号"的单写者规则：:meth:`record` 是唯一入口。
+
+    ## 与原生 checkpointer 的分工
+
+    * 原生 checkpointer（sqlite）：给**框架**恢复用，存的是完整状态快照。
+    * 本类：给人看、给界面跳转用，存的是"第几行了"。两者 ``thread_id`` 相同。
+    """
+
+    def __init__(self, store, trace_path: str | Path) -> None:
+        """``store`` 是 ``BotStore``；用来写 ``thread.last_event_seq``。"""
+        self.store = store
+        self.path = Path(trace_path)
+
+    def line_count(self) -> int:
+        """trace 现在有多少行（= 序号最大值）。"""
+        if not self.path.is_file():
+            return 0
+        with self.path.open("r", encoding="utf-8") as handle:
+            return sum(1 for line in handle if line.strip())
+
+    def sync(self, thread_id: str) -> int:
+        """把 ``thread.last_event_seq`` 对齐到 trace 当前行号，返回该值。"""
+        seq = self.line_count()
+        self.store.update_thread(str(thread_id), last_event_seq=seq)
+        return seq
+
+    def append(self, thread_id: str, kind: str, payload: dict) -> int:
+        """往 trace 追加一行并把序号推进到它的行号，返回新序号。
+
+        **这是唯一推荐的写入方式。** 直接调 ``TraceWriter.write`` 也能写，
+        但序号就不会跟着走 —— 那正是"对不上"的来源。
+        """
+        from ..agents.trace.writer import TraceWriter
+
+        writer = TraceWriter(self.path)
+        writer.write(kind, payload)
+        return self.sync(thread_id)
+
+    def resume_after(self, thread_id: str) -> int:
+        """续跑应该从哪一行往后接。
+
+        返回 ``last_event_seq``（不是 +1）：调用方自己决定"从下一条开始"的
+        语义，这里不替它猜。若库里的值比文件行数大（文件被截断过），
+        **以文件为准**并顺手纠正缓存 —— 静默沿用旧值会让续跑跳过真实事件。
+        """
+        actual = self.line_count()
+        stored = int(self.store.get_thread(str(thread_id)).get("last_event_seq") or 0)
+        if stored > actual:
+            self.store.update_thread(str(thread_id), last_event_seq=actual)
+            return actual
+        return stored

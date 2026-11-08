@@ -54,16 +54,28 @@ import importlib
 import sys
 from importlib import metadata
 
-# (发行版名, 模块名, 档位, 用途)
+# (发行版名, 模块名, 档位, 用途, 是否硬判)
 # 发行版名和 import 名不一样的地方都在这张表里说清楚：llama-index-core 的
 # import 名是 llama_index.core，直接拿发行版名去 import 会失败。
+#
+# 第 5 个元素 ``hard``：False = **可选依赖**，没装只报 warn 不判红。判据是
+# 「门禁 / 回放 / 审计**不**依赖它，缺了走降级路径照跑」（见
+# docs/operations/environment.md 的依赖政策）。把可选依赖写成硬判，会让
+# "没装一个只在 W7 才用的包"变成"依赖清单不齐"，那不是事实。
 PACKAGES = [
-    ("duckdb", "duckdb", "core", "E4/E5 数据查询"),
-    ("langgraph", "langgraph", "core", "E3 五阶段编排"),
-    ("pydantic-ai", "pydantic_ai", "core", "E2 agent 运行时"),
-    ("dbos", "dbos", "core", "E2 持久化执行"),
-    ("llama-index-core", "llama_index.core", "all", "E6 知识索引"),
-    ("llama-index-vector-stores-lancedb", "llama_index.vector_stores.lancedb", "all", "E6 向量库"),
+    ("duckdb", "duckdb", "core", "E4/E5 数据查询", True),
+    ("langgraph", "langgraph", "core", "E3 五阶段编排", True),
+    ("pydantic-ai", "pydantic_ai", "core", "E2 agent 运行时", True),
+    ("dbos", "dbos", "core", "E2 持久化执行", True),
+    ("llama-index-core", "llama_index.core", "all", "E6 知识索引", True),
+    ("llama-index-vector-stores-lancedb", "llama_index.vector_stores.lancedb", "all", "E6 向量库", True),
+    # B 侧 Agent 链路（v5 智-0b）。发行版名 claude-agent-sdk，import 名
+    # claude_agent_sdk —— 两者的下划线/连字符差别就在这里对齐。
+    ("claude-agent-sdk", "claude_agent_sdk", "all", "B 侧 Agent SDK（官方）", True),
+    # Letta 记忆客户端（v5 Bot-5）。**可选、可降级**：没装也不许把门禁拖红，
+    # 但装上了就要能查版本、能跑服务探针。主清单 requirements-v4.txt 里没有它
+    # （记忆是可降级的一层），这里放一条是为了让探针与 --expect 都查得到。
+    ("letta-client", "letta_client", "all", "Letta 记忆客户端（可降级）", False),
 ]
 
 TIERS = {"core": ["core"], "all": ["core", "all"]}
@@ -124,10 +136,87 @@ def _probe_duckdb_temporal() -> str:
     return ""
 
 
+def _probe_letta_service() -> str:
+    """``letta-client`` 能 import 不等于接上了 —— 真连一次服务。
+
+    最常见的错法是：包装上了、服务没起，然后第一次 remember 才超时，用户看到
+    的是"记忆写入失败"而不是"Letta 没启动"。所以这条探针**必须真连**。
+
+    服务没起是**正常状态**（记忆是可降级的一层），所以这里返回的是
+    "连不上"这个事实，由调用方决定算不算失败 —— 见 ``REQUIRES_SERVICE``。
+    """
+    try:
+        from fieldstation.botd.letta import LettaClientBackend
+    except BaseException as exc:  # noqa: BLE001
+        return f"导不进适配器：{type(exc).__name__}: {exc}"
+
+    backend = LettaClientBackend(timeout=2.0)
+    try:
+        ok = backend.available()
+    except BaseException as exc:  # noqa: BLE001 - 探测本身不许炸
+        return f"探测抛异常：{type(exc).__name__}: {exc}"
+    if ok:
+        return ""
+    # backend.reason 里已经带了地址，这里不再重复拼一遍
+    return backend.reason or f"服务不可达（{backend.base_url}）"
+
+
+def _probe_claude_agent_sdk() -> str:
+    """``claude-agent-sdk`` 真的能跑吗？
+
+    **为什么这条探针必须存在**：这个包 import 一定成功（纯 Python 包一层），
+    但它的能力全在**内嵌的 ``claude.exe`` CLI** 上 —— 344 MB，装包时就位。
+    真实故障是「import ok、包版本对、但子进程起不来」：
+    二进制被杀软删掉、被截断、或平台不符。那种状态下 SDK 会在第一次
+    ``query()`` 时才炸，而所有"检查包在不在"的门禁都会显示绿的。
+
+    所以判据是**真跑一次那个可执行文件**，看它自报版本。
+    """
+    import subprocess
+    from pathlib import Path
+
+    try:
+        import claude_agent_sdk
+    except BaseException as exc:  # noqa: BLE001 - 缺 DLL 的 OSError 也要报
+        return f"claude_agent_sdk 不可用：{type(exc).__name__}: {exc}"
+
+    root = Path(claude_agent_sdk.__file__).parent
+    exe = root / "_bundled" / "claude.exe"
+    if not exe.is_file():
+        # 非 Windows 平台换个名字；找不到就说清楚，不要假装通过
+        candidates = [p for p in (root / "_bundled").glob("claude*") if p.is_file()]
+        if not candidates:
+            return (f"内嵌 CLI 缺失：{exe} 不存在，_bundled/ 下也没有其它 claude*。"
+                    "SDK 会在第一次 query() 时才失败，所以这条必须是红的")
+        exe = candidates[0]
+
+    try:
+        done = subprocess.run(
+            [str(exe), "--version"], capture_output=True, text=True,
+            timeout=60, encoding="utf-8", errors="replace")
+    except BaseException as exc:  # noqa: BLE001 - 超时/权限都算失败
+        return f"内嵌 CLI 起不来：{type(exc).__name__}: {exc}"
+
+    if done.returncode != 0:
+        detail = (done.stderr or done.stdout or "").strip()[:200]
+        return f"内嵌 CLI 退出码 {done.returncode}：{detail}"
+    text = (done.stdout or "").strip()
+    if not any(ch.isdigit() for ch in text):
+        return f"内嵌 CLI 没有自报版本，输出是 {text[:120]!r}"
+    return ""
+
+
 #: (探针名, 依赖的发行版, 档位, 用途, 探针函数)
 PROBES = [
     ("duckdb-temporal", "duckdb", "core", "E4 带时区时间的时间桶查询",
-     _probe_duckdb_temporal),
+     _probe_duckdb_temporal, True),
+    ("claude-agent-sdk-cli", "claude-agent-sdk", "all", "B 侧 Agent SDK（内嵌 CLI 可执行）",
+     _probe_claude_agent_sdk, True),
+    # 记忆是可降级的一层：第 5 个元素 False = **报告但不判红**。
+    # 服务没起时它会说"不可达"，而不是让整份依赖检查失败 ——
+    # 但绝不能因为"包能 import"就假装可用（那正是要防的错法）。
+    ("letta-service", "letta-client", "all", "Letta 记忆服务（可降级，不判红）",
+     _probe_letta_service, False),
 ]
 
 
@@ -193,16 +282,23 @@ def main(argv: list[str] | None = None) -> int:
     print("-" * 88)
 
     failed = []
-    for dist, module_name, _tier, purpose in selected:
+    warnings = []
+    for dist, module_name, _tier, purpose, hard in selected:
         status, version, detail = _check(module_name)
         if status == "ok" and dist in wanted and version != wanted[dist]:
             status, detail = "fail", f"版本应为 {wanted[dist]}，实际 {version}"
+        if status == "fail" and not hard:
+            # 可选依赖没装：说清，但不判红
+            print(f"{dist:<38} {version:<14} {'warn':<6} {purpose}")
+            warnings.append((dist, detail or "未安装（可选）"))
+            continue
         print(f"{dist:<38} {version:<14} {status:<6} {purpose}")
         if status != "ok":
             failed.append((dist, module_name, detail))
 
     print("-" * 88)
-    for dist, module_name in [(p[0], p[1]) for p in selected]:
+    for entry in selected:
+        dist = entry[0]
         if dist in wanted and not any(f[0] == dist for f in failed):
             print(f"版本钉住: {dist} == {wanted[dist]}")
 
@@ -212,19 +308,36 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(f"{'probe':<38} {'status':<6} purpose")
         print("-" * 88)
-        for name, dist, _tier, purpose, fn in probes:
+        for entry in probes:
+            name, dist, _tier, purpose, fn, hard = entry
             try:
                 detail = fn()
             except BaseException as exc:  # noqa: BLE001 - 探针自己崩也要报，不要炸
                 detail = f"探针自身异常：{type(exc).__name__}: {exc}"
-            status = "ok" if not detail else "fail"
+            if not detail:
+                status = "ok"
+            elif hard:
+                status = "fail"
+            else:
+                # 可降级的那一层：**说清不行，但不判红**。把它算失败会让
+                # "没跑 Letta 服务"变成一份装不齐的依赖清单，那不是事实。
+                status = "warn"
             print(f"{name:<38} {status:<6} {purpose}")
-            if detail:
+            if detail and hard:
                 failed.append((name, f"probe:{dist}", detail))
+            elif detail:
+                warnings.append((name, detail))
 
     print("-" * 88)
+    # 可降级的项单独说清（不判红，但不能不提）
+    for name, detail in warnings:
+        print(f"  [可降级] {name}: {detail}")
     if not failed:
-        print(f"结果: {len(selected)}/{len(selected)} ok")
+        if warnings:
+            print(f"结果: {len(selected)}/{len(selected)} ok"
+                  f"（{len(warnings)} 项可降级不可用，不影响结论）")
+        else:
+            print(f"结果: {len(selected)}/{len(selected)} ok")
         return 0
 
     print(f"结果: {len(selected) - len(failed)}/{len(selected)} ok，缺 {len(failed)} 个：")

@@ -115,3 +115,56 @@ class LangGraphRunner:
         if config:
             merged.update(config)
         return self._app.invoke(dict(state or {}), config=merged)
+
+    # ------------------------------------------------------- 原生挂起/续跑 --
+    def compile_with_checkpointer(self, checkpointer):
+        """重新编一张**带检查点**的图。
+
+        为什么不复用 ``self._app``：检查点必须编译时给，编译后再挂不上。
+        所以闸门路径单独编一次，非闸门路径不受影响（形状完全一样）。
+        """
+        from langgraph.graph import END, START, StateGraph as LangStateGraph
+
+        spec = self.spec
+        graph = LangStateGraph(_state_schema(spec.state_cls))
+        for name, fn in spec.nodes:
+            graph.add_node(name, fn)
+        sources_by_target: dict[str, list[str]] = {}
+        for source, target in spec.edges:
+            sources_by_target.setdefault(target, []).append(source)
+        for target, sources in sources_by_target.items():
+            graph.add_edge(sources[0] if len(sources) == 1 else sources, target)
+        for edge in spec.conditional:
+            mapping = dict(edge.mapping) if edge.mapping else None
+            graph.add_conditional_edges(edge.source, edge.router, mapping)
+        for entry in spec.entries:
+            graph.add_edge(START, entry)
+        targets = {target for _, target in spec.edges}
+        targets.update(
+            target for edge in spec.conditional for target in edge.static_targets())
+        for name in spec.node_names:
+            if name not in targets:
+                graph.add_edge(name, END)
+        return graph.compile(checkpointer=checkpointer)
+
+    def invoke_resumable(
+        self,
+        state: dict | None = None,
+        *,
+        config: dict,
+        checkpointer,
+        resume_value=None,
+    ) -> dict:
+        """跑（或在闸门处续跑）一张带检查点的图。
+
+        ``resume_value is None`` = 第一次跑，跑到闸门就停；
+        给了值 = 带着结论从闸门那行继续（``Command(resume=...)``）。
+        """
+        from langgraph.types import Command
+
+        app = self.compile_with_checkpointer(checkpointer)
+        merged = dict(self.DEFAULT_CONFIG)
+        merged.update(config)
+        payload = (dict(state or {}) if resume_value is None
+                   else Command(resume=resume_value))
+        return app.invoke(payload, config=merged)

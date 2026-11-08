@@ -24,13 +24,19 @@
 #       缺任何一个都不该让门禁变红（docs/operations/environment.md 的依赖政策）。
 #       它们只被 v4 的 E2/E3/E4/E6 引擎按需使用，缺了走各自的降级路径。
 
-# ── 目标包：v4 的六个引擎依赖 ─────────────────────────────────────
+# ── 目标包：v4 的六个引擎依赖 + B 侧官方 Agent SDK ────────────────
 duckdb==2.0.0
 langgraph==1.2.19
 pydantic-ai==2.66.0
 dbos==3.4.0
 llama-index-core==0.14.25
 llama-index-vector-stores-lancedb==0.6.0
+# B 侧 Agent 链路（v5 智-0b）：官方 SDK，不走逆向源码。
+# 153 MB wheel，内嵌 claude.exe（另 344 MB，装包时就位）；`import` 一定成功，
+# 能力全在那个 CLI 上，所以 tools/deps_smoke.py 有一条真跑 `claude.exe --version`
+# 的探针 —— 只查"包在不在"会漏掉"二进制被删/被截断"这种真实故障。
+# 依赖 mcp<3，现有 mcp 2.3.0 满足，不会降级。
+claude-agent-sdk==0.2.179
 
 # ── 直接依赖：上面六个各自声明的一层依赖（实测装上的版本）──────────
 aiohttp==3.14.5

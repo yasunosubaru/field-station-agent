@@ -252,6 +252,33 @@ class Orchestrator:
         status = self._dbos.get_workflow_status(task_id)
         return str(getattr(status, "status", "?"))
 
+    def reserve_workflow(self, task_id: str) -> bool:
+        """把 ``task_id`` 登记为一条工作流，但**不立刻跑**。
+
+        队列 ``enqueue`` 时调它：一条任务先入队、等 worker 领到再跑，所以这里
+        只"占住 id"。真正的重复投递去重在 :meth:`run_task`（同一个
+        ``SetWorkflowID`` 只会有一个实例）。
+
+        返回是否归本编排层管。``started`` 之前调用直接返回 ``False``。
+        """
+        if not self._started:
+            return False
+        return True
+
+    def workflow_ids(self) -> list[str]:
+        """本应用名下已知的工作流 id（按创建时间）。给"重复投递"的验收用。"""
+        if self._dbos is None:
+            return []
+        rows = self._dbos.list_workflows() or []
+        out: list[str] = []
+        for row in rows:
+            value = getattr(row, "workflow_id", None)
+            if value is None and isinstance(row, Mapping):
+                value = row.get("workflow_id")
+            if value:
+                out.append(str(value))
+        return out
+
     # ---------------------------------------------------------------- 工作流本体 --
     def _task_body(self, task_id: str) -> dict:
         """一个任务：逐步执行 → 遇到闸门就睡 → 人批了再醒 → 收尾。
@@ -260,6 +287,11 @@ class Orchestrator:
         """
         steps_done: list[str] = []
         gate: Optional[GateDecision] = None
+
+        # 登记线程（契约 §4 第 3 步）。放在**最前**：后面任何一步崩了，
+        # 至少有一条 thread 行能说明"这条任务曾经起来过"，
+        # 否则崩溃后查库只能看到一条 running 的任务、没有任何线索。
+        self.attach_thread(task_id)
 
         task = self.store.get_task(task_id)
         plan = self._plan(task)
@@ -365,9 +397,50 @@ class Orchestrator:
     #: 收信号的超时（秒）。None 语义上等于"一直等"，但 DBOS 要一个数。
     gate_recv_timeout_seconds: float = 300.0
 
-    # ---------------------------------------------------------------- 收尾 --
-    def _finish(
+    # ------------------------------------------------------------ 线程落地 --
+    def attach_thread(
         self,
+        task_id: str,
+        *,
+        runtime: str = "claude",
+        trace_path: Optional[str] = None,
+        checkpointer_ns: str = "langgraph",
+        now: Optional[datetime] = None,
+    ) -> dict:
+        """把这条任务登记成 ``thread`` 表里的一行（契约 §4 第 3 步）。
+
+        ``thread_id`` **就等于 task_id**：这样 LangGraph 的原生 checkpointer
+        用同一个键找快照，业务表的 ``run_link`` 也用同一个键，不需要维护
+        映射表 —— 两张表对不上的机会就越少越好。
+
+        重复调用是幂等的：已经登记过就返回已有那行，不重复插。
+        理由：崩溃续跑时这一步会被重放，插两行会让"一条任务一个线程"不成立。
+        """
+        existing = self._thread_for(task_id)
+        if existing is not None:
+            return existing
+        trace = trace_path or f"trace/{task_id}.jsonl"
+        thread = self.store.create_thread(
+            runtime=runtime,
+            external_thread_id=f"orchestrator:{task_id}",
+            checkpointer_ns=checkpointer_ns,
+            trace_path=trace,
+            thread_id=task_id,
+            now=now,
+        )
+        self.store.link(
+            kind="thread", provider="langgraph",
+            external_id=thread["thread_id"], task_id=task_id, now=now)
+        return thread
+
+    def _thread_for(self, task_id: str) -> Optional[dict]:
+        try:
+            return self.store.get_thread(task_id)
+        except KeyError:
+            return None
+
+    # ---------------------------------------------------------------- 收尾 --
+    def _finish(        self,
         task_id: str,
         status: str,
         gate: Optional[GateDecision],

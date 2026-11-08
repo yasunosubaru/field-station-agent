@@ -386,5 +386,96 @@ class TestCrossProcess(OrchestratorTestBase):
         self.assertEqual(len([r for r in results if r is not None]), 2)
 
 
+class TestQueueIntegration(OrchestratorTestBase):
+    """Bot-2 的三条验收：队列挂到 DBOS 上，但**不依赖**它。"""
+
+    def test_enqueue_reserves_one_workflow_per_task_id(self) -> None:
+        """同一 task_id 重复入队 → 只产生一个工作流。
+
+        两层去重，顺序很重要：
+
+        1. **业务表主键**先挡 —— 同一个 ``task_id`` 第二次插入直接
+           ``IntegrityError``。这比 DBOS 那层更早生效。
+        2. 即使换了写法绕过第 1 层（比如先建任务、再由编排层跑），
+           ``SetWorkflowID(task_id)`` 也只会有一个工作流实例。
+
+        所以这里断言两件事：重复入队被主键拒掉；跑过之后工作流只有一个。
+        """
+        import sqlite3
+
+        from fieldstation.botd.queue import TaskQueue
+
+        orch = self.make_orch(executor=lambda t: {"ok": True})
+        orch.launch()
+        queue = TaskQueue(self.store)
+
+        first = queue.enqueue({"kind": "bot", "title": "a", "task_id": "t-dup"})
+        self.assertEqual(first["task_id"], "t-dup")
+        with self.assertRaises(sqlite3.IntegrityError):
+            queue.enqueue({"kind": "bot", "title": "a", "task_id": "t-dup"})
+
+        orch.run_task("t-dup")
+        orch.run_task("t-dup")          # 第二次是同一个工作流
+        ids = [wid for wid in orch.workflow_ids() if wid == "t-dup"]
+        self.assertEqual(len(ids), 1,
+                         f"同一个 task_id 产生了 {len(ids)} 个工作流：{ids}")
+
+    def test_reap_still_works_with_dbos_running(self) -> None:
+        """DBOS 在跑时，残留租约仍由 reap_expired 收回（DBOS 不知道租约）。"""
+        from datetime import timedelta
+
+        from fieldstation.botd.queue import TaskQueue
+
+        orch = self.make_orch(executor=lambda t: {"ok": True})
+        orch.launch()
+        queue = TaskQueue(self.store)
+
+        task = queue.enqueue({"kind": "bot", "title": "x"})
+        leased = queue.lease("w1", ttl=10.0, now=NOW)
+        self.assertEqual(leased["task_id"], task["task_id"])
+        # 租约过期
+        reaped = queue.reap_expired(now=NOW + timedelta(seconds=30))
+        self.assertEqual([r["task_id"] for r in reaped], [task["task_id"]])
+        self.assertEqual(self.store.get_task(task["task_id"])["status"], "pending")
+
+    def test_queue_runs_without_dbos(self) -> None:
+        """DBOS 不在时，队列单独也能跑完一轮（ADR-009 降级梯度）。"""
+        from datetime import timedelta
+
+        from fieldstation.botd.queue import TaskQueue
+
+        self.assertIsNone(active(), "这个用例要在没有编排器的情况下跑")
+        queue = TaskQueue(self.store)
+        task = queue.enqueue({"kind": "bot", "title": "no-dbos"})
+        # 入队不该因为没 DBOS 而失败
+        self.assertEqual(task["status"], "pending")
+
+        leased = queue.lease("w1", ttl=60.0, now=NOW)
+        self.assertIsNotNone(leased)
+        done = queue.complete(leased["task_id"], {"ok": True}, now=NOW)
+        self.assertEqual(done["status"], "done")
+        # 回收路径也要通
+        task2 = queue.enqueue({"kind": "bot", "title": "y"})
+        queue.lease("w2", ttl=1.0, now=NOW)
+        self.assertEqual(
+            len(queue.reap_expired(now=NOW + timedelta(seconds=10))), 1)
+        self.assertEqual(self.store.get_task(task2["task_id"])["status"], "pending")
+
+    def test_enqueue_never_raises_when_orchestrator_breaks(self) -> None:
+        """编排层内部炸了也不能让入队失败（except 是有意的）。"""
+        from fieldstation.botd.queue import TaskQueue
+
+        orch = self.make_orch(executor=lambda t: {"ok": True})
+        orch.launch()
+
+        def boom(_task_id: str) -> bool:
+            raise RuntimeError("orchestrator 坏了")
+
+        orch.reserve_workflow = boom  # type: ignore[assignment]
+        queue = TaskQueue(self.store)
+        task = queue.enqueue({"kind": "bot", "title": "still-works"})
+        self.assertEqual(task["status"], "pending")
+
+
 if __name__ == "__main__":
     unittest.main()

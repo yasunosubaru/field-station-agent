@@ -312,6 +312,78 @@ class BotMemory:
         )
         return scored[:size]
 
+    # ---------------------------------------------------------- 只在首尾 --
+    def recall_at_start(self, bot_id: str, query: str) -> Dict[str, Any]:
+        """任务**开头**调一次：召回记忆 + 读核心记忆块。
+
+        ## 为什么单独开一个方法
+
+        「Letta 只在首尾」是架构纪律，不是性能优化：中间过程频繁读写会让记忆
+        变脏，而且每次都多一次跨进程往返。把"首"和"尾"各成一个方法，比在每个
+        调用点靠人工记得"别在中间调"可靠得多。
+
+        返回里带 ``memory_missing``：**服务不可用要留痕**。不写标记的话，
+        以后没人知道这份记忆是真从 Letta 来的，还是本地兜底的。
+        """
+        out: Dict[str, Any] = {
+            "bot_id": str(bot_id),
+            "items": self.recall(bot_id, query),
+            "block": None,
+            "degraded": self.degraded,
+            "memory_missing": False,
+            "reason": self.degraded_reason,
+        }
+        backend = self.backend
+        reader = getattr(backend, "read_block", None)
+        if backend is None or self.degraded or reader is None:
+            out["memory_missing"] = True
+            out["reason"] = out["reason"] or "没有可用的外部记忆后端"
+            return out
+        try:
+            out["block"] = reader(bot_id)
+        except Exception as exc:  # noqa: BLE001 - 读不到块不该让任务失败
+            out["memory_missing"] = True
+            out["reason"] = f"{type(exc).__name__}: {exc}"
+        return out
+
+    def remember_at_end(
+        self,
+        bot_id: str,
+        content: str,
+        *,
+        key: str = "session_summary",
+        tags: Optional[Sequence[str]] = None,
+        block_value: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """任务**结尾**调一次：写一条归档记忆，可选地更新核心记忆块。
+
+        ``block_value`` 给了就覆盖核心块（语义是"当前摘要"），不给就只追加
+        一条归档 passage —— 两者分工见 ``letta.py`` 的模块 docstring。
+        """
+        row = self.remember(bot_id, content, key=key, tags=tags, source="session")
+        out: Dict[str, Any] = {
+            "bot_id": str(bot_id),
+            "memory_id": row.get("id"),
+            "external_id": row.get("external_id"),
+            "block": None,
+            "degraded": self.degraded,
+            "memory_missing": False,
+            "reason": self.degraded_reason,
+        }
+        backend = self.backend
+        writer = getattr(backend, "write_block", None)
+        if backend is None or self.degraded or writer is None:
+            out["memory_missing"] = True
+            out["reason"] = out["reason"] or "没有可用的外部记忆后端"
+            return out
+        if block_value is not None:
+            try:
+                out["block"] = writer(bot_id, block_value)
+            except Exception as exc:  # noqa: BLE001 - 写块失败只影响镜像
+                out["memory_missing"] = True
+                out["reason"] = f"{type(exc).__name__}: {exc}"
+        return out
+
     # -------------------------------------------------------------- 其它 --
     def forget(self, bot_id: str, key: str) -> bool:
         """按 key 删除一条记忆；不存在返回 False。"""

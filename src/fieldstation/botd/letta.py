@@ -139,6 +139,54 @@ class LettaClientBackend:
         ])
         return str(getattr(created, "id", ""))
 
+    # ---------------------------------------------------------------- 记忆块
+    def read_block(self, bot_id: str) -> Optional[dict]:
+        """读这个 bot 的 core memory block。没有 agent / 没有 block 时返回 ``None``。
+
+        **为什么不抛异常**：「这个 bot 还没有记忆」是正常状态，不是故障。
+        抛异常会让首次查询被记成一次失败，日志里就看不出真实故障率了。
+        """
+        client = self._make_client()
+        agent_id = self._agent_for(bot_id, create=False)
+        if not agent_id:
+            return None
+        try:
+            block = client.agents.blocks.retrieve(BLOCK_LABEL, agent_id=agent_id)
+        except Exception as exc:  # noqa: BLE001 - 没这个 block 是正常情况
+            self.reason = f"读不到记忆块 {BLOCK_LABEL}：{type(exc).__name__}"
+            return None
+        return _block_dict(block)
+
+    def write_block(self, bot_id: str, value: str) -> dict:
+        """把核心记忆块的**整块**内容换成 ``value``。
+
+        与 :meth:`remember`（归档 passage，逐条追加）不同：block 是"它是谁、
+        现在记住什么"的摘要，语义是**覆盖**。所以只在任务首尾各写一次
+        （召回后整理、记录后归纳），中间过程不碰 —— 这也是"Letta 只在首尾"
+        那条纪律在 block 上的落法。
+        """
+        if not isinstance(value, str):
+            raise TypeError("block value 必须是字符串")
+        client = self._make_client()
+        agent_id = self._agent_for(bot_id, create=True)
+        if not agent_id:
+            raise RuntimeError(f"无法为 bot {bot_id!r} 创建 Letta agent")
+        try:
+            block = client.agents.blocks.update(
+                BLOCK_LABEL, agent_id=agent_id, value=value)
+        except Exception:
+            # block 不存在（老 agent 没有这个 label）：建一个再挂上去。
+            # 这里刻意不做"先查再建"：查一次也要一次往返，而失败路径本来
+            # 就是少数情况，直接建 + 挂更短。
+            try:
+                block = client.blocks.create(label=BLOCK_LABEL, value=value)
+                client.agents.blocks.attach(block.id, agent_id=agent_id)
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(
+                    f"写记忆块失败（{BLOCK_LABEL}）：{type(exc).__name__}: {exc}"
+                ) from exc
+        return _block_dict(block)
+
     # ---------------------------------------------------------------- 写入
     def remember(
         self,
@@ -209,6 +257,17 @@ class LettaClientBackend:
                 "degraded": False,
             })
         return out[: max(1, int(limit))]
+
+
+def _block_dict(block: Any) -> dict:
+    """把 BlockResponse（pydantic 对象）拍平成 dict。取不到就留空，不炸。"""
+    return {
+        "id": str(getattr(block, "id", "") or ""),
+        "label": str(getattr(block, "label", "") or ""),
+        "value": str(getattr(block, "value", "") or ""),
+        "backend": "letta",
+        "degraded": False,
+    }
 
 
 def build_default_backend(

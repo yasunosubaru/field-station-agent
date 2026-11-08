@@ -1,17 +1,17 @@
 {
   "document": "docs/m7/软著-源程序.txt",
-  "files": 73,
+  "files": 75,
   "include_dirs": [
     "src/fieldstation/agents",
     "tools",
     "harness"
   ],
   "kind": "fieldstation.copyright_source.summary",
-  "lines": 25889,
+  "lines": 26720,
   "lines_per_page": 50,
   "pages_shown": 60,
-  "pages_total": 518,
-  "sha256": "b240f0cf610e44985b3e58532481468478465772719a2c50eafb65081f6ef15b",
+  "pages_total": 535,
+  "sha256": "8332b64c61c41fef54b20481e2ed47594ab996af124ba1387aee474912b6332d",
   "software": {
     "name": "野外台站智能体运行与评估系统",
     "version": "V1.0"

@@ -77,6 +77,9 @@ class TaskQueue:
         """把一条任务写入队列，返回完整行。
 
         ``available_at`` 可以是 ``datetime``（延迟任务），缺省为立即可领。
+
+        入队之后会把 ``task_id`` 告诉 DBOS 编排层（如果它在跑），让"同一任务重复
+        投递"由 DBOS 的工作流 id 去重，而不是在应用层再加一把锁。
         """
         if not isinstance(task, Mapping):
             raise TypeError("enqueue 需要 mapping（kind / payload / ...）")
@@ -87,7 +90,7 @@ class TaskQueue:
         available = task.get("available_at")
         if available is not None and not isinstance(available, datetime):
             raise TypeError("available_at 必须是 datetime")
-        return self.store.create_task(
+        row = self.store.create_task(
             kind=task.get("kind", ""),
             bot_id=task.get("bot_id"),
             parent_task_id=task.get("parent_task_id"),
@@ -100,6 +103,32 @@ class TaskQueue:
             now=moment,
             task_id=task.get("task_id"),
         )
+        self._attach_workflow(row["task_id"])
+        return row
+
+    def _attach_workflow(self, task_id: str) -> bool:
+        """告诉 DBOS「这个 task_id 是一条工作流」。返回是否真的挂上了。
+
+        **这个 ``except`` 是有意的，不要删。** ADR-009 的降级梯度要求
+        DBOS 不可用时队列能单独工作：删掉它，DBOS 一挂（没装、没配、起不来）
+        整个系统就死了，而队列本来不需要它也能跑。
+
+        延迟 import 同理：``orchestrator`` 会 import ``store``，这里 import
+        ``orchestrator`` 就成环了。函数内 import 把环断开，也顺带让"没装 dbos"
+        这种环境在**没入队之前**完全不付代价。
+        """
+        try:
+            from .orchestrator import active
+        except Exception:  # noqa: BLE001 - 编排层不可用不该拖垮队列
+            return False
+        orchestrator = active()
+        if orchestrator is None or not orchestrator.started:
+            return False
+        try:
+            orchestrator.reserve_workflow(task_id)
+        except Exception:  # noqa: BLE001 - 同上，降级优先
+            return False
+        return True
 
     # ------------------------------------------------------------ 领取 --
     def lease(
