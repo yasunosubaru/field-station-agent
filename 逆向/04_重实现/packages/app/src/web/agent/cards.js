@@ -201,7 +201,11 @@ export function renderToolCard(card, handlers = {}) {
     'aria-controls': bodyId,
   }, [
     el('span', { class: 'ag-tool-icon' }, [iconSvg(card.icon)]),
-    el('span', { class: 'ag-tool-label', text: card.label || card.name }),
+    // 标签与名字同名时只显示一次 —— `label` 默认就是 `name`，两处都分会重复。
+    el('span', {
+      class: 'ag-tool-label',
+      text: card.label && card.label !== card.name ? card.label : '',
+    }),
     el('code', { class: 'ag-tool-name', text: card.name || '' }),
     el('span', { class: `ag-pill ag-pill-${status}`, 'data-status': status, text: statusLabel(status) }),
     card.durationMs != null ? el('span', { class: 'ag-dur', text: formatDuration(card.durationMs) }) : null,
@@ -419,7 +423,9 @@ export function renderApprovalCard(card, handlers = {}) {
   if (!pending) for (const button of buttons) button.disabled = true;
 
   return el('article', {
-    class: `ag-card ag-approval${pending ? ' ag-approval-pending' : ''}`,
+    // 已决的卡片不带 `ag-approval-pending`：那个类是「需要我」的橙底，
+    // 而决定已经落下，还染着橙底会让人以为还得再点一次。
+    class: `ag-card ag-approval${pending ? ' ag-approval-pending' : ' ag-approval-decided'}`,
     'data-card-id': card.id,
     'data-card-type': 'approval',
     'data-status': card.status || 'pending',

@@ -440,6 +440,24 @@ test('规矩三：已决的审批卡变只读（批准是已经发生的事）',
     assert.ok(decision);
     assert.equal(decision.hidden, false);
     assert.match(decision.textContent, /已批准/);
+    // 已决不再染未决的橙底：还染着会让人以为还得再点一次。
+    assert.doesNotMatch(card.className, /ag-approval-pending/);
+    assert.match(card.className, /ag-approval-decided/);
+  });
+});
+
+test('工具名不重复显示（label 缺省时等于 name，两处都分会打两遍）', async () => {
+  await withDom(async () => {
+    const { renderToolCard } = await import(cardsUrl);
+    const plain = renderToolCard({ id: 'c9', name: 'robust_stats', status: 'ok' });
+    assert.equal(plain.querySelector('.ag-tool-name').textContent, 'robust_stats');
+    // label 与 name 同名时，label 那格留空。
+    assert.equal(plain.querySelector('.ag-tool-label').textContent, '');
+
+    // 不同名时才两处都显示（label 是人话名，name 是实际工具名）。
+    const labeled = renderToolCard({ id: 'c10', name: 'robust_stats', label: '稳健统计', status: 'ok' });
+    assert.equal(labeled.querySelector('.ag-tool-label').textContent, '稳健统计');
+    assert.equal(labeled.querySelector('.ag-tool-name').textContent, 'robust_stats');
   });
 });
 

@@ -1366,6 +1366,29 @@ body[data-mode="agent"] [hidden] {
   background: var(--warn-soft);
 }
 
+/*
+ * 已决的审批卡：不再染未决的橙底，主色按钮也降回中性。
+ *
+ * 理由：禁用状态在深色主题下只靠 `opacity` 看不出来，那颗橙色「批准」仍然
+ * 像能点的按钮。用户会去点它，然后发现点了没反应 —— 比一开始就不显眼更糟。
+ */
+.ag-approval-decided {
+  opacity: 0.82;
+}
+
+.ag-approval-decided .ag-btn-primary {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+/* 主题里的 `body[data-mode="agent"] .ag-btn-primary` 优先级更高，要并列才压得住。 */
+body[data-mode="agent"] .ag-approval-decided .ag-btn-primary {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
 /* 「做什么」与「后果」分开成两行（25.9.1）。 */
 .ag-approval-what {
   display: block;
