@@ -1303,6 +1303,135 @@ body[data-mode="agent"] [hidden] {
   line-height: 1.5;
 }
 
+/* 摘要里的键名淡、值亮：扫一眼先看到数字（视觉规矩一的同一动机）。 */
+.ag-tool-key {
+  color: var(--dim);
+}
+
+.ag-tool-val {
+  color: var(--text);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ag-tool-sep {
+  margin: 0 5px;
+  color: var(--border-hover);
+}
+
+/* 「查看 trace」是展开入口，做成文字按钮，不抢头部的眼。 */
+.ag-tool-foot {
+  display: flex;
+  gap: 8px;
+  padding: 0 10px 8px 38px;
+}
+
+.ag-tool-trace {
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+
+.ag-tool-trace:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent-line);
+}
+
+/*
+ * call_id 铺在卡片底部背景里（规格 25.8.1 第 5 条）。
+ *
+ * 它的作用是回源：报告里出现的每个数字都要能顺着它查回去。
+ * 但它是「证据」，不是「结论」，所以用最淡的一档 —— 不抢眼，但一定在。
+ */
+.ag-tool-call-id {
+  display: block;
+  padding: 0 10px 6px 38px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+/* 未决审批卡的左边框：一眼看到「这里需要我」（附录 C.3 点一）。 */
+.ag-approval-pending {
+  border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+}
+
+/* 「做什么」与「后果」分开成两行（25.9.1）。 */
+.ag-approval-what {
+  display: block;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.ag-approval-impact {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ag-approval-impact-label {
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--warn-line);
+  border-radius: 3px;
+  color: var(--warn);
+  font-size: 10px;
+}
+
+/* 拒绝的理由框：必填，所以标签上写明「（必填）」。 */
+.ag-reason-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.ag-reason-field[hidden] {
+  display: none;
+}
+
+.ag-reason-label {
+  font-size: 10.5px;
+  color: var(--warn);
+}
+
+.ag-reason-error {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--bad);
+}
+
+.ag-reason-error[hidden] {
+  display: none;
+}
+
+/* 审批未决时输入框上的说明 —— 不是灰掉就完事（附录 C.3 点三）。 */
+.ag-gate-note {
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--warn-line);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 11.5px;
+}
+
+/* 审批门生效时，输入区整体降一档视觉权重。 */
+.ag-composer.is-gated {
+  opacity: 0.65;
+}
+
 /* 折叠区：更深一档的底，等宽小字 */
 .ag-card-body {
   padding: 9px 10px 10px;
