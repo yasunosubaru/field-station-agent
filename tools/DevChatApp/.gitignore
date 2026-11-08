@@ -1,0 +1,9 @@
+# DevChatApp 构建产物不进库
+
+bin/
+obj/
+*.user
+*.suo
+
+# 发布产物（拷走用的那份）
+publish/
