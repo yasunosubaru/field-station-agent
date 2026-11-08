@@ -170,6 +170,33 @@ def field_width_for(station: str, program: str | None = None) -> int | None:
     return None
 
 
+# ============================================================================
+# 厂商原始格式登记
+# ============================================================================
+#: 能直接解析的厂商原生格式。RINEX 是**标准**格式，不进这张表。
+#:
+#: 为什么单列一张表而不是塞进 `sniff` 的 if-else 链：这几种格式的判据都不是
+#: 文本特征（SBF 靠二进制同步字），条件分支越堆越容易互相误伤；
+#: 更重要的是「支持哪些厂商格式」这个事实要能**一眼查到**，而不是从 300 行
+#: `sniff` 里读出来。
+VENDOR_FORMATS: dict[str, dict] = {
+    "SBF": {
+        "parser": "fieldstation.ingest.sbf",
+        "sync": "AA 44 12 (长头 28B) / AA 44 13 (短头 12B)",
+        "crc": "NovAtel CRC-32：多项式 0xEDB88320 反射、初值 0、无终值异或",
+        "caveat": "CRC 与标准 CRC-32 不同（zlib.crc32 会全帧校验失败）",
+        "verified_on": "逆向/00_来源/samples/live-20261031/b{1,2,5}-*.sbf",
+        "note": "坏帧计数不静默丢；末尾半帧不算坏帧",
+    },
+}
+
+#: 已知**不**支持的厂商格式，给出为什么。
+UNSUPPORTED_VENDOR_FORMATS: dict[str, str] = {
+    "OEM": "NovAtel 老 ASCII 命令/日志格式，本项目无样本可验证",
+    "ASC": "同上，属 OEM 文本族的别名",
+}
+
+
 if __name__ == "__main__":
     print("已登记的 RINEX 2 字段宽度（键=大写站名）：")
     for k, v in sorted(RINEX2_FIELD_WIDTH.items()):
@@ -177,3 +204,9 @@ if __name__ == "__main__":
     print("\n生产程序兜底：" + "  ".join(
         f"{k}->{v}" for k, v in PROGRAM_FIELD_WIDTH.items()))
     print("\n环境变量覆盖：GNSS_TEC_FIELD_WIDTH=HKWS=15;DAEJ=16")
+    print("\n可直接解析的厂商原生格式：")
+    for name, spec in VENDOR_FORMATS.items():
+        print(f"  {name:<5} {spec['parser']}  —— {spec['note']}")
+    print("\n已知不支持：")
+    for name, why in UNSUPPORTED_VENDOR_FORMATS.items():
+        print(f"  {name:<5} {why}")
