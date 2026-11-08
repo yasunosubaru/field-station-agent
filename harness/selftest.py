@@ -76,7 +76,10 @@ ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
                           "src/fieldstation/botd/",
                           "src/fieldstation/data/",
                           "src/fieldstation/graph/",
-                          "src/fieldstation/runtimes/")
+                          "src/fieldstation/runtimes/",
+                          # v5 服务面：MCP 工具面服务从零写，无源项目对应文件。
+                          # 判据同上面几条——不是搬运件，而是本项目自己造的。
+                          "src/fieldstation/mcp_server.py")
 
 # ---------------------------------------------------------------- 第 1 项
 #: 依赖本机可选外部件的集成用例：缺件时跳过是设计行为，不算"静默跳过"。
@@ -233,6 +236,29 @@ def check_audit_claims() -> tuple[bool, list[str]]:
     return True, lines
 
 
+# ---------------------------------------------------------------- 第 6 项
+def check_agent_specs() -> tuple[bool, list[str]]:
+    """特化同源：两份产物必须与 `agents/fsa-ops.yaml` 同源。
+
+    为什么单列一项而不是并入第 1 项：`tests/` 里那条测试守的是**校验器本身可信**
+    （造坏能红）；这一项守的是**仓库当前状态**——源改了但忘了重新生成，
+    必须在门禁这一步被挡住，而不是等谁想起来跑测试。
+    """
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+    r = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "check_agent_specs.py")],
+        cwd=str(ROOT), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", env=env, timeout=120)
+    out = (r.stdout or "") + (r.stderr or "")
+    lines = [f"  退出码 {r.returncode}"]
+    lines.extend("    " + ln for ln in out.splitlines())
+    if r.returncode != 0:
+        lines.append("  !! 特化产物与源不同源（先跑 python tools/gen_agent_specs.py）")
+        return False, lines
+    return True, lines
+
+
 # ---------------------------------------------------------------- 主流程
 CHECKS = (
     ("tests/ 全绿且 skipped == 0（读 result.skipped）", check_tests),
@@ -240,6 +266,7 @@ CHECKS = (
     ("PROVENANCE.md 与 src/ 双向一致", check_provenance),
     ("同 seed 两次 config_hash 相同", check_fixture_reproducible),
     ("tools/audit_claims.py 退出码 0", check_audit_claims),
+    ("特化产物与 agents/fsa-ops.yaml 同源", check_agent_specs),
 )
 
 
