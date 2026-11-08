@@ -24,7 +24,11 @@ from typing import Callable, Sequence
 
 __all__ = [
     "DialectError",
+    "ReadOnlyViolation",
     "SUPPORTED_DIALECTS",
+    "WRITE_KEYWORDS",
+    "assert_readonly",
+    "is_readonly",
     "to_clickhouse",
     "to_duckdb",
     "translate",
@@ -94,6 +98,114 @@ _EXTRACT_TO = {
 
 class DialectError(ValueError):
     """方言名不认识，或一条语句无法翻译。"""
+
+
+# ---------------------------------------------------------------- 只读闸门
+#: 出现即视为**写语句的动词**。
+#:
+#: 为什么只列动词、不列 `SYSTEM` / `SET` / `PRAGMA` 这类：它们是**子句名词**，
+#: 会与普通列名撞车 —— `COUNT(DISTINCT system)` 里就有一个 `system`，
+#: 把 `SYSTEM` 放进黑名单会让一条纯查询被拒。这类「前缀型子句」
+#: （`SET join_use_nulls=1` / `PRAGMA x` / `SYSTEM RELOAD`）改由
+#: 「首关键字白名单」挡住：它们不以 SELECT/WITH/EXPLAIN 开头。
+#:
+#: 教训记在这里：黑名单越宽，误杀越多；**白名单才是主判据**。
+WRITE_KEYWORDS = (
+    "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT",
+    "CREATE", "DROP", "ALTER", "TRUNCATE", "RENAME",
+    "ATTACH", "DETACH", "COPY", "EXPORT",
+    "GRANT", "REVOKE", "OPTIMIZE", "VACUUM",
+    "BEGIN", "COMMIT", "ROLLBACK",
+)
+
+#: 写成 `动词 + 空格 + 对象` 的形态，单独按短语匹配。
+#: `REPLACE INTO` 不能只靠 `REPLACE` 这个词 —— DuckDB 有 `replace()` 函数。
+WRITE_PHRASES = ("REPLACE INTO", "SET ", "PRAGMA ")
+
+_READ_PREFIXES = ("SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW")
+
+_COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+
+
+class ReadOnlyViolation(DialectError):
+    """这条语句会写数据。两引擎都必须拒，且拒的理由要能看懂。"""
+
+    def __init__(self, reason: str, sql: str = "") -> None:
+        self.reason = reason
+        self.sql = sql
+        super().__init__(reason)
+
+
+def _strip_comments(sql: str) -> str:
+    """去掉注释再判：`-- DROP TABLE x` 只是注释，不该被当成写语句。"""
+    return _COMMENTS.sub(" ", sql)
+
+
+def is_readonly(sql: str) -> bool:
+    """这条 SQL 是否只读。**保守**：看不出来就返回 False（宁可多拒）。"""
+    try:
+        assert_readonly(sql)
+    except ReadOnlyViolation:
+        return False
+    return True
+
+
+def assert_readonly(sql: str) -> None:
+    """写语句就抛 `ReadOnlyViolation`；只读则静默返回。
+
+    ## 为什么两道判据都要
+
+    1. **首关键字白名单**：只放 SELECT/WITH/EXPLAIN/DESCRIBE/SHOW 开头。
+       这条能挡住绝大多数 `INSERT INTO … SELECT` 之类的「看着像查询」的写。
+    2. **写关键字黑名单**：扫描（去掉注释与字符串字面量后的）全文。
+       这条挡住 `WITH x AS (DELETE … RETURNING *) SELECT * FROM x` 这种
+       首关键字合规、内部在写的形态。
+
+    为什么不用「只跑 EXPLAIN」代替：EXPLAIN 本身在部分引擎上仍需执行
+    查询计划（ClickHouse 的 `EXPLAIN` 不执行，但 `EXPLAIN ANALYZE` 会），
+    不能把安全寄托在一条 SQL 的执行语义上。
+    """
+    body = _strip_comments(sql).strip()
+    if not body:
+        raise ReadOnlyViolation("空语句", sql)
+
+    # 判据 1：首关键字白名单。括号开头的情况（`(SELECT …) UNION …`）也接受。
+    head = body.lstrip("( \t\r\n").upper()
+    if not any(head.startswith(prefix) for prefix in _READ_PREFIXES):
+        first = head.split(None, 1)[0] if head.split() else ""
+        raise ReadOnlyViolation(
+            "只允许只读查询（SELECT/WITH/EXPLAIN/DESCRIBE/SHOW），"
+            f"这条以 {first or '(空)'} 开头",
+            sql)
+
+    # 判据 2：全文扫写动词，但**先抹掉字符串字面量** ——
+    # `WHERE note = 'DELETE this later'` 是数据，不是语句。
+    scan = _blank_literals(body).upper()
+    for keyword in WRITE_KEYWORDS:
+        if re.search(r"\b" + keyword + r"\b", scan):
+            raise ReadOnlyViolation(
+                f"语句里出现写操作关键字 {keyword}；数据台是只读的，写语句必须被拒",
+                sql)
+    for phrase in WRITE_PHRASES:
+        if re.search(re.escape(phrase.strip()) + r"\b", scan):
+            raise ReadOnlyViolation(
+                f"语句里出现写操作短语 {phrase.strip()}；数据台是只读的，写语句必须被拒",
+                sql)
+
+
+def _blank_literals(sql: str) -> str:
+    """把引号内的内容换成空格，长度保持不变（便于定位，也让正则不受字数影响）。"""
+    out = list(sql)
+    i = 0
+    while i < len(sql):
+        if sql[i] in _QUOTES:
+            end = _skip_quoted(sql, i)
+            for k in range(i + 1, min(end, len(sql)) - 1):
+                out[k] = " "
+            i = end
+            continue
+        i += 1
+    return "".join(out)
 
 
 # ---------------------------------------------------------------- 扫描器
@@ -345,12 +457,134 @@ def _ch_ifnull(args: Sequence[str]) -> str | None:
     return f"ifNull({args[0]}, {args[1]})"
 
 
+def _ch_lag(args: Sequence[str]) -> str | None:
+    """`LAG(x) OVER (ORDER BY y)` -> CH 的 `lagInFrame(x, 1, NULL)`。
+
+    契约 §4 明确写了这条：CH 的窗口 `lag` 只看当前块。
+
+    **第三个参数不能省**：`lagInFrame(x)` 在**第一行**返回列类型的默认值
+    （DateTime 是 `1970-01-01`），而 DuckDB 的 `LAG` 返回 **NULL**。
+    实测 SQL-13 因此多出一条假断档（`gap_s = 1790812800`）。
+    显式给 `1, NULL` 之后两边都是 NULL —— 这是**让语义与上游一致**，
+    不是「为了跑通而改 SQL」。
+    """
+    if len(args) == 1:
+        return f"lagInFrame({args[0]}, 1, NULL)"
+    if len(args) == 2:
+        return f"lagInFrame({args[0]}, {args[1]}, NULL)"
+    if len(args) == 3:
+        return f"lagInFrame({', '.join(args)})"
+    return None
+
+
+def _ch_lead(args: Sequence[str]) -> str | None:
+    if len(args) == 1:
+        return f"leadInFrame({args[0]}, 1, NULL)"
+    if len(args) == 2:
+        return f"leadInFrame({args[0]}, {args[1]}, NULL)"
+    if len(args) == 3:
+        return f"leadInFrame({', '.join(args)})"
+    return None
+
+
+def _ch_lead(args: Sequence[str]) -> str | None:
+    if len(args) not in (1, 2, 3):
+        return None
+    return f"leadInFrame({', '.join(args)})"
+    if len(args) != 2:
+        return None
+    return f"ifNull({args[0]}, {args[1]})"
+
+
+# ---------------------------------------------------------------- 契约要求补的五类
+# `docs/contracts/bench-sql.md` §4 明确列出上游五类写法 → ClickHouse 的对应关系。
+# 不补这五类，CH 会**静默跑错**（不是报错，是给出另一个数），所以每条都有正负例。
+def _ch_stddev_samp(args: Sequence[str]) -> str | None:
+    """`STDDEV_SAMP(x)` -> `stddevSamp(x)`。样本标准差（分母 n-1），不是总体。"""
+    if len(args) != 1:
+        return None
+    return f"stddevSamp({args[0]})"
+
+
+def _ch_stddev_pop(args: Sequence[str]) -> str | None:
+    if len(args) != 1:
+        return None
+    return f"stddevPop({args[0]})"
+
+
+def _ch_date_diff(args: Sequence[str]) -> str | None:
+    """`date_diff('second', a, b)` -> `dateDiff(...)`。只差大小写，但拼错就报错。"""
+    if len(args) != 3:
+        return None
+    return f"dateDiff({', '.join(args)})"
+
+
+def _ch_date_add(args: Sequence[str]) -> str | None:
+    if len(args) != 2:
+        return None
+    return f"dateAdd({', '.join(args)})"
+
+
+def _ch_quantile_cont(args: Sequence[str]) -> str | None:
+    """`quantile_cont(x, q)` -> `quantileExactInclusive(q)(x)`。
+
+    ## 为什么不是 `quantile`
+
+    `quantile` 在数据量大时走 **reservoir 采样**，是近似值。实测同一份
+    4 719 600 行的数据：
+
+        quantile(0.5)               = 39.5780825224815      <- 近似
+        quantileExact(0.5)          = 39.54531812988577     <- 精确，但口径不同
+        quantileExactInclusive(0.5) = 39.545302279367434    <- 与 DuckDB 逐位相同
+        DuckDB quantile_cont(x,0.5) = 39.545302279367434
+
+    `quantileExact` 与 `quantile_cont` 的差别在插值口径：前者取「排在第 k 个的
+    那个值」，后者在两相邻值之间做**线性插值**（`quantileExactInclusive` 才是这个口径）。
+
+    契约 §4 写的是「精确分位；近似另用 `quantileTDigest`」，
+    但没区分 `quantileExact` 与 `quantileExactInclusive`。实测表明必须用后者。
+    近似版（`quantile` / `quantileTDigest`）**基准不许用**。
+    """
+    if len(args) != 2:
+        return None
+    value, fraction = args
+    return f"quantileExactInclusive({fraction})({value})"
+
+
+def _ch_quantile_disc(args: Sequence[str]) -> str | None:
+    if len(args) != 2:
+        return None
+    value, fraction = args
+    return f"quantileExactLow({fraction})({value})"
+
+
+def _ch_regexp_extract(args: Sequence[str]) -> str | None:
+    if len(args) != 3:
+        return None
+    return f"regexpExtract({', '.join(args)})"
+
+
+def _ch_round(args: Sequence[str]) -> str | None:
+    if len(args) not in (1, 2):
+        return None
+    return f"round({', '.join(args)})"
+
+
 _HANDLERS: dict[str, Callable[[Sequence[str]], str | None]] = {
     # 时间
     "time_bucket": _ch_time_bucket,
     "date_trunc": _ch_date_trunc,
     "extract": _ch_extract,
-    # 字符串
+    "date_diff": _ch_date_diff,
+    "datediff": _ch_date_diff,
+    "date_add": _ch_date_add,
+    # 统计
+    "stddev_samp": _ch_stddev_samp,
+    "stddev": _ch_stddev_samp,          # DuckDB 的 STDDEV 就是样本标准差
+    "stddev_pop": _ch_stddev_pop,
+    "quantile_cont": _ch_quantile_cont,
+    "quantile_disc": _ch_quantile_disc,
+    # 字符串 / 正则
     "length": _ch_length,
     "char_length": _ch_length,
     "character_length": _ch_length,
@@ -368,7 +602,11 @@ _HANDLERS: dict[str, Callable[[Sequence[str]], str | None]] = {
     "starts_with": _ch_starts_with,
     "ends_with": _ch_ends_with,
     "contains": _ch_contains,
+    "regexp_extract": _ch_regexp_extract,
     "ifnull": _ch_ifnull,
+    "lag": _ch_lag,
+    "lead": _ch_lead,
+    "round": _ch_round,
     "now": _same("now", 0),
     "current_timestamp": _same("now", 0),
 }
@@ -392,14 +630,126 @@ def _normalise_limit(sql: str) -> str:
     return _map_unquoted(sql, lambda segment: _LIMIT_COMMA.sub(repl, segment))
 
 
+# `COUNT(*) FILTER (WHERE p)` / `SUM(x) FILTER (WHERE p)` 等。
+# `(.*?)` 用 `[^()]*` 代替：`COUNT(*)` 里没有括号，但**必须**让 `*` 能被单独识别，
+# 否则 `COUNT(*, p)` 这种既不是 COUNT(*) 也不是 sumIf 的畸形函数就会被生成出来
+# —— 实测喂给 ClickHouse 报 `Incorrect number of arguments for aggregate function`。
+_FILTER_CALL = re.compile(
+    r"\b(COUNT|SUM|AVG|MIN|MAX)\s*\(\s*([^()]*?)\s*\)\s*"
+    r"FILTER\s*\(\s*WHERE\s+(.+?)\)",
+    re.IGNORECASE | re.DOTALL)
+
+_FILTER_TO_CH = {
+    "COUNT": "countIf",
+    "SUM": "sumIf",
+    "AVG": "avgIf",
+    "MIN": "minIf",
+    "MAX": "maxIf",
+}
+
+
+def _ch_filter_aggregates(sql: str) -> str:
+    """`COUNT(*) FILTER (WHERE p)` -> `countIf(p)`。
+
+    契约 §4 把它列为必补项：CH 没有 `FILTER` 子句，**不翻译就报语法错**
+    （比静默跑错好，但仍要翻译，否则这一条基准跑不起来）。
+
+    `COUNT(*)` 的 `*` 要丢掉：`countIf(p)` 不接受参数列；
+    `SUM(x) FILTER (WHERE p)` 则要保留 `x`：`sumIf(x, p)` —— 两者形状不同，
+    混着改会算错。
+    """
+    def repl(match: re.Match[str]) -> str:
+        func = match.group(1).upper()
+        inner = match.group(2).strip()
+        predicate = match.group(3).strip()
+        target = _FILTER_TO_CH[func]
+        if func == "COUNT" and inner in ("*", ""):
+            return f"{target}({predicate})"
+        return f"{target}({inner}, {predicate})"
+
+    previous = None
+    current = sql
+    while previous != current:              # 允许嵌套/多重 FILTER
+        previous = current
+        current = _FILTER_CALL.sub(repl, current)
+    return current
+
+
+_BITWISE = re.compile(r"\b(\w+)\s*&\s*(\d+)\b")
+
+# `DATE '2026-10-01'` / `TIMESTAMP '...'` 这类带类型前缀的日期字面量。
+_DATE_LITERAL = re.compile(r"\bDATE\s*'([^']*)'", re.IGNORECASE)
+
+
+def _ch_date_literals(sql: str) -> str:
+    """`DATE '2026-10-01'` -> `'2026-10-01'`（纯字符串）。
+
+    ## 为什么要去掉类型前缀
+
+    基准里 `date` 列在 Parquet 中是 **string**（分区键原样落盘），
+    而 `DATE '…'` 是 `Date` 类型。ClickHouse 对
+    `String = Date` 直接报
+    `Code: 386. There is no supertype for types String, Date`
+    —— 它不是「比较失败」，是「连做比较都不可能」。
+
+    DuckDB 会隐式把两侧都转成 DATE 再比，所以那条 SQL 在 DuckDB 侧是通的。
+    这里去掉类型前缀，让 CH 做字符串比较：日期一律是
+    `YYYY-MM-DD` 定宽格式，字典序等价于时间序，比较结果与 DuckDB 一致。
+    """
+    return _DATE_LITERAL.sub(lambda m: "'" + m.group(1) + "'", sql)
+
+
+# `CAST(x AS DATE)` —— CH 里这产生 Date 类型，与 String 列比较会 386。
+_CAST_AS_DATE = re.compile(r"\bCAST\s*\(\s*([^()]+?)\s+AS\s+DATE\s*\)", re.IGNORECASE)
+
+
+def _ch_cast_as_date(sql: str) -> str:
+    """`CAST(x AS DATE)` -> `toDate(x)` 然后转成字符串。
+
+    契约 §4 的三条基准（SQL-17）要拿 `CAST(epoch_utc AS DATE)` 去和
+    `agg_hour.date`（String）等值连接。CH 里 `Date = String` 报 386，
+    所以这里统一成字符串：`toString(toDate(x))`。
+
+    DuckDB 侧 `CAST(timestamp AS DATE)` 与 String 比较同样会隐式转换，
+    两边最终都是 `YYYY-MM-DD`，结果一致。
+    """
+    return _CAST_AS_DATE.sub(
+        lambda m: f"toString(toDate({m.group(1).strip()}))", sql)
+
+
+def _ch_bitwise_and(sql: str) -> str:
+    """`quality_flag & 4` -> `bitAnd(quality_flag, 4)`。
+
+    只翻「标识符 & 整数字面量」这一种形状 —— 这是契约里唯一用到的。
+    不翻任意 `a & b`：表达式里出现位与往往说明它在算别的东西，
+    乱改会把 `a & (b | c)` 之类的组合弄坏。
+    """
+    return _BITWISE.sub(lambda m: f"bitAnd({m.group(1)}, {m.group(2)})", sql)
+
+
 def to_duckdb(sql: str) -> str:
     """DuckDB 端只规范 ``LIMIT``；其余保持上游写法。"""
     return _normalise_limit(sql)
 
 
 def to_clickhouse(sql: str) -> str:
-    """把 DuckDB 兼容子集翻译成 ClickHouse。"""
-    return _normalise_limit(_rewrite_expr(sql))
+    """把 DuckDB 兼容子集翻译成 ClickHouse。
+
+    顺序有讲究：
+
+    1. `LIMIT offset, count` 先规范化（后面几条都按规范形式写）；
+    2. `FILTER (WHERE …)` -> `countIf` **必须在**函数改写之前 ——
+       否则 `_rewrite_expr` 会把 `FILTER` 当普通标识符原样留下；
+    3. `&` -> `bitAnd` 在函数改写之前，避免 `bitAnd` 里的 `(` 被 `_rewrite_expr`
+       当函数调用再走一遍（它是幂等的，但多走一遍容易出意外）；
+    4. 最后递归改写函数名。
+    """
+    text = _normalise_limit(sql)
+    text = _ch_filter_aggregates(text)
+    text = _ch_bitwise_and(text)
+    text = _ch_date_literals(text)
+    text = _ch_cast_as_date(text)
+    return _rewrite_expr(text)
 
 
 def translate(sql: str, target: str) -> str:
