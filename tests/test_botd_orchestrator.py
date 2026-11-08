@@ -430,7 +430,9 @@ class TestQueueIntegration(OrchestratorTestBase):
         orch.launch()
         queue = TaskQueue(self.store)
 
-        task = queue.enqueue({"kind": "bot", "title": "x"})
+        # enqueue 也要传 now=NOW：不传会用真实当前时间，
+        # 而 lease 用的是固定的 NOW，两者时间基准不一致就租不到。
+        task = queue.enqueue({"kind": "bot", "title": "x"}, now=NOW)
         leased = queue.lease("w1", ttl=10.0, now=NOW)
         self.assertEqual(leased["task_id"], task["task_id"])
         # 租约过期
@@ -446,7 +448,8 @@ class TestQueueIntegration(OrchestratorTestBase):
 
         self.assertIsNone(active(), "这个用例要在没有编排器的情况下跑")
         queue = TaskQueue(self.store)
-        task = queue.enqueue({"kind": "bot", "title": "no-dbos"})
+        # 同上：enqueue 传 now=NOW，否则和 lease 的 NOW 对不上
+        task = queue.enqueue({"kind": "bot", "title": "no-dbos"}, now=NOW)
         # 入队不该因为没 DBOS 而失败
         self.assertEqual(task["status"], "pending")
 
@@ -455,7 +458,7 @@ class TestQueueIntegration(OrchestratorTestBase):
         done = queue.complete(leased["task_id"], {"ok": True}, now=NOW)
         self.assertEqual(done["status"], "done")
         # 回收路径也要通
-        task2 = queue.enqueue({"kind": "bot", "title": "y"})
+        task2 = queue.enqueue({"kind": "bot", "title": "y"}, now=NOW)
         queue.lease("w2", ttl=1.0, now=NOW)
         self.assertEqual(
             len(queue.reap_expired(now=NOW + timedelta(seconds=10))), 1)

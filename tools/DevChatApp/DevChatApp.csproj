@@ -16,7 +16,18 @@
     <AssemblyName>DevChat</AssemblyName>
     <ApplicationTitle>开发群聊</ApplicationTitle>
     <DefaultLanguage>zh-CN</DefaultLanguage>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 图标既是 exe 资源，也要拷到输出目录供窗口/任务栏用 -->
+    <Content Include="Assets\AppIcon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\Square44x44Logo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
   <!-- 发布：一个 exe 拷走就能用。
        Windows App SDK 走自包含，.NET 运行时要求目标机已装 .NET 10 Desktop Runtime

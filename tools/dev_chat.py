@@ -395,6 +395,49 @@ class Handler(BaseHTTPRequestHandler):
         got = got[7:] if got.startswith("Bearer ") else ""
         return hmac.compare_digest(got, want)
 
+    def _read_body(self) -> bytes | None:
+        """读请求体。支持 Content-Length 与 chunked。
+
+        返回 None 表示超过 MAX_BODY（调用方回 413）。
+        """
+        te = (self.headers.get("Transfer-Encoding") or "").lower()
+        if "chunked" in te:
+            return self._read_chunked()
+
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return b""
+        if n <= 0:
+            return b""
+        if n > MAX_BODY:
+            return None
+        return self.rfile.read(n)
+
+    def _read_chunked(self) -> bytes | None:
+        out = bytearray()
+        while True:
+            line = self.rfile.readline(1024)
+            if not line:
+                break
+            size_field = line.split(b";", 1)[0].strip()
+            try:
+                size = int(size_field, 16)
+            except ValueError:
+                break
+            if size == 0:
+                # 吃掉 trailer
+                while True:
+                    trailer = self.rfile.readline(1024)
+                    if not trailer or trailer in (b"\r\n", b"\n"):
+                        break
+                break
+            if len(out) + size > MAX_BODY:
+                return None
+            out += self.rfile.read(size)
+            self.rfile.read(2)  # 结尾 CRLF
+        return bytes(out)
+
     # ---- routes ----
 
     def do_GET(self):
@@ -433,21 +476,23 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             return self._json(HTTPStatus.UNAUTHORIZED, {"error": "需要 token"})
 
-        try:
-            n = int(self.headers.get("content-length") or 0)
-        except ValueError:
-            n = 0
-        if n <= 0:
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "空请求体"})
-        if n > MAX_BODY:
+        # 读请求体。两种编码都要支持：
+        #   * Content-Length —— curl / 大多数客户端
+        #   * Transfer-Encoding: chunked —— .NET HttpClient 默认就这么发
+        # 只认前者会让桌面端一直收到「空请求体」。
+        raw = self._read_body()
+        if raw is None:
             return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                               {"error": "请求体超过 %d 字节" % MAX_BODY})
+        if not raw:
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "空请求体"})
 
-        raw = self.rfile.read(n)
         try:
             data = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "不是合法 JSON"})
+        if not isinstance(data, dict):
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "JSON 顶层必须是对象"})
 
         who = _norm_who(data.get("who"))
         if not who:

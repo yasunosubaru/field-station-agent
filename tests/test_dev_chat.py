@@ -202,6 +202,61 @@ class ApiTest(unittest.TestCase):
         self.assertIn("开发群聊", html)
         self.assertIn("api/say", html)
 
+    # ---- chunked 编码：.NET HttpClient 默认这么发，必须支持 ----
+
+    def _post_chunked(self, payload: dict) -> tuple[int, dict]:
+        import http.client
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        conn = http.client.HTTPConnection("127.0.0.1", self.s.port, timeout=5)
+        try:
+            conn.putrequest("POST", "/api/say")
+            conn.putheader("Content-Type", "application/json")
+            if self.s.token:
+                conn.putheader("Authorization", "Bearer " + self.s.token)
+            conn.putheader("Transfer-Encoding", "chunked")
+            conn.endheaders()
+            mid = max(1, len(body) // 2)
+            for part in (body[:mid], body[mid:]):
+                if not part:
+                    continue
+                conn.send(("%x\r\n" % len(part)).encode() + part + b"\r\n")
+            conn.send(b"0\r\n\r\n")
+            resp = conn.getresponse()
+            raw = resp.read().decode("utf-8")
+            try:
+                return resp.status, json.loads(raw)
+            except json.JSONDecodeError:
+                return resp.status, {"error": raw}
+        finally:
+            conn.close()
+
+    def test_say_accepts_chunked(self):
+        code, d = self._post_chunked({"who": "B", "text": "chunked 也要能发"})
+        self.assertEqual(code, 200, d)
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["row"]["text"], "chunked 也要能发")
+
+    def test_chunked_rejects_bad_who(self):
+        code, d = self._post_chunked({"who": "X", "text": "x"})
+        self.assertEqual(code, 400)
+
+    def test_chunked_empty_body(self):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.s.port, timeout=5)
+        try:
+            conn.putrequest("POST", "/api/say")
+            conn.putheader("Content-Type", "application/json")
+            if self.s.token:
+                conn.putheader("Authorization", "Bearer " + self.s.token)
+            conn.putheader("Transfer-Encoding", "chunked")
+            conn.endheaders()
+            conn.send(b"0\r\n\r\n")
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 400)
+            resp.read()
+        finally:
+            conn.close()
+
 
 class TokenTest(unittest.TestCase):
     def setUp(self):

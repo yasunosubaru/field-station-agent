@@ -49,6 +49,8 @@ public sealed partial class MainWindow : Window
         // 主题资源挂在窗口根元素上，先接上再建任何带颜色的控件
         Theme.Attach(RootGrid());
 
+        ApplyWindowIcon();
+
         BuildMembers();
         BuildNav();
         Render();
@@ -66,6 +68,54 @@ public sealed partial class MainWindow : Window
         Activated += OnActivated;
         Closed += OnClosed;
     }
+
+    // ================= 图标 =================
+
+    /// <summary>
+    /// 给窗口设图标。&lt;ApplicationIcon&gt; 只换 exe 在资源管理器里的图标，
+    /// 任务栏和窗口左上角要单独设，否则仍显示默认图标。
+    /// </summary>
+    private void ApplyWindowIcon()
+    {
+        try
+        {
+            var ico = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (!File.Exists(ico)) return;
+
+            var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
+            int w = GetSystemMetrics(SM_CXICON);
+            int h = GetSystemMetrics(SM_CYICON);
+            var small = LoadImage(IntPtr.Zero, ico, IMAGE_ICON, w, h, LR_LOADFROMFILE);
+            if (small != IntPtr.Zero)
+                SendMessage(hwnd, WM_SETICON, ICON_BIG, small);
+
+            int sw = GetSystemMetrics(SM_CXSMICON);
+            int sh = GetSystemMetrics(SM_CYSMICON);
+            var smallIco = LoadImage(IntPtr.Zero, ico, IMAGE_ICON, sw, sh, LR_LOADFROMFILE);
+            if (smallIco != IntPtr.Zero)
+                SendMessage(hwnd, WM_SETICON, ICON_SMALL, smallIco);
+        }
+        catch { /* 图标设不上不影响用 */ }
+    }
+
+    private const int WM_SETICON = 0x0080;
+    private const int ICON_SMALL = 0;
+    private const int ICON_BIG = 1;
+    private const int IMAGE_ICON = 1;
+    private const uint LR_LOADFROMFILE = 0x0010;
+    private const int SM_CXICON = 11;
+    private const int SM_CYICON = 12;
+    private const int SM_CXSMICON = 49;
+    private const int SM_CYSMICON = 50;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern IntPtr LoadImage(IntPtr hinst, string name, int type, int cx, int cy, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     // ================= 启动 =================
 
