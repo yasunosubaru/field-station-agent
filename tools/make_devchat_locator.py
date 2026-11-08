@@ -8,7 +8,7 @@ DevChat.exe 发布到 `dist\DevChat\` 之后，代码里「从 exe 往上找
 `tools/dev_chat.py`」就找不到了 —— 因为发布目录里的 exe 是**自包含单文件**，
 它被解压到临时目录运行，`AppContext.BaseDirectory` 指向的可能是：
 
-    C:\Users\<user>\AppData\Local\Temp\.net\DevChat\<hash>\
+    %TEMP%\.net\DevChat\<hash>\
 
 或者发布目录 `dist\DevChat\`。两种情况下往上算都到不了仓库根。
 
@@ -19,8 +19,8 @@ DevChat.exe 发布到 `dist\DevChat\` 之后，代码里「从 exe 往上找
 在发布目录写一个 `devchat.json`，把仓库根和 python 路径钉死：
 
 ```json
-{"repoRoot": "H:\\...\\野外台站智能体",
- "python":   "H:\\...\\野外台站智能体\\.deps\\venv\\Scripts\\python.exe"}
+{"repoRoot": "<仓库根>",
+ "python":   "<仓库根>\\.deps\\venv\\Scripts\\python.exe"}
 ```
 
 exe 启动时按这个顺序找配置：
