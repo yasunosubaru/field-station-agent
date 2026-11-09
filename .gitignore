@@ -66,3 +66,17 @@ logs/dev_chat/
 
 # OpenMausBot 在每个工作目录里可能生成的本地状态
 .mausbot/
+
+# Octop agent 在每个工作目录里落下的系统文件（运行态，不是产物）
+.octop/
+AGENTS.md
+MEMORY.md
+BOOTSTRAP.md
+PROACTIVE.md
+USER.md
+
+# 各线动手时留下的临时探查文件（下划线开头，不是产物）
+_*.py
+_*.txt
+_*.log
+_chrome_probe_profile*/
