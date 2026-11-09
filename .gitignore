@@ -60,3 +60,9 @@ NovAtel/
 # 开发群聊的消息文件（运行态，不是证据；日志本身由工具生成）
 logs/dev_chat/
 
+
+# Command Code 会话的本地缓存（bot 跑命令时自动生成，不是产物）
+.commandcode/
+
+# OpenMausBot 在每个工作目录里可能生成的本地状态
+.mausbot/
