@@ -79,7 +79,15 @@ ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
                           "src/fieldstation/runtimes/",
                           # v5 服务面：MCP 工具面服务从零写，无源项目对应文件。
                           # 判据同上面几条——不是搬运件，而是本项目自己造的。
-                          "src/fieldstation/mcp_server.py")
+                          "src/fieldstation/mcp_server.py",
+                          # v5 设备层（设-2 / 设-3，2026-11-10）：SBF 二进制解析与
+                          # 串口/USB/网络三通道都是从零写的，依据是 `逆向/04_重实现`
+                          # 的 TypeScript 反编译产物（crc.ts / header.ts / framing.ts /
+                          # data/edie-layouts.json），源 GNSS 项目里没有对应文件。
+                          # 注意 ingest/ 整棵子树**不在**豁免内（rinex2/rinex3/hatanaka/
+                          # registry/reader 都是搬运件），所以按文件逐条加。
+                          "src/fieldstation/ingest/sbf.py",
+                          "src/fieldstation/ingest/channels.py")
 
 # ---------------------------------------------------------------- 第 1 项
 #: 依赖本机可选外部件的集成用例：缺件时跳过是设计行为，不算"静默跳过"。

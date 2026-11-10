@@ -93,22 +93,22 @@
 | timeAverage（Time Averaging (s)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3721` | — | b_only |
 | updateRate（Update Rate (s)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3719` | — | b_only |
 | capture-select（抓包） | index | `逆向/04_重实现/packages/app/src/web/index.html:105` | — | b_only |
-| CS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:774` | a_only |
-| CS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:790` | a_only |
-| CS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:831` | a_only |
-| fileUploadInput（Browse） | index | — | `逆向/01_解包/app/view/html/index.html:400` | a_only |
-| GS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:858` | a_only |
-| GS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:874` | a_only |
-| GS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:915` | a_only |
-| PL2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:690` | a_only |
-| PL3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:706` | a_only |
-| PL4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:747` | a_only |
-| SM2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:605` | a_only |
-| SM3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:621` | a_only |
-| SM4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:662` | a_only |
-| VS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:942` | a_only |
-| VS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:958` | a_only |
-| VS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:999` | a_only |
+| CS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:729` | a_only |
+| CS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:745` | a_only |
+| CS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:786` | a_only |
+| fileUploadInput（Browse） | index | — | `逆向/01_解包/app/view/html/index.html:355` | a_only |
+| GS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:813` | a_only |
+| GS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:829` | a_only |
+| GS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:870` | a_only |
+| PL2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:645` | a_only |
+| PL3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:661` | a_only |
+| PL4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:702` | a_only |
+| SM2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:560` | a_only |
+| SM3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:576` | a_only |
+| SM4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:617` | a_only |
+| VS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:897` | a_only |
+| VS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:913` | a_only |
+| VS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:954` | a_only |
 | flipaxis-slider（Flip Axis） | interferenceToolKit | `逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:695` | `逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:241` | matched |
 | hdr-slider（Enable HDR Mode） | interferenceToolKit | `逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:695` | `逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:30` | matched |
 | itdetectconfig-on-off（Interference Toolkit） | interferenceToolKit | `逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:695` | `逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:124` | matched |
@@ -264,22 +264,22 @@
 | suffix-option | convert | `逆向/01_解包/app/view/convert/convert.html:374` |
 | connection-on-off | deviceManagement | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1050` |
 | connection-on-off | deviceManagement | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1749` |
-| CS2IP | index | `逆向/01_解包/app/view/html/index.html:774` |
-| CS3IP | index | `逆向/01_解包/app/view/html/index.html:790` |
-| CS4IP | index | `逆向/01_解包/app/view/html/index.html:831` |
-| fileUploadInput | index | `逆向/01_解包/app/view/html/index.html:400` |
-| GS2IP | index | `逆向/01_解包/app/view/html/index.html:858` |
-| GS3IP | index | `逆向/01_解包/app/view/html/index.html:874` |
-| GS4IP | index | `逆向/01_解包/app/view/html/index.html:915` |
-| PL2IP | index | `逆向/01_解包/app/view/html/index.html:690` |
-| PL3IP | index | `逆向/01_解包/app/view/html/index.html:706` |
-| PL4IP | index | `逆向/01_解包/app/view/html/index.html:747` |
-| SM2IP | index | `逆向/01_解包/app/view/html/index.html:605` |
-| SM3IP | index | `逆向/01_解包/app/view/html/index.html:621` |
-| SM4IP | index | `逆向/01_解包/app/view/html/index.html:662` |
-| VS2IP | index | `逆向/01_解包/app/view/html/index.html:942` |
-| VS3IP | index | `逆向/01_解包/app/view/html/index.html:958` |
-| VS4IP | index | `逆向/01_解包/app/view/html/index.html:999` |
+| CS2IP | index | `逆向/01_解包/app/view/html/index.html:729` |
+| CS3IP | index | `逆向/01_解包/app/view/html/index.html:745` |
+| CS4IP | index | `逆向/01_解包/app/view/html/index.html:786` |
+| fileUploadInput | index | `逆向/01_解包/app/view/html/index.html:355` |
+| GS2IP | index | `逆向/01_解包/app/view/html/index.html:813` |
+| GS3IP | index | `逆向/01_解包/app/view/html/index.html:829` |
+| GS4IP | index | `逆向/01_解包/app/view/html/index.html:870` |
+| PL2IP | index | `逆向/01_解包/app/view/html/index.html:645` |
+| PL3IP | index | `逆向/01_解包/app/view/html/index.html:661` |
+| PL4IP | index | `逆向/01_解包/app/view/html/index.html:702` |
+| SM2IP | index | `逆向/01_解包/app/view/html/index.html:560` |
+| SM3IP | index | `逆向/01_解包/app/view/html/index.html:576` |
+| SM4IP | index | `逆向/01_解包/app/view/html/index.html:617` |
+| VS2IP | index | `逆向/01_解包/app/view/html/index.html:897` |
+| VS3IP | index | `逆向/01_解包/app/view/html/index.html:913` |
+| VS4IP | index | `逆向/01_解包/app/view/html/index.html:954` |
 | elevation-greaterthan-90 | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:75` |
 | elevation-lessthan-90 | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:70` |
 | elevationMask | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:91` |

@@ -143,7 +143,7 @@ def iter_obs_rows(station: str, date: str = BENCH_DATE,
                       and 0 <= epoch - SLIP_START_S < SLIP_EPOCHS):
                     quality = 4
 
-                rows.append({
+                yield {
                     "station": station,
                     "receiver_id": "RX1",
                     "epoch_utc": ts.strftime("%Y-%m-%d %H:%M:%S"),
@@ -160,8 +160,7 @@ def iter_obs_rows(station: str, date: str = BENCH_DATE,
                     "elev_deg": float(10 + (sv * 7) % 80),
                     "azim_deg": float((sv * 31) % 360),
                     "quality_flag": quality,
-                })
-    return rows
+                }
 
 
 def synthetic_tec_rows(station: str, date: str = BENCH_DATE,

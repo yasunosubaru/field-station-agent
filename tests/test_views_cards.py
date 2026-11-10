@@ -221,10 +221,18 @@ class ThreeHardRules(unittest.TestCase):
         self.assertIn("'data-call-id'", tool_region(), "卡片要有 data-call-id")
 
     def test_approval_event_uses_real_type_and_id_reuse(self) -> None:
-        """类型叫 `approval`（不是 `approval_request`），且按 id 复用同一张卡。"""
+        """类型叫 `approval`（不是 `approval_request`），且按 id 复用同一张卡。
+
+        断言的是「复用同一张卡」这个意图，不是某个具体函数名 ——
+        实现用自定义 `merge` 而不是 `Object.assign`，因为后者会用第二次事件的
+        空 `requested_by` / `impact` 冲掉第一次的值（点拒绝后申请人那两行会消失）。
+        """
         source = strip_comments(read(CHAT))
         self.assertIn("type === 'approval'", source)
-        self.assertIn("Object.assign(existing, patch)", source, "第二次出现是决定，要更新不是新增")
+        self.assertIn("entry.type === 'approval' && entry.id === approvalId", source,
+                      "按 approval id 找回已有的卡")
+        self.assertIn("if (existing)", source, "第二次出现要走更新分支，不是新增")
+        self.assertIn("else thread.cards.push(patch)", source, "只有第一次出现才新增卡")
 
 
 class RealEventFields(unittest.TestCase):
