@@ -87,7 +87,12 @@ ORIGINAL_SRC_PREFIXES = ("src/fieldstation/agents/", "src/fieldstation/cli.py",
                           # 注意 ingest/ 整棵子树**不在**豁免内（rinex2/rinex3/hatanaka/
                           # registry/reader 都是搬运件），所以按文件逐条加。
                           "src/fieldstation/ingest/sbf.py",
-                          "src/fieldstation/ingest/channels.py")
+                          "src/fieldstation/ingest/channels.py",
+                          # v5 纪律块（纪-2，2026-11-11）：规则裁决从零写，
+                          # 与 rules/qc.py 处置不同——qc.py 是搬运件，verdict.py
+                          # 在源项目里没有对应文件；阈值直接取 QCConfig 默认值、
+                          # 不另造一套。
+                          "src/fieldstation/rules/verdict.py")
 
 # ---------------------------------------------------------------- 第 1 项
 #: 依赖本机可选外部件的集成用例：缺件时跳过是设计行为，不算"静默跳过"。

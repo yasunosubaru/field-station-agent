@@ -67,7 +67,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from .base import Event, RuntimeRequest, RuntimeUnavailable
+from .base import (
+    Event,
+    RuntimeRequest,
+    RuntimeUnavailable,
+    normalize_model,
+)
 
 #: 默认总超时（秒）。`opencode run` 会自己多轮调用工具，一次问答跑几分钟是正常的；
 #: 但**不能让调用方永久阻塞**，所以给一个上限，超时就发 error 并结束子进程。
@@ -172,18 +177,18 @@ class OpenCodeNativeRuntime:
 
     # ---------------------------------------------------------------- 模型名
     def model_name(self, model: str) -> str:
-        """`deepseek-v4.1-flash` → `commandcode/deepseek-v4.1-flash`。
+        """``deepseek-v4.1-flash`` → ``commandcode/deepseek-v4.1-flash``。
 
-        opencode 的 `--model` 要求 `provider/model`。不带 provider 的名字会被它
+        opencode 的 ``--model`` 要求 ``provider/model``。不带 provider 的名字会被它
         当成"未知模型"然后回落到配置默认值 —— 一个**静默的**行为改变：
         你以为在用 A 模型，实际跑的是 B。所以这里显式补前缀，而不是留给它猜。
+
+        **纪-1：前缀只由代码决定。** 调用方即使传了 ``other/deepseek-v4.1-flash``，
+        这里也会丢掉那个 ``other/`` 再按 ``self.model_prefix`` 重新合成；
+        传清单以外的模型直接抛 :class:`ModelNotAllowed`，不会有 argv 被拼出来。
         """
-        text = str(model or "").strip()
-        if not text:
-            return ""
-        if "/" in text:
-            return text
-        return f"{self.model_prefix}{text}"
+        name = normalize_model(model)
+        return f"{self.model_prefix}{name}"
 
     # ---------------------------------------------------------------- 运行
     def run(self, req: RuntimeRequest) -> Iterator[Event]:
@@ -205,8 +210,10 @@ class OpenCodeNativeRuntime:
         argv = [str(self.binary), "run", "--format", "json"]
         if session:
             argv += ["--session", session]
-        if model:
-            argv += ["--model", model]
+        # 纪-1：**总是**带 ``--model``，且值只来自上面的合成结果。
+        # 不写 ``if model:`` —— 那会让"空模型"退化成"由 opencode 配置决定"，
+        # 正是闸门要消灭的静默回落。
+        argv += ["--model", model]
         argv += self.extra_args
         argv.append(message)
 

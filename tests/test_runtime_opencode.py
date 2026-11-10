@@ -29,7 +29,12 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from fieldstation.runtimes.base import TYPES, RuntimeRequest, RuntimeUnavailable
+from fieldstation.runtimes.base import (
+    CANONICAL_MODEL,
+    TYPES,
+    RuntimeRequest,
+    RuntimeUnavailable,
+)
 from fieldstation.runtimes.opencode import OpenCodeNativeRuntime
 
 
@@ -305,13 +310,21 @@ class ModelNameTest(unittest.TestCase):
         self.assertEqual(rt.model_name("deepseek-v4.1-flash"),
                          "commandcode/deepseek-v4.1-flash")
 
-    def test_prefixed_model_untouched(self) -> None:
-        rt = OpenCodeNativeRuntime(binary="x", model_prefix="commandcode/")
-        self.assertEqual(rt.model_name("other/some-model"), "other/some-model")
+    def test_other_provider_prefix_is_rejected(self) -> None:
+        """纪-1：provider 前缀不能由外部选择，非规范名一律拒。"""
+        from fieldstation.runtimes.base import ModelNotAllowed
 
-    def test_empty_model_stays_empty(self) -> None:
         rt = OpenCodeNativeRuntime(binary="x", model_prefix="commandcode/")
-        self.assertEqual(rt.model_name(""), "")
+        with self.assertRaises(ModelNotAllowed):
+            rt.model_name("other/some-model")
+
+    def test_empty_model_becomes_canonical(self) -> None:
+        """纪-1：没指定模型时用唯一模型，而不是留空让 opencode 自己回落。"""
+        from fieldstation.runtimes.base import CANONICAL_MODEL
+
+        rt = OpenCodeNativeRuntime(binary="x", model_prefix="commandcode/")
+        self.assertEqual(rt.model_name(""),
+                         "commandcode/" + CANONICAL_MODEL)
 
 
 class ArgvTest(unittest.TestCase):
@@ -371,24 +384,33 @@ class ArgvTest(unittest.TestCase):
     def test_prompt_is_positional_not_a_flag(self) -> None:
         """`opencode run --prompt x` 会报 Unrecognized flag（真机实测）。"""
         argv = self._capture_argv(
-            RuntimeRequest(session_id="s", prompt="你好", model="m"))
+            RuntimeRequest(session_id="s", prompt="你好", model=CANONICAL_MODEL))
         self.assertNotIn("--prompt", argv, "prompt 必须是位置参数，不是 flag")
         self.assertEqual(argv[-1], "你好", "位置参数必须是最后一个")
 
+    def test_model_flag_is_always_canonical(self) -> None:
+        """纪-1：`--model` 总在，值只能由代码合成。"""
+        argv = self._capture_argv(
+            RuntimeRequest(session_id="s", prompt="问", model=CANONICAL_MODEL))
+        self.assertIn("--model", argv)
+        self.assertEqual(argv[argv.index("--model") + 1],
+                         "commandcode/" + CANONICAL_MODEL)
+
     def test_system_prompt_is_prefixed_into_message(self) -> None:
         argv = self._capture_argv(
-            RuntimeRequest(session_id="s", prompt="问", system="你是助手", model="m"))
+            RuntimeRequest(session_id="s", prompt="问", system="你是助手",
+                           model=CANONICAL_MODEL))
         self.assertEqual(argv[-1], "你是助手\n\n问")
 
     def test_format_json_always_present(self) -> None:
         argv = self._capture_argv(
-            RuntimeRequest(session_id="s", prompt="问", model="m"))
+            RuntimeRequest(session_id="s", prompt="问", model=CANONICAL_MODEL))
         self.assertIn("--format", argv)
         self.assertEqual(argv[argv.index("--format") + 1], "json")
 
     def test_session_flag_used_when_given(self) -> None:
         argv = self._capture_argv(
-            RuntimeRequest(session_id="ses_x", prompt="问", model="m"))
+            RuntimeRequest(session_id="ses_x", prompt="问", model=CANONICAL_MODEL))
         self.assertIn("--session", argv)
         self.assertEqual(argv[argv.index("--session") + 1], "ses_x")
 

@@ -203,11 +203,16 @@ def display_url(url: str) -> str:
 # 请求映射：Anthropic → OpenAI
 # --------------------------------------------------------------------------
 
-def build_upstream_request(body, warn: Callable[[str], None] | None = None):
+def build_upstream_request(body, warn: Callable[[str], None] | None = None,
+                           locked_model: str | None = None):
     """把 Anthropic Messages 请求体翻成 OpenAI Chat Completions 请求体。
 
     返回 ``(payload, model)``。``warn`` 收到「被忽略的字段 / 内容块」的中文说明；
     缺 ``model`` 或 ``messages`` 抛 :class:`ShimError` 400。
+
+    ``locked_model`` 非空时（纪-1）只转发该模型：比较的是最后一个 ``/`` 之后的
+    段，所以 ``commandcode/deepseek-v4.1-flash`` 能通过，``deepseek-chat`` 会被
+    拒成 400。锁是在**翻译阶段**做的，被拒的请求根本走不到上游。
     """
     if not isinstance(body, dict):
         raise ShimError(400, "请求体必须是 JSON 对象")
@@ -220,6 +225,15 @@ def build_upstream_request(body, warn: Callable[[str], None] | None = None):
     model = body.get("model")
     if not isinstance(model, str) or not model.strip():
         raise ShimError(400, "缺 model（必填，非空字符串）")
+    model = model.strip()
+
+    if locked_model:
+        lock = str(locked_model).strip()
+        bare = model.rsplit("/", 1)[-1].strip()
+        if bare != lock:
+            raise ShimError(
+                400, "模型 %r 不在允许清单内（本代理锁定为 %r）"
+                     % (model, lock))
 
     raw_messages = body.get("messages")
     if not isinstance(raw_messages, list) or not raw_messages:
@@ -1049,11 +1063,14 @@ class Shim:
                  dry_run: bool = False, api_key: str = "",
                  timeout: float = DEFAULT_TIMEOUT_S,
                  log: Callable[[str, str], None] | None = None,
-                 transport=None) -> None:
+                 transport=None,
+                 locked_model: str | None = None) -> None:
         self.upstream = str(upstream or DEFAULT_UPSTREAM)
         self.dry_run = bool(dry_run)
         self._api_key = api_key or ""
         self._log = log or _default_log
+        #: 纪-1：非空时只转发该模型（裸名）。默认关闭，保持通用代理行为。
+        self.locked_model = str(locked_model).strip() if locked_model else None
         if transport is not None:
             self.transport = transport
         elif self.dry_run:
@@ -1081,13 +1098,15 @@ class Shim:
             "ok": True,
             "upstream": display_url(self.upstream),
             "dry_run": self.dry_run,
+            "locked_model": self.locked_model,
         }
 
     # ── 入口 ────────────────────────────────────────────────────────────
 
     def respond(self, body) -> Response:
         try:
-            payload, model = build_upstream_request(body, warn=self._warn)
+            payload, model = build_upstream_request(
+                body, warn=self._warn, locked_model=self.locked_model)
         except ShimError as exc:
             return Response(exc.status, body=anthropic_error(
                 exc.status, self._scrub(exc.message), exc.error_type))
@@ -1342,6 +1361,10 @@ def make_parser() -> argparse.ArgumentParser:
                              "默认只打印监听地址后退出（自检）")
     parser.add_argument("--log-level", default="INFO",
                         help="日志级别（DEBUG/INFO/WARNING/ERROR）")
+    parser.add_argument(
+        "--lock-model", default=None, metavar="MODEL",
+        help="纪-1：只转发该模型（裸名，如 deepseek-v4.1-flash）；"
+             "默认不锁，保持通用代理行为")
     return parser
 
 
@@ -1353,7 +1376,7 @@ def main(argv=None) -> int:
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
     shim = Shim(args.upstream, dry_run=args.dry_run, api_key=api_key,
-                timeout=args.timeout)
+                timeout=args.timeout, locked_model=args.lock_model)
 
     try:
         server = ThreadingHTTPServer((args.host, args.port), make_handler(shim))

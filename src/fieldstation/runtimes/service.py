@@ -14,7 +14,15 @@ import json
 from dataclasses import asdict
 from typing import Iterable, Iterator
 
-from .base import Event, Runtime, RuntimeRequest, RuntimeUnavailable
+from .base import (
+    CANONICAL_MODEL,
+    MODEL_NOT_ALLOWED,
+    Event,
+    ModelNotAllowed,
+    Runtime,
+    RuntimeRequest,
+    RuntimeUnavailable,
+)
 from .impl import ClaudeRuntime, FakeRuntime, OpenAICompatibleRuntime
 
 
@@ -72,17 +80,36 @@ def stream_chat(registry: RuntimeRegistry, body: dict) -> Iterator[bytes]:
                                {"class": "environment", "message": str(exc)}))
         return
 
-    req = RuntimeRequest(
-        session_id=session_id,
-        prompt=str(body.get("prompt") or ""),
-        model=str(body.get("model") or "deepseek-v4.1-flash"),
-        system=str(body.get("system") or ""),
-        tools=list(body.get("tools") or []),
-        history=list(body.get("history") or []),
-    )
+    try:
+        req = RuntimeRequest(
+            session_id=session_id,
+            prompt=str(body.get("prompt") or ""),
+            model=str(body.get("model") or CANONICAL_MODEL),
+            system=str(body.get("system") or ""),
+            tools=list(body.get("tools") or []),
+            history=list(body.get("history") or []),
+        )
+    except ModelNotAllowed as exc:
+        # 纪-1：模型闸门在契约对象上，请求构造这一步就会拒；
+        # 归类 input（调用方传错了），不是环境故障，重试也不会变好。
+        yield sse_bytes(Event("error", session_id, {
+            "class": "input",
+            "code": MODEL_NOT_ALLOWED,
+            "message": str(exc),
+            "retryable": False,
+        }))
+        return
     try:
         for event in runtime.run(req):
             yield sse_bytes(event)
+    except ModelNotAllowed as exc:
+        # 运行时若绕过契约自己校验，也走同一个错误形状，不降级成 execution。
+        yield sse_bytes(Event("error", session_id, {
+            "class": "input",
+            "code": MODEL_NOT_ALLOWED,
+            "message": str(exc),
+            "retryable": False,
+        }))
     except RuntimeUnavailable as exc:
         yield sse_bytes(Event("error", session_id,
                                {"class": "environment", "message": str(exc)}))
@@ -93,4 +120,4 @@ def stream_chat(registry: RuntimeRegistry, body: dict) -> Iterator[bytes]:
 
 
 def status_payload(registry: RuntimeRegistry) -> dict:
-    return {"runtimes": registry.status(), "model_default": "deepseek-v4.1-flash"}
+    return {"runtimes": registry.status(), "model_default": CANONICAL_MODEL}
