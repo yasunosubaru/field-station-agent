@@ -39,9 +39,10 @@ class RuleRegistryTest(unittest.TestCase):
     def test_three_rules_are_registered(self):
         self.assertEqual(set(RULES), {"R-4.2", "R-4.3", "R-4.4"})
 
-    def test_each_rule_has_section_and_threshold(self):
+    def test_each_rule_has_doc_and_section(self):
         for rule_id, spec in RULES.items():
             self.assertRegex(rule_id, r"^R-\d+\.\d+$")
+            self.assertEqual(spec.doc_id, "qc-rules")
             self.assertRegex(spec.section, r"^\d+\.\d+$")
             self.assertTrue(spec.unit.strip())
             self.assertTrue(spec.title.strip())
@@ -66,6 +67,7 @@ class Cn0VerdictTest(unittest.TestCase):
         v = cn0_verdict([40.0, 29.9, 35.0])
         self.assertEqual(v["verdict"], "fail")
         self.assertEqual(v["rule_id"], "R-4.2")
+        self.assertEqual(v["doc_id"], "qc-rules")
         self.assertEqual(v["section"], "4.2")
         self.assertEqual(v["threshold"], 30.0)
         self.assertEqual(v["cn0_stats"]["min"], 29.9)
@@ -198,6 +200,13 @@ class ManualTraceabilityTest(unittest.TestCase):
     def setUpClass(cls):
         cls.manual = load_manual()
 
+    def test_doc_id_matches_the_manual_file(self):
+        # doc_id 不是随手起的字符串：它必须等于手册文件名（去扩展名），
+        # 否则「按 doc_id + section 回源」就是空话。
+        self.assertEqual(MANUAL.stem, "qc-rules")
+        for spec in RULES.values():
+            self.assertEqual(spec.doc_id, MANUAL.stem)
+
     def test_manual_file_exists_and_is_the_declared_path(self):
         self.assertTrue(MANUAL.is_file(), MANUAL)
         self.assertTrue(self.manual.strip())
@@ -214,8 +223,10 @@ class ManualTraceabilityTest(unittest.TestCase):
 
     def test_lookup_returns_original_text_and_source(self):
         result = lookup_rule("R-4.2", self.manual)
-        self.assertEqual(set(result), {"rule_id", "text", "source", "section"})
+        self.assertEqual(set(result),
+                         {"rule_id", "doc_id", "text", "source", "section"})
         self.assertEqual(result["rule_id"], "R-4.2")
+        self.assertEqual(result["doc_id"], "qc-rules")
         self.assertEqual(result["section"], "4.2")
         self.assertIn("30 dB-Hz", result["text"])
         self.assertIn("§4.2", result["source"])
@@ -225,6 +236,7 @@ class ManualTraceabilityTest(unittest.TestCase):
         for rule_id in RULES:
             result = lookup_rule(rule_id, self.manual)
             self.assertEqual(result["rule_id"], rule_id)
+            self.assertEqual(result["doc_id"], "qc-rules")
             self.assertTrue(result["text"].strip())
 
     def test_lookup_fails_when_manual_is_empty_or_rule_absent(self):
@@ -248,7 +260,7 @@ class JsonShapeTest(unittest.TestCase):
         )
         for v in verdicts:
             json.dumps(v, ensure_ascii=False)
-            for key in ("verdict", "rule_id", "section", "threshold",
+            for key in ("verdict", "rule_id", "doc_id", "section", "threshold",
                         "unit", "value", "reason"):
                 self.assertIn(key, v)
 

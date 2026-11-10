@@ -47,19 +47,25 @@ MISSING_RATE_MAX = 0.05
 
 @dataclass(frozen=True)
 class RuleSpec:
-    """一条可回源的阈值规则。"""
+    """一条可回源的阈值规则。
+
+    ``doc_id`` 是依据文档的稳定标识（手册文件名去掉扩展名），``section`` 是
+    该文档里的小节号。两者合起来才唯一确定一条原文：``qc-rules`` §4.2。
+    """
 
     rule_id: str
+    doc_id: str
     section: str
     threshold: float
     unit: str
     title: str
 
 
-#: 规则编号 -> 规则定义。``section`` 必须能在手册里找到同名小节。
+#: 规则编号 -> 规则定义。``doc_id`` + ``section`` 必须能在手册里定位到原文行。
 RULES = {
     "R-4.2": RuleSpec(
         rule_id="R-4.2",
+        doc_id="qc-rules",
         section="4.2",
         threshold=float(_DEFAULT_QC.cn0_min_dbhz),
         unit="dB-Hz",
@@ -67,6 +73,7 @@ RULES = {
     ),
     "R-4.3": RuleSpec(
         rule_id="R-4.3",
+        doc_id="qc-rules",
         section="4.3",
         threshold=MISSING_RATE_MAX,
         unit="ratio",
@@ -74,6 +81,7 @@ RULES = {
     ),
     "R-4.4": RuleSpec(
         rule_id="R-4.4",
+        doc_id="qc-rules",
         section="4.4",
         threshold=float(_DEFAULT_QC.slip_min_jump_tecU),
         unit="TECU",
@@ -127,6 +135,7 @@ def _verdict(spec: RuleSpec, verdict: str, value, reason: str, **extra) -> dict:
     out = {
         "verdict": verdict,
         "rule_id": spec.rule_id,
+        "doc_id": spec.doc_id,
         "section": spec.section,
         "threshold": spec.threshold,
         "unit": spec.unit,
@@ -274,6 +283,7 @@ def lookup_rule(rule_id, manual_text) -> dict:
         raise RuleNotFound(rule_id)
     return {
         "rule_id": rule_id,
+        "doc_id": spec.doc_id,
         "text": text,
         "source": f"{MANUAL_REL_PATH} §{spec.section}",
         "section": spec.section,

@@ -7,8 +7,11 @@
 
 每节开头那行 `> R-4.x：…` 是**规程原文本身**，`rules/verdict.py` 的
 `lookup_rule(rule_id, manual_text)` 就是从这里取文本的：把本文读成字符串传进去，
-拿到 `{rule_id, text, source, section}`；手册里没有原文行、或缺 `§4.x` 小节标记，
-一律抛 `RuleNotFound`（错误码 `E_RULE_NOT_FOUND`）。
+拿到 `{rule_id, doc_id, text, source, section}`；手册里没有原文行、或缺 `§4.x`
+小节标记，一律抛 `RuleNotFound`（错误码 `E_RULE_NOT_FOUND`）。
+
+`doc_id` 恒为 `qc-rules`（本文件名去掉扩展名），与 `section` 合起来才唯一确定
+一条原文；三条裁决的输出里都带这两个字段，拿到之后回本文即可核对。
 
 | 规则编号 | 手册节 | 阈值 | 性质 |
 |---|---|---|---|
@@ -28,6 +31,8 @@
   `not_applicable`。
 - 实测值：结果的 `value` 是最低 CN0；`cn0_stats` 给出
   `min` / `max` / `count` / `missing`。缺测只计数，不参与判定。
+- 结果字段：`verdict` / `rule_id` / `doc_id`（本文档 `qc-rules`）/
+  `section` / `threshold` / `unit` / `value` / `reason`。
 - 非数值、`±inf`、布尔值一律拒绝（`ValueError`），不能静默当成合格。
 - 与既有实现的关系：阈值等于 `rules/qc.py` 的 `QCConfig.cn0_min_dbhz` 默认值，
   不另设第二套数字。
@@ -78,5 +83,6 @@ $env:PYTHONPATH="src"; python -m unittest tests.test_rules_verdict -v
 ```
 
 - 每条规则的编号与小节都能在本文查到；
-- `lookup_rule(rule_id, load_manual())` 返回 `{rule_id, text, source, section}`，
-  查不到时抛 `RuleNotFound`（错误码 `E_RULE_NOT_FOUND`）。
+- `lookup_rule(rule_id, load_manual())` 返回
+  `{rule_id, doc_id, text, source, section}`，查不到时抛 `RuleNotFound`
+  （错误码 `E_RULE_NOT_FOUND`）。
