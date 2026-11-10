@@ -80,3 +80,9 @@ _*.py
 _*.txt
 _*.log
 _chrome_probe_profile*/
+
+# 外壳真机验收的运行产物（payload.zip 由 make-payload.py 随时重造，
+# s1_*.log 是每次跑 verify-shell1.ps1 的输出；脚本与说明才入库）
+shell/electron/smoke/payload.zip
+shell/electron/smoke/s1_*.log
+shell/electron/smoke/s1_*.log.err
