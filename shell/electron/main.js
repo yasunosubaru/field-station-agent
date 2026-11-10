@@ -7,11 +7,13 @@
  *   1. 单实例：第二个进程把已有窗口叫到前面，然后自己退出；顺带取 argv 里的
  *      `fsa://job/<id>`——Windows 把协议 URL 当命令行参数递进来，所以单实例回调
  *      和冷启动都走同一条解析，不必写两套。
- *   2. 启动编排：拉起现有零依赖 Node 服务（`逆向/04_重实现/packages/app/src/server.ts`），
- *      轮询 `/api/health` 最多 40 秒；失败弹错误框并清理。
+ *   2. 启动编排：先按需解压 payload（`payload.js`），再拉起两个服务 ——
+ *      零依赖 Node 服务（`逆向/04_重实现/packages/app/src/server.ts`）与
+ *      Python 服务（`src/fieldstation/runtimes/server.py`，`pyserver.js`）；
+ *      各自探就绪，失败弹错误框并清理。
  *   3. 窗口：加载 Node 服务自己的 `/chat` `/fleet` `/data` `/suite` 外壳页，
  *      不自己拼 UI、也不改这些页面；可以开多个，每个窗口独立记录。
- *   4. 退出清理：真的退出时把 Node 子进程连同它的子进程一起结束。
+ *   4. 退出清理：真的退出时把两个子进程连同它们的子进程一起结束。
  *      关掉最后一个窗口**不等于**退出——有托盘就藏进托盘，服务留着；
  *      服务是全局的，任何一个窗口关掉都不许把它杀掉。
  *   5. 托盘 / 崩溃守护 / 主题密度：这三件解决的都是“窗口看不见的时候怎么办”。
@@ -20,13 +22,20 @@
  * 命令行：
  *   --port 7810       用指定端口（默认 7803；也认 NAS_SHELL_PORT）
  *   --view chat       首屏视角（chat / fleet / data / suite，默认 chat）
- *   --attach          不启动 Node 服务，直接连接已经在跑的那个端口
+ *   --attach          不启动 Node 服务，直接连接已经在跑的那个端口；
+ *                     同时**隐含** Python 服务也只连不拉（见下方 --attach-python）
+ *   --python-port 8788  用指定端口拉 Python 服务（默认 8788）
+ *   --attach-python   只让 Python 服务「只连不拉」，Node 服务照常拉起。
+ *                     用于「Node 我自己拉、Python 用现成的」这种分开调试的场合；
+ *                     `--attach` 已经隐含它，这个开关是给不想连 Node 也 attach 的人用的
+ *   --no-python       完全不碰 Python 服务（无解释器的机器上启动外壳用），优先级最高
+ *   --payload-zip <文件>  指定 payload.zip（默认 逆向/05_打包/payload.zip，或 NAS_PAYLOAD_ZIP）
  *   --theme dark      起始主题（system / light / dark，默认 system）
  *   --density compact 起始密度（comfortable / compact，默认 comfortable）
  *   --no-tray         不建托盘，关窗就退出（冒烟测试 / 无桌面环境用）
  *   --screenshot <文件>  冒烟测试用：窗口加载完 3.5 秒后 capturePage() 存 PNG，然后退出
  *
- * 这里没有任何打包/签名逻辑，也不写业务代码——它只是把已有的 Node 服务装进一个窗口。
+ * 这里没有任何打包/签名逻辑，也不写业务代码——它只是把已有的两个服务装进一个窗口。
  */
 
 const {
@@ -46,6 +55,10 @@ const path = require('node:path');
 // 深链解析单独成模块：它是外部输入的第一道门，需要逐条测试，
 // 而 main.js 一 require 就会去建 Electron 应用、起服务，没法在单元测试里加载。
 const { parseDeepLink, linkFromArgv } = require('./deeplink.js');
+// payload 解压（壳-1）与 Python 服务（壳-2）同理：逻辑都在各自模块里，
+// main.js 只负责「什么时候调、失败时怎么报」。
+const payload = require('./payload.js');
+const pyserver = require('./pyserver.js');
 
 /* ---------------------------------------------------------------------------------------------
  * 路径与常量
@@ -125,6 +138,12 @@ function parseArgs(argv) {
     theme: 'system',
     density: 'comfortable',
     tray: true,
+    // 壳-2：Python 服务。默认拉起来（图上原文「拉起 Python 服务」），三个开关能单独关掉。
+    python: true,
+    pythonPort: pyserver.DEFAULT_PORT,
+    attachPython: false,
+    // 壳-1：payload.zip 的位置。空 = 用 payload.js 的默认/环境变量。
+    payloadZip: '',
   };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
@@ -140,6 +159,15 @@ function parseArgs(argv) {
     else if (token === '--no-tray') parsed.tray = false;
     else if (token === '--screenshot') parsed.screenshot = String(argv[++i] || '');
     else if (token.startsWith('--screenshot=')) parsed.screenshot = token.slice('--screenshot='.length);
+    else if (token === '--python-port') parsed.pythonPort = Number(argv[++i]);
+    else if (token.startsWith('--python-port=')) {
+      parsed.pythonPort = Number(token.slice('--python-port='.length));
+    } else if (token === '--attach-python') parsed.attachPython = true;
+    else if (token === '--no-python') parsed.python = false;
+    else if (token === '--payload-zip') parsed.payloadZip = String(argv[++i] || '');
+    else if (token.startsWith('--payload-zip=')) {
+      parsed.payloadZip = token.slice('--payload-zip='.length);
+    }
   }
   if (!Number.isInteger(parsed.port) || parsed.port < 1 || parsed.port > 65535) {
     throw new Error(`--port 必须是 1..65535 的整数（收到 ${parsed.port}）`);
@@ -152,6 +180,9 @@ function parseArgs(argv) {
   }
   if (!DENSITIES.includes(parsed.density)) {
     throw new Error(`--density 必须是 ${DENSITIES.join(' / ')}（收到 ${parsed.density || '空'}）`);
+  }
+  if (!Number.isInteger(parsed.pythonPort) || parsed.pythonPort < 1 || parsed.pythonPort > 65535) {
+    throw new Error(`--python-port 必须是 1..65535 的整数（收到 ${parsed.pythonPort}）`);
   }
   return parsed;
 }
@@ -188,6 +219,23 @@ let quitting = false;
  * 那时开窗口只会加载一个还没监听端口的地址，所以先看这个标记。
  */
 let serverReady = false;
+
+/**
+ * Python 服务（壳-2）。`--no-python` 时一直是 null，`--attach-python` 时只有 url 没有 child。
+ * 与 Node 服务**互不阻塞**：Python 起不来只记日志 + 把状态写进 `shell:info`，
+ * 不让外壳打不开窗口 —— 界面的入口在 Node 服务那边，缺 Python 是能力缺失，不是启动失败。
+ */
+let pythonChild = null;
+let pythonState = 'idle';   // idle / starting / ready / attached / failed / skipped
+let pythonUrl = '';
+let pythonError = '';
+
+/**
+ * payload 解压进度（壳-1）。解压发生在**窗口还不存在**的时候，所以进度只能先存在这里：
+ * 窗口建好后再问 `shell:info`，就能看到「已解压 N/M」而不是只有一个最终结果。
+ * 没有这一步，解压期间用户看到的就是一个什么都不发生的桌面。
+ */
+let payloadProgress = { done: 0, total: 0, text: '', state: 'idle' };
 
 /** 当前密度；菜单切换时改它，窗口创建和切换后都用它。 */
 let density = args ? args.density : DENSITIES[0];
@@ -272,6 +320,145 @@ function stopServer() {
     console.error('[shell] 结束 Node 服务失败：', error);
   }
   serverChild = null;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * payload 解压（壳-1）
+ * ------------------------------------------------------------------------------------------- */
+
+/** `<userData>/payload`：解压目标，删掉它就能验证「首次解压 / 二次跳过」。 */
+function payloadDir() {
+  return path.join(app.getPath('userData'), 'payload');
+}
+
+/**
+ * 启动前把 payload 准备好。
+ *
+ * 三种结果都不阻塞启动：
+ *   · `absent`    仓库里没有 payload.zip（开发态常态）→ 记一行日志，继续；
+ *   · `skipped`   三方校验通过 → 秒过；
+ *   · `extracted` 真解压了 → 日志里有「已解压 N/M」与总耗时。
+ *
+ * 校验失败（zip 损坏、清单与磁盘对不上）**不吞**：抛出去由 `boot()` 弹框并退出。
+ * 那种情况下继续启动等于拿一棵半坏的树去起服务，坏法会在别处以「Python 起不来」出现。
+ */
+async function preparePayload() {
+  const options = {
+    repoRoot: REPO_ROOT,
+    userDataDir: app.getPath('userData'),
+    env: args.payloadZip ? { ...process.env, NAS_PAYLOAD_ZIP: args.payloadZip } : process.env,
+    // 相对路径按启动时的 cwd 解析。Electron 的 cwd 是 `shell/electron`（npx electron .），
+    // 而 `app.getPath` 与 `REPO_ROOT` 都是绝对的 —— 不写死这一条，日志里的相对路径
+    // 就会和它实际解析出来的位置对不上。
+    cwd: process.cwd(),
+    log: (line) => console.log(line),
+    onProgress: (progress) => {
+      // 主进程控制台是解压期间唯一的观测点（窗口这时还没建），所以先写一份到状态里，
+      // 让随后打开的窗口还能从 `shell:info` 读到「已解压 N/M」。
+      // 日志本身的节流在 payload.js 里做过了（5% 一步），这里不重复节流。
+      payloadProgress = {
+        done: progress.done,
+        total: progress.total,
+        text: progress.text,
+        state: progress.done === progress.total ? 'done' : 'running',
+      };
+    },
+  };
+  const result = await payload.preparePayload(options);
+  if (result.status === 'skipped') {
+    const summary = `已解压 ${result.files}/${result.files}（沿用上次结果）`;
+    payloadProgress = {
+      done: result.files, total: result.files, text: summary, state: 'skipped',
+    };
+    console.log(`[shell] payload 已是最新，跳过解压（${result.files} 文件）`);
+  } else if (result.status === 'extracted') {
+    payloadProgress = {
+      done: result.files,
+      total: result.files,
+      text: payload.formatProgress(result.files, result.files),
+      state: 'done',
+    };
+    console.log(`[shell] payload 解压完成：${result.files} 文件 / `
+      + `${payload.formatBytes(result.bytes)}（${result.reason}）`);
+  } else {
+    payloadProgress = { done: 0, total: 0, text: '没有 payload.zip', state: result.status };
+  }
+  return result;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Python 服务（壳-2）
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * 拉起（或连接）Python 服务。**不抛**：失败只记状态。
+ *
+ * 理由：界面的入口是 Node 服务。Python 跑不起来时，用户仍然应该能看到窗口、
+ * 能读日志，而不是被一个错误框挡在门外。缺 Python 是一个可见的降级状态
+ * （`shell:info` 里的 `python.state`），不是启动失败。
+ */
+async function startPython() {
+  const choice = pyserver.resolvePythonMode({
+    python: args.python, attach: args.attach, attachPython: args.attachPython,
+  });
+  if (choice.mode === 'skip') {
+    pythonState = 'skipped';
+    console.log(`[shell] 跳过 Python 服务（${choice.reason}）`);
+    return;
+  }
+
+  pythonState = 'starting';
+  try {
+    if (choice.mode === 'attach') {
+      const attached = await pyserver.attachOnly({ port: args.pythonPort });
+      if (!attached.attached) {
+        pythonState = 'failed';
+        pythonError = `${choice.reason} 指定只连不拉，但 ${pyserver.pythonHealthUrl(
+          `http://127.0.0.1:${args.pythonPort}`)} 连不上`;
+        console.error(`[shell] ${pythonError}`);
+        return;
+      }
+      pythonUrl = attached.url;
+      pythonState = 'attached';
+      console.log(`[shell] Python 服务已在跑，只连不拉（${choice.reason}）：${pythonUrl}`);
+      return;
+    }
+
+    const started = await pyserver.launchPythonService({
+      repoRoot: REPO_ROOT,
+      payloadDir: payloadDir(),
+      python: process.env.NAS_PYTHON || null,
+      startPort: args.pythonPort,
+      // 进程一 spawn 就交出来，不等就绪：`boot()` 可能在 `await pythonPromise` 之前
+      // 就失败（Node 服务没起、payload 坏了），那时必须能杀掉已经拉起的 Python。
+      onSpawn: (child) => { pythonChild = child; },
+      log: (line) => console.log(line),
+    });
+    pythonChild = started.child;
+    pythonUrl = started.url;
+    pythonState = 'ready';
+    console.log(`[shell] Python 服务就绪：${pythonUrl}`
+      + `（解释器 ${started.python.path}，来源 ${started.python.source}）`);
+    pythonChild.on('exit', (code, signal) => {
+      if (stopping || quitting) return;
+      pythonState = 'failed';
+      pythonError = `退出码 ${code ?? signal}`;
+      console.error(`[shell] Python 服务退出：code=${code} signal=${signal}`);
+      // 不弹框：窗口该继续能用。状态已经在 shell:info 里，页面能读到。
+    });
+  } catch (error) {
+    pythonState = 'failed';
+    pythonError = error instanceof Error ? error.message : String(error);
+    console.error('[shell] Python 服务未就绪：', pythonError);
+  }
+}
+
+/** 结束 Python 服务整棵树（与 `stopServer()` 同一做法）。幂等。 */
+function stopPython() {
+  if (!pythonChild) return;
+  const child = pythonChild;
+  pythonChild = null;
+  pyserver.stopPythonService({ child, log: (line) => console.log(`[shell] ${line}`) });
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -945,6 +1132,13 @@ async function boot() {
     attach: args.attach,
     views: VIEW_IDS,
     versions: { electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome },
+    // 壳-2：Python 服务的状态。附加上去的字段，老页面读不到也不受影响。
+    python: { state: pythonState, url: pythonUrl, error: pythonError, port: args.pythonPort },
+    // 壳-1：解压目标。页面若将来要显示「payload 目录」，不必自己拼 app.getPath。
+    payloadDir: payloadDir(),
+    // 壳-1：解压进度。窗口建好时可能已经解压完了，所以这里是**快照**而不是订阅；
+    // 要画进度条得在解压期间就有窗口，见 docs/operations/shell.md §5。
+    payloadProgress,
     // 附加字段：preload 现在读不到，但页面将来加订阅时不必再改主进程的契约。
     appearance: appearanceState(),
     windows: windows.size,
@@ -956,7 +1150,17 @@ async function boot() {
   });
 
   try {
+    /*
+     * 顺序是有意的：
+     *   ① payload 解压（壳-1）—— 它是「这台机器上有没有一套可用的文件树」的前提，
+     *      Python 解释器也可能就在里面（`payload/runtime/python/python.exe`）；
+     *   ② 两个服务并行拉起 —— Node 出界面、Python 出 Agent 后端，谁先起来都行；
+     *      只用 await Node 的就绪来定「能不能开窗口」，Python 的失败不挡窗口。
+     */
+    await preparePayload();
+
     if (!args.attach) startServer();
+    const pythonPromise = startPython();
     const attempts = await waitForHealth();
     console.log(`[shell] ${baseUrl} 就绪（探测 ${attempts} 次）`);
     serverReady = true;
@@ -969,9 +1173,13 @@ async function boot() {
       createWindow({ view: args.view });
     }
     createTray();
+    // 窗口先开、再等 Python：它能跑几十秒（首次 import 一整棵运行时栈），
+    // 让用户在窗口里等着，而不是盯着一个没有响应的事件循环。
+    await pythonPromise;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[shell] 启动失败：', message);
+    stopPython();
     stopServer();
     dialog.showErrorBox('启动失败', message);
     app.exit(1);
@@ -1015,6 +1223,7 @@ if (!app.requestSingleInstanceLock()) {
       console.log('[shell] 窗口已全部关闭，留在托盘');
       return;
     }
+    stopPython();
     stopServer();
     if (process.platform !== 'darwin') app.quit();
   });
@@ -1025,12 +1234,16 @@ if (!app.requestSingleInstanceLock()) {
       tray.destroy();
       tray = null;
     }
+    // 先 Python 后 Node：Python 是 Node 的下游（Node 桥将来按需调它），
+    // 反过来关会让 Node 在关的过程中还往一个已经死掉的端口发请求。
+    stopPython();
     stopServer();
   });
 
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
       beginQuit();
+      stopPython();
       stopServer();
       app.quit();
     });
