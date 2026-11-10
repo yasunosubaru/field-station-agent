@@ -71,6 +71,11 @@ interface TextStub { nodeType: 3; textContent: string }
 function makeNode(tagName: string): StubNode {
   const listeners: Record<string, Array<(event: unknown) => void>> = {};
   let ownText = '';
+  // `innerHTML` 在真 DOM 里会把标记解析成节点，于是 `textContent` 能读到正文。
+  // 桩里若只存一个字段，`renderMessage` 用 innerHTML 画的助手正文就永远读不到，
+  // 「助手那句话在页面上」这条断言会假红（它其实画出来了，只是桩看不见）。
+  // 这里把标记剥成纯文本存进 ownText，保持与浏览器同语义的最小行为。
+  let ownHtml = '';
 
   const node = {
     tagName: tagName.toUpperCase(),
@@ -79,7 +84,6 @@ function makeNode(tagName: string): StubNode {
     hidden: false,
     disabled: false,
     value: '',
-    innerHTML: '',
     children: [] as StubNode[],
     attrs: {} as Record<string, string>,
     dataset: {} as Record<string, string>,
@@ -94,6 +98,24 @@ function makeNode(tagName: string): StubNode {
     },
     set textContent(value: string) {
       ownText = String(value ?? '');
+      ownHtml = '';
+      this.children = [];
+    },
+
+    // 浏览器语义：写 innerHTML 会替换子节点，`textContent` 随之为其纯文本。
+    // 桩不建真实节点树，只把标记剥成文本 —— 够本文件的断言用，且不会「看不见正文」。
+    get innerHTML(): string {
+      return ownHtml;
+    },
+    set innerHTML(value: string) {
+      ownHtml = String(value ?? '');
+      ownText = ownHtml
+        .replace(/<[^>]*>/g, '')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&');
       this.children = [];
     },
 

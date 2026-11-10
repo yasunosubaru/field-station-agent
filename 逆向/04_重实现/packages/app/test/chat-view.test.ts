@@ -108,7 +108,12 @@ test('审批事件的类型叫 approval（不是 approval_request），且按 id
   assert.match(source, /type === 'approval_request'/, '兼容旧名');
   // 同一条审批会发两次（pending → rejected/approved），按 id 复用而不是新加。
   assert.match(source, /entry\.type === 'approval' && entry\.id === approvalId/, '按 id 找已存在的卡');
-  assert.match(source, /Object\.assign\(existing, patch\)/, '有就更新');
+  // 断言「复用同一张卡」这个意图，**不钉某个函数名**：
+  // 实现用自定义 `merge` 而不是 `Object.assign` —— 后者会用第二次事件的空
+  // `requested_by` / `impact` 把第一次的值冲掉，表现是「点拒绝后申请人那两行没了」，
+  // 而那正是审计最需要留着的两行。
+  assert.match(source, /if \(existing\) merge\(existing, patch\)/, '第二次出现走更新分支');
+  assert.match(source, /else thread\.cards\.push\(patch\)/, '只有第一次出现才新增卡');
 });
 
 test('tool_result 的 call_id 在 evidence 里，不在顶层', () => {
