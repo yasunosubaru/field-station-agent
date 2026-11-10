@@ -49,6 +49,22 @@
   padding: 16px 14px;
 }
 
+/*
+ * 空态：「本轮没有工具调用」。
+ *
+ * 它是一句**陈述**，不是警告 —— 模型直接答了话是正常的一轮，所以用最淡的一档，
+ * 不上底色、不配图标。但又必须看得见：没有这句，「没调工具」与「卡片没画出来」
+ * 在屏幕上完全一样，出问题时第一眼分不出是哪一种。
+ */
+.vw-chat-tools-empty {
+  margin: 10px 0 2px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 /* 空态：一张居中的窄列，三个例子。不给卡片阴影 —— 只靠留白。 */
 .vw-chat-hero {
   max-width: 480px;

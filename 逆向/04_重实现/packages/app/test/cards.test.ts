@@ -489,3 +489,261 @@ test('工具卡与审批卡都不把用户数据当 HTML 插入', () => {
   assert.match(region, /text: card\.name/, '工具名走 textContent');
   assert.match(region, /text: card\.prompt/, '动作描述走 textContent');
 });
+
+/* ---------------------------------------------------------------------------------------------
+ * 5. 五要素齐全：每个要素都在 DOM 里，带 data-part
+ * ------------------------------------------------------------------------------------------- */
+
+test('工具卡五要素都在 DOM 里，且每个都带 data-part', async () => {
+  await withDom(async () => {
+    const { renderToolCard } = await import(cardsUrl);
+    const card = renderToolCard({
+      id: 'c1',
+      name: 'execute_device_action',
+      status: 'ok',
+      durationMs: 412,
+      callId: 'call-abc123',
+      // 参数摘要存在的理由：两张卡工具名相同、结果都还没回来时，
+      // 唯一的差别就在参数上 —— 「重启 WUHN」还是「重启 ALIC」。
+      args: { station_id: 'WUHN', action: 'restart_receiver' },
+      data: { n: 86400, cn0_median: 44.2 },
+    });
+
+    const parts = card.querySelectorAll('[data-part]').map((node: StubNode) => node.dataset.part || '');
+    for (const part of ['name', 'args', 'result', 'duration', 'status']) {
+      assert.ok(parts.includes(part), `缺要素 ${part}（实际有：${parts.join(',')}）`);
+    }
+    // 顺序：名字要最先读到。
+    assert.equal(parts[0], 'name');
+  });
+});
+
+test('参数摘要：只取标量、长值截断、嵌套跳过', async () => {
+  await withDom(async () => {
+    const { argumentSummary, renderToolCard } = await import(cardsUrl);
+
+    // 嵌套对象与数组属于 trace，摘要里跳过。
+    const parts = argumentSummary({
+      station_id: 'WUHN',
+      nested: { a: 1 },
+      list: [1, 2, 3],
+      action: 'restart',
+      reason: '连续 3 小时无心跳',
+      confidence: 0.93,
+    }, 3);
+    assert.deepEqual(parts.map((p: { key: string }) => p.key), ['station_id', 'action', 'reason']);
+    assert.equal(parts[1].text, 'restart');
+
+    // 空值（空串 / null）不占位置 —— 「key=」比不显示更让人困惑。
+    assert.deepEqual(argumentSummary({ a: '', b: null, c: 'x' }).map((p: { key: string }) => p.key), ['c']);
+
+    // 长值截断：摘要占两行就没人读了。
+    const long = argumentSummary({ path: '/very/'.repeat(30) });
+    assert.ok(long[0].text.length <= 41, `长值要截断，实际 ${long[0].text.length} 字符`);
+    assert.match(long[0].text, /…$/);
+
+    // 卡片上：无参数时写「无参数」，不留白。
+    const empty = renderToolCard({ id: 'c2', name: 'x', status: 'ok' });
+    const args = empty.querySelectorAll('[data-part]').find((n: StubNode) => n.dataset.part === 'args');
+    assert.ok(args, '要有 args 槽位');
+    assert.equal(args.textContent, '无参数');
+  });
+});
+
+test('运行中的卡也占满五要素：结果写「等待返回」，耗时为「—」', async () => {
+  await withDom(async () => {
+    const { renderToolCard } = await import(cardsUrl);
+    const card = renderToolCard({ id: 'c3', name: 'robust_stats', status: 'running' });
+    const byPart = (part: string): StubNode | undefined =>
+      card.querySelectorAll('[data-part]').find((n: StubNode) => n.dataset.part === part);
+
+    // 第一版是「没有就不画」，于是五要素变成了「成功之后才有五要素」。
+    assert.ok(byPart('result'), '运行中也要有结果槽位');
+    assert.match(byPart('result')!.textContent, /等待返回/);
+    assert.ok(byPart('duration'), '运行中也要有耗时槽位');
+    assert.equal(byPart('duration')!.textContent, '—');
+    assert.equal(byPart('duration')!.dataset.missing, 'true', '缺的要标出来');
+  });
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * 6. 失败态：真实错误分类，不是一句「出错了」
+ * ------------------------------------------------------------------------------------------- */
+
+test('失败卡显示真实错误分类，且翻成人话 + 保留原枚举', async () => {
+  await withDom(async () => {
+    const { renderToolCard, errorClassLabel } = await import(cardsUrl);
+    const card = renderToolCard({
+      id: 'c4',
+      name: 'native_live_command',
+      status: 'failed',
+      callId: 't0007',
+      errorClass: 'environment',
+      note: '连接超时：192.0.2.10:5017 无响应',
+    });
+
+    const line = card.querySelector('.ag-tool-error-class');
+    assert.ok(line, '失败卡要有错误分类行');
+    assert.equal(line.dataset.errorClass, 'environment');
+    // 分类是**分派动作**的依据：「环境不通」要去看服务，「输入不合法」要改一句重发。
+    assert.match(line.textContent, /环境不通/, '要翻成人话');
+    assert.match(line.textContent, /environment/, '原枚举也要留着（对得上日志）');
+    // 原因与分类分成两行：原因说发生了什么，分类说该往哪里看。
+    assert.ok(card.querySelector('.ag-tool-note'), '原因单独一行');
+    assert.equal(card.dataset.errorClass, 'environment', '分类也进卡片属性');
+    assert.equal(errorClassLabel('capability'), '能力不可用（工具未注册或不支持）');
+  });
+});
+
+test('失败但后端没给分类：明写「未提供分类」，不编一个 execution', async () => {
+  await withDom(async () => {
+    const { renderToolCard } = await import(cardsUrl);
+    const card = renderToolCard({ id: 'c5', name: 'x', status: 'failed' });
+    const line = card.querySelector('.ag-tool-error-class');
+    assert.ok(line, '失败卡必须有分类行 —— 缺了也要说缺');
+    assert.equal(line.dataset.missing, 'true');
+    // 「看起来很专业地显示 execution」比「明说没有」更糟：那会让人以为分类在工作。
+    assert.match(line.textContent, /未提供分类/);
+    assert.doesNotMatch(line.textContent, /执行期错误/, '不能糊一个默认分类');
+  });
+});
+
+test('成功的卡不显示错误分类行', async () => {
+  await withDom(async () => {
+    const { renderToolCard } = await import(cardsUrl);
+    const card = renderToolCard({ id: 'c6', name: 'x', status: 'ok', errorClass: 'execution' });
+    assert.equal(card.querySelector('.ag-tool-error-class'), null);
+  });
+});
+
+test('错误分类表覆盖契约的七个 class', async () => {
+  const { ERROR_CLASS_LABELS } = await import(cardsUrl);
+  // docs/contracts/agent-events.md §3.8
+  for (const cls of ['environment', 'input', 'execution', 'artifact', 'capability', 'approval', 'provider']) {
+    assert.ok(ERROR_CLASS_LABELS[cls], `${cls} 没有中文标签，界面会直接印英文枚举`);
+  }
+  // 七个之外的不猜：原样返回，界面上看得出「这是个没登记过的分类」。
+  const { errorClassLabel } = await import(cardsUrl);
+  assert.equal(errorClassLabel('something-new'), 'something-new');
+  assert.equal(errorClassLabel(''), '');
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * 7. 审批卡四要素：谁申请 / 要做什么 / 风险 / 批准拒绝
+ * ------------------------------------------------------------------------------------------- */
+
+test('审批卡四要素都在 DOM 里，申请人来自 requested_by', async () => {
+  await withDom(async () => {
+    const { renderApprovalCard } = await import(cardsUrl);
+    const card = renderApprovalCard({
+      id: 'a1',
+      status: 'pending',
+      risk: 'high',
+      requestedBy: 'ops',
+      prompt: '是否允许执行 execute_device_action？参数：{"station_id":"WUHN"}',
+      callId: 'c-3d561b10',
+    });
+
+    const byPart = (part: string): StubNode | undefined =>
+      card.querySelectorAll('[data-part]').find((n: StubNode) => n.dataset.part === part);
+    for (const part of ['who', 'what', 'risk', 'decision']) {
+      assert.ok(byPart(part), `审批卡缺要素 ${part}`);
+    }
+    // 「谁批的」有记录（decidedBy）而「谁要的」没有，事后追不出高风险操作的来源。
+    assert.equal(byPart('who')!.textContent, '申请方ops');
+    assert.equal(byPart('who')!.dataset.missing, undefined);
+    assert.equal(byPart('risk')!.textContent, '高风险');
+    assert.match(byPart('what')!.textContent, /WUHN/);
+  });
+});
+
+test('审批卡没给申请方：明写「未提供申请方」，不填「系统」', async () => {
+  await withDom(async () => {
+    const { renderApprovalCard } = await import(cardsUrl);
+    const card = renderApprovalCard({ id: 'a2', status: 'pending', risk: 'medium', prompt: '写盘' });
+    const who = card.querySelectorAll('[data-part]').find((n: StubNode) => n.dataset.part === 'who') as StubNode;
+    assert.ok(who);
+    // 填「系统」会让「不知道谁要的」看起来像「系统要的」——那是编的。
+    assert.match(who.textContent, /未提供申请方/);
+    assert.equal(who.dataset.missing, 'true');
+  });
+});
+
+test('审批卡连 prompt 都没有：也不留白，明写后端没给', async () => {
+  await withDom(async () => {
+    const { renderApprovalCard } = await import(cardsUrl);
+    const card = renderApprovalCard({ id: 'a3', status: 'pending', risk: 'medium' });
+    const what = card.querySelectorAll('[data-part]').find((n: StubNode) => n.dataset.part === 'what') as StubNode;
+    // 那一格是「要做什么」，空着等于让用户盲批。
+    assert.ok(what);
+    assert.match(what.textContent, /没有给出动作描述/);
+  });
+});
+
+test('点拒绝后 UI 状态正确：按钮禁用、卡片转已决、pending 标记撤掉', async () => {
+  await withDom(async () => {
+    const { renderApprovalCard } = await import(cardsUrl);
+    const decisions: Array<{ decision: string; payload: unknown }> = [];
+    const card = renderApprovalCard({
+      id: 'a4', status: 'pending', risk: 'high', prompt: '重启 WUHN 接收机', requestedBy: 'ops',
+    }, {
+      onApproval: async (_c: unknown, decision: string, payload: unknown) => {
+        decisions.push({ decision, payload });
+      },
+    });
+
+    // 未决：输入框该被禁用（规矩一的判断依据就是这个 data-pending）。
+    assert.equal(card.dataset.pending, 'true');
+
+    const reject = card.querySelectorAll('[data-decision]').find((n) => n.dataset.decision === 'rejected');
+    assert.ok(reject);
+    reject.dispatch('click');
+    const reason = card.querySelector('.ag-reason-field')?.querySelector('textarea') as StubNode;
+    reason.value = '还没到维护窗口';
+    reject.dispatch('click');
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(decisions.length, 1, '确实提交了');
+    assert.equal(decisions[0].decision, 'rejected');
+    assert.deepEqual(decisions[0].payload, { note: '', reason: '还没到维护窗口' });
+
+    // 提交过程中按钮全部禁用 —— 点两次不能发两个决定。
+    for (const button of card.querySelectorAll('[data-decision]')) {
+      assert.equal(button.disabled, true, '提交后按钮禁用');
+    }
+    const decision = card.querySelector('.ag-decision') as StubNode;
+    assert.ok(decision);
+    assert.equal(decision.hidden, false);
+    assert.match(decision.textContent, /正在提交拒绝/);
+  });
+});
+
+test('已决的审批卡：申请人、动作、风险仍然全在（审计要能回看）', async () => {
+  await withDom(async () => {
+    const { renderApprovalCard } = await import(cardsUrl);
+    const card = renderApprovalCard({
+      id: 'a5', status: 'rejected', risk: 'high', requestedBy: 'ops',
+      prompt: '重启 WUHN 接收机', decidedBy: 'operator-7', note: '窗口不对',
+    });
+    const parts = card.querySelectorAll('[data-part]').map((n: StubNode) => n.dataset.part || '');
+    for (const part of ['who', 'what', 'risk']) {
+      assert.ok(parts.includes(part), `已决卡也要留着 ${part}`);
+    }
+    // 已决不再有可点的动作，但「谁要的 / 要做什么 / 多危险」都得留着能回看。
+    assert.equal(card.dataset.pending, undefined);
+    assert.ok(!parts.includes('decision') || card.querySelectorAll('[data-decision]').every((n: StubNode) => n.disabled));
+  });
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * 8. 分发：新槽位不影响 renderCard
+ * ------------------------------------------------------------------------------------------- */
+
+test('renderCard 仍然分发 tool / approval', async () => {
+  await withDom(async () => {
+    const { renderCard } = await import(cardsUrl);
+    assert.equal(renderCard({ type: 'tool', id: 'x', name: 'n', status: 'ok' })?.dataset.cardType, 'tool');
+    assert.equal(renderCard({ type: 'approval', id: 'y', status: 'pending' })?.dataset.cardType, 'approval');
+    assert.equal(renderCard({ type: 'nope', id: 'z' }), null, '未知类型不猜');
+  });
+});

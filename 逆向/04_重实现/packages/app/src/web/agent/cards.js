@@ -176,16 +176,104 @@ export function resultSummary(data, limit = 4) {
 }
 
 /**
- * 工具卡 —— 五个必需元素（规格 25.8.1）。
+ * 错误分类的中文标签 —— 照 `docs/contracts/agent-events.md` §3.8 的七个 class。
  *
- * | # | 元素 | 为什么 |
- * |---|---|---|
- * | 1 | 工具名 | 等宽字体，一眼分辨 `robust_stats` 与 `slope_stats` |
- * | 2 | 状态 + 耗时 | 同一行右侧，右对齐，让一列卡片能对齐 |
- * | 3 | 结果摘要 | 只显示 3–4 个关键数字，不是全部返回 |
- * | 4 | 展开入口 | 叫「查看 trace」，不是「详情」 |
- * | 5 | call_id | 铺在背景里（浅色小字），不抢眼，但**必须在** ——
- *               它是回源的唯一入口（规格 6.3 规矩三） |
+ * 为什么要翻译：界面直接印 `capability` / `artifact` 这种枚举，用户得先去翻契约
+ * 才知道该看哪里。而分类本身是**分派动作**的依据 —— 「输入参数不对」是改一句重发，
+ * 「环境不通」是去看服务，两种处理方式完全不同。
+ *
+ * 为什么不合并成「出错了」：那样就把七个不同的下一步揉成一个没有下一步的红字。
+ */
+export const ERROR_CLASS_LABELS = {
+  input: '输入参数不合法',
+  capability: '能力不可用（工具未注册或不支持）',
+  artifact: '产物 / 文件写入失败',
+  environment: '环境不通（服务或连接）',
+  approval: '审批被拒或已过期',
+  execution: '执行期错误',
+  provider: '模型侧错误',
+};
+
+/** class → 人话；没登记的原样返回，**不猜**成 `execution`（那会把未知变成误导）。 */
+export function errorClassLabel(name) {
+  const key = String(name == null ? '' : name);
+  if (!key) return '';
+  return ERROR_CLASS_LABELS[key] || key;
+}
+
+/** 参数摘要里单个值最多这么长；再长就截断 —— 摘要占两行就没人读了。 */
+const ARG_VALUE_LIMIT = 40;
+
+function clipArg(value) {
+  const text = typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : String(value);
+  return text.length > ARG_VALUE_LIMIT ? `${text.slice(0, ARG_VALUE_LIMIT)}…` : text;
+}
+
+/**
+ * 参数摘要 —— 工具卡的第 2 个要素。
+ *
+ * ## 为什么要单列一行，而不是「展开看 JSON 就够了」
+ *
+ * 五要素里有「参数」，而参数原来只躺在折叠的 `<pre>` 里。后果很具体：
+ * 「重启 WUHN 接收机」与「重启 ALIC 接收机」两张卡在**收起状态下一模一样** ——
+ * 工具名相同、结果摘要都是空（还没返回）、耗时都是 0。用户得点开两张卡对比 JSON
+ * 才知道自己批的是哪一台。参数摘要就是为了让收起状态也能分辨。
+ *
+ * ## 只取标量
+ *
+ * 嵌套对象与数组属于 trace：把它们塞进摘要会撑成三四行，摘要就不再是摘要。
+ * 所以跳过它们 —— 宁可少显示一个键，也不让摘要变成数据浏览器（同 25.8.2 的口径）。
+ */
+export function argumentSummary(args, limit = 3) {
+  if (args === null || args === undefined) return [];
+  if (typeof args !== 'object') return [{ key: '', text: clipArg(args) }];
+  if (Array.isArray(args)) return [];
+
+  const picked = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'object') continue;
+    if (typeof value === 'string' && !value.trim()) continue;
+    picked.push({ key, text: clipArg(value) });
+    if (picked.length >= limit) break;
+  }
+  return picked;
+}
+
+/** 摘要 → 「key=value · key=value」这一行；没有键时只显示值。 */
+function summaryLine(parts, className, slot) {
+  return el('p', { class: className, 'data-part': slot }, parts.flatMap((part, index) => {
+    const nodes = [];
+    if (index > 0) nodes.push(el('span', { class: 'ag-tool-sep', text: '·' }));
+    if (part.key) nodes.push(el('span', { class: 'ag-tool-key', text: `${part.key}=` }));
+    nodes.push(el('span', { class: 'ag-tool-val', text: part.text }));
+    return nodes;
+  }));
+}
+
+/**
+ * 工具卡 —— 五个必需元素（规格 25.8.1），每个都带 `data-part` 便于测试断言。
+ *
+ * | # | 元素 | `data-part` | 为什么 |
+ * |---|---|---|---|
+ * | 1 | 工具名 | `name` | 等宽字体，一眼分辨 `robust_stats` 与 `slope_stats` |
+ * | 2 | 参数摘要 | `args` | 让**收起状态**也能分辨「重启 WUHN」与「重启 ALIC」 |
+ * | 3 | 结果摘要 | `result` | 只显示 3–4 个关键数字，不是全部返回 |
+ * | 4 | 耗时 | `duration` | 用户判断「正常不正常」的依据；运行中也要占位 |
+ * | 5 | 成功 / 失败 | `status` | 失败还要带**真实错误分类**，不是一句「出错了」 |
+ *
+ * 另有不在五要素内但必须有的两样：
+ *   · 展开入口 —— 叫「查看 trace」，不是「详情」；
+ *   · call_id —— 铺在背景里（浅色小字），不抢眼，但**必须在**：
+ *     它是回源的唯一入口（规格 6.3 规矩三）。
+ *
+ * ## 空槽也要画
+ *
+ * 运行中的卡没有结果、没有耗时。第一版是「没有就不画」，于是运行中的卡只有
+ * 两个要素 —— 五要素变成了「成功之后才有五要素」。现在每个槽位恒定存在，
+ * 没内容时写「等待返回」/「—」，读卡的人不会以为界面漏画了。
  */
 export function renderToolCard(card, handlers = {}) {
   const expanded = typeof handlers.isExpanded === 'function' ? handlers.isExpanded(card.id) : false;
@@ -206,9 +294,22 @@ export function renderToolCard(card, handlers = {}) {
       class: 'ag-tool-label',
       text: card.label && card.label !== card.name ? card.label : '',
     }),
-    el('code', { class: 'ag-tool-name', text: card.name || '' }),
-    el('span', { class: `ag-pill ag-pill-${status}`, 'data-status': status, text: statusLabel(status) }),
-    card.durationMs != null ? el('span', { class: 'ag-dur', text: formatDuration(card.durationMs) }) : null,
+    // ① 工具名
+    el('code', { class: 'ag-tool-name', 'data-part': 'name', text: card.name || '' }),
+    // ⑤ 成功 / 失败。失败时文案要说「失败」，不能只靠颜色。
+    el('span', {
+      class: `ag-pill ag-pill-${status}`,
+      'data-part': 'status',
+      'data-status': status,
+      text: statusLabel(status),
+    }),
+    // ④ 耗时。运行中没有耗时，但槽位要在 —— 否则五要素变成「成功之后才有」。
+    el('span', {
+      class: 'ag-dur',
+      'data-part': 'duration',
+      'data-missing': card.durationMs == null ? 'true' : null,
+      text: card.durationMs == null ? '—' : formatDuration(card.durationMs),
+    }),
     chevron,
   ]);
   head.addEventListener('click', () => {
@@ -220,30 +321,66 @@ export function renderToolCard(card, handlers = {}) {
     if (typeof handlers.setExpanded === 'function') handlers.setExpanded(card.id, !open);
   });
 
+  /*
+   * ② 参数摘要 —— 让**收起状态**也能分辨「重启 WUHN」与「重启 ALIC」。
+   *
+   * 这三个值一个都不能省：工具名相同、结果还没回来、耗时都是 0 的两张卡，
+   * 唯一的差别就在参数上。没有这一行，用户得点开两张卡对比 JSON 才知道自己批哪台。
+   */
+  const argParts = Array.isArray(card.argSummary)
+    ? card.argSummary.map((part) => ({ key: '', text: String(part) }))
+    : argumentSummary(card.args);
+  const argsLine = argParts.length
+    ? summaryLine(argParts, 'ag-tool-args', 'args')
+    // 「无参数」不是留白：留白会被读成「界面没画出来」，而这确实是全部信息。
+    : el('p', { class: 'ag-tool-args ag-tool-args-empty', 'data-part': 'args' }, [
+      el('span', { class: 'ag-tool-val', text: '无参数' }),
+    ]);
+
+  /* ③ 结果摘要 —— 只显示 3–4 个关键数字，不是全部返回。 */
   const summaryParts = Array.isArray(card.summary)
     ? card.summary.map((part) => ({ key: '', text: String(part) }))
     : resultSummary(card.data);
-
-  const summaryLine = summaryParts.length
-    ? el('p', { class: 'ag-tool-summary' }, summaryParts.flatMap((part, index) => {
-      const nodes = [];
-      if (index > 0) nodes.push(el('span', { class: 'ag-tool-sep', text: '·' }));
-      if (part.key) nodes.push(el('span', { class: 'ag-tool-key', text: `${part.key}=` }));
-      nodes.push(el('span', { class: 'ag-tool-val', text: part.text }));
-      return nodes;
-    }))
-    : null;
+  const resultLine = summaryParts.length
+    ? summaryLine(summaryParts, 'ag-tool-summary', 'result')
+    // 运行中：写明「等待返回」，不空着 —— 空着分不清「还没回」与「回了但没摘要」。
+    : el('p', { class: 'ag-tool-summary ag-tool-summary-pending', 'data-part': 'result' }, [
+      el('span', { class: 'ag-tool-val', text: status === 'running' ? '等待返回…' : '返回里没有可摘要的标量' }),
+    ]);
 
   /*
-   * 失败时的原因（`note`）。
+   * 失败时的原因（`note`）与**真实错误分类**。
    *
    * agent server 的 `tool_result` 形如
    *   {"ok": false, "summary": "未获批准，工具未执行", "data": {}, ...}
    * `data` 是空的，真正要看的是 `summary` 那句。只显示「失败」而不给原因，
    * 用户没法判断是「没批准」还是「工具坏了」—— 这两种的处理方式完全不同。
+   *
+   * 分类（`errorClass`）来自紧随其后的 `error` 事件（`{"type":"error","class":...}`），
+   * 由 chat.js 接到这张卡上。分类是**分派动作**的依据：「输入参数不合法」改一句重发，
+   * 「环境不通」去看服务。所以它必须显示，且不能糊成「出错了」。
    */
   const noteLine = card.note
     ? el('p', { class: 'ag-tool-note' }, [el('span', { text: card.note })])
+    : null;
+
+  const classLine = status === 'failed'
+    ? el('p', {
+      class: 'ag-tool-error-class',
+      'data-error-class': card.errorClass || null,
+      'data-missing': card.errorClass ? null : 'true',
+    }, [
+      el('span', { class: 'ag-tool-error-class-label', text: '错误分类' }),
+      el('code', {
+        class: 'ag-tool-error-class-value',
+        // 后端没给分类就说「未提供分类」，**不编一个 execution 糊过去** ——
+        // 那会让人以为分类系统在工作，实际只是默认值。
+        text: card.errorClass ? errorClassLabel(card.errorClass) : '未提供分类',
+      }),
+      card.errorClass && card.errorClass !== errorClassLabel(card.errorClass)
+        ? el('code', { class: 'ag-tool-error-class-raw', text: card.errorClass })
+        : null,
+    ])
     : null;
 
   // 「查看 trace」是展开入口的名字 —— 规格明确不要叫「详情」。
@@ -278,12 +415,15 @@ export function renderToolCard(card, handlers = {}) {
     'data-card-id': card.id,
     'data-card-type': 'tool',
     'data-status': status,
+    'data-error-class': card.errorClass || null,
     // call_id 同时进属性：回源跳转与测试都按它找，不必去解析背景小字。
     'data-call-id': card.callId || null,
   }, [
     head,
+    argsLine,
+    resultLine,
     noteLine,
-    summaryLine,
+    classLine,
     el('div', { class: 'ag-tool-foot' }, [traceButton]),
     body,
     // call_id 铺在卡片底部背景里：浅色小字，不抢眼，但一定在。
@@ -296,14 +436,16 @@ export function renderToolCard(card, handlers = {}) {
    ================================================================ */
 
 /**
- * 审批卡 —— 四个必需元素（规格 25.9.1 + 6.3）。
+ * 审批卡 —— 四个必需元素（规格 25.9.1 + 6.3），每个都带 `data-part`。
  *
- * | # | 元素 | 为什么 |
- * |---|---|---|
- * | 1 | 风险等级 | `[high]` 这样的标，一眼看出轻重 |
- * | 2 | 动作描述 + **后果** | 两件事**必须分开写** —— 「归档」听起来无害，但「写 120 MB 到磁盘」可能是用户不想的 |
- * | 3 | 批准 / 拒绝 | 批准在前（大概率是批准），但拒绝不做成红色大按钮（会让人不敢拒绝） |
- * | 4 | 查看证据 | 让用户能当场核对，而不是盲批 |
+ * | # | 元素 | `data-part` | 为什么 |
+ * |---|---|---|---|
+ * | 1 | 谁申请 | `who` | 「谁批的」有记录（`decidedBy`）而「谁要的」没有，事后追不出高风险操作的来源 |
+ * | 2 | 要做什么 + **后果** | `what` | 两件事**必须分开写** —— 「归档」听起来无害，但「写 120 MB 到磁盘」可能是用户不想的 |
+ * | 3 | 风险等级 | `risk` | `[高风险]` 这样的标，一眼看出轻重 |
+ * | 4 | 批准 / 拒绝 | `decision` | 批准在前（大概率是批准），但拒绝不做成红色大按钮（会让人不敢拒绝） |
+ *
+ * 另有不在四要素内但必须有的：查看证据（让用户能当场核对，而不是盲批）。
  *
  * ## 规矩二：拒绝必须填理由（规格 6.3 + 25.9.2）
  *
@@ -448,13 +590,41 @@ export function renderApprovalCard(card, handlers = {}) {
     el('header', { class: 'ag-approval-head' }, [
       iconSvg('shield', 'ag-icon ag-approval-icon'),
       el('h3', { text: '需要你批准' }),
-      el('span', { class: `ag-risk ag-risk-${card.risk || 'medium'}`, text: riskLabel(card.risk) }),
+      // ③ 风险等级。
+      el('span', {
+        class: `ag-risk ag-risk-${card.risk || 'medium'}`,
+        'data-part': 'risk',
+        text: riskLabel(card.risk),
+      }),
       card.callId ? el('code', { class: 'ag-call-id', text: card.callId }) : null,
     ]),
-    // 「做什么」与「后果」分两行写 —— 这是 25.9.1 点明的要求。
-    card.prompt ? el('p', { class: 'ag-approval-prompt' }, [
-      el('span', { class: 'ag-approval-what', text: card.prompt }),
-    ]) : null,
+    /*
+     * ① 谁申请 —— 四要素里的「申请人」。
+     *
+     * 字段是后端的 `requested_by`（`runtimes/impl.py` 的 `can_use_tool` 回调就这么发）。
+     * 没有它，「谁批的」有记录（`decidedBy`）而「谁要的」没有 —— 事后追一条高风险
+     * 操作是从哪来的，只能靠猜。所以这一行**恒定存在**：没给就明写「未提供申请方」，
+     * 不填「系统」糊过去（那会让「不知道谁要的」看起来像「系统要的」）。
+     */
+    el('p', {
+      class: 'ag-approval-who',
+      'data-part': 'who',
+      'data-missing': card.requestedBy ? null : 'true',
+    }, [
+      el('span', { class: 'ag-approval-who-label', text: '申请方' }),
+      card.requestedBy
+        ? el('code', { class: 'ag-approval-who-value', text: card.requestedBy })
+        : el('span', { class: 'ag-approval-who-value', text: '未提供申请方' }),
+    ]),
+    // ② 做什么 —— 与「后果」分两行写，这是 25.9.1 点明的要求。
+    el('p', { class: 'ag-approval-prompt', 'data-part': 'what' }, [
+      el('span', {
+        class: 'ag-approval-what',
+        // 后端连 prompt 都没给时也不能留白：那一格是「要做什么」，
+        // 空着等于让用户盲批。
+        text: card.prompt || '（后端没有给出动作描述）',
+      }),
+    ]),
     // 「为什么要审批」是第三个问题，与「做什么 / 后果」都不同。
     // 后端给了 `reason` 就单独一行 —— 混进 prompt 会让人读不出重点。
     card.reason ? el('p', { class: 'ag-approval-reason' }, [
@@ -470,7 +640,8 @@ export function renderApprovalCard(card, handlers = {}) {
     pending ? noteField : null,
     pending ? reasonField : null,
     reasonError,
-    el('div', { class: 'ag-actions' }, [...buttons, evidence]),
+    // ④ 批准 / 拒绝两个动作（外加「查看证据」，它让用户能当场核对而不是盲批）。
+    el('div', { class: 'ag-actions', 'data-part': 'decision' }, [...buttons, evidence]),
     decisionEl,
   ]);
 }
