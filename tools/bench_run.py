@@ -99,19 +99,34 @@ def _freq(signal: str) -> float:
 
 
 def synthetic_obs_rows(station: str, date: str = BENCH_DATE,
-                       epochs: int = EPOCHS_PER_DAY) -> list[dict]:
+                       epochs: int = EPOCHS_PER_DAY,
+                       start_epoch: int = 0) -> list[dict]:
     """造 `obs` 行。字段顺序与 `model.Observation.to_row()` 一致。
 
     **值必须是确定的**（同输入逐字节同输出），否则「两引擎对比」会变成
     「两份不同数据互相比较」。
+
+    ``start_epoch`` 让调用方分块生成：``(start_epoch, epochs)`` 这一段得到的行
+    与一次性生成的前缀完全一致（所有公式只依赖绝对历元号 ``epoch``）。
+    亿级规模靠它分块，不把整表读进内存。
+    """
+    return list(iter_obs_rows(station, date=date, epochs=epochs,
+                              start_epoch=start_epoch))
+
+
+def iter_obs_rows(station: str, date: str = BENCH_DATE,
+                  epochs: int = EPOCHS_PER_DAY,
+                  start_epoch: int = 0) -> "Iterator[dict]":
+    """:func:`synthetic_obs_rows` 的生成器版本（逐行产出，不攒 list）。
+
+    分块生成亿级数据时用它：内存占用与块大小成正比，与总量无关。
+    第 ``i`` 行的值与 ``synthetic_obs_rows(...)`` 的第 ``i`` 行逐字节相同。
     """
     day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     sats = _sv_list()
-    rows: list[dict] = []
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, start_epoch + epochs):
         ts = day + timedelta(seconds=epoch)
         hour = epoch // 3600
-        hour_start = hour * 3600
         for system, sv in sats:
             for sig_index, signal in enumerate(SIGNALS):
                 # cn0：20–60 dB-Hz，随仰角变化（低仰角低）
