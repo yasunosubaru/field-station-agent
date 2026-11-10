@@ -166,13 +166,45 @@ export function mount(ctx) {
       }
     }).filter(Boolean);
 
-    stream.replaceChildren(...nodes);
+    stream.replaceChildren(...nodes, ...toolsEmptyNote());
     // 审批未决时禁用输入框（规矩一）。
     syncApprovalGate();
     // 右栏的工具调用数 / 总耗时 / 证据 call_id 都随消息流变，这里一并刷新。
     ctx.repaintRail();
     // 新消息进来时贴到底部 —— 但只在用户本来就在底部时才贴，别抢滚动。
     stream.scrollTop = stream.scrollHeight;
+  }
+
+  /**
+   * 空态：这一轮**真的一次工具调用都没有**时，明确写一句。
+   *
+   * ## 为什么不能留白
+   *
+   * 没有这句，界面上就是「Agent 说了一句话」。而「这一轮没调工具」和
+   * 「调了但卡片没画出来」在视觉上完全一样 —— 前者是正常（模型直接答了），
+   * 后者是 bug。留白把这两种状态混成一种，出问题时没人能第一眼区分。
+   *
+   * ## 三个条件缺一不可
+   *
+   * | 条件 | 少了它会怎样 |
+   * |---|---|
+   * | 已经有助手回话 | 刚发出消息、还没回话时写「本轮没有工具调用」，是在提前下结论 |
+   * | 没有工具卡 | 有工具卡还写这句，就是明着说谎 |
+   * | 不在流式生成中 | 生成中本来还没有工具卡，那时写这句同样是在撒谎 |
+   *
+   * 返回数组而不是节点：调用方直接展开进 `replaceChildren`，不需要判空。
+   */
+  function toolsEmptyNote() {
+    if (thread.streaming) return [];
+    const hasAssistant = thread.cards.some((card) => card.type === 'message' && card.role === 'assistant');
+    const hasTool = thread.cards.some((card) => card.type === 'tool');
+    if (!hasAssistant || hasTool) return [];
+    return [el('p', {
+      cls: 'vw-chat-tools-empty',
+      data: { chatToolsEmpty: '' },
+      attr: { role: 'status' },
+      text: '本轮没有工具调用',
+    })];
   }
 
   /**
@@ -478,10 +510,43 @@ export function mount(ctx) {
         impact: data.impact || data.consequence || '',
         // 为什么要审批 —— 单独一行显示，因为它回答的是另一个问题。
         reason: data.reason || '',
+        /*
+         * 「谁申请」—— 四要素里的第一个。
+         *
+         * 真字段是 `requested_by`（`runtimes/impl.py` 的 `can_use_tool` 回调发的就是它）。
+         * 后端那条路径没有这个字段时留空，卡片会明写「未提供申请方」——
+         * 不填「系统」糊过去，那会让「不知道谁要的」看起来像「系统要的」。
+         */
+        requestedBy: data.requested_by || data.requestedBy || '',
         callId: data.call_id || data.callId || '',
-        args: data.arguments ?? null,
+        args: data.arguments ?? data.args ?? null,
+        /*
+         * 决定时刻 —— 真字段是 `decided_at`。
+         *
+         * 决定事件（orchestrator 的第二次 `approval`）带 `decided_at`，但第一版没读它，
+         * 于是已决卡永远显示不出「什么时候批的」。审计要能回看，时间戳是必需要的。
+         */
+        decidedAt: data.decided_at || data.decidedAt || '',
+        // 谁批的：`approval` 决定事件不发这个字段（`approval.result` 才发 `by`），
+        // 读不到就留空，卡片会退回「操作员」而不是编一个名字。
+        decidedBy: data.decided_by || data.decidedBy || data.by || '',
       };
-      if (existing) Object.assign(existing, patch);
+      /*
+       * 合并时**空值不覆盖已有值**。
+       *
+       * 一条审批会发两次：`pending` 一次（带 prompt / reason / requested_by），
+       * 决定后一次（只带 status / decision / decided_at）。
+       * 无条件 `Object.assign` 会用第二次的空 `requested_by` / `impact` 把第一次的
+       * 冲掉 —— 表现是「点了拒绝之后，申请人和后果那两行没了」，
+       * 而这正是审计最需要留着的那两行。
+       */
+      const merge = (target, source) => {
+        for (const [key, value] of Object.entries(source)) {
+          if (value === '' && target[key]) continue;
+          target[key] = value;
+        }
+      };
+      if (existing) merge(existing, patch);
       else thread.cards.push(patch);
       paintThread();
       return null;
@@ -501,13 +566,44 @@ export function mount(ctx) {
     }
 
     if (type === 'error') {
-      thread.cards.push({
-        type: 'error',
-        id: nextCardId(),
-        message: [data.message || '出错', data.code || '', data.hint || ''].filter(Boolean).join(' · '),
-        errorClass: data.kind || 'execution',
-        ts: now,
-      });
+      /*
+       * 错误分类的**真字段是 `class`**，不是 `kind`。
+       *
+       * 后端 `orchestrator._Emitter.error()` 发的是
+       *   {"type": "error", "class": "capability", "message": "...", "ts": "..."}
+       * 第一版读 `data.kind` —— 那个字段不存在，于是**每张错误卡都显示 `execution`**，
+       * 看起来「有分类」，其实那只是兜底默认值。和 08f10c0 修的三处是同一类错：
+       * 字段名猜错 → 不报错 → 静悄悄失效。
+       *
+       * `kind` 只留作兼容兜底，且排在真字段后面。
+       */
+      const errorClass = data.class || data.kind || '';
+      /*
+       * 这条 error 是不是某次工具失败的那半张嘴？
+       *
+       * orchestrator 对一次工具失败是**先发 `tool_result(ok:false)`、再发 `error`**：
+       *   tool_result → {"ok":false, "summary":"未获批准，工具未执行", "data":{}}
+       *   error       → {"class":"approval", "message":"未获批准，工具未执行"}
+       * 分类只在后一条上。把分类补到那张失败的工具卡上，并**不再另插一张错误卡** ——
+       * 同一句话印两遍是噪音，而且会让人以为是两次不同的失败。
+       *
+       * 只在「最近一张工具卡是失败的、且还没分类」时才这样接，避免把
+       * 一句全局的运行错误安到上一次成功调用头上。
+       */
+      const lastTool = [...thread.cards].reverse().find((entry) => entry.type === 'tool');
+      const absorbs = Boolean(lastTool && lastTool.status === 'failed' && !lastTool.errorClass);
+      if (absorbs) {
+        lastTool.errorClass = errorClass;
+      } else {
+        thread.cards.push({
+          type: 'error',
+          id: nextCardId(),
+          message: [data.message || '出错', data.code || '', data.hint || ''].filter(Boolean).join(' · '),
+          // 没有分类就不编：`renderErrorCard` 会显示「没有给出原因」之外的原样枚举。
+          errorClass: errorClass || 'execution',
+          ts: now,
+        });
+      }
       paintThread();
       return assistant;
     }

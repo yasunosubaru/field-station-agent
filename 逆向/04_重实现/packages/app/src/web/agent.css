@@ -1303,6 +1303,33 @@ body[data-mode="agent"] [hidden] {
   line-height: 1.5;
 }
 
+/*
+ * 参数摘要 —— 工具卡的第 2 个要素。
+ *
+ * 它比结果摘要更淡一档：结果是要看的结论，参数是「确认我批的是哪一台」的凭据。
+ * 但**必须在卡面上**：收起状态下工具名相同、结果未返回的两张卡，唯一的差别就是它。
+ */
+.ag-tool-args {
+  margin: 0;
+  padding: 0 10px 6px 38px;
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.5;
+  /* 长路径 / 长 ID 不能把卡撑宽 —— 1280 宽要能不横向溢出。 */
+  overflow-wrap: anywhere;
+}
+
+/* 「无参数」是陈述，不是缺失：再淡一档，但仍在同一位置，读卡的人不会以为漏画。 */
+.ag-tool-args-empty .ag-tool-val {
+  color: var(--dim);
+}
+
+/* 运行中的「等待返回…」同理：占位而不是空着。 */
+.ag-tool-summary-pending .ag-tool-val {
+  color: var(--muted);
+  font-family: inherit;
+}
+
 /* 摘要里的键名淡、值亮：扫一眼先看到数字（视觉规矩一的同一动机）。 */
 .ag-tool-key {
   color: var(--dim);
@@ -1326,6 +1353,45 @@ body[data-mode="agent"] [hidden] {
   font-size: var(--fs-small, 11.5px);
   color: var(--bad);
   line-height: 1.5;
+}
+
+/*
+ * 真实错误分类（`error` 事件的 `class`）。
+ *
+ * 与「原因」分开两行：原因说**发生了什么**（「未获批准，工具未执行」），
+ * 分类说**该往哪里看**（approval → 回去看审批；environment → 去看服务）。
+ * 揉成一行会让人读完原因就停下，不再想下一步。
+ *
+ * 缺分类时（`data-missing`）用 dashed 下划线明示「这是缺的」，而不是假装有。
+ */
+.ag-tool-error-class {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 0 10px 8px 38px;
+  font-size: var(--fs-tiny, 11px);
+  color: var(--bad);
+  line-height: 1.5;
+}
+
+.ag-tool-error-class-label {
+  color: var(--dim);
+}
+
+.ag-tool-error-class-value {
+  font-family: var(--mono);
+}
+
+.ag-tool-error-class-raw {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  opacity: 0.75;
+}
+
+.ag-tool-error-class[data-missing="true"] .ag-tool-error-class-value {
+  border-bottom: 1px dashed var(--border-hover);
 }
 
 /* 「查看 trace」是展开入口，做成文字按钮，不抢头部的眼。 */
@@ -1585,6 +1651,38 @@ body[data-mode="agent"] .ag-approval-decided .ag-btn-primary {
   font-size: 12.5px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+/*
+ * 申请方 —— 审批卡四要素里的第一个。
+ *
+ * 位置在「做什么」之前：「谁要这件事」决定了这件事该不该做，
+ * 排在动作描述之后就成了事后补注。等宽字体：它是标识（agent 名 / 操作员 id），
+ * 不是一句话。缺值时用 dashed 下划线明示「这里确实没有」，不假装有。
+ */
+.ag-approval-who {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 0 10px 6px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.ag-approval-who-label {
+  color: var(--dim);
+}
+
+.ag-approval-who-value {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.ag-approval-who[data-missing="true"] .ag-approval-who-value {
+  color: var(--dim);
+  border-bottom: 1px dashed var(--border-hover);
 }
 
 .ag-approval-reason {
