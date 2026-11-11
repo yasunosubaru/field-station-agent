@@ -218,6 +218,19 @@ function resolvePython({ repoRoot, payloadDir = null, platform = process.platfor
   if (payloadDir) {
     candidates.push({ path: path.join(payloadDir, 'runtime', 'python', exe), source: 'payload' });
   }
+  /*
+   * Packaged layout: the build script stages the bundled runtime at
+   *   <resources>/app/payload/runtime/python/Scripts/python.exe  (venv layout)
+   * while `payloadDir()` points at `<userData>/payload` (the extraction target).
+   * Without this candidate the packaged app reports "no Python" even though the
+   * interpreter is right there — measured on the first real run of the build.
+   * Note the `Scripts/` level: the bundled thing is a **venv**, not a bare
+   * python.exe, so it sits under Scripts/ just like .deps/venv does.
+   */
+  const bundledRoot = path.join(repoRoot, 'payload', 'runtime', 'python');
+  candidates.push(win
+    ? { path: path.join(bundledRoot, 'Scripts', 'python.exe'), source: 'bundled' }
+    : { path: path.join(bundledRoot, 'bin', 'python3'), source: 'bundled' });
   for (const name of ['.deps/venv', '.venv', 'venv']) {
     const dir = path.join(repoRoot, ...name.split('/'));
     candidates.push({

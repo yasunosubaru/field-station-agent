@@ -14,7 +14,8 @@
     "node": ">=22.18"
   },
   "devDependencies": {
-    "electron": "^45.2.2"
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "koffi": "^3.3.7"

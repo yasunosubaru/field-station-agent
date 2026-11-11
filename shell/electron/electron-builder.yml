@@ -1,0 +1,64 @@
+# electron-builder 配置：野外台站智能体（AllPoweredFSA）
+#
+# ## 目录布局是硬约束
+#
+# 外壳 `main.js` 用 `REPO_ROOT = SHELL_DIR/..` 定位其余部分：
+#   <REPO_ROOT>/shell/electron/main.js
+#   <REPO_ROOT>/<RE>/04_<RE>/packages/app/src/server.ts
+#   <REPO_ROOT>/src/fieldstation/...
+#   <REPO_ROOT>/dist/py-runtime/
+#
+# ## 为什么用 staging 目录（实测结论）
+#
+# 直接把仓库里的树塞进 `files` 会带上中文路径，而 electron-builder 对中文
+# 目录名**静默失败**：实测构建 exit=0、无报错，但产物里那一支根本不存在，
+# 双击跑不起来。所以 `tools/build-release-v5.ps1` 先把资源按最终布局铺进
+# `dist/_stage/app/`（纯 ASCII），这里只把那一个目录当 app 目录打包。
+#
+# ## `to` 的层级（踩过）
+#
+# `extraFiles.to` 是相对**输出根**（win-unpacked/），不是 resources/。
+# 写 `to: app` 会落到 win-unpacked/app，而外壳要的是 resources/app。
+# 所以这里不用 extraFiles，改用 `files` + `directories.app` 让整个
+# `_stage/app` 就是 app 目录本身。
+#
+# ## 为什么 asar 关掉
+#
+# `server.ts` 与 `pyserver.js` 都要 spawn 子进程、按真实路径读文件。
+#
+# ## 为什么不打 mac/linux
+#
+# 只做过 Windows 真机验收（`docs/operations/shell-smoke.md`）。
+
+appId: com.fieldstation.allpoweredfsa
+productName: AllPoweredFSA
+
+# app 目录 = staging 目录本身。这样 resources/app 里就是最终布局，
+# 不需要再搬一次，也不会有中文路径进入打包器的匹配流程。
+directories:
+  app: ../../dist/_stage/app
+  output: dist
+  buildResources: build
+
+# 用本地已装的 electron 二进制，不走下载（窄带环境实测会卡在下载上失败）。
+electronDist: node_modules/electron/dist
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
+# staging 目录里已经按最终布局铺好；这里只排除不该进包的东西。
+# **注意**：不要用 `!**/dist/**` 之类宽规则 —— `dist/py-runtime` 是内置 Python
+# 运行时，被排掉就等于打出一个跑不起来的包（实测漏过一次）。
+files:
+  - "**/*"
+  - "!**/*.map"
+  - "!**/__pycache__/**"
+  - "!**/*.pyc"
+  - "!**/node_modules/**/{test,tests,example,examples,docs}/**"
+
+asar: false
+
+win:
+  target:
+    - target: dir
+      arch: [x64]
+  signAndEditExecutable: false
