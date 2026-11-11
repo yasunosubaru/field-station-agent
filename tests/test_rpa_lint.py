@@ -49,24 +49,55 @@ class RuleCatalogueTest(unittest.TestCase):
 
 
 class RealWorkflowsTest(unittest.TestCase):
-    """验收主判据：现有 8 条只剩 2 处违规，且必须指到那两行的行号。"""
+    """验收主判据分两个时点。
+
+    RPA-1 落地时（未清死等）：现有 8 条只剩 2 处，正是
+    `gui.app.install.yaml:60` 与 `gui.device.add.yaml:75`。
+    RPA-2 清完之后：**0 违规**。两段都钉住，避免「先修 YAML 再写 lint」
+    那种倒序做法——那样 lint 就失去了验证对象，也无从证明它真的能报出问题。
+    """
 
     @classmethod
     def setUpClass(cls):
         cls.findings = rpa_lint.lint_tree(WORKFLOWS)
-        cls.sleep = [f for f in cls.findings if f.rule == "no-bare-sleep"]
 
-    def test_exactly_two_bare_sleeps_remain(self):
-        self.assertEqual(len(self.sleep), 2, [str(f) for f in self.sleep])
+    def test_current_workflows_are_clean(self):
+        """RPA-2 之后：8 条流程 0 违规。"""
+        self.assertEqual(self.findings, [], [str(f) for f in self.findings])
 
-    def test_sleep_findings_point_at_the_known_lines(self):
-        got = {(Path(f.path).name, f.line) for f in self.sleep}
-        self.assertEqual(got, {("gui.app.install.yaml", 60),
-                               ("gui.device.add.yaml", 75)})
+    def test_lint_still_catches_the_two_original_sleeps(self):
+        """把历史那两处死等还原成 sleep，lint 必须还能报出它们。
 
-    def test_no_other_rule_fires_on_current_workflows(self):
-        others = [f for f in self.findings if f.rule != "no-bare-sleep"]
-        self.assertEqual(others, [], [str(f) for f in others])
+        这条防的是「修完 YAML 后把 lint 也一起放松」——
+        它用**历史原文片段**做负例，不依赖当前 YAML 内容。
+        """
+        import tempfile
+        from pathlib import Path as _P
+
+        cases = {
+            "gui.app.install.yaml": "\n".join([
+                "steps:",
+                "  - id: settle_home",
+                "    kind: sleep",
+                "    seconds: 2.0",
+            ]) + "\n",
+            "gui.device.add.yaml": "\n".join([
+                "steps:",
+                "  - id: settle_home",
+                "    kind: sleep",
+                "    seconds: 2.0",
+            ]) + "\n",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = _P(td)
+            for name, text in cases.items():
+                (root / name).write_text(text, encoding="utf-8")
+            findings = rpa_lint.lint_tree(root, known_targets=set())
+        sleep = [f for f in findings if f.rule == "no-bare-sleep"]
+        self.assertEqual(len(sleep), 2, [str(f) for f in sleep])
+        self.assertEqual({_P(f.path).name for f in sleep}, set(cases))
+        for finding in sleep:
+            self.assertEqual(finding.line, 3, "必须指到 kind: sleep 那一行")
 
     def test_findings_are_sorted_and_deterministic(self):
         again = rpa_lint.lint_tree(WORKFLOWS)
@@ -267,11 +298,18 @@ class GateRuleTest(unittest.TestCase):
 
 
 class CliTest(unittest.TestCase):
-    def test_exit_code_is_one_when_findings_exist(self):
+    def test_exit_code_is_zero_when_workflows_are_clean(self):
+        """RPA-2 之后现有 8 条 0 违规，应退 0。"""
         rc = rpa_lint.main(["--workflows", str(WORKFLOWS)])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 0)
 
-    def test_exit_code_is_zero_on_clean_tree(self):
+    def test_exit_code_is_one_when_findings_exist(self):
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "bad.yaml"
+            bad.write_text("steps:\n  - id: w\n    kind: sleep\n", encoding="utf-8")
+            self.assertEqual(rpa_lint.main(["--workflows", td]), 1)
+
+    def test_exit_code_is_zero_on_empty_tree(self):
         with tempfile.TemporaryDirectory() as td:
             rc = rpa_lint.main(["--workflows", td])
             self.assertEqual(rc, 0, "空目录没有违规，应退 0")
@@ -284,8 +322,8 @@ class CliTest(unittest.TestCase):
         with redirect_stdout(buf):
             rpa_lint.main(["--workflows", str(WORKFLOWS), "--json"])
         data = json.loads(buf.getvalue())
-        self.assertEqual(data["violations"], 2)
-        self.assertTrue(all("line" in v for v in data["findings"]))
+        self.assertEqual(data["violations"], 0)
+        self.assertEqual(data["findings"], [])
 
 
 if __name__ == "__main__":

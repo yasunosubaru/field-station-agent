@@ -72,13 +72,17 @@ steps:
         ok: true
 
   - id: settle_home
-    kind: sleep
-    seconds: 2.0
+    kind: wait_ui
+    control: Add Device
+    expect:
+      contains: Add Device
+    timeout: 12
     description: >
       首页会异步刷新非核心应用状态并重绘卡片；刚关掉一个弹窗/刚回到首页时立刻点
-      Manage，事件会落在即将被替换的节点上（本机实测点空过）。先等它落定。
-      注意：套件**刚启动**时首页卡片要约 9 秒后才绑定点击（实测 9.2s），
-      刚开机就跑请把 seconds 调到 10 以上
+      Manage，事件会落在即将被替换的节点上（本机实测点空过）。
+      **原来是 `kind: sleep / seconds: 2.0` 的裸等**（RPA-1 的 lint 会报它），
+      改成条件等待：轮询首页 Manage 卡片上的 `Add Device` 是否已可读。
+      套件刚启动时首页卡片要约 9 秒后才绑定点击（实测 9.2s），故超时取 12。
 
   - id: open_dialog
     kind: gui

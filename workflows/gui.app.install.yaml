@@ -57,11 +57,17 @@ steps:
         ok: true
 
   - id: settle_home
-    kind: sleep
-    seconds: 2.0
+    kind: wait_ui
+    control: Add application
+    expect:
+      contains: Add application
+    timeout: 12
     description: >
       首页会异步枚举非核心应用，期间卡片区显示“Loading”且按钮会被重绘；
-      这期间点 Add application 会被吞掉（本机实测），先等它落定
+      这期间点 Add application 会被吞掉（本机实测）。
+      **原来是 `kind: sleep / seconds: 2.0` 的裸等**（RPA-1 的 lint 会报它），
+      改成条件等待：轮询 `Add application` 是否已可读，读到就继续，最多等 12 秒。
+      刚启动的机器首页要约 9 秒才绑定点击（实测 9.2s），故超时取 12。
 
   - id: digest
     kind: file_digest
