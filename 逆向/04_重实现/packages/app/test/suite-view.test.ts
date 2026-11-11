@@ -163,12 +163,14 @@ test('能解析真实的 suite-field-parity.md（四列 + 结论区计数）', a
     assert.ok(row.a || row.b, `${row.name} 至少一侧要有位置`);
   }
 
-  // 结论区的数字：这份产物当前是 52 / 42 / 37 / 0。
-  assert.equal(parsed.summary.matched, 52, 'matched 取去重字段口径');
-  assert.equal(parsed.summary.b_only, 42);
-  assert.equal(parsed.summary.a_only, 37);
+  // 结论区的数字：这份产物当前是 62 / 32 / 20 / 0 / 15（去重字段口径）。
+  // `not_applicable` 是用户反馈问卷控件，不计入差异（见 FIELD_STATES 注释）。
+  assert.equal(parsed.summary.matched, 62, 'matched 取去重字段口径');
+  assert.equal(parsed.summary.b_only, 32);
+  assert.equal(parsed.summary.a_only, 20);
   assert.equal(parsed.summary.unverified, 0);
-  assert.equal(parsed.summary.total, 131, '总数是四个之和');
+  assert.equal(parsed.summary.not_applicable, 15);
+  assert.equal(parsed.summary.total, 129, '总数是各状态之和');
 });
 
 test('解析器对坏输入不崩', async () => {

@@ -170,11 +170,13 @@ test('套件台：六应用 = 五核心 + Perception，检查器 matched 不出�
   assert.equal(FIELD_STATES.matched.tone, 'quiet', 'matched 不出眼');
 });
 
-test('套件台：能用真实对照表解析出四个计数', async () => {
+test('套件台：能用真实对照表解析出各状态计数', async () => {
   const { parseParityMarkdown } = await import(pathToFileURL(join(viewsDir, 'suite.js')).href);
   const md = read(join(repoRoot, 'docs', 'operations', 'suite-field-parity.md'));
   const parsed = parseParityMarkdown(md);
-  assert.equal(parsed.summary.total, 131);
+  // 总数 = 各状态之和。设-1 收口后 129（原 131：`cv-affix` 与 `destination`
+  // 并入原字段，`not_applicable` 15 个是问卷控件）。
+  assert.equal(parsed.summary.total, 129);
   assert.ok(parsed.rows.length > 20);
 });
 

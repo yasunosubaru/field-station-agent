@@ -77,6 +77,10 @@ export const FIELD_STATES = {
   b_only: { glyph: '+', label: 'b_only', tone: 'add' },
   a_only: { glyph: '−', label: 'a_only', tone: 'miss' },
   unverified: { glyph: '?', label: 'unverified', tone: 'quiet' },
+  // 用户反馈问卷控件：两侧按键名对不上，但它**不是设备字段**，
+  // 不算差异、也不该显示成缺失。见 `tools/suite_field_parity.py`
+  // 的 `SURVEY_CLASS_MARKERS`（判据是祖先容器 class，不是 id 清单）。
+  not_applicable: { glyph: '~', label: 'not_applicable', tone: 'quiet' },
 };
 
 /** 字段对照表的来源。服务端当前不提供，接口定了只改这一处。 */
@@ -95,7 +99,9 @@ export const INSPECTOR_ENDPOINT = '/api/suite/field-parity';
 export function parseParityMarkdown(markdown) {
   const text = String(markdown || '');
   const rows = [];
-  const summary = { matched: 0, b_only: 0, a_only: 0, unverified: 0, total: 0 };
+  const summary = Object.fromEntries(
+    Object.keys(FIELD_STATES).map((key) => [key, 0]).concat([['total', 0]]),
+  );
 
   const lines = text.split(/\r?\n/);
   let inTable = false;
@@ -128,14 +134,18 @@ export function parseParityMarkdown(markdown) {
     }
 
     // 结论区：`| \`matched\` | 52 | 62 |` 这种。取**去重字段**那一列（判分口径）。
-    const summaryMatch = /^\|\s*`?(matched|b_only|a_only|unverified)`?[^|]*\|\s*\**(\d+)\**\s*\|/.exec(trimmed);
+    const keyPattern = Object.keys(FIELD_STATES).join('|');
+    const summaryMatch = new RegExp(
+      `^\\|\\s*\`?(${keyPattern})\`?[^|]*\\|\\s*\\**(\\d+)\\**\\s*\\|`,
+    ).exec(trimmed);
     if (summaryMatch) {
       summary[summaryMatch[1]] = Number(summaryMatch[2]);
     }
   }
 
   for (const row of rows) summary[row.verdict] = Math.max(summary[row.verdict], 0);
-  summary.total = summary.matched + summary.b_only + summary.a_only + summary.unverified;
+  summary.total = Object.keys(FIELD_STATES)
+    .reduce((sum, key) => sum + summary[key], 0);
   return { rows, summary };
 }
 
@@ -318,6 +328,7 @@ export function mount(ctx) {
         ['matched', inspector ? String(inspector.summary.matched) : '—'],
         ['b_only', inspector ? String(inspector.summary.b_only) : '—'],
         ['a_only', inspector ? String(inspector.summary.a_only) : '—'],
+        ['not_applicable', inspector ? String(inspector.summary.not_applicable) : '—'],
       ]),
       // 让用户一眼看到「这一页对不对得上」（附录 C.6 点五）。
       inspector && inspector.summary.total
