@@ -42,14 +42,21 @@ from .sse import (AnthropicState, OpenAIState, iter_sse, translate_anthropic,
                   translate_openai)
 
 
-def _post_json(url: str, body: dict, headers: dict, timeout: float = 120.0):
+def _post_json(url: str, body: dict, headers: dict, timeout: float = 120.0,
+               proxy: str = ""):
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
+    # 某些网关（commandcode）前面有 Cloudflare，缺这个 UA 直接 403。
+    req.add_header("User-Agent", "opencode/1.2.3")
     for key, value in headers.items():
         req.add_header(key, value)
+    opener = urllib.request.build_opener()
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
     try:
-        return urllib.request.urlopen(req, timeout=timeout)
+        return opener.open(req, timeout=timeout)
     except urllib.error.URLError as exc:  # 端口没起/连不上都算运行时不可用
         raise RuntimeUnavailable("连不上运行时 %s：%s" % (url, exc)) from exc
 
@@ -60,21 +67,43 @@ class OpenAICompatibleRuntime:
     name = "openai-compatible"
 
     def __init__(self, base_url: str = "http://127.0.0.1:11434/v1",
-                 api_key: str = "", timeout: float = 120.0):
+                 api_key: str = "", timeout: float = 120.0, *,
+                 api_model: str = "", proxy: str = ""):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
+        #: 真实发给端点的模型名。
+        #:
+        #: ``req.model`` 是**对外规范名**（纪-1 只认 ``deepseek-v4.1-flash``），
+        #: 而端点要的可能是带 provider 前缀的形式：
+        #: commandcode 要 ``deepseek/deepseek-v4.1-flash``，Ollama 要
+        #: ``qwen3.8-flash-next-iq2_xs:latest``。留空则原样用 ``req.model``。
+        self.api_model = api_model.strip()
+        #: HTTP 代理（``http://127.0.0.1:7900``）。留空走直连。
+        self.proxy = proxy.strip()
+
+    def _opener(self):
+        if self.proxy:
+            handler = urllib.request.ProxyHandler(
+                {"http": self.proxy, "https": self.proxy})
+            return urllib.request.build_opener(handler)
+        return urllib.request.build_opener()
 
     def available(self) -> bool:
         try:
-            with urllib.request.urlopen(self.base_url + "/models", timeout=3) as resp:
+            req = urllib.request.Request(
+                self.base_url + "/models",
+                headers={"User-Agent": "opencode/1.2.3",
+                         **({"Authorization": "Bearer " + self.api_key}
+                            if self.api_key else {})})
+            with self._opener().open(req, timeout=8) as resp:
                 return resp.status < 500
         except Exception:  # noqa: BLE001
             return False
 
     def run(self, req: RuntimeRequest):
         body = {
-            "model": req.model,
+            "model": self.api_model or req.model,
             "stream": True,
             "messages": [{"role": "system", "content": req.system}] if req.system else [],
         }
@@ -85,7 +114,8 @@ class OpenAICompatibleRuntime:
 
         headers = {"Authorization": "Bearer " + self.api_key} if self.api_key else {}
         state = OpenAIState(req.session_id)
-        resp = _post_json(self.base_url + "/chat/completions", body, headers, self.timeout)
+        resp = _post_json(self.base_url + "/chat/completions", body, headers,
+                          self.timeout, self.proxy)
         with resp:
             for _, payload in iter_sse(resp):
                 for event in translate_openai(payload, state):

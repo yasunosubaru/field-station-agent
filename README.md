@@ -456,9 +456,9 @@ python tools/check_desensitization.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**227** 个
-- 入库 Python 行数：**62,840** 行
-- 入库测试文件数：**131** 个
+- 入库 Python 文件数：**228** 个
+- 入库 Python 行数：**64,969** 行
+- 入库测试文件数：**132** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，

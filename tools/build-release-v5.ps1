@@ -153,6 +153,11 @@ if (Test-Path -LiteralPath $appNm) {
     Robo $appNm (Join-Path $stageApp 'packages\app\node_modules') "app/node_modules"
 }
 
+# 3.3b config -> app/config（运行时按 <app>/config/providers.json 找后端）
+$stageConfig = Join-Path $Stage 'config'
+New-Item -ItemType Directory -Force -Path $stageConfig | Out-Null
+Robo (Join-Path $Root 'config') $stageConfig "config"
+Write-Host "  copy config (providers.json -> runtime backend)"
 # 3.3 python package -> app/src/fieldstation
 $stagePy = Join-Path $Stage 'src\fieldstation'
 New-Item -ItemType Directory -Force -Path $stagePy | Out-Null
