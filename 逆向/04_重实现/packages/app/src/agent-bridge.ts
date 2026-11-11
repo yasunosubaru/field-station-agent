@@ -42,6 +42,8 @@ const TOKEN_BYTES = 16;
 const STARTUP_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const BODY_LIMIT = 1_000_000;
+/** Raw relays may carry the parity table (43 KB today) or a long event list; still bounded. */
+const RAW_LIMIT = 8 * 1024 * 1024;
 const STDERR_LINES = 20;
 const STDERR_CHARS = 4_000;
 /** Session ids are path segments; nothing else may appear in one. */
@@ -439,6 +441,36 @@ export class AgentBridge {
     } catch {
       throw new HttpError(502, `agent server 返回了非 JSON 响应（HTTP ${status}）`);
     }
+  }
+
+  /**
+   * Byte-for-byte proxy: returns the upstream status, content type and body unchanged.
+   *
+   * `requestJson` deliberately refuses a body that is not a JSON object (an array or bare text
+   * would mean the agent answered something this layer did not expect). Some surfaces legitimately
+   * answer that way — `/board/events` is a bare array because `fleet.js` reads it with
+   * `Array.isArray`, and `/suite/field-parity` is markdown — so those go through here and keep
+   * the agent's own bytes instead of being re-shaped by the Node layer.
+   */
+  async requestRaw(
+    method: string,
+    path: string,
+  ): Promise<{ status: number; contentType: string; body: Buffer }> {
+    const endpoint = await this.ensureStarted();
+    const upstream = await this.open(endpoint.port, path, method.toUpperCase(), undefined);
+
+    let raw: Buffer;
+    try {
+      raw = await readAll(upstream, RAW_LIMIT, this.requestTimeoutMs);
+    } catch (error) {
+      this.endpoint = null;
+      throw error;
+    }
+    return {
+      status: upstream.statusCode ?? 502,
+      contentType: String(upstream.headers['content-type'] ?? 'application/octet-stream'),
+      body: raw,
+    };
   }
 
   /**

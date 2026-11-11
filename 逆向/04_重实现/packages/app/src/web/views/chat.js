@@ -1,12 +1,23 @@
 ﻿/**
  * 对话视角 —— Bot-9：自由对话 + 下钻。
  *
- * ## 它现在是什么
+ * ## 结构（照 Claude Code / OpenChamber 的对话台）
  *
- * 接 `/api/agent/*`（Node 代理 → `tools/agent_server.py`，30 个工具、会话与设置都现成）。
+ *   ┌──────────┬───────────────────────────────┬─────────┐
+ *   │ 会话侧栏 │ 消息流（用户 / 助手 / 工具 / 审批）│ 右栏    │
+ *   │ 新建会话 │ …                             │ 工具数  │
+ *   │ 会话列表 │ 输入区（Ctrl+Enter 发送）      │ 耗时    │
+ *   └──────────┴───────────────────────────────┴─────────┘
+ *
+ * 左栏与中栏由本文件画（`main` 里再分两列），右栏仍交给外壳的 `renderRail`。
+ *
+ * ## 它接的是什么
+ *
+ * `/api/agent/*`（Node 代理 → `tools/agent_server.py`，30 个工具、会话与设置都现成）。
  *
  *   · **自由对话**：发一句 → 建会话（或复用）→ SSE 流式回包 → 消息与工具卡进流；
- *   · **下钻**：选中某个任务步之后，消息发到**那一步的会话**里，而不是新开一个。
+ *   · **下钻**：选中某个任务步之后，消息发到**那一步的会话**里，而不是新开一个；
+ *   · **回看**：左侧点一个历史会话 → `GET /sessions/:id` 的 `events` 折回同一套卡片。
  *
  * ## 下钻的关键约束（用户要求的原话）
  *
@@ -27,6 +38,12 @@
 import { el, section, kv, button } from './dom.js';
 import { formatDuration } from './state.js';
 import {
+  buildCards,
+  relativeTime,
+  sessionTitle,
+  sortSessions,
+} from '../agent/model.js';
+import {
   renderMessage,
   renderToolCard,
   renderApprovalCard,
@@ -36,9 +53,56 @@ import {
 /** agent server 的接口前缀（Node 代理会转发到 Python）。 */
 export const AGENT_PREFIX = '/api/agent';
 
+/** 输入区的一行提示。写在界面上而不是只写 placeholder —— 回车语义必须能被看见。 */
+export const KEY_HINT = 'Ctrl+Enter 发送 · Enter 换行';
+
 /** 一次会话在界面上的一份快照。 */
 function emptyThread() {
-  return { sessionId: '', cards: [], streaming: false };
+  return { sessionId: '', title: '', cards: [], streaming: false };
+}
+
+/**
+ * 一个值 → 折起来给人看的文本。
+ *
+ * `undefined` / `null` 各自说清是哪一种：前者是「还没有这个字段」，后者是「字段是空值」。
+ * 两种都印「—」会让「工具还没返回」与「工具返回了 null」看起来一样。
+ */
+function serialize(value) {
+  if (value === undefined) return '（暂无）';
+  if (value === null) return 'null';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+/** 复制到剪贴板。够用就返回 true；失败**不抛**，由调用方决定怎么提示。 */
+async function copyText(value) {
+  const text = String(value == null ? '' : value);
+  if (!text) return false;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* 权限被拒 / 非安全上下文：往下走兜底 */
+  }
+  // 兜底：临时 textarea + execCommand。Electron 里这条反而是常走的那条。
+  try {
+    if (typeof document === 'undefined' || !document.body) return false;
+    const holder = document.createElement('textarea');
+    holder.value = text;
+    holder.setAttribute('readonly', '');
+    document.body.appendChild(holder);
+    holder.select();
+    const ok = document.execCommand('copy');
+    holder.remove();
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
 }
 
 export function mount(ctx) {
@@ -53,7 +117,21 @@ export function mount(ctx) {
    */
   let thread = emptyThread();
   let expanded = new Set();
+  /**
+   * 哪些折叠块是展开的，键是 `${卡片 id}:${槽}`。
+   *
+   * 与 `expanded` 分开：`expanded` 管的是 `renderToolCard` 自己那块 trace 折叠区，
+   * 这里的两个槽（入参 / 返回）是对话台额外画的。两件事混用一个 Set，
+   * 就会出现「展开了入参，trace 也莫名其妙张开了」。
+   */
+  let openFolds = new Set();
   let controller = null;
+  /** 待发送的附件（占位：后端没有上传端点，只把文件名当文字带上去）。 */
+  let attachments = [];
+  /** 左侧会话列表的快照。 */
+  let sessions = [];
+  let sessionsNote = '';
+  let copySeq = 0;
 
   /* —— 页头：视角名 + 会话标题 + 操作（附录 C.7「对话 → 会话标题」） —— */
   const titleEl = el('span', { cls: 'vw-view-context', data: { sessionTitle: '' }, text: '新会话' });
@@ -62,12 +140,36 @@ export function mount(ctx) {
     el('h1', { cls: 'vw-view-title', text: '对话' }),
     titleEl,
     el('div', { cls: 'vw-view-head-actions', children: [
-      button('清空', { variant: 'text', data: { action: 'clear' } }),
+      button('清空', { variant: 'text', data: { action: 'clear' }, title: '清空当前会话的界面（服务端的会话记录不动）' }),
     ] }),
   );
 
+  /* ================================================================
+   * 三栏骨架
+   * ================================================================ */
+
+  const sessionList = el('ul', { cls: 'vw-chat-session-list', data: { chatSessionList: '' }, attr: { role: 'list' } });
+
+  const newSessionBtn = button('新建会话', {
+    variant: 'primary',
+    data: { chatNewSession: '' },
+    title: '清掉当前界面，下一句会开一个新会话',
+  });
+
+  const sidebar = el('aside', {
+    cls: 'vw-chat-sessions',
+    data: { chatSessions: '' },
+    attr: { 'aria-label': '会话' },
+  }, [
+    el('div', { cls: 'vw-chat-sessions-head', children: [
+      el('h2', { cls: 'vw-chat-sessions-title', text: '会话' }),
+      newSessionBtn,
+    ] }),
+    sessionList,
+  ]);
+
   /* —— 消息流 —— */
-  const stream = el('div', { cls: 'vw-chat-stream', data: { chatStream: '' } });
+  const stream = el('div', { cls: 'vw-chat-stream', data: { chatStream: '' }, attr: { role: 'log', 'aria-live': 'polite' } });
 
   /**
    * 空态：三个例子覆盖三类能力（查数据 / 查统计 / 查知识）。
@@ -103,20 +205,73 @@ export function mount(ctx) {
     ] }));
   }
 
-  /* —— 输入区 —— */
+  /* ================================================================
+   * 输入区
+   * ================================================================ */
+
   const input = el('textarea', {
     cls: 'vw-chat-input',
-    attr: { rows: '2', placeholder: '输入…（Ctrl+Enter 发送）', 'aria-label': '输入消息' },
+    attr: {
+      rows: '2',
+      placeholder: '输入…（Ctrl+Enter 发送）',
+      'aria-label': '输入消息',
+      'aria-describedby': 'vw-chat-key-hint',
+    },
   });
-  const send = button('发送', { variant: 'primary', data: { action: 'send' } });
+
+  const send = button('发送', { variant: 'primary', data: { chatSend: '' } });
+
+  /*
+   * 附件：**占位但真的有 handler**。
+   *
+   * 后端目前没有上传端点，所以这里不假装上传成功 —— 选中的文件名变成 chip、
+   * 标「未上传」，并在发送时作为一行文字带进消息里。用户知道发生了什么，
+   * 模型也知道这几个文件只是名字。
+   */
+  const filePicker = el('input', {
+    cls: 'vw-chat-file',
+    attr: { type: 'file', multiple: true, hidden: '', 'aria-label': '选择附件' },
+  });
+  const attachBtn = button('附件', {
+    variant: 'quiet',
+    data: { chatAttach: '' },
+    title: '选择附件（后端暂无上传端点，只把文件名作为文字带进消息）',
+  });
+
+  const clearInputBtn = button('清空输入', {
+    variant: 'quiet',
+    data: { chatClearInput: '' },
+    title: '只清输入框与附件，不动会话',
+  });
+
+  const chips = el('ul', { cls: 'vw-chat-attachments', data: { chatAttachments: '' }, attr: { hidden: '' } });
+
   const composer = el('form', {
     cls: 'vw-chat-composer',
     attr: { 'data-chat-composer': '' },
-    children: [input, send],
+    children: [
+      chips,
+      el('div', { cls: 'vw-chat-composer-row', children: [input, send] }),
+      el('div', { cls: 'vw-chat-composer-tools', children: [
+        attachBtn,
+        clearInputBtn,
+        filePicker,
+        el('span', { cls: 'vw-chat-key-hint', attr: { id: 'vw-chat-key-hint' }, text: KEY_HINT }),
+      ] }),
+    ],
   });
 
-  main.append(stream);
+  const gateNote = el('p', { cls: 'ag-gate-note', attr: { hidden: '' }, role: 'status' });
+  const composerHost = el('div', { cls: 'vw-chat-composer-host' }, [gateNote, composer]);
+
+  const column = el('section', { cls: 'vw-chat-main', data: { chatMain: '' } }, [stream, composerHost]);
+
+  const shell = el('div', { cls: 'vw-chat', data: { chatShell: '' } }, [sidebar, column]);
+
+  main.append(shell);
   paintEmpty();
+  renderAttachments();
+  paintSessions();
 
   /* ================================================================
    * 渲染消息
@@ -126,53 +281,169 @@ export function mount(ctx) {
   let cardSeq = 0;
   const nextCardId = () => `c${++cardSeq}`;
 
+  /**
+   * 重画消息流。
+   *
+   * ## 一个必须记住的坑（`input.disabled` 卡死）
+   *
+   * 这里曾经是「空流就 `paintEmpty(); return;`」—— 于是**审批门不会被重新同步**。
+   * 表现：审批卡未决时输入框被禁用，此时点「清空」（或下钻、退出下钻），消息流空了，
+   * 但输入框**永久停在 disabled**。页面上明明没有任何审批卡可点，用户却敲不进字；
+   * 而点示例按钮仍然有效（它是脚本直接写 `.value`，绕过键盘）——
+   * 正是「click 有效、打字无效」那个症状。
+   *
+   * 所以 `syncApprovalGate()` 必须在**空流分支之外**调用，一次都不能省。
+   */
   function paintThread() {
     if (!thread.cards.length) {
       paintEmpty();
-      return;
-    }
-    const nodes = thread.cards.map((card) => {
-      switch (card.type) {
-        case 'message':
-          return renderMessage(card);
-        case 'tool':
-          return renderToolCard(card, {
-            isExpanded: (id) => expanded.has(id),
-            setExpanded: (id, open) => { if (open) expanded.add(id); else expanded.delete(id); },
-            onTrace: (tool) => {
-              // 「查看 trace」= 展开这张卡自己的折叠区。没有独立的 trace 面板时
-              // 就地展开是最诚实的做法 —— 它确实就是那次调用的完整返回。
-              expanded.add(tool.id);
-              paintThread();
-            },
-          });
-        case 'approval':
-          return renderApprovalCard(card, {
-            onApproval: decideApproval,
-            onEvidence: (item) => {
-              // 证据就在同名 call_id 的工具卡里。滚到它并展开。
-              const target = thread.cards.find((entry) => entry.type === 'tool' && entry.callId === item.callId);
-              if (target) {
-                expanded.add(target.id);
-                paintThread();
-                stream.querySelector(`[data-card-id="${target.id}"]`)?.scrollIntoView({ block: 'nearest' });
-              }
-            },
-          });
-        case 'error':
-          return renderErrorCard(card, {});
-        default:
-          return null;
-      }
-    }).filter(Boolean);
+    } else {
+      const nodes = thread.cards.map((card) => {
+        switch (card.type) {
+          case 'message':
+            return paintMessage(card);
+          case 'tool':
+            return paintTool(card);
+          case 'approval':
+            return renderApprovalCard(card, {
+              onApproval: decideApproval,
+              onEvidence: (item) => {
+                // 证据就在同名 call_id 的工具卡里。滚到它并展开。
+                const target = thread.cards.find((entry) => entry.type === 'tool' && entry.callId === item.callId);
+                if (target) {
+                  expanded.add(target.id);
+                  paintThread();
+                  stream.querySelector(`[data-card-id="${target.id}"]`)?.scrollIntoView?.({ block: 'nearest' });
+                }
+              },
+            });
+          case 'error':
+            return renderErrorCard(card, {});
+          default:
+            return null;
+        }
+      }).filter(Boolean);
 
-    stream.replaceChildren(...nodes, ...toolsEmptyNote());
-    // 审批未决时禁用输入框（规矩一）。
+      stream.replaceChildren(...nodes, ...toolsEmptyNote());
+    }
+
+    // 审批未决时禁用输入框（规矩一）。空流也要同步 —— 否则门永远开着。
     syncApprovalGate();
+    syncSending();
     // 右栏的工具调用数 / 总耗时 / 证据 call_id 都随消息流变，这里一并刷新。
     ctx.repaintRail();
     // 新消息进来时贴到底部 —— 但只在用户本来就在底部时才贴，别抢滚动。
     stream.scrollTop = stream.scrollHeight;
+  }
+
+  /**
+   * 一条消息。
+   *
+   * 用户 / 助手的视觉区分由 `agent/cards.js` 的 `.ag-msg-user` / `.ag-bubble-user` 决定
+   * （用户靠右、有底色；助手占满宽）。这里只补一件卡片模块不该管的事：
+   * **流式生成时末尾的光标** —— 它是「还在写」的唯一实时证据。
+   */
+  function paintMessage(card) {
+    const node = renderMessage(card);
+    if (card.role !== 'user' && card.streaming) {
+      const bubble = node.querySelector?.('.ag-bubble');
+      if (bubble) {
+        bubble.append(el('span', { cls: 'vw-chat-cursor', data: { chatCursor: '' }, attr: { 'aria-hidden': 'true' } }));
+      }
+    }
+    return node;
+  }
+
+  /* ================================================================
+   * 工具卡：卡片本身 + 两折详情 + 可复制的 call_id
+   * ================================================================ */
+
+  /**
+   * 一张工具卡 = `renderToolCard` 画的那张 + 下面这条详情带。
+   *
+   * ## 为什么详情带放在卡片外面
+   *
+   * `cards.js` 的折叠区把「入参 + 返回」合成一段 JSON 展示，那是**trace 视角**（全量）。
+   * 这里要的是两个各自独立的折叠：入参、返回 —— 看「我批准的是什么参数」时不该被
+   * 一大段返回挤走。两者用途不同，所以不做成同一个折叠；`查看 trace` 仍然展开全量。
+   *
+   * 卡片本身只有一张（`[data-card-type="tool"]` 仍然只出现一次），
+   * 详情带是它的兄弟节点，不嵌套 —— 免得同一份数据被画两遍还互相干扰折叠状态。
+   */
+  function paintTool(card) {
+    const article = renderToolCard(card, {
+      isExpanded: (id) => expanded.has(id),
+      setExpanded: (id, open) => { if (open) expanded.add(id); else expanded.delete(id); },
+      onTrace: (tool) => {
+        // 「查看 trace」= 展开这张卡自己的折叠区。没有独立的 trace 面板时
+        // 就地展开是最诚实的做法 —— 它确实就是那次调用的完整返回。
+        expanded.add(tool.id);
+        paintThread();
+      },
+    });
+
+    const detail = el('div', { cls: 'vw-chat-tool-detail', data: { toolDetail: card.id } }, [
+      paintFold('入参', serialize(card.args), 'args', card.id),
+      paintFold('返回', serialize(card.data), 'result', card.id),
+      card.callId ? paintCallId(card.callId) : null,
+    ]);
+
+    return el('div', { cls: 'vw-chat-tool', data: { toolWrap: card.id } }, [article, detail]);
+  }
+
+  /** 一个折叠块：按钮 + 默认收起的内容。 */
+  function paintFold(label, text, slot, ownerId) {
+    const key = `${ownerId}:${slot}`;
+    const open = openFolds.has(key);
+    const body = el('pre', { cls: 'vw-chat-fold-body', attr: { hidden: open ? null : '' }, text });
+    const headBtn = el('button', {
+      cls: `vw-chat-fold-head${open ? ' is-open' : ''}`,
+      text: label,
+      attr: { type: 'button', 'aria-expanded': open ? 'true' : 'false' },
+      data: { fold: slot, foldOwner: ownerId },
+    });
+    headBtn.addEventListener('click', () => {
+      const nowOpen = headBtn.getAttribute('aria-expanded') === 'true';
+      headBtn.setAttribute('aria-expanded', nowOpen ? 'false' : 'true');
+      // 当场同步折叠体：只改状态不重画，点开要立刻看到内容。
+      body.hidden = nowOpen;
+      headBtn.classList.toggle('is-open', !nowOpen);
+      // 状态也要落进 openFolds —— 否则下一次重画会把用户刚展开的那块收回去。
+      if (nowOpen) openFolds.delete(key);
+      else openFolds.add(key);
+    });
+    return el('div', { cls: 'vw-chat-fold', data: { foldSlot: slot } }, [headBtn, body]);
+  }
+
+  /**
+   * 证据行：call_id + 复制。
+   *
+   * 规格 6.3 规矩三 —— call_id 是回源的唯一入口，所以它必须**能被拿走**
+   * （贴进工单、贴进日志），而不只是能被看见。复制失败也说出来，不静默。
+   */
+  function paintCallId(callId) {
+    const copy = el('button', {
+      cls: 'vw-chat-copy',
+      text: '复制',
+      attr: { type: 'button', 'aria-label': `复制 call_id ${callId}` },
+      data: { copyCall: callId },
+    });
+    copy.addEventListener('click', async () => {
+      const ok = await copyText(callId);
+      copy.textContent = ok ? '已复制' : '复制失败';
+      copy.dataset.copied = ok ? 'true' : 'false';
+      const token = ++copySeq;
+      setTimeout(() => {
+        if (token !== copySeq) return;
+        copy.textContent = '复制';
+        delete copy.dataset.copied;
+      }, 1400);
+    });
+    return el('p', { cls: 'vw-chat-evidence' }, [
+      el('span', { cls: 'vw-chat-evidence-label', text: 'call_id' }),
+      el('code', { cls: 'ag-call-id', text: callId }),
+      copy,
+    ]);
   }
 
   /**
@@ -214,6 +485,9 @@ export function mount(ctx) {
    * 而其中一个还没被批准，事后没人能说清顺序。
    *
    * 为什么还要说明原因：灰掉但不说为什么比不禁用更糟，用户会以为界面坏了。
+   *
+   * 为什么判断依据只能是「消息流里有没有未决卡」：另存一份 `pendingApproval` 布尔，
+   * 就会在清空 / 下钻 / 换会话时漏掉复位 —— 那正是输入框被锁死的那条路。
    */
   function syncApprovalGate() {
     const pending = thread.cards.find((card) => card.type === 'approval' && card.status === 'pending');
@@ -223,10 +497,6 @@ export function mount(ctx) {
     syncGateNote(blocked);
   }
 
-  const gateNote = el('p', { cls: 'ag-gate-note', attr: { hidden: '' }, role: 'status' });
-  const composerHost = el('div', { cls: 'vw-chat-composer-host' }, [gateNote, composer]);
-  main.append(composerHost);
-
   function syncGateNote(blocked) {
     if (blocked) {
       gateNote.hidden = false;
@@ -235,6 +505,146 @@ export function mount(ctx) {
     }
     gateNote.hidden = true;
     gateNote.textContent = '';
+  }
+
+  /**
+   * 发送中：只禁「发送」与「附件」。
+   *
+   * **不禁输入框**。理由有两条：一是这一版最容易踩的坑就是输入框被锁死（见 paintThread），
+   * 二是生成中用户往往已经在写下一句，锁掉文本域等于逼他等。回车在生成中会被
+   * `sendMessage` 挡掉，所以不会并发两条请求。
+   */
+  function syncSending() {
+    const busy = thread.streaming;
+    send.disabled = busy;
+    attachBtn.disabled = busy;
+    composer.classList.toggle('is-busy', busy);
+    composer.setAttribute('aria-busy', busy ? 'true' : 'false');
+    send.textContent = busy ? '生成中…' : '发送';
+  }
+
+  /* ================================================================
+   * 左侧：会话列表
+   * ================================================================ */
+
+  function paintSessions() {
+    const rows = sortSessions(sessions).filter((item) => item && item.id);
+    if (!rows.length) {
+      sessionList.replaceChildren(el('li', { cls: 'vw-chat-session-empty' }, [
+        el('p', {
+          cls: 'vw-chat-session-empty-text',
+          text: sessionsNote || '还没有会话。发一句就会建一个。',
+        }),
+      ]));
+      return;
+    }
+    sessionList.replaceChildren(...rows.map((session) => {
+      const active = session.id === thread.sessionId;
+      const open = el('button', {
+        cls: 'vw-chat-session-open',
+        attr: { type: 'button', 'aria-current': active ? 'true' : null },
+        data: { sessionId: session.id },
+        children: [
+          el('span', { cls: 'vw-chat-session-title', text: sessionTitle(session) }),
+          el('span', { cls: 'vw-chat-session-time unit', text: relativeTime(session.updated_at) || '—' }),
+        ],
+      });
+      open.addEventListener('click', () => { void openSession(session.id); });
+      return el('li', {
+        cls: `vw-chat-session${active ? ' is-active' : ''}`,
+        data: { sessionRow: session.id },
+        children: [open],
+      });
+    }));
+  }
+
+  async function loadSessions() {
+    try {
+      const response = await fetch(`${AGENT_PREFIX}/sessions`, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const body = await response.json();
+      sessions = Array.isArray(body?.sessions) ? body.sessions : [];
+      sessionsNote = '';
+    } catch (error) {
+      // 列表拉不到不是致命错误：仍能新建会话并发消息。但要说出来，不能空着了事。
+      sessions = [];
+      sessionsNote = `会话列表没拉到（${error && error.message ? error.message : String(error)}）。仍可直接发消息。`;
+    }
+    paintSessions();
+  }
+
+  /**
+   * 打开一个历史会话。
+   *
+   * `GET /sessions/:id` 返回 `{session, events}`；`events` 用 `agent/model.js` 的
+   * `buildCards` 折回同一套卡片 —— 回放与实时走同一份渲染函数，界面上不会出现
+   * 「历史会话长得不一样」。
+   *
+   * 回放出来的 `call_id` 在 `evidence.call_id` 里（与实时事件同一处），补到卡片上，
+   * 右栏的证据列表才认得它。
+   */
+  async function openSession(sessionId) {
+    if (!sessionId) return;
+    controller?.abort();
+    try {
+      const response = await fetch(`${AGENT_PREFIX}/sessions/${encodeURIComponent(sessionId)}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const body = await response.json();
+      thread = emptyThread();
+      // 换了一个会话：上一条会话里展开的卡不该继续张着（它们已经不在列表里了）。
+      expanded = new Set();
+      openFolds = new Set();
+      thread.sessionId = (body?.session && (body.session.id || body.session.session_id)) || sessionId;
+      thread.title = (body?.session && body.session.title) || '';
+      thread.cards = replayCards(body?.events);
+      revokeCopyTokens();
+      titleEl.textContent = thread.title || `会话 ${String(thread.sessionId).slice(0, 8)}`;
+    } catch (error) {
+      thread.cards.push({
+        type: 'error',
+        id: nextCardId(),
+        message: `这个会话没有打开：${error && error.message ? error.message : String(error)}。可以点「新建会话」重开一个。`,
+        errorClass: 'network',
+        ts: new Date().toISOString(),
+      });
+    }
+    paintThread();
+    paintSessions();
+  }
+
+  /** `events` → 卡片。复用 agent/model.js 的事件折叠，回放与实时同一套字段。 */
+  function replayCards(events) {
+    const cards = buildCards(Array.isArray(events) ? events : []);
+    let seq = 0;
+    return cards.map((card) => {
+      seq += 1;
+      const next = { ...card, id: card.id || `h${seq}` };
+      if (next.type === 'tool') {
+        const evidenceId = next.evidence && next.evidence.call_id;
+        next.callId = evidenceId || next.callId || '';
+        // 回放里失败原因的原文在 summary（与实时 tool_result 同一字段）。
+        if (next.status === 'failed' && !next.note && typeof next.summary === 'string') next.note = next.summary;
+      }
+      return next;
+    });
+  }
+
+  function revokeCopyTokens() {
+    copySeq += 1;
+  }
+
+  /** 开一个新会话：只清界面，服务端的会话等第一句话才建。 */
+  function resetThread() {
+    controller?.abort();
+    revokeCopyTokens();
+    thread = emptyThread();
+    expanded = new Set();
+    openFolds = new Set();
+    titleEl.textContent = state.get().selectedTaskId ? `下钻 ${state.get().selectedTaskId}` : '新会话';
+    paintThread();
+    paintSessions();
   }
 
   /* ================================================================
@@ -274,24 +684,38 @@ export function mount(ctx) {
     if (!text.trim() || thread.streaming) return;
     if (thread.cards.some((card) => card.type === 'approval' && card.status === 'pending')) return;
 
+    /*
+     * 附件只是**名字**：后端没有上传端点，所以把文件名作为一行文字带上去，
+     * 让模型知道自己看到的是什么，也让审计里留下「这句话提到了哪些文件」。
+     */
+    const carried = attachments.length
+      ? `（附件（未上传）：${attachments.map((file) => file.name).join('、')}）\n`
+      : '';
+    const outgoing = carried + text;
+
     // 先把用户这句话贴上去：等回包再贴会让人觉得「点了没反应」。
-    thread.cards.push({ type: 'message', id: nextCardId(), role: 'user', content: text, ts: new Date().toISOString() });
+    thread.cards.push({ type: 'message', id: nextCardId(), role: 'user', content: outgoing, ts: new Date().toISOString() });
     thread.streaming = true;
     send.disabled = true;
     input.value = '';
+    attachments = [];
+    renderAttachments();
     paintThread();
 
     controller = new AbortController();
     try {
       const sessionId = await ensureSession();
       if (!sessionId) throw new Error('会话没有 id');
-      // 会话刚建好：右栏要显示它的 id（那是「这一轮属于哪个会话」的唯一凭据）。
+      // 会话刚建好：右栏要显示它的 id（那是「这一轮属于哪个会话」的唯一凭据），
+      // 左侧列表也要把它排进来（新建的会话下一次刷新才在服务端出现，先本地补一条）。
+      rememberSession(sessionId, outgoing);
       ctx.repaintRail();
+      paintSessions();
 
       const response = await fetch(`${AGENT_PREFIX}/sessions/${encodeURIComponent(sessionId)}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: outgoing }),
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`发送失败：HTTP ${response.status}`);
@@ -314,6 +738,17 @@ export function mount(ctx) {
       controller = null;
       paintThread();
     }
+  }
+
+  /** 新会话在服务端已存在之后，本地先把它放进列表，不必等下一次全量刷新。 */
+  function rememberSession(sessionId, firstText) {
+    const existing = sessions.find((item) => item.id === sessionId);
+    const title = firstText.split('\n').map((line) => line.trim()).filter(Boolean)[0] || '';
+    const row = { id: sessionId, title: title.slice(0, 24), updated_at: new Date().toISOString() };
+    if (existing) Object.assign(existing, row);
+    else sessions.unshift(row);
+    thread.title = row.title;
+    titleEl.textContent = row.title || `会话 ${String(sessionId).slice(0, 8)}`;
   }
 
   /** 逐条读 SSE。事件格式与 `docs/contracts/agent-events.md` 同一套。 */
@@ -538,7 +973,7 @@ export function mount(ctx) {
        * 决定后一次（只带 status / decision / decided_at）。
        * 无条件 `Object.assign` 会用第二次的空 `requested_by` / `impact` 把第一次的
        * 冲掉 —— 表现是「点了拒绝之后，申请人和后果那两行没了」，
-       * 而这正是审计最需要留着的那两行。
+       * 而那正是审计最需要留着的那两行。
        */
       const merge = (target, source) => {
         for (const [key, value] of Object.entries(source)) {
@@ -611,6 +1046,8 @@ export function mount(ctx) {
     if (type === 'done') {
       if (assistant) assistant.streaming = false;
       paintThread();
+      // 一轮结束后刷新一次列表：服务端刚把 updated_at / 标题写好。
+      void loadSessions();
       return null;
     }
 
@@ -664,8 +1101,11 @@ export function mount(ctx) {
     state.set({ selectedTaskId: taskId });
     thread = emptyThread();
     expanded = new Set();
+    openFolds = new Set();
+    revokeCopyTokens();
     titleEl.textContent = `下钻 ${taskId}`;
     paintThread();
+    paintSessions();
     input.focus();
   }
 
@@ -675,12 +1115,12 @@ export function mount(ctx) {
 
   ctx.renderRail((rail) => {
     const selected = state.get().selectedTaskId;
-    const toolCount = thread.cards.filter((card) => card.type === 'tool').length;
-    const totalMs = thread.cards
-      .filter((card) => card.type === 'tool' && typeof card.durationMs === 'number')
+    const toolCards = thread.cards.filter((card) => card.type === 'tool');
+    const totalMs = toolCards
+      .filter((card) => typeof card.durationMs === 'number')
       .reduce((sum, card) => sum + card.durationMs, 0);
-    const callIds = thread.cards
-      .filter((card) => card.type === 'tool' && card.callId)
+    const callIds = toolCards
+      .filter((card) => card.callId)
       .map((card) => card.callId);
 
     // 「退出下钻」的按钮每次重建，所以监听要绑在**新建的那颗**上，
@@ -690,8 +1130,11 @@ export function mount(ctx) {
       state.set({ selectedTaskId: null });
       thread = emptyThread();
       expanded = new Set();
+      openFolds = new Set();
+      revokeCopyTokens();
       titleEl.textContent = '新会话';
       paintThread();
+      paintSessions();
       ctx.repaintRail();
     });
 
@@ -704,15 +1147,22 @@ export function mount(ctx) {
       ]),
       section('本次会话', null, [
         kv([
-          ['工具调用', String(toolCount)],
+          ['工具调用', String(toolCards.length)],
           ['总耗时', totalMs ? formatDuration(totalMs) : '—'],
           ['会话', thread.sessionId || '未建'],
+          ['状态', thread.streaming ? '生成中' : (thread.sessionId ? '就绪' : '空闲')],
         ]),
       ]),
       section('证据', callIds.length ? `${callIds.length} 条` : null, [
         // 右栏列 call_id（附录 C.2 点四）：用户要能「顺着证据查」。
+        // 点一下滚到那张卡 —— 否则几十条 id 只能靠肉眼找。
         callIds.length
-          ? el('div', { cls: 'vw-rail-calls' }, callIds.map((id) => el('code', { cls: 'ag-call-id', text: id })))
+          ? el('div', { cls: 'vw-rail-calls' }, callIds.map((id) => el('button', {
+            cls: 'vw-rail-call',
+            attr: { type: 'button', title: `定位到 call_id ${id} 的卡片` },
+            data: { evidenceId: id },
+            children: [el('code', { cls: 'ag-call-id', text: id })],
+          })))
           : el('p', { cls: 'vw-rail-empty', text: '工具调用之后，这里列出它们的 call_id。' }),
       ]),
     );
@@ -731,35 +1181,103 @@ export function mount(ctx) {
 
   head.addEventListener('click', (event) => {
     const action = event.target.closest('[data-action]')?.dataset.action;
-    if (action === 'clear') {
-      controller?.abort();
-      thread = emptyThread();
-      expanded = new Set();
-      titleEl.textContent = state.get().selectedTaskId ? `下钻 ${state.get().selectedTaskId}` : '新会话';
-      paintThread();
-      ctx.repaintRail();
-      input.focus();
-    }
+    if (action === 'clear') resetThread();
   });
 
-  ctx.rail.addEventListener?.('click', (event) => {
+  newSessionBtn.addEventListener('click', () => {
+    resetThread();
+    input.focus();
+  });
+
+  ctx.rail?.addEventListener?.('click', (event) => {
     if (event.target.closest('[data-action="exit-drill"]')) {
       state.set({ selectedTaskId: null });
       thread = emptyThread();
+      expanded = new Set();
+      openFolds = new Set();
+      revokeCopyTokens();
       titleEl.textContent = '新会话';
       paintThread();
+      paintSessions();
+      return;
+    }
+    const evidence = event.target.closest('[data-evidence-id]');
+    if (evidence) {
+      const id = evidence.dataset.evidenceId;
+      const target = thread.cards.find((card) => card.type === 'tool' && card.callId === id);
+      if (!target) return;
+      expanded.add(target.id);
+      // 两个槽都打开：用户点证据是来核对的，「滚过去但内容还收着」等于没核对。
+      openFolds.add(`${target.id}:args`);
+      openFolds.add(`${target.id}:result`);
+      paintThread();
+      stream.querySelector(`[data-card-id="${target.id}"]`)?.scrollIntoView?.({ block: 'nearest' });
     }
   });
 
   composer.addEventListener('submit', (event) => {
     event.preventDefault();
-    sendMessage(input.value);
+    void sendMessage(input.value);
   });
 
+  /*
+   * 发送按钮**必须单独接 click**。
+   *
+   * 为什么：`button()` 造出来的 `<button>` 没有 `type`，而 HTML 默认在表单里是
+   * `type="submit"` —— 但本项目 `button()` 显式写了 `type="button"`（见 dom.js），
+   * 于是点它**不触发 form 的 submit 事件**。实测：点击后 `fetch` 一次都没发出
+   * （网络面板 reqs 为空），界面停在空态，看起来就是「点了没反应」。
+   *
+   * 两条路都保留：回车走 submit、点按钮走 click，谁先到都能发。
+   */
+  send.addEventListener('click', (event) => {
+    event.preventDefault();
+    void sendMessage(input.value);
+  });
+
+  composer.addEventListener('click', (event) => {
+    const drop = event.target.closest('[data-action="drop-attach"]');
+    if (!drop) return;
+    const index = Number(drop.dataset.index);
+    if (Number.isInteger(index) && index >= 0) {
+      attachments.splice(index, 1);
+      renderAttachments();
+    }
+  });
+
+  attachBtn.addEventListener('click', () => {
+    // 真 DOM 上打开文件选择框；桩环境没有 click，静默跳过即可（不是错误）。
+    if (typeof filePicker.click === 'function') filePicker.click();
+  });
+
+  filePicker.addEventListener('change', () => {
+    const picked = Array.from(filePicker.files || []);
+    attachments = picked.map((file) => ({ name: file && file.name ? String(file.name) : '未命名文件' }));
+    renderAttachments();
+    input.focus();
+  });
+
+  clearInputBtn.addEventListener('click', () => {
+    input.value = '';
+    attachments = [];
+    renderAttachments();
+    input.focus();
+  });
+
+  /**
+   * 键盘：Ctrl+Enter 发送，Enter 换行。
+   *
+   * ## 必须先放掉输入法组合态
+   *
+   * 中文输入时按 Enter 是「上屏」，此时 `keydown` 会带着 `isComposing = true`
+   * （或 `keyCode === 229`）。不判它就会在上屏那一下直接发出去半句话 ——
+   * 这是中文场景里最典型的「回车把话截断」。
+   */
   input.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
-      composer.requestSubmit();
+      void sendMessage(input.value);
     }
   });
 
@@ -776,6 +1294,41 @@ export function mount(ctx) {
   });
 
   titleEl.textContent = state.get().selectedTaskId ? `下钻 ${state.get().selectedTaskId}` : '新会话';
+
+  /* ================================================================
+   * 附件 chip
+   * ================================================================ */
+
+  /**
+   * 重画附件条。
+   *
+   * 三个信息一个都不能省：文件名（是哪个）、「未上传」（后端没有上传端点，它只是名字）、
+   * 移除（选错了要能撤）。少了第二个，用户会以为文件已经传上去了。
+   */
+  function renderAttachments() {
+    chips.hidden = attachments.length === 0;
+    if (!attachments.length) {
+      chips.replaceChildren();
+      return;
+    }
+    chips.replaceChildren(...attachments.map((file, index) => el('li', {
+      cls: 'vw-chat-attach',
+      data: { attachIndex: index },
+      children: [
+        el('span', { cls: 'vw-chat-attach-name', text: file.name }),
+        el('span', { cls: 'vw-chat-attach-note unit', text: '未上传' }),
+        el('button', {
+          cls: 'vw-chat-attach-drop',
+          text: '移除',
+          attr: { type: 'button', 'aria-label': `移除附件 ${file.name}` },
+          data: { action: 'drop-attach', index: String(index) },
+        }),
+      ],
+    })));
+  }
+
+  // 首屏拉一次会话列表。拉不到不影响发消息，列表里会写清原因。
+  void loadSessions();
 
   return () => {
     unsubscribe();

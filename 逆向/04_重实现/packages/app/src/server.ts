@@ -65,6 +65,7 @@ import {
 import { graphPdfOrder, graphPdfReport } from './pdf.ts';
 import { WorkflowBridge, assertJobId, assertWorkflowId } from './workflows.ts';
 import { AgentBridge, handleAgentRoute } from './agent-bridge.ts';
+import { SURFACE_ENDPOINTS, handleSurfaceRoute, isSurfacePath } from './surface-routes.ts';
 import {
   GRIT_TILE_ATTRIBUTION,
   GRIT_TILE_DEFAULT_URL,
@@ -346,6 +347,8 @@ function health() {
       '/api/live/command',
       '/api/grit/tiles/config',
       '/api/grit/tiles/{z}/{x}/{y}',
+      // 视-2 / 视-3 / 视-4 的后端出口；清单由 surface-routes.ts 维护。
+      ...SURFACE_ENDPOINTS,
     ],
   };
 }
@@ -1845,6 +1848,12 @@ const server = createServer((req, res) => {
       // `/api/agent/...` path must be its own 404, not "unknown endpoint" from the shell.
       if (path === '/api/agent' || path.startsWith('/api/agent/')) {
         await handleAgentRoute({ bridge: agentBridge, req, res, url, method });
+        return;
+      }
+      // 编队 / 数据 / 套件三个视角同样走 agent 桥，只是路径前缀不同（见 surface-routes.ts）。
+      // 同样排在 `/api/` 兜底之前，好让这三个前缀下的错路径是这一层自己的 404。
+      if (isSurfacePath(path)) {
+        await handleSurfaceRoute({ bridge: agentBridge, req, res, url, method });
         return;
       }
       if (path.startsWith('/api/')) {

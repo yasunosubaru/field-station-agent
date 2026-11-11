@@ -40,13 +40,297 @@
 
 /* ================================================================
  * ① 对话
+ *
+ * 三栏：会话侧栏（左）/ 消息流 + 输入区（中）/ 右栏（外壳给的 aside）。
+ *
+ * 左栏由对话自己在 `main` 里再分出来，因为它是「这一视角的一份列表」，不是全局那一块；
+ * 右栏仍然归外壳（`renderRail`），切视角时它跟着换，对话不自己画。
  * ================================================================ */
 
-.vw-chat-stream {
+/* 两列：侧栏定宽 + 主列占满。`min-width: 0` 让主列能被压窄（否则长代码块撑出横向滚动）。 */
+.vw-chat {
+  display: flex;
   flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 中列：消息流在上、输入区贴底。也是一个 flex 列，所以输入区永远不随消息滚动。 */
+.vw-chat-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* —— 左侧会话栏 —— */
+
+.vw-chat-sessions {
+  display: flex;
+  flex: 0 0 196px;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.vw-chat-sessions-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.vw-chat-sessions-title {
+  margin: 0;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 「新建会话」靠右、小一号 —— 它每天点一次，不该和会话条目抢宽度。 */
+.vw-chat-sessions-head .vw-btn {
+  margin-left: auto;
+  font-size: var(--fs-tiny);
+}
+
+.vw-chat-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.vw-chat-session {
+  min-width: 0;
+}
+
+.vw-chat-session-open {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 5px 7px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-small);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vw-chat-session-open:hover {
+  background: var(--panel-2);
+}
+
+/*
+ * 当前会话：左侧竖条 + 底色，两个手段一起用。
+ * 只靠底色的话，在密集列表里要停下来找「哪一个更亮」。
+ */
+.vw-chat-session.is-active .vw-chat-session-open {
+  border-left-color: var(--accent);
+  background: var(--panel-2);
+}
+
+.vw-chat-session-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vw-chat-session-time {
+  color: var(--muted);
+}
+
+.vw-chat-session-empty {
+  padding: 8px 6px;
+}
+
+.vw-chat-session-empty-text {
+  margin: 0;
+  font-size: var(--fs-tiny);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* —— 消息流 —— */
+
+.vw-chat-stream {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 14px;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 14px;
+  padding: 16px 18px 20px;
+}
+
+/*
+ * 消息与卡片都限一个可读宽度。
+ * 宽屏上让一行文字铺满 1600px 会把眼睛跑死 —— 对话不是表格，不需要占满。
+ *
+ * `flex: 0 0 auto` 不是可选项：`.vw-chat-stream` 是**纵向 flex**，而 flex 子项的默认
+ * `flex-shrink` 是 1 —— 内容一高就被压缩到容器高度以下，卡片自己的 `overflow: hidden`
+ * 再把多出来的部分裁掉。实测表现是审批卡只剩标题与申请方两行、批准/拒绝按钮整块不见，
+ * 而滚动条也不出现（因为内容确实「装下了」，只是被压扁了）。所以每一项都必须禁止收缩。
+ */
+.vw-chat-stream > * {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/*
+ * 流式生成的光标。
+ *
+ * 它必须是**唯一**能证明「还在写」的实时信号：没有它，一个正在长出来的回答
+ * 与一段写完之后卡住的回答，在屏幕上一模一样。
+ */
+.vw-chat-cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--accent);
+  animation: vw-chat-blink 1s steps(2, start) infinite;
+}
+
+@keyframes vw-chat-blink {
+  to { visibility: hidden; }
+}
+
+/* —— 工具卡：卡片 + 两条独立折叠 + 证据行 —— */
+
+.vw-chat-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vw-chat-tool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.vw-chat-fold {
+  min-width: 0;
+}
+
+/*
+ * 折叠头：小一号的纯文字按钮。
+ * 它回答的是「这一块是入参还是返回」，不是「点我很有价值」，所以不配图标、不上底色。
+ */
+.vw-chat-fold-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-tiny);
+  cursor: pointer;
+}
+
+.vw-chat-fold-head::before {
+  content: "▸";
+  font-size: 9px;
+  line-height: 1;
+}
+
+.vw-chat-fold-head.is-open::before {
+  content: "▾";
+}
+
+.vw-chat-fold-head:hover {
+  color: var(--text);
+}
+
+.vw-chat-fold-body {
+  margin: 0;
+  padding: 7px 9px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: var(--fs-tiny);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vw-chat-fold-body[hidden] {
+  display: none;
+}
+
+.vw-chat-evidence {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  min-width: 0;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
+.vw-chat-evidence-label {
+  flex: 0 0 auto;
+}
+
+.vw-chat-evidence .ag-call-id {
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+
+.vw-chat-copy {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-tiny);
+  cursor: pointer;
+}
+
+.vw-chat-copy:hover {
+  color: var(--text);
+  border-color: var(--border-hover, var(--border));
+}
+
+/* 复制成功/失败都要能看出来：静默改文案会让人以为没点上。 */
+.vw-chat-copy[data-copied="true"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.vw-chat-copy[data-copied="false"] {
+  color: var(--bad);
+  border-color: var(--bad);
 }
 
 /*
@@ -127,13 +411,94 @@
 
 /* 输入区固定在下方。 */
 .vw-chat-composer {
+  display: flex;
   flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.vw-chat-composer-row {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
+  min-width: 0;
+}
+
+/*
+ * 工具行（附件 / 清空输入 / 键位提示）。
+ * 小一号、靠左；键位提示推到最右 —— 它是说明，不是操作。
+ */
+.vw-chat-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vw-chat-composer-tools .vw-btn {
+  font-size: var(--fs-tiny);
+}
+
+.vw-chat-key-hint {
+  margin-left: auto;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.vw-chat-file {
+  display: none;
+}
+
+/* 附件 chip：文件名 + 「未上传」+ 移除。三个都要有，缺一个就会有人以为传上去了。 */
+.vw-chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vw-chat-attachments[hidden] {
+  display: none;
+}
+
+.vw-chat-attach {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  font-size: var(--fs-tiny);
+}
+
+.vw-chat-attach-name {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.vw-chat-attach-note {
+  color: var(--muted);
+}
+
+.vw-chat-attach-drop {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: var(--fs-tiny);
+  cursor: pointer;
+}
+
+.vw-chat-attach-drop:hover {
+  text-decoration: underline;
 }
 
 /*
@@ -168,18 +533,44 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * 右栏的一条证据：整行可点，点了定位到那张卡。
+ * 做成按钮而不是纯文本，是因为几十条 id 靠肉眼比对找不回原位。
+ */
+.vw-rail-call {
+  display: block;
+  width: 100%;
+  padding: 1px 3px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vw-rail-call:hover {
+  border-left-color: var(--accent);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
 .vw-chat-input {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--panel-2);
   color: var(--text);
   font-family: inherit;
   font-size: var(--fs-body);
-  line-height: 1.5;
+  line-height: 1.55;
+  /* 纵向可拉；横向不给（拉宽会破坏输入区与发送键的关系）。 */
   resize: vertical;
+  min-height: 2.4em;
   max-height: 40vh;
 }
 
@@ -188,23 +579,125 @@
   outline-offset: -1px;
 }
 
-/* 审批未决时输入框禁用 —— 并且要说清原因（附录 C.3 点三）。 */
+/*
+ * 审批未决时输入框禁用 —— 并且要说清原因（附录 C.3 点三）。
+ *
+ * 除了灰掉，还给一道斜纹底：只看颜色深浅，在暗色主题下与正常态几乎分不出来；
+ * 斜纹是形状差异，隔一米也能看出「这个框现在不能用」。
+ * 斜纹用 repeating-linear-gradient 之外的办法做不到，这里用 border-style 与
+ * 透明度两档代替（视觉规矩：不许用渐变）。
+ */
 .vw-chat-input:disabled {
   color: var(--muted);
   border-style: dashed;
+  background: var(--panel);
   cursor: not-allowed;
 }
 
+/* 生成中：输入框仍可用（用户常常已在写下一句），只是发送键换文案并禁用。 */
+.vw-chat-composer.is-busy .vw-chat-input {
+  border-color: var(--accent-line, var(--border));
+}
+
+.vw-chat-composer.is-busy .vw-btn-primary {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 审批门已开：让提示与输入区连成一块，别看起来像两个独立控件。 */
+.vw-chat-composer.is-gated {
+  border-top-style: dashed;
+}
+
+/*
+ * 窄屏：会话侧栏收成一行横向列表贴上沿。
+ * 侧栏定宽 196px 在 1280 以下会挤掉消息流的可读宽度，而会话列表是**可以横向滚**的。
+ */
+@media (max-width: 1080px) {
+  .vw-chat {
+    flex-direction: column;
+  }
+
+  .vw-chat-sessions {
+    flex: 0 0 auto;
+    max-height: 132px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vw-chat-session-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .vw-chat-session {
+    flex: 0 0 auto;
+    max-width: 180px;
+  }
+
+  .vw-chat-session-open {
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  .vw-chat-session.is-active .vw-chat-session-open {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+
+  .vw-chat-stream {
+    padding: 12px 12px 16px;
+  }
+
+  .vw-chat-composer {
+    padding: 8px 12px 10px;
+  }
+}
+
 /* ================================================================
- * ② 编队
+ * ② 编队（照 DBOS 的工作流执行视图：左列表 / 中时间线 / 右详情）
  * ================================================================ */
 
-.vw-fleet,
-.vw-data {
+.vw-fleet {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 12px 14px 20px;
+  min-width: 0;
+}
+
+/*
+ * 三栏里这里只放两栏：左（bot 列表）+ 中（步骤时间线）。
+ * 第三栏「选中项详情」是外壳的右栏（280px，见 views.css），由 ctx.renderRail 画 ——
+ * 再在主内容里切一栏就会变成四栏，1280 像素放不下，中间的时间线会被挤到不可读。
+ */
+.vw-fleet-workspace {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vw-fleet-bots {
+  min-width: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+}
+
+.vw-fleet-center {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vw-fleet-bots-host,
+.vw-fleet-tree,
+.vw-fleet-pending {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -235,10 +728,131 @@
   color: var(--bad);
 }
 
-/* 任务树：五列，耗时列右对齐。表格只画横线。 */
-.vw-fleet-tree {
-  min-width: 0;
+/* 概览里「拿不到 / 不知道」的数值与真值要能区分。 */
+.vw-dim {
+  color: var(--dim);
 }
+
+.vw-overview-queued {
+  margin-left: 8px;
+}
+
+/*
+ * 「哪几档数不知道」。
+ *
+ * 四个 `—` 不带解释等于四个空白：用户会以为是加载失败，而去刷新一个本来就没问题的页面。
+ * 所以有一行小字说清口径（bot 级 vs 任务级）。
+ */
+.vw-overview-unknown {
+  margin-left: 8px;
+  color: var(--dim);
+}
+
+/* —— 左：bot 列表（DBOS 的「工作流列表」） —— */
+
+.vw-bot-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px;
+  min-height: var(--row-h);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
+.vw-bot-row:last-child {
+  border-bottom: 0;
+}
+
+.vw-bot-row-head {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  border-bottom-color: var(--border-hover);
+}
+
+.vw-bot-name {
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 选中的那一行：左侧竖条 + 背景（两个手段，24.4.3 要求至少两个）。 */
+.vw-bot-row-current {
+  position: relative;
+  background: var(--accent-soft);
+}
+
+.vw-bot-row-current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.vw-bot-row[role="button"] {
+  cursor: pointer;
+}
+
+.vw-bot-row[role="button"]:hover {
+  background: var(--panel-2);
+}
+
+.vw-bot-row[role="button"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* —— 状态徽章 —— */
+
+/*
+ * 徽章：文字 + 边框 + 颜色三重线索。
+ *
+ * 文字是主线索（色弱用户先读字），颜色只做第二重。所以 tone 只改颜色，
+ * 不改字号、不改形状 —— 形状一变，一列徽章就会高低不齐。
+ */
+.vw-badge {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: var(--fs-tiny);
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.vw-badge[data-tone="ok"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.vw-badge[data-tone="run"] {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.vw-badge[data-tone="bad"] {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.vw-badge[data-tone="warn"] {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.vw-badge[data-tone="idle"] {
+  color: var(--dim);
+}
+
+/* —— 中：任务树 / 步骤时间线（DBOS 的「步骤时间线」） —— */
 
 .vw-tree-row {
   display: grid;
@@ -295,7 +909,6 @@
   white-space: nowrap;
 }
 
-/* 选中的那一行：左侧竖条 + 背景（两个手段，24.4.3 要求至少两个）。 */
 .vw-tree-row-current {
   position: relative;
   background: var(--accent-soft);
@@ -312,45 +925,55 @@
   background: var(--accent);
 }
 
-.vw-tree-row[role="button"] {
-  cursor: pointer;
-}
-
-.vw-tree-row[role="button"]:hover {
-  background: var(--panel-2);
-}
-
-.vw-tree-row[role="button"]:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
-
-/* 概览里「拿不到」的数值与真值要能区分。 */
-.vw-dim {
-  color: var(--dim);
-}
-
-.vw-overview-queued {
-  margin-left: 8px;
-}
-
-/* 右栏的步骤列表：图标 / 名 / 状态 / 耗时。 */
-.vw-rail-step {
+/* 步骤行：字形 / 名 / 工具 / 耗时 / 状态。 */
+.vw-step-row {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  grid-template-columns: 18px minmax(0, 1fr) 96px 68px 56px;
   align-items: baseline;
-  gap: 6px;
-  min-height: calc(var(--row-h) - 6px);
-  padding: 0 2px;
+  gap: 8px;
+  min-height: calc(var(--row-h) - 2px);
+  padding: 0 4px;
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-small);
 }
 
-.vw-rail-step:last-child {
-  border-bottom: 0;
+.vw-step-row-head {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  border-bottom-color: var(--border-hover);
 }
 
-.vw-rail-step-name {
+.vw-step-row[role="button"] {
+  cursor: pointer;
+}
+
+.vw-step-row[role="button"]:hover {
+  background: var(--panel-2);
+}
+
+.vw-step-row[role="button"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 选中的那一步：竖条 + 背景，与任务行同一套记号（同一件事用同一个记号）。 */
+.vw-step-row-current {
+  position: relative;
+  background: var(--accent-soft);
+}
+
+.vw-step-row-current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.vw-step-name {
   min-width: 0;
   color: var(--text);
   overflow: hidden;
@@ -358,13 +981,118 @@
   white-space: nowrap;
 }
 
-.vw-rail-step-status {
-  color: var(--muted);
+/* 工具名：等宽小字，能分辨 `robust_stats` 与 `robust_stat`。 */
+.vw-step-tool {
+  min-width: 0;
+  font-family: var(--mono);
   font-size: var(--fs-tiny);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 事件流：时间 + 一句话。时间用 --fs-tiny，不抢。 */
+.vw-step-badge {
+  justify-self: start;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.vw-step-badge[data-tone="ok"] { border-color: var(--ok); color: var(--ok); }
+.vw-step-badge[data-tone="run"] { border-color: var(--accent-line); color: var(--accent); }
+.vw-step-badge[data-tone="bad"] { border-color: var(--bad); color: var(--bad); }
+.vw-step-badge[data-tone="warn"] { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
+.vw-step-badge[data-tone="idle"] { color: var(--dim); }
+
+/* 展开区：输入 / 输出两栏并排，窄屏叠起来。 */
+.vw-step {
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.vw-step:last-child {
+  border-bottom: 0;
+}
+
+.vw-step .vw-step-row {
+  border-bottom: 0;
+}
+
+.vw-step-io {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px 4px 8px 26px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.vw-step-io[hidden] {
+  display: none;
+}
+
+.vw-io-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vw-io-label {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+/*
+ * JSON 原样显示，不折行。
+ *
+ * 折行会把 `{"a": 1, "b": [1, 2]}` 拆成几段，层级关系随之消失 ——
+ * 而看这段 JSON 的目的就是看层级。所以横向滚动。
+ */
+.vw-json {
+  margin: 0;
+  padding: 5px 7px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre;
+}
+
+/* 错误那块用 --bad 的左边线，不用红底 —— 红底会把长堆栈读成一片。 */
+.vw-json-error {
+  border-left: 2px solid var(--bad);
+  color: var(--bad);
+}
+
+.vw-io-retries {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--fs-tiny);
+  color: var(--warn);
+}
+
+/* —— 右：选中 step 详情（落在外壳右栏里） —— */
+
+.vw-step-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* —— 事件流 —— */
+
 .vw-fleet-flow {
   display: flex;
   flex-direction: column;
@@ -374,7 +1102,7 @@
 .vw-flow-row {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
   min-height: calc(var(--row-h) - 4px);
   padding: 0 4px;
   border-bottom: 1px solid var(--border);
@@ -393,14 +1121,28 @@
 }
 
 .vw-flow-label {
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.vw-flow-seq {
+  flex: 0 0 auto;
+  font-size: var(--fs-tiny);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 事件种类上色：失败与运行中两种必须能一眼分出来。 */
 .vw-flow-row[data-phase="failed"] .vw-flow-label { color: var(--bad); }
 .vw-flow-row[data-phase="running"] .vw-flow-label { color: var(--accent); }
+.vw-flow-row[data-phase="tool.call"] .vw-flow-label { color: var(--text); }
 
-/* 三种干预。 */
+/* —— 干预区（底部） —— */
+
 .vw-fleet-actions {
   display: flex;
   align-items: center;
@@ -408,11 +1150,85 @@
   flex-wrap: wrap;
 }
 
-/* 暂停文案：必须能在界面上被读到，所以它是可见的一行小字，藏起来就等于没写。 */
+/* 说明框：改参重试必须写「改了什么」，所以它一直可见，不是点了才出现。 */
+.vw-note-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-small);
+}
+
+.vw-note-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 待处理的干预：一条一行，状态用徽章。 */
+.vw-pending-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  min-height: calc(var(--row-h) - 4px);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
+.vw-pending-row:last-child {
+  border-bottom: 0;
+}
+
+.vw-pending-kind {
+  color: var(--text);
+}
+
+.vw-pending-task {
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 暂停文案：必须能在界面上被读到，所以它是可见的一行小字，藏起来就等于没写。
+ * 第 25.10.5 节点名这句话最容易写错 —— 它说「将生效」，不说「已生效」。
+ */
 .vw-pause-notice {
   margin: 0;
   font-size: var(--fs-tiny);
   color: var(--warn);
+}
+
+.vw-pause-notice[hidden] {
+  display: none;
+}
+
+/* 干预结果提示：成功 / 未接受 / 没发出去，三档都要能看见。 */
+.vw-action-note {
+  margin: 0;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
+.vw-action-note[hidden] {
+  display: none;
+}
+
+.vw-action-note[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.vw-action-note[data-tone="bad"] {
+  color: var(--bad);
 }
 
 /* 反向深链的预填条（视-6）：从套件台带过来的草稿。 */
@@ -453,9 +1269,36 @@
   color: var(--muted);
 }
 
-.vw-pause-notice[hidden] {
-  display: none;
+/* 右栏的步骤列表（旧「选中任务」那一栏的残留样式，仍被 rail 用过一次就留着）。 */
+.vw-rail-step {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 6px;
+  min-height: calc(var(--row-h) - 6px);
+  padding: 0 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
 }
+
+.vw-rail-step:last-child {
+  border-bottom: 0;
+}
+
+.vw-rail-step-name {
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-rail-step-status {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  white-space: nowrap;
+}
+
 
 /* ================================================================
  * ③ 数据
@@ -472,7 +1315,130 @@
   font-size: var(--fs-small);
 }
 
-/* 质控三列：绝对数 + 比例。绝对数在上、比例在下（附录 C.5 点二）。 */
+/*
+ * 四区 2×2。
+ *
+ * 为什么是 2×2 而不是竖着排四块：批次与质控是「看现状」，检索与评测是「查 / 验」，
+ * 上下两排各成一对。竖着排的话，检索那块的 SQL 会把评测挤到屏幕外 ——
+ * 而评测的六条本来就是要和质控一起看的。
+ *
+ * 窄屏回落成单列（见文末 @media），不横向挤。
+ */
+.vw-data {
+  display: grid;
+  /*
+   * 左列给检索（它的回源里有一条可能上百字符的 SQL），右列给质控与评测（窄而高）。
+   * `1.35fr : 1fr` 在 1440px 下大致是 780 : 560 —— 质控三列各 ~180px，
+   * 「阈值 相邻历元跳变 ≤ 0.5 TECU」刚好一行放得下；再窄就要换行。
+   */
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, auto) minmax(0, auto);
+  align-content: start;
+  gap: 12px;
+  padding: 12px 14px 20px;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.vw-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 单元格内容在框内自己滚（检索的 SQL 可能很长，别把整屏往下顶）。 */
+.vw-pane .vw-sec {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* —— 批次表：一行一个批次，点一行就换批次 —— */
+
+.vw-data-batch {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.vw-batch-table {
+  display: flex;
+  flex-direction: column;
+  min-width: 400px;
+}
+
+.vw-batch-row {
+  display: grid;
+  /* 时间范围那一列要给够：`2026-10-01 00:00 … 2026-10-30 23:59` 是这一行最有信息量的
+     一格，被省略号截成 `2026-10-01 00:00 … 2026-1…` 之后两个批次就分不出来了。 */
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 1.5fr) 84px 52px;
+  align-items: baseline;
+  gap: 8px;
+  min-height: var(--row-h);
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-small);
+  text-align: left;
+}
+
+.vw-batch-row:last-child {
+  border-bottom: 0;
+}
+
+.vw-batch-row-head {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  border-bottom-color: var(--border-hover);
+}
+
+.vw-batch-row-item {
+  cursor: pointer;
+}
+
+.vw-batch-row-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* 选中的那一行：左侧竖条 + 文字变深（两个手段，不只靠颜色）。 */
+.vw-batch-row-current {
+  position: relative;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.vw-batch-row-current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.vw-batch-id {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-batch-range {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* —— 质控：三列，每列「规则编号 + 绝对数 + 比例 + 阈值线 + 状态」 —— */
+
 .vw-data-qc {
   min-width: 0;
 }
@@ -486,17 +1452,33 @@
   overflow: hidden;
 }
 
+/* 三列各自等宽，但格子高度随内容（阈值线可能换行）—— 用 stretch 让底部徽章对齐。 */
 .vw-qc-cell {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 8px 10px;
   background: var(--panel);
+  min-width: 0;
 }
 
 .vw-qc-label {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   font-size: var(--fs-tiny);
   color: var(--muted);
+}
+
+/* 规则编号：等宽、带边框 —— 它不是装饰，是要拿去手册里查原文的键。 */
+.vw-qc-rule {
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .vw-qc-value {
@@ -509,6 +1491,77 @@
   font-size: var(--fs-tiny);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 阈值线：不给它，用户没法判断「这个 3% 算不算不合格」。
+ *
+ * **允许换行**，不许省略号。`阈值 相邻历元跳变 ≤ 0.5 TECU` 在三列布局里一行放不下，
+ * 用 `text-overflow: ellipsis` 会截成「阈值 相邻历元跳变 ≤ 0…」—— 门限被截掉的那一位
+ * 恰好是最要紧的数字，等于没有阈值。
+ */
+.vw-qc-line {
+  font-size: var(--fs-tiny);
+  color: var(--dim);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* 状态徽章：合格 / 超限 / 不可判。记号 + 文字 + 颜色三样都有，不只靠颜色。 */
+.vw-qc-badge {
+  align-self: flex-start;
+  /*
+   * `margin-top: auto` 把它压到格子底部：三条阈值线换行数不同（`≤ 5%` 一行、
+   * `≤ 0.5 TECU` 两行），徽章不压底就会在三列之间一高一低，看着像有的格子「没结论」。
+   */
+  margin-top: auto;
+  margin-bottom: 2px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.vw-qc-badge[data-tone="ok"] {
+  border-color: var(--ok-line);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.vw-qc-badge[data-tone="bad"] {
+  border-color: var(--bad-line);
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+/* —— 检索：输入框 + 问 / 答 / 回源，四样同在一屏 —— */
+
+.vw-search-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vw-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-small);
+}
+
+.vw-search-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 /* 检索区：问 / 答 / 回源，三样同在一屏。 */
@@ -567,6 +1620,28 @@
   text-align: right;
 }
 
+/*
+ * 分区路径清单：**全部**列出来，不折成「第一个 + 另外 N 个」。
+ *
+ * 只给第一个的话，用户没法判断这份答案覆盖了几个分区 —— 而「31 行结果来自 31 个分区」
+ * 和「31 行全在一个分区里」是两种完全不同的可信度。
+ */
+.vw-part-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  max-height: 96px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.vw-part-path {
+  text-align: left;
+  white-space: nowrap;
+}
+
 /* SQL：格式化，多行带缩进。不要一行到底（25.11.3）。 */
 .vw-sql-wrap {
   min-width: 0;
@@ -587,24 +1662,87 @@
   tab-size: 2;
 }
 
-/* 评测：✓ ✗ 不用颜色（色盲用户）。 */
+/* —— 评测：一行一个用例，六列 S1–S6，null 显示「不可判」 —— */
+
 .vw-data-eval {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+  flex-direction: column;
   min-width: 0;
+  overflow-x: auto;
 }
 
-.vw-eval-item {
-  display: inline-flex;
+.vw-eval-table {
+  display: flex;
+  flex-direction: column;
+  /* 六个 58px 的格子 + 用例列，最少 420px；再窄就横向滚，不压格子。 */
+  min-width: 420px;
+}
+
+.vw-eval-row {
+  /*
+   * 六列各 58px：33px 装得下 `✓`/`✗`，装不下「不可判」三个字 —— 实测那三个字会
+   * 溢出到隔壁格，读到的是 `? 不可判 ✓`，分不清哪个属于哪一条。
+   * 58px 是「不可判」在 10px 字号下不换行的下限。
+   */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(6, 58px);
   align-items: baseline;
-  gap: 4px;
+  gap: 2px;
+  min-height: var(--row-h);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
   font-size: var(--fs-small);
+}
+
+.vw-eval-row:last-child {
+  border-bottom: 0;
+}
+
+.vw-eval-row-head {
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  border-bottom-color: var(--border-hover);
+}
+
+.vw-eval-key {
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.vw-eval-mark[data-ok="true"] { color: var(--ok); }
-.vw-eval-mark[data-ok="false"] { color: var(--bad); }
+.vw-eval-case {
+  font-family: var(--mono);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-eval-cell {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+/* ✓ ✗ 之外再给颜色 —— 但文字/记号本身已经是主判据（色盲用户）。 */
+.vw-eval-mark[data-state="true"] { color: var(--ok); }
+.vw-eval-mark[data-state="false"] { color: var(--bad); }
+/* 不可判：不是绿也不是红 —— 用最淡的一档，且**带字**（下面那句）。 */
+.vw-eval-mark[data-state="unknown"] { color: var(--dim); }
+
+/*
+ * 「不可判」三个字。
+ *
+ * 空值不能只画一个问号就完事：扫一眼分不清是「待人工判」还是「这一格没画出来」。
+ * 但六个格子都要塞四个汉字又太挤，所以字号压到最小、允许不换行，
+ * 30px 的格子装得下 —— 装不下时宁可溢出一点点，也不能省掉这三个字。
+ */
+.vw-eval-word {
+  font-size: var(--fs-tiny);
+  color: var(--dim);
+  white-space: nowrap;
+}
 
 /* ================================================================
  * ④ 套件台（三栏）
@@ -614,7 +1752,12 @@
   display: grid;
   /* 132px 会把「Perception」截成「Percept」；六个应用里最长的是它，按它定宽。 */
   grid-template-columns: 160px minmax(0, 1fr);
-  align-items: start;
+  /*
+   * `stretch` 而不是 `start`：左栏是一条从顶到底的导航，`start` 会让它只有
+   * 六个按钮那么高（实测 202px），底下露出一截没有右边界的空白 —— 看起来像
+   * 「导航塌了」。三栏等高才是一张三栏工作台。
+   */
+  align-items: stretch;
   gap: 0;
   min-width: 0;
   min-height: 0;
@@ -722,6 +1865,53 @@
   min-height: 0;
 }
 
+/*
+ * 中栏顶部：当前应用是谁。
+ *
+ * 它替代「切换后只看左导航猜」——切完应用，中栏最上面一行就写着名字与说明，
+ * 截图时这一行也在，验收不用猜这是哪一屏（附录 C.6 点二）。
+ */
+.vw-app-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  min-width: 0;
+}
+
+.vw-app-bar-glyph {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.vw-app-bar-name {
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.vw-app-bar-note {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-app-bar-tag {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .vw-app-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -808,6 +1998,20 @@
   min-width: 420px;
 }
 
+/*
+ * 固定表头（「表格：固定表头」那条要求）。
+ *
+ * 对照表有四五百行，滚到第 80 行还知道哪一列是什么，全靠表头留在顶上。
+ * `sticky` 之外还要一个**不透明底色**：透过去的话下面的行会从表头文字之间穿出来，
+ * 比不固定更难读。`z-index` 要比正文高，否则会被滚动内容盖住。
+ */
+.vw-inspector-wrap table.clean thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+}
+
 .vw-inspector-wrap table.clean th,
 .vw-inspector-wrap table.clean td {
   padding: 3px 4px;
@@ -838,16 +2042,124 @@
   text-overflow: ellipsis;
 }
 
-/* 状态列最窄，给它一个下限，免得被挤成两行；并固定在右侧。 */
+/*
+ * 位置格拆成「文件名:」+ 行号。
+ *
+ * 行号单独一个 `.num`（等宽右对齐）：一列行号纵向比大小，能一眼看出两侧差多少行。
+ * 合成一串等宽字就没这个效果 —— 而「差几行」正是判断「是不是同一个地方」的依据。
+ */
+.vw-path-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.vw-path-cell .vw-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vw-path-line {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
+/*
+ * 密度切换（紧凑 / 舒适 / 宽松）。
+ *
+ * 只改行高与字号，**不重排数据** —— 和全站 density 那条同一条规矩（25.13.3）。
+ * 三档都写着名字，不靠图标：`A−`/`A+` 那套在小字号下认不出来。
+ */
+.vw-density-ctl {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  align-self: flex-start;
+}
+
+.vw-density-btn {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-tiny);
+  cursor: pointer;
+}
+
+.vw-density-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.vw-density-btn[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* 三档的行高。表头不参与（sticky 那两格另有底色，缩高会露出缝隙）。 */
+.vw-inspector-wrap[data-density="compact"] table.clean tbody td {
+  padding: 1px 4px;
+  line-height: 1.25;
+}
+
+.vw-inspector-wrap[data-density="roomy"] table.clean tbody td {
+  padding: 6px 4px;
+  line-height: 1.6;
+}
+
+/*
+ * 五档图例。
+ *
+ * 检查器的徽章只有记号 + 英文键名，`b_only` 与 `a_only` 差在哪、哪个算差异，
+ * 光看表看不出来。图例按「差异在前、无差异在后」排（与 FIELD_STATES.order 一致），
+ * 把要处理的三档放在前面。
+ */
+.vw-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.vw-legend-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.vw-legend-item .vw-tag {
+  /* 图例和表格用同一套徽章，但图例里要读全名 —— 徽章不参与表格的定宽。 */
+  max-width: none;
+}
+
+.vw-legend-name {
+  font-size: var(--fs-tiny);
+  color: var(--dim);
+}
+
+/*
+ * 状态列固定在右侧。
+ *
+ * 68px 会把 `b_only` 挤成两行，78px 才放得下 `~ n/a` / `+ b_only` / `− a_only`。
+ * 状态是检查器的**核心信息**（用户关心的是对不上的），所以横向滚动时它必须留在
+ * 视野里 —— 不固定的话，滚到右边看 B 侧位置时状态就被推出去了，而那正是要看的东西。
+ */
 .vw-inspector-wrap table.clean td:last-child,
 .vw-inspector-wrap table.clean th:last-child {
-  width: 68px;
-  max-width: 68px;
-  min-width: 68px;
-  /*
-   * 状态是检查器的**核心信息**（用户关心的是对不上的），所以横向滚动时它必须留在视野里。
-   * 不固定的话，滚到右边看 B 侧位置时状态就被推出去了 —— 而那正是要看的东西。
-   */
+  width: 78px;
+  min-width: 78px;
   position: sticky;
   right: 0;
   background: var(--panel);
@@ -857,7 +2169,8 @@
 
 .vw-inspector-wrap table.clean thead th:last-child {
   background: var(--panel);
-  z-index: 1;
+  /* 比普通表头再高一层：它同时是 sticky top 与 sticky right，被压住就看不见状态列。 */
+  z-index: 3;
 }
 
 /* 全部对得上时的绿字。规格说「不是必须」，但有它更省一次心算。 */
@@ -886,5 +2199,42 @@
 
   .vw-app-sep {
     display: none;
+  }
+
+  /*
+   * 数据台四区叠成一栏。
+   *
+   * 2×2 在窄屏会把每块挤到 ~330px：质控三列变成每个 100px，「阈值 R-4.3 缺测率 ≤ 5%」
+   * 直接被截断 —— 而阈值被截断等于没有阈值。所以窄屏改为单列，靠纵向滚动。
+   * 检索区不再跨两排（单列里 `span 2` 会多出一片空白）。
+   */
+  .vw-data {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  .vw-pane-search {
+    grid-row: auto;
+  }
+
+  /*
+   * 编队台同理：bot 列表从左边栏挪到上面一行，步骤时间线占满宽度。
+   *
+   * 窄屏不保留左右并排 —— 196px 的列表加上时间线会在 ~700px 时把「工具」列
+   * 挤成不可辨认的片段，而那一列正是分辨「哪一步调了什么」的唯一线索。
+   */
+  .vw-fleet-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vw-fleet-bots {
+    padding-right: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* 输入输出两栏在窄屏叠成一栏：并排时每块只有 ~300px，JSON 会被截掉一半。 */
+  .vw-step-io {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
