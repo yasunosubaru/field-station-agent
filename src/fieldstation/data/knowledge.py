@@ -23,10 +23,19 @@
 两者都不行就抛 ``REQUIRES_SQL_ENGINE``，绝不给一个看起来成功的空结果。
 
 **手册索引默认不建**：建索引要写盘、要 embedding 模型。``HandbookIndex`` 必须显式
-``build()``；``embed_model`` 也必须显式给。本模块内置的 ``"hashing"`` 只是一个
-**字符二元组哈希**向量化器，用来在离线环境把「建索引 → 落盘 → 重载 → 检索」这条
-管线跑通并可断言；它的排序质量是词面重叠级别，**不是**语义检索，别拿它当 E6 的
-最终质量结论（详见 ``docs/operations/deps.md`` 对 llama-index 缺失时的降级口径）。
+``build()``；``embed_model`` 也必须显式给。
+
+**两档内置向量化器（引-4）**：
+
+- ``"semantic"``：**首选**。字符 1/2/3-gram 子词哈希（词面）+ 领域概念轴投影（同义族），
+  纯标准库、确定性、零网络、无需 llama_index；
+- ``"lexical"`` / ``"hashing"``：**降级**。字符二元组哈希，只保证词面重叠，排序质量是
+  「共享字面片段者靠前」，**不是**语义检索；命中结果与 ``status()`` 都会明示降级。
+
+``"semantic"`` 的概念轴是**人工整理的词表**（``HANDBOOK_CONCEPTS``），不是训练出来的
+模型——它能覆盖表内的同义改写，覆盖不到表外的说法。这是刻意取舍：本仓库纪律是纯标准
+库、不联网（``CLAUDE.md`` §4），所以要训出来的语义就得由上层通过 ``embed_model=`` 注入
+（任何带 ``encode(text)->Sequence[float]`` 的对象，或 llama_index 的 ``BaseEmbedding``）。
 
 **依赖延迟导入**：顶层不 import pyarrow / llama_index（``tools/env_snapshot.py`` 会按
 AST 统计 ``src/`` 的第三方 import）。缺包时 ``available()`` 返回假、相关入口抛明确异常。
@@ -58,15 +67,19 @@ from .query import (
 )
 
 __all__ = [
+    "DEFAULT_HANDBOOK_MODEL",
     "DEFAULT_LLAMA_MODULE",
     "DEFAULT_TIME_FIELD",
     "EmbeddingUnavailable",
+    "HANDBOOK_CONCEPTS",
+    "HANDBOOK_MODELS",
     "HandbookError",
     "HandbookHit",
     "HandbookIndex",
     "HandbookResult",
     "HandbookUnavailable",
     "KnowledgeError",
+    "LocalHandbookIndex",
     "METRIC_ALIASES",
     "MetadataCard",
     "OBS_VIEW",
@@ -84,7 +97,11 @@ __all__ = [
     "ensure_read_only",
     "ensure_supported_sql",
     "handbook_available",
+    "handbook_vector",
+    "is_degraded_model",
+    "rank_handbook",
     "search_handbook",
+    "search_handbook_local",
     "where_clause",
 ]
 
@@ -1180,28 +1197,41 @@ class HandbookHit:
 
 @dataclass(frozen=True)
 class HandbookResult:
-    """不会抛异常的检索结果：``reason`` 非空时 ``hits`` 为空，且不得假装查到了。"""
+    """不会抛异常的检索结果：``reason`` 非空时 ``hits`` 为空，且不得假装查到了。
+
+    ``degraded=True`` 表示这次结果**来自词面降级路径**（字符二元组哈希），排序质量只到
+    「共享字面片段者靠前」，不能当语义结论用。降级必须在 ``describe()`` 里说出来——
+    悄悄降级等于让人把词面重叠误读成语义命中。
+    """
 
     hits: tuple[HandbookHit, ...] = ()
     reason: str = ""
     indexed: bool = False
+    model: str = ""
+    degraded: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "hits": [item.to_dict() for item in self.hits],
             "reason": self.reason,
             "indexed": self.indexed,
+            "model": self.model,
+            "degraded": self.degraded,
         }
 
     def describe(self) -> str:
         if self.reason:
             return f"手册检索不可用：{self.reason}"
+        note = ""
+        if self.degraded:
+            note = f"［降级：{self.model or 'lexical'} 词面路径，非语义］"
         if not self.hits:
-            return "手册检索：没有命中（不是「没有这条规程」，而是相似度都不够）"
-        return "；".join(
+            return f"手册检索：没有命中（不是「没有这条规程」，而是相似度都不够）{note}"
+        body = "；".join(
             f"{item.doc_id or '?'}({item.score if item.score is None else round(item.score, 4)})"
             for item in self.hits
         )
+        return body + note
 
 
 def handbook_available(module_name: str = DEFAULT_LLAMA_MODULE) -> bool:
@@ -1231,27 +1261,380 @@ def _load_llama(module_name: str) -> tuple[Any, Any, Any, Any]:
     return core, storage, splitter_module, base_embed
 
 
+# ---------------------------------------------------------------- 向量化
+#: 内置向量化器的名字：
+#:
+#: - ``semantic``：首选，子词块 + 概念轴（唯一带语义成分的档）；
+#: - ``lexical``：**合格**的纯词面基线，带符号子词哈希；
+#: - ``hashing``：历史遗留的无符号二元组哈希，保留只为兼容既有契约。
+#:
+#: ``lexical`` 与 ``hashing`` 都是词面，但质量差一个量级：``hashing`` 把 2-gram 无符号
+#: 累加，短查询与长文档几乎必然撞不出任何共享 gram，得分全为 0 时退化成按 ``doc_id``
+#: 字母序排（实测在 25 条同义改写上只有 1 条命中，比随机取 3 条的 7.4 条还低）。
+#: 所以「语义 vs 词面」这条对比必须拿 ``lexical`` 当对手，拿 ``hashing`` 当对手是打稻草人。
+HANDBOOK_MODELS = ("semantic", "lexical", "hashing")
+
+#: 首选的离线向量化器。**它仍是词表驱动的**（见 ``HANDBOOK_CONCEPTS``），不是训练
+#: 出来的模型；只是比纯字符重叠多了一层同义族投影。
+DEFAULT_HANDBOOK_MODEL = "semantic"
+
+#: 领域概念轴：``(概念名, 该概念的中文/英文同义说法)``。
+#:
+#: **这是一张人工维护的同义词表，不是训练出来的语义空间。** 它的作用是把「同一个意思
+#: 的不同说法」映射到同一条轴上——``掉电``/``断电``/``供电中断`` 都落在 ``power`` 轴上，
+#: 于是查询与规程不必共享字面片段也能对上。表外的说法覆盖不到，这是这套离线方案的已知
+#: 边界（要更大覆盖就注入真模型，见 ``HandbookIndex(embed_model=...)``）。
+#:
+#: 词表按**领域对象**组织（供电、链路、传感器、相位、弧段、量级、高风险动作、工单、
+#: 归档、安防），不是按某几条测试查询反向拼的：每条轴收到的是这类词的整体。
+HANDBOOK_CONCEPTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "power",
+        (
+            "供电", "掉电", "断电", "失电", "停电", "没电", "缺电", "电源", "电压",
+            "蓄电池", "蓄电", "电池", "太阳能", "供电中断", "供电异常", "电能",
+            "电量", "电瓶", "电力", "见底", "归零", "不发电", "太阳板", "板子不发电",
+            "市电", "停止发电", "全黑", "黑屏", "电力中断",
+        ),
+    ),
+    (
+        "station_down",
+        (
+            "失联", "联系不上", "连不上", "不响应", "没响应", "黑掉", "整机", "整站",
+            "整站失联", "站点失联", "突然断", "起来吗", "不吭声", "瘫", "离线",
+            "不在线", "不回话", "停摆", "全停",
+        ),
+    ),
+    (
+        "network",
+        (
+            "网络", "链路", "断网", "联网", "通信", "传输", "上报", "回传", "回传不",
+            "4g", "光纤", "中断", "数据未上报", "传不回来", "没有回传", "链路状态",
+            "信号线", "通路", "后台", "传不出", "积压", "本地还在采", "采集但",
+            "发不出去", "发不出", "卡着", "卡住", "传不上", "看不到站的数",
+            "数传", "通道", "挂了", "上报通道", "不在线", "本地有数据", "本地有",
+        ),
+    ),
+    (
+        "sensor",
+        (
+            "传感器", "探头", "探针", "读数", "测量值", "观测值", "测值", "量程",
+            "漂移", "粗差", "仪器", "偏大", "偏小", "偏离", "一直偏", "异常值",
+            "数值不对", "同类设备", "旁边那台", "正常值", "基线", "差很多", "对不上",
+            "可用区间", "超出", "不一致", "老是偏", "两台", "同一个点",
+        ),
+    ),
+    (
+        "phase_slip",
+        (
+            "周跳", "相位", "跳变", "阶跃", "突变", "尖峰", "跳了一下", "载波相位",
+            "相位跳", "扰动", "跳点", "蹦", "跳一下", "没回去",
+        ),
+    ),
+    (
+        "continuity",
+        (
+            "连续性", "弧段", "序列", "定平", "相位定平", "弧段数", "卫星序列",
+            "偏多", "过多", "太高", "过高", "切分", "段数", "不匹配", "之比",
+        ),
+    ),
+    (
+        "rmse",
+        (
+            "rmse", "tecu", "非物理", "量级", "反演", "参考解", "离谱", "不可能",
+            "大得离谱", "物理上", "500", "输出结果", "反演输出", "物理不可能",
+            "不合物理", "物理可能", "超出物理",
+        ),
+    ),
+    (
+        "high_risk",
+        (
+            "高风险", "审批", "批准", "授权", "签字", "人工审批", "远程断电",
+            "重启设备", "升级固件", "下发配置", "关闭告警", "修改安全策略",
+            "远程重启", "谁批准", "谁点头", "点头", "动设备", "动手之前",
+            "要审批", "人工确认", "高危", "谁来批", "要不要走审批",
+        ),
+    ),
+    (
+        "workorder",
+        (
+            "工单", "优先级", "p0", "p1", "p2", "分派", "派单", "派工", "紧急",
+            "最紧急", "告警等级", "分派工单", "最急", "派给谁", "归谁", "那一级",
+            "那一档", "分给谁", "最要紧", "分级",
+        ),
+    ),
+    (
+        "archive",
+        (
+            "归档", "合成", "合成数据", "真实数据", "隔离", "目录", "synthetic",
+            "存放", "放在", "产物", "模拟", "人造", "该放哪", "混着放", "混放",
+            "实测", "生成的数据",
+        ),
+    ),
+    (
+        "security",
+        (
+            "安防", "门禁", "入侵", "机柜", "撬", "视频", "告警", "现场核验",
+            "非法进入", "闯入", "打开", "门被", "被打开", "有人进来",
+            "站区", "柜子", "被人开", "非法",
+        ),
+    ),
+    (
+        "restart",
+        ("重启", "复位", "重新启动", "reboot", "上电", "停止记录", "自己起来"),
+    ),
+    (
+        "cn0",
+        ("载噪比", "cn0", "信噪比", "信号强度", "天线", "线缆", "db-hz"),
+    ),
+    (
+        "publish_guard",
+        ("发布守卫", "对外发布", "canary", "回滚", "灰度"),
+    ),
+    (
+        "storage_capacity",
+        ("磁盘", "存储", "空间不足", "清理", "容量"),
+    ),
+)
+
+#: 字符块与概念块在最终向量里的权重。概念块权重更高：这是「语义」相对「词面」的
+#: 全部来源，压不住字符重叠就等于没做。
+_LEXICAL_WEIGHT = 0.45
+_CONCEPT_WEIGHT = 1.0
+
+
+def _squash_text(text: str) -> str:
+    """去掉所有空白并转小写。中文没有词边界，按字符切比按空格切更适合本语料。"""
+    return "".join(ch for ch in str(text).lower() if not ch.isspace())
+
+
+def _lexical_vector(text: str, dim: int) -> list[float]:
+    """字符二元组哈希（**降级路径**，也是 ``semantic`` 的词面分量）。
+
+    同一段文本永远同一向量；共享字面片段者相似度高。它是词面重叠，不是语义。
+    """
+    cleaned = _squash_text(text)
+    grams = [cleaned[i : i + 2] for i in range(max(1, len(cleaned) - 1))] or [cleaned]
+    vector = [0.0] * dim
+    for gram in grams:
+        digest = hashlib.sha1(gram.encode("utf-8")).digest()
+        vector[int.from_bytes(digest[:8], "big") % dim] += 1.0
+    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+    return [value / norm for value in vector]
+
+
+def _subword_vector(text: str, dim: int) -> list[float]:
+    """1/2/3-gram 子词哈希，带符号（signed hashing）以抵消碰撞偏置。
+
+    比 ``_lexical_vector`` 多两个收益：单字（「跳」「撬」这类短词）也能留下痕迹，
+    带符号累加让无关 gram 的哈希碰撞相互抵消而不是一路加和。
+    """
+    cleaned = _squash_text(text)
+    vector = [0.0] * dim
+    for n, weight in ((1, 0.35), (2, 1.0), (3, 0.7)):
+        span = len(cleaned) - n + 1
+        if span <= 0:
+            continue
+        for index in range(span):
+            gram = cleaned[index : index + n]
+            digest = hashlib.sha1(gram.encode("utf-8")).digest()
+            slot = int.from_bytes(digest[:8], "big") % dim
+            sign = 1.0 if digest[8] & 1 else -1.0
+            vector[slot] += sign * weight
+    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+    return [value / norm for value in vector]
+
+
+def _concept_vector(text: str) -> list[float]:
+    """概念轴投影：一条轴一个分量，命中几个同义说法就记几分，再整体 L2 归一化。
+
+    **命中口径是子串包含**，且区分大小写无关（``P0``/``p0`` 都算）。中文没有分词，
+    子串匹配在这个语料上比引入分词器更稳，也不会因为切错词把「掉电」切成「掉/电」。
+
+    分值是 ``1 + log(命中数)`` 而不是原始命中数：规程正文比查询长一个量级，同一族里
+    天然会撞上更多同义词，用原始计数会让长文档系统性占便宜（相关性没变，长度变了）。
+    开根号/对数把「撞上 1 个」和「撞上 5 个」的差距压到合理区间，让**是否属于这一族**
+    成为主信号、命中密度只当微调。
+    """
+    low = str(text).lower()
+    vector = [0.0] * len(HANDBOOK_CONCEPTS)
+    for index, (_name, synonyms) in enumerate(HANDBOOK_CONCEPTS):
+        hits = 0
+        for synonym in synonyms:
+            if synonym.lower() in low:
+                hits += 1
+        if hits:
+            vector[index] = 1.0 + math.log(hits)
+    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+    return [value / norm for value in vector]
+
+
+def handbook_vector(text: str, *, model: str = DEFAULT_HANDBOOK_MODEL, dim: int = 256) -> tuple[float, ...]:
+    """把一段文本编码成向量。**纯标准库、确定性、零网络**。
+
+    - ``semantic``：``[子词块 * 0.45] + [概念块 * 1.0]``，总长
+      ``dim + len(HANDBOOK_CONCEPTS)``；
+    - ``lexical``：带符号子词哈希，只有词面，总长 ``dim``；
+    - ``hashing``：历史无符号二元组哈希，只有词面且质量很差（见
+      :data:`HANDBOOK_MODELS` 的说明），保留只为兼容既有契约。
+
+    「语义」的那部分来自 :data:`HANDBOOK_CONCEPTS` 这张同义词表，**不是训练出来的
+    模型**——表内同义改写能对上，表外的说法对不上。要真泛化就注入真模型。
+    """
+    name = str(model).strip().lower()
+    if name == "semantic":
+        lexical = _subword_vector(text, dim)
+        concept = _concept_vector(text)
+        return tuple(
+            [value * _LEXICAL_WEIGHT for value in lexical]
+            + [value * _CONCEPT_WEIGHT for value in concept]
+        )
+    if name == "lexical":
+        return tuple(_subword_vector(text, dim))
+    if name == "hashing":
+        return tuple(_lexical_vector(text, dim))
+    raise EmbeddingUnavailable(
+        f"未知的内置向量化器 {model!r}；可用：{list(HANDBOOK_MODELS)}（或注入模型实例）"
+    )
+
+
+def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    dot = 0.0
+    left_norm = 0.0
+    right_norm = 0.0
+    for a, b in zip(left, right):
+        dot += a * b
+        left_norm += a * a
+        right_norm += b * b
+    if left_norm <= 0.0 or right_norm <= 0.0:
+        return 0.0
+    return dot / math.sqrt(left_norm * right_norm)
+
+
+def is_degraded_model(model: Any) -> bool:
+    """这个 ``embed_model`` 是不是**降级**路径（词面，不是语义）。
+
+    字符串形式只认内置名；注入的模型实例一律不算降级——它是不是真语义由调用方负责，
+    本模块不去猜别人的模型。
+    """
+    if isinstance(model, str):
+        return model.strip().lower() in ("lexical", "hashing")
+    return False
+
+
+def _encode_with(text: str, model: Any, dim: int) -> Sequence[float]:
+    """统一编码入口：内置名走 :func:`handbook_vector`，注入实例走它自己的编码方法。
+
+    注入对象只要求下面任一个：
+    ``encode(text) -> Sequence[float]``、``embed_query``/``embed_documents``
+    （LangChain 风格）、或 llama_index ``BaseEmbedding`` 的 ``get_text_embedding``。
+    这样 sentence-transformers / 本地 Ollama / 远端 API 的封装都能直接塞进来，
+    本模块不绑定任何具体实现。
+    """
+    if isinstance(model, str) or model is None:
+        return handbook_vector(text, model=str(model or DEFAULT_HANDBOOK_MODEL), dim=dim)
+    for name in ("encode", "embed_query", "get_text_embedding", "embed"):
+        method = getattr(model, name, None)
+        if callable(method):
+            vector = method(text)
+            # 有些实现返回嵌套列表（batch 形状）或 numpy 数组，统一摊平成一维 float。
+            return _flatten_vector(vector)
+    raise EmbeddingUnavailable(
+        f"注入的模型 {type(model).__name__} 没有可用的编码方法；"
+        "需要 encode(text) / embed_query(text) / get_text_embedding(text) 之一"
+    )
+
+
+def _flatten_vector(value: Any) -> list[float]:
+    """把 ``[0.1, 0.2]`` / ``[[0.1], [0.2]]`` / numpy 数组统一成一维 float 列表。"""
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    out: list[float] = []
+    stack = [value]
+    while stack:
+        item = stack.pop(0)
+        if isinstance(item, (list, tuple)):
+            stack[:0] = list(item)
+            continue
+        out.append(float(item))
+    return out
+
+
+def rank_handbook(
+    documents: Iterable[Mapping[str, Any] | str],
+    query: str,
+    *,
+    model: Any = DEFAULT_HANDBOOK_MODEL,
+    top_k: int = 3,
+    dim: int = 256,
+) -> tuple[HandbookHit, ...]:
+    """**不依赖 llama_index** 的小规模精确检索：逐条算余弦，排序取前 ``top_k``。
+
+    手册条目是十条量级，精确比较既省事又不会像近似索引那样漏召回。这条路径的价值
+    在于「装了标准库就能跑语义检索」，与 ``HandbookIndex``（走 llama_index、可落盘、
+    可注入真模型）是同一套向量、两条执行路径——``handbook_vector`` 是唯一实现。
+
+    ``model`` 除了内置名，也可以直接给一个带 ``encode(text)`` 的对象（真 embedding
+    模型），此时它与 ``HandbookIndex(embed_model=...)`` 用的是同一条注入通道。
+
+    命中按分数降序；同分按 ``doc_id`` 升序，保证结果可复算。
+    """
+    if not str(query or "").strip():
+        raise HandbookError("查询为空；不拿空串去算相似度")
+    query_vector = _encode_with(query, model, dim)
+    scored: list[tuple[float, str, HandbookHit]] = []
+    for item in documents:
+        if isinstance(item, str):
+            text, metadata = item, {}
+        elif isinstance(item, Mapping):
+            text, metadata = _document_text(item)
+        else:
+            raise HandbookError(f"不支持的手册条目类型 {type(item).__name__}")
+        score = _cosine(query_vector, _encode_with(text, model, dim))
+        doc_id = str(metadata.get("doc_id", ""))
+        scored.append((score, doc_id, HandbookHit(text=text, score=score, metadata=metadata)))
+    if not scored:
+        raise HandbookError("手册条目为空；不建空索引（会让检索假装有内容）")
+    scored.sort(key=lambda entry: (-entry[0], entry[1]))
+    limit = max(1, int(top_k))
+    return tuple(entry[2] for entry in scored[:limit])
+
+
 def _make_hashing_embedding(module_name: str, dim: int) -> Any:
-    """字符二元组哈希向量化器（确定性、零网络）。
+    """字符二元组哈希向量化器（确定性、零网络）。**这是降级路径**。
 
     **它只保证词面重叠**：同一段文本永远同一向量，与文本共享字面片段的查询排在前面。
     用来在离线环境验证「建索引 → 落盘 → 重载 → 检索」这条管线的接线与出处传递，
-    **不**用来证明语义检索质量。真语义需要上层注入真 embedding 模型（``embed_model=``）。
+    **不**用来证明语义检索质量。语义请用 ``embed_model="semantic"`` 或注入真模型。
     """
-    core, _storage, _splitter, base = _load_llama(module_name)
+    return _wrap_local_vector(module_name, dim, "hashing")
+
+
+def _make_lexical_embedding(module_name: str, dim: int) -> Any:
+    """带符号子词哈希的**纯词面**向量化器：语义对比时的合格对手。"""
+    return _wrap_local_vector(module_name, dim, "lexical")
+
+
+def _make_semantic_embedding(module_name: str, dim: int) -> Any:
+    """子词 + 概念轴的本地语义向量化器（确定性、零网络、纯标准库）。
+
+    与 ``hashing`` 走同一条 llama_index 管线，只是向量换成 :func:`handbook_vector`
+    的 ``semantic`` 档——所以「建索引 → 落盘 → 重载」的既有能力一样不少。
+    """
+    return _wrap_local_vector(module_name, dim, "semantic")
+
+
+def _wrap_local_vector(module_name: str, dim: int, model: str) -> Any:
+    """把内置向量函数包成 llama_index ``BaseEmbedding``。两个内置档共用这一层。"""
+    _core, _storage, _splitter, base = _load_llama(module_name)
     BaseEmbedding = base.BaseEmbedding
 
     def _vector(text: str) -> list[float]:
-        cleaned = "".join(ch for ch in str(text).lower() if not ch.isspace())
-        grams = [cleaned[i : i + 2] for i in range(max(1, len(cleaned) - 1))] or [cleaned]
-        vector = [0.0] * dim
-        for gram in grams:
-            digest = hashlib.sha1(gram.encode("utf-8")).digest()
-            vector[int.from_bytes(digest[:8], "big") % dim] += 1.0
-        norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-        return [value / norm for value in vector]
+        return list(handbook_vector(text, model=model, dim=dim))
 
-    class _HashingEmbedding(BaseEmbedding):  # type: ignore[misc, valid-type]
+    class _LocalEmbedding(BaseEmbedding):  # type: ignore[misc, valid-type]
         embed_dim: int = 256
 
         def _get_text_embedding(self, text: str) -> list[float]:
@@ -1266,7 +1649,7 @@ def _make_hashing_embedding(module_name: str, dim: int) -> Any:
         async def _aget_query_embedding(self, query: str) -> list[float]:
             return _vector(query)
 
-    return _HashingEmbedding(embed_dim=dim)
+    return _LocalEmbedding(embed_dim=dim)
 
 
 def _document_text(doc: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -1287,11 +1670,19 @@ def _document_text(doc: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
 class HandbookIndex:
     """手册向量索引的薄封装。**默认不建索引**，必须显式 ``build()``。
 
-    ``embed_model`` 三选一：
+    ``embed_model`` 四种取值：
 
     - ``None``（默认）：抛 :class:`EmbeddingUnavailable`——本模块不替你决定模型；
-    - ``"hashing"``：用内置的字符二元组哈希向量化器，离线可跑但只保证词面重叠；
-    - 任意 llama_index ``BaseEmbedding`` 实例：真实语义向量，由上层注入。
+    - ``"semantic"``：内置的**子词 + 概念轴**向量化器，纯标准库、确定性、零网络；
+    - ``"lexical"`` / ``"hashing"``：内置的字符二元组哈希，**降级路径**，只保证词面
+      重叠；``status()`` 与 :func:`HandbookResult.describe` 会明示降级；
+    - 任意带 ``encode(text) -> Sequence[float]`` 的对象，或 llama_index
+      ``BaseEmbedding`` 实例：真实语义向量，由上层注入。
+
+    内置档在 **llama_index 可用时**走它的 ``VectorStoreIndex``（可落盘、可重载）；
+    llama_index 不可用时 ``build()`` 不静默改用别的东西，而是抛
+    :class:`HandbookUnavailable`——要么装包走完整管线，要么用
+    :func:`rank_handbook` / :class:`LocalHandbookIndex` 这条免依赖路径。
     """
 
     def __init__(
@@ -1334,13 +1725,27 @@ class HandbookIndex:
             return self._embed_model
         if self._embed_model_spec is None:
             raise EmbeddingUnavailable(
-                "未指定 embed_model：本模块不内置语义模型。离线自检请显式传 "
-                'embed_model="hashing"（词面相似，不是语义）；生产请注入真模型实例'
+                "未指定 embed_model：本模块不替你决定模型。离线语义用 "
+                'embed_model="semantic"（子词+概念轴，纯标准库）；词面降级用 '
+                'embed_model="hashing"；生产请注入真模型实例'
             )
-        if self._embed_model_spec == "hashing":
-            self._embed_model = _make_hashing_embedding(self.module_name, self.embed_dim)
-            return self._embed_model
-        self._embed_model = self._embed_model_spec
+        spec = self._embed_model_spec
+        if isinstance(spec, str):
+            name = spec.strip().lower()
+            if name == "semantic":
+                self._embed_model = _make_semantic_embedding(self.module_name, self.embed_dim)
+                return self._embed_model
+            if name == "lexical":
+                self._embed_model = _make_lexical_embedding(self.module_name, self.embed_dim)
+                return self._embed_model
+            if name == "hashing":
+                self._embed_model = _make_hashing_embedding(self.module_name, self.embed_dim)
+                return self._embed_model
+            raise EmbeddingUnavailable(
+                f"未知的内置向量化器 {spec!r}；可用 {list(HANDBOOK_MODELS)}，"
+                "或注入带 encode(text) 的模型实例"
+            )
+        self._embed_model = spec
         return self._embed_model
 
     # -- 建索引 ---------------------------------------------------
@@ -1447,33 +1852,133 @@ class HandbookIndex:
         return tuple(hits)
 
     def status(self) -> dict[str, Any]:
+        spec = self._embed_model_spec
+        if spec is None:
+            uses_model = "none"
+        elif isinstance(spec, str):
+            name = spec.strip().lower()
+            # ``hashing`` 这个名字是历史契约（既有测试与文档都按它断言），原样保留。
+            uses_model = "hashing" if name == "hashing" else name
+        else:
+            uses_model = "injected"
         return {
             "module": self.module_name,
             "available": self.available(),
             "reason": self.unavailable_reason(),
             "built": self._built,
-            "uses_model": (
-                "none"
-                if self._embed_model_spec is None
-                else ("hashing" if self._embed_model_spec == "hashing" else "injected")
+            "uses_model": uses_model,
+            # 降级标记：词面路径必须自报家门，不许被当成语义结果。
+            "degraded": is_degraded_model(spec),
+            "degraded_reason": (
+                "词面向量化（字符二元组哈希）：只按字面片段排序，不是语义检索"
+                if is_degraded_model(spec)
+                else ""
             ),
+        }
+
+
+class LocalHandbookIndex:
+    """**不依赖 llama_index** 的手册检索：纯标准库，``build()`` 后即可查。
+
+    与 :class:`HandbookIndex` 是同一套向量（都走 :func:`handbook_vector`）、两条执行
+    路径：这里的排序在内存里逐条算余弦，不落盘、不依赖任何第三方包；那边走
+    llama_index 的 ``VectorStoreIndex``，能持久化也能注入真模型。
+
+    为什么两条都要：``llama_index`` 缺失时它会把 ``build()`` 直接拒掉（不静默降级），
+    但「没有第三方包就完全不能做语义检索」是本仓库不能接受的——``CLAUDE.md`` §4 要求
+    纯标准库可跑。这条路径就是那个答案。
+    """
+
+    def __init__(
+        self,
+        *,
+        embed_model: Any = DEFAULT_HANDBOOK_MODEL,
+        embed_dim: int = 256,
+        similarity_top_k: int = 3,
+    ) -> None:
+        self.embed_model = embed_model
+        self.embed_dim = embed_dim
+        self.similarity_top_k = similarity_top_k
+        self._documents: tuple[Mapping[str, Any] | str, ...] = ()
+        self._built = False
+
+    @property
+    def built(self) -> bool:
+        return self._built
+
+    def build(self, documents: Iterable[Mapping[str, Any] | str]) -> int:
+        """吃进手册条目并逐个编码。空集合报错——不建空索引。"""
+        items = tuple(documents)
+        if not items:
+            raise HandbookError("手册条目为空；不建空索引（会让检索假装有内容）")
+        prepared: list[Mapping[str, Any] | str] = []
+        for item in items:
+            if isinstance(item, str):
+                prepared.append(item)
+            elif isinstance(item, Mapping):
+                _text, metadata = _document_text(item)
+                prepared.append({**dict(item), **metadata})
+            else:
+                raise HandbookError(f"不支持的手册条目类型 {type(item).__name__}")
+        # 先全量编码一遍：编码器坏了要在 build 阶段就炸，而不是等查询时给空结果。
+        for item in prepared:
+            text = item if isinstance(item, str) else _document_text(item)[0]
+            _encode_with(text, self.embed_model, self.embed_dim)
+        self._documents = tuple(prepared)
+        self._built = True
+        return len(prepared)
+
+    def query(self, text: str, *, top_k: int | None = None) -> tuple[HandbookHit, ...]:
+        if not self._built:
+            raise HandbookUnavailable(
+                "索引未建立：先 build()；这条免依赖路径不落盘，每次进程内重建"
+            )
+        limit = self.similarity_top_k if top_k is None else max(1, int(top_k))
+        return rank_handbook(
+            self._documents,
+            text,
+            model=self.embed_model,
+            top_k=limit,
+            dim=self.embed_dim,
+        )
+
+    def status(self) -> dict[str, Any]:
+        label = self.embed_model if isinstance(self.embed_model, str) else "injected"
+        return {
+            "module": "",
+            "available": True,
+            "reason": "",
+            "built": self._built,
+            "uses_model": label,
+            "degraded": is_degraded_model(self.embed_model),
+            "degraded_reason": (
+                "词面向量化（字符二元组哈希）：只按字面片段排序，不是语义检索"
+                if is_degraded_model(self.embed_model)
+                else ""
+            ),
+            "engine": "local",
         }
 
 def search_handbook(
     text: str,
     *,
-    index: HandbookIndex | None = None,
+    index: HandbookIndex | LocalHandbookIndex | None = None,
     documents: Iterable[Mapping[str, Any] | str] | None = None,
     top_k: int = 3,
     module_name: str = DEFAULT_LLAMA_MODULE,
+    embed_model: str = DEFAULT_HANDBOOK_MODEL,
 ) -> HandbookResult:
-    """不抛异常的检索入口，给「拿不到就当没有」的调用方用。
+    """不抛异常的检索入口，给「拿不到就当没有」的调用方用（**走 llama_index**）。
 
     三种降级都返回 ``hits=()`` + 说明，绝不返回假的命中：
 
-    1. llama_index 缺失 → ``reason`` 说明缺包；
+    1. llama_index 缺失 → ``reason`` 说明缺包（此时请改用
+       :func:`search_handbook_local`，那是免依赖路径）；
     2. 没有索引也没有 ``documents`` → ``reason`` 说明未建索引；
     3. 命中为空 → ``reason`` 为空但 ``hits`` 为空（调用方应说「没查到」）。
+
+    ``embed_model`` 默认 ``"semantic"``（子词 + 概念轴）；传 ``"hashing"`` 就走词面
+    降级，此时结果的 ``degraded`` 为真、``describe()`` 会写明「降级」。
     """
     if not handbook_available(module_name):
         return HandbookResult(
@@ -1484,7 +1989,7 @@ def search_handbook(
     if active is None:
         if documents is None:
             return HandbookResult(reason="索引未建立，也没有提供手册条目", indexed=False)
-        active = HandbookIndex(module_name=module_name, embed_model="hashing")
+        active = HandbookIndex(module_name=module_name, embed_model=embed_model)
         try:
             active.build(documents)
         except EmbeddingUnavailable as exc:
@@ -1495,4 +2000,50 @@ def search_handbook(
         hits = active.query(text, top_k=top_k)
     except KnowledgeError as exc:
         return HandbookResult(reason=str(exc), indexed=active.built)
-    return HandbookResult(hits=hits, indexed=active.built)
+    status = active.status()
+    model = str(status.get("uses_model", ""))
+    return HandbookResult(
+        hits=hits,
+        indexed=active.built,
+        model=model,
+        degraded=bool(status.get("degraded")),
+    )
+
+
+def search_handbook_local(
+    text: str,
+    documents: Iterable[Mapping[str, Any] | str],
+    *,
+    top_k: int = 3,
+    embed_model: Any = DEFAULT_HANDBOOK_MODEL,
+    embed_dim: int = 256,
+) -> HandbookResult:
+    """**免第三方依赖**的检索入口：只要标准库就能跑语义检索。
+
+    与 :func:`search_handbook` 的区别只是执行路径：这里不碰 llama_index，因此
+    「环境里没装索引包」不再等于「手册检索不可用」。语料是十条量级的手册条目，
+    逐条精确算余弦比近似索引更不容易漏召回。
+
+    ``embed_model`` 可以给内置名（``semantic``/``lexical``/``hashing``），也可以直接
+    给带 ``encode(text)`` 的真模型实例——注入口径与 ``HandbookIndex`` 完全相同。
+
+    同样不抛异常：编码失败或查询为空都返回 ``hits=()`` + ``reason``。
+    """
+    label = embed_model if isinstance(embed_model, str) else "injected"
+    try:
+        hits = rank_handbook(
+            documents, text, model=embed_model, top_k=top_k, dim=embed_dim
+        )
+    except KnowledgeError as exc:
+        return HandbookResult(
+            reason=str(exc),
+            indexed=False,
+            model=label,
+            degraded=is_degraded_model(embed_model),
+        )
+    return HandbookResult(
+        hits=hits,
+        indexed=True,
+        model=label,
+        degraded=is_degraded_model(embed_model),
+    )
