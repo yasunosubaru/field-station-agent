@@ -57,9 +57,10 @@ function Need([string]$p, [string]$what) {
     if (-not (Test-Path -LiteralPath $p)) { Fail ($what + " missing: " + $p) }
 }
 
-function Robo([string]$src, [string]$dst, [string]$label) {
+function Robo([string]$src, [string]$dst, [string]$label, [string[]]$ExtraXD = @()) {
     Write-Host ("  copy " + $label)
-    $null = robocopy $src $dst /E /NFL /NDL /NJH /NJS /NP /XD node_modules .git
+    $xd = @('node_modules', '.git') + $ExtraXD
+    $null = robocopy $src $dst /E /NFL /NDL /NJH /NJS /NP /XD @xd
     if ($LASTEXITCODE -ge 8) { Fail ("robocopy " + $label + " failed, code " + $LASTEXITCODE) }
 }
 
@@ -153,11 +154,26 @@ if (Test-Path -LiteralPath $appNm) {
     Robo $appNm (Join-Path $stageApp 'packages\app\node_modules') "app/node_modules"
 }
 
-# 3.3b config -> app/config（运行时按 <app>/config/providers.json 找后端）
+# 3.3b config -> app/config (runtime reads <app>/config/providers.json)
 $stageConfig = Join-Path $Stage 'config'
 New-Item -ItemType Directory -Force -Path $stageConfig | Out-Null
 Robo (Join-Path $Root 'config') $stageConfig "config"
 Write-Host "  copy config (providers.json -> runtime backend)"
+
+# 3.3c tools -> app/tools
+#     ** chat DEPENDS on tools/agent_server.py. **
+#     agent-bridge.ts lazily spawns <repo>/tools/agent_server.py for the MCP
+# A bare double-click on the exe has none of these -- chat 404s. Use this.
+#     Measured once: the whole tools/ dir was missing from the package.
+#
+#     Copy only what runtime needs: .py plus json/md data.
+#     Skip DevChatApp/bin|obj (most of the 487 MB is that .NET build output),
+#     plus __pycache__ and oversized test fixtures.
+$stageTools = Join-Path $Stage 'tools'
+New-Item -ItemType Directory -Force -Path $stageTools | Out-Null
+Robo (Join-Path $Root 'tools') $stageTools "tools (agent_server + rpa)" `
+     -ExtraXD 'DevChatApp', '__pycache__', '.pytest_cache'
+Write-Host "  copy tools (agent_server.py is REQUIRED for chat)"
 # 3.3 python package -> app/src/fieldstation
 $stagePy = Join-Path $Stage 'src\fieldstation'
 New-Item -ItemType Directory -Force -Path $stagePy | Out-Null
@@ -199,7 +215,10 @@ $checks = @(
     @{p = (Join-Path $Stage ($ReName + '\packages\app\src\server.ts')); what = 'server.ts'},
     @{p = (Join-Path $Stage ($ReName + '\packages\app\src\web\index.html')); what = 'web/index.html'},
     @{p = (Join-Path $Stage 'src\fieldstation\runtimes\server.py'); what = 'python server'},
-    @{p = (Join-Path $Stage 'payload\runtime\python\Scripts\python.exe'); what = 'runtime python'}
+    @{p = (Join-Path $Stage 'payload\runtime\python\Scripts\python.exe'); what = 'runtime python'},
+    # Missing this = chat is dead (front end calls /api/agent/*).
+    @{p = (Join-Path $Stage 'tools\agent_server.py'); what = 'tools/agent_server.py (chat)'},
+    @{p = (Join-Path $Stage 'config\providers.json'); what = 'config/providers.json'}
 )
 foreach ($c in $checks) {
     if (-not (Test-Path -LiteralPath $c.p)) {
@@ -223,6 +242,63 @@ if ($SkipBuild) {
         Pop-Location
     }
 }
+
+# ---------------------------------------------------------------- launcher
+# Contents of start.cmd. Must stay pure ASCII (cmd runs under GBK console).
+# Three jobs:
+#   1. read the API key from a private file into the env (no disk write, no echo)
+#   2. point NAS_PYTHON / NAS_AGENT_SERVER at the bundled interpreter and entry
+#   3. launch the exe
+$LauncherScript = @'
+@echo off
+REM Start AllPoweredFSA with the commandcode backend wired in.
+REM The API key is read from a private file at run time; never written here.
+
+setlocal
+set "SECRET_FILE=%USERPROFILE%\.config\openchamber\secrets\3af7a0500bf1ab33e11119384b8a6ca1"
+
+if not exist "%SECRET_FILE%" (
+  echo [start] missing API key file: %SECRET_FILE%
+  exit /b 1
+)
+set /p FSA_OPENAI_API_KEY=<"%SECRET_FILE%"
+
+if "%FSA_HTTP_PROXY%"=="" set "FSA_HTTP_PROXY=http://127.0.0.1:7900"
+REM NOTE: no /v1 suffix -- provider appends /v1/chat/completions itself.
+set "FSA_OPENAI_BASE_URL=https://api.commandcode.ai/provider"
+set "FSA_OPENAI_MODEL=deepseek/deepseek-v4.1-flash"
+set "FSA_AGENT_PROVIDER=openai_compatible"
+
+set "APP_DIR=%~dp0"
+if not exist "%APP_DIR%AllPoweredFSA.exe" (
+  echo [start] AllPoweredFSA.exe not found next to this script.
+  exit /b 1
+)
+
+REM agent-bridge resolves NAS_PYTHON -> <repo>/runtime/python/python.exe -> PATH.
+REM The packaged runtime is a venv, so Scripts\ is part of the path.
+set "NAS_PYTHON=%APP_DIR%resources\app\payload\runtime\python\Scripts\python.exe"
+set "NAS_AGENT_SERVER=%APP_DIR%resources\app\tools\agent_server.py"
+
+if not exist "%NAS_PYTHON%" (
+  echo [start] bundled python missing: %NAS_PYTHON%
+  exit /b 1
+)
+if not exist "%NAS_AGENT_SERVER%" (
+  echo [start] agent_server.py missing: %NAS_AGENT_SERVER%
+  echo [start] this package was built without tools\ - chat will not work.
+  exit /b 1
+)
+
+echo [start] backend: %FSA_OPENAI_BASE_URL%
+echo [start] model  : %FSA_OPENAI_MODEL%
+echo [start] proxy  : %FSA_HTTP_PROXY%
+echo [start] python : %NAS_PYTHON%
+echo [start] agent  : %NAS_AGENT_SERVER%
+
+start "" "%APP_DIR%AllPoweredFSA.exe"
+endlocal
+'@
 
 # ---------------------------------------------------------------- collect
 Write-Step "6/7 collect artifacts"
@@ -250,12 +326,19 @@ foreach ($f in (Get-ChildItem -LiteralPath $distDir -Filter '*.exe' -File -Error
 
 $unpacked = Join-Path $distDir 'win-unpacked'
 if (Test-Path -LiteralPath $unpacked) {
-    $slim = Join-Path $Out 'AllPoweredFSA-dir'
-    if (-not (Test-Path -LiteralPath $slim)) {
-        New-Item -ItemType Directory -Force -Path $slim | Out-Null
+    $slimDir = Join-Path $Out 'AllPoweredFSA-dir'
+    if (-not (Test-Path -LiteralPath $slimDir)) {
+        New-Item -ItemType Directory -Force -Path $slimDir | Out-Null
     }
-    Robo $unpacked $slim "win-unpacked -> out"
-    $exe = Join-Path $slim 'AllPoweredFSA.exe'
+    Robo $unpacked $slimDir "win-unpacked -> out"
+    # Generate the launcher: injects API key, backend URL, interpreter path.
+    # A bare double-click has none of these -- chat 404s. Use this launcher.
+    $startCmd = Join-Path $slimDir 'start.cmd'
+    [System.IO.File]::WriteAllText($startCmd, $LauncherScript,
+        [System.Text.UTF8Encoding]::new($false))
+    Write-Host "  write start.cmd (env + agent_bridge paths)"
+
+    $exe = Join-Path $slimDir 'AllPoweredFSA.exe'
     if (Test-Path -LiteralPath $exe) {
         $artifacts += [ordered]@{
             name = 'AllPoweredFSA-dir\AllPoweredFSA.exe'; kind = 'dir'

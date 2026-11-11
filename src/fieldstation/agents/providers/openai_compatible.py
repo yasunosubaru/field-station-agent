@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import urllib.error
 import urllib.request
@@ -101,6 +102,9 @@ class OpenAICompatibleProvider(Provider):
         headers = {
             "Content-Type": "application/json",
             "Accept": "text/event-stream" if self._stream else "application/json",
+            # 某些网关（api.commandcode.ai）前面有 Cloudflare，
+            # 缺这个 UA 直接 403 —— 实测过，不是猜测。
+            "User-Agent": "opencode/1.2.3",
         }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -129,6 +133,20 @@ class OpenAICompatibleProvider(Provider):
             payload["stream_options"] = {"include_usage": True}
         return payload
 
+    def _opener(self):
+        """带代理的 opener。
+
+        ``FSA_HTTP_PROXY`` / ``HTTPS_PROXY`` 给了就走代理：本机访问
+        ``api.commandcode.ai`` 必须经 Clash 混合端口，直连会超时。
+        """
+        proxy = (os.environ.get("FSA_HTTP_PROXY")
+                 or os.environ.get("HTTPS_PROXY")
+                 or os.environ.get("https_proxy") or "").strip()
+        if proxy:
+            return urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        return urllib.request.build_opener()
+
     def _open(self, payload: dict):
         """发一次请求，返回已拿到响应头的 response；错误统一成 ProviderError。"""
         req = urllib.request.Request(
@@ -138,7 +156,7 @@ class OpenAICompatibleProvider(Provider):
             method="POST",
         )
         try:
-            return urllib.request.urlopen(req, timeout=self._timeout)
+            return self._opener().open(req, timeout=self._timeout)
         except urllib.error.HTTPError as exc:
             detail = self._error_body(exc)
             raise ProviderError(self._scrub(

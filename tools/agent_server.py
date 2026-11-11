@@ -35,6 +35,7 @@ import importlib
 import inspect
 import json
 import mimetypes
+import os
 import sys
 import threading
 import time
@@ -279,6 +280,20 @@ class AgentHTTPServer(ThreadingHTTPServer):
         for key in DEFAULT_SETTINGS:
             if key in stored:
                 merged[key] = stored[key]
+        # 环境变量优先：打包产物里没有「用户在界面上填设置」这一步，
+        # 启动器（start.cmd）通过环境变量把后端地址与模型名传进来。
+        # 这几条不设就退回 store 里的值，行为不变。
+        env_map = {
+            "base_url": ("FSA_OPENAI_BASE_URL", "FSA_AGENT_BASE_URL"),
+            "model": ("FSA_OPENAI_MODEL", "FSA_AGENT_MODEL"),
+            "provider": ("FSA_AGENT_PROVIDER",),
+        }
+        for field, names in env_map.items():
+            for name in names:
+                value = (os.environ.get(name) or "").strip()
+                if value:
+                    merged[field] = value
+                    break
         return merged
 
     def secret_path(self) -> Path:
@@ -286,6 +301,9 @@ class AgentHTTPServer(ThreadingHTTPServer):
         return self.store.data_dir / "secrets.bin"
 
     def has_key(self) -> bool:
+        # 环境变量优先级最高：打包产物由 start.cmd 提供密钥，不走 DPAPI 文件。
+        if (os.environ.get("FSA_OPENAI_API_KEY") or "").strip():
+            return True
         module = _secret_module()
         path = self.secret_path()
         if module is not None:
@@ -347,6 +365,10 @@ class AgentHTTPServer(ThreadingHTTPServer):
         return False
 
     def read_api_key(self) -> str | None:
+        # 环境变量优先级最高（打包产物由 start.cmd 注入）。
+        env_key = (os.environ.get("FSA_OPENAI_API_KEY") or "").strip()
+        if env_key:
+            return env_key
         module = _secret_module()
         if module is None:
             return None

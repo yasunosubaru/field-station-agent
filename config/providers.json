@@ -3,10 +3,11 @@
   "providers": {
     "fake": {},
     "openai": {
-      "url": "https://api.commandcode.ai/provider/v1",
+      "url": "https://api.commandcode.ai/provider",
       "model": "deepseek/deepseek-v4.1-flash",
       "api_key": "",
       "_api_key_note": "留空。运行时按 FSA_OPENAI_API_KEY 环境变量读；密钥不落仓库。",
+      "_url_note": "不要带 /v1：openai_compatible provider 的契约是 base_url + '/v1/chat/completions'，带了会拼成 /v1/v1/...（实测 404）。",
       "proxy": "",
       "_proxy_note": "留空则由 FSA_HTTP_PROXY 或 HTTPS_PROXY 提供（本机 Clash 混合端口）。",
       "timeout_s": 180
