@@ -10,16 +10,17 @@
 
 | 指标 | 去重字段（判分口径） | DOM 元素（逐行口径） |
 | --- | --- | --- |
-| 总数 | **131**（契约要求 ≥ 60） | 151 |
-| `matched` | 52 | 62 |
-| `b_only` | 42 | 45 |
-| `a_only` | 37 | 44 |
+| 总数 | **129**（契约要求 ≥ 60） | 149 |
+| `matched` | 62 | 73 |
+| `b_only` | 32 | 34 |
+| `a_only` | 20 | 27 |
 | `unverified`（A 侧未核对，不计入差异） | 0 | 0 |
-| **`mismatches`**（`b_only + a_only`） | **79**（契约要求 0） | 89 |
+| `not_applicable`（问卷控件，不计入差异） | 15 | 15 |
+| **`mismatches`**（`b_only + a_only`） | **52**（契约要求 0） | 61 |
 
 「去重字段」= 不同 (页面, 命名空间, 归一化字段名) 的个数；「DOM 元素」= 表的行数。两者差 20 个，是同一字段的多个控件（radio / checkbox 的各个取值、以及原版自己重复写了两遍的同名控件）被合并的结果。
 
-**EV-30 未达成**：`mismatches = 79 > 0`。下面「B 独占」「A 独占」两节逐条列出，不做口径调整。
+**EV-30 未达成**：`mismatches = 52 > 0`。下面「B 独占」「A 独占」两节逐条列出，不做口径调整。
 
 ## 口径
 
@@ -37,7 +38,7 @@
 - **命名空间必须进去重键**：`manage.js` 的终端对话框用 `data-term="path"`、加设备对话框用 `data-adddev="path"`，同名却是两个字段。只有 A 侧且无命名空间差异时，这一维度等同于无。
 - **页面取 A 侧文件名主干，不取目录名**：`app/view/html/` 一个目录装着`index.html`（外壳）、`setUpMonitor.html`（Manage 台）、`welcome.html`。按目录都叫 `html` 会把外壳与 Manage 台的连接对话框错并成一个字段。
 - 但**表里仍然逐元素保留每一行**，因为「具体哪个取值缺失」只能靠行去看；去重后每个字段的代表行取该组里证据最强的那个元素（`matched` > `unverified` > `b_only` / `a_only`），并保留它的 `文件:行号`，随时可回溯。
-- 本机两个数字：**去重字段 131 个 / DOM 元素 151 个**（合并 20 个）。
+- 本机两个数字：**去重字段 129 个 / DOM 元素 149 个**（合并 20 个）。
 - **A 侧是否核对过**：是。`逆向/01_解包/app/view/` 在本机存在，所有 A 位置都是真实行号。
 
 ## 对照表
@@ -49,20 +50,18 @@
 | 字段 | 页面 | B 侧位置 | A 侧位置 | 结论 |
 | --- | --- | --- | --- | --- |
 | convertFileUploadInput（Browse your files） | convert | — | `逆向/01_解包/app/view/convert/convert.html:103` | a_only |
-| cv-affix | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:435` | — | b_only |
-| cv-affix | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:439` | — | b_only |
+| cv-affix（This will be added to the output file name(s)） | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:435` | `逆向/01_解包/app/view/convert/convert.html:367` | matched |
+| cv-affix（This will be added to the output file name(s)） | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:439` | `逆向/01_解包/app/view/convert/convert.html:367` | matched |
 | cv-dest | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:411` | — | b_only |
 | cv-dest | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:415` | — | b_only |
 | cv-unknown | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:395` | — | b_only |
 | cv-unknown | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:399` | — | b_only |
-| destFolderPath | convert | — | `逆向/01_解包/app/view/convert/convert.html:354` | a_only |
-| destination | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:419` | — | b_only |
+| destination | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:419` | `逆向/01_解包/app/view/convert/convert.html:354` | matched |
 | end-date（:） | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:353` | `逆向/01_解包/app/view/convert/convert.html:215` | matched |
 | end-hh | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:355` | `逆向/01_解包/app/view/convert/convert.html:216` | matched |
 | end-mm（:） | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:358` | `逆向/01_解包/app/view/convert/convert.html:218` | matched |
 | end-ss（:） | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:361` | `逆向/01_解包/app/view/convert/convert.html:220` | matched |
 | prefix | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:429` | — | b_only |
-| prefix-option（This will be added to the output file name(s)） | convert | — | `逆向/01_解包/app/view/convert/convert.html:367` | a_only |
 | sample-rate | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:383` | — | b_only |
 | start-date | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:338` | `逆向/01_解包/app/view/convert/convert.html:194` | matched |
 | start-hh | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:340` | `逆向/01_解包/app/view/convert/convert.html:196` | matched |
@@ -76,39 +75,39 @@
 | erase-nvm（Restart） | deviceRestart | `逆向/04_重实现/packages/view/src/config/deviceRestart.ts:25` | `逆向/01_解包/app/view/deviceRestart/deviceRestart.html:15` | matched |
 | gnss-elevation-mask-value（Elevation Mask） | gnssConfig | `逆向/04_重实现/packages/view/src/config/gnssConfig.ts:29` | `逆向/01_解包/app/view/gnssConfig/gnssConfig.html:10` | matched |
 | frequency（Frequency） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3718` | — | b_only |
-| lat（Latitude） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:785` | — | b_only |
-| lon（Longitude） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:787` | — | b_only |
+| lat（Latitude） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:785` | `逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js:281` | matched |
+| lon（Longitude） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:787` | `逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js:285` | matched |
 | mode（Mode） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3717` | — | b_only |
-| name（Name） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:783` | — | b_only |
+| name（Name） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:783` | `逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js:268` | matched |
 | notification（Notification） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:791` | — | b_only |
-| radius（Radius (m)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:789` | — | b_only |
-| resolution（Spectrum Resolution (K)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3720` | — | b_only |
-| sensitivity（Detection Sensitivity (bins)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3722` | — | b_only |
+| radius（Radius (m)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:789` | `逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js:272` | matched |
+| resolution（Spectrum Resolution (K)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3720` | `逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html:86` | matched |
+| sensitivity（Detection Sensitivity (bins)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3722` | `逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html:108` | matched |
 | termBaud（Baud） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:882` | — | b_only |
 | termHost（or TCP） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:884` | — | b_only |
 | termLine（&gt;） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:893` | — | b_only |
 | termPath（Serial） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:880` | — | b_only |
 | termPort（Port） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:886` | — | b_only |
 | tileInput（Tile URL） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:853` | — | b_only |
-| timeAverage（Time Averaging (s)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3721` | — | b_only |
-| updateRate（Update Rate (s)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3719` | — | b_only |
+| timeAverage（Time Averaging (s)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3721` | `逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html:101` | matched |
+| updateRate（Update Rate (s)） | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3719` | `逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html:79` | matched |
 | capture-select（抓包） | index | `逆向/04_重实现/packages/app/src/web/index.html:105` | — | b_only |
-| CS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:729` | a_only |
-| CS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:745` | a_only |
-| CS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:786` | a_only |
+| CS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:729` | not_applicable |
+| CS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:745` | not_applicable |
+| CS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:786` | not_applicable |
 | fileUploadInput（Browse） | index | — | `逆向/01_解包/app/view/html/index.html:355` | a_only |
-| GS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:813` | a_only |
-| GS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:829` | a_only |
-| GS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:870` | a_only |
-| PL2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:645` | a_only |
-| PL3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:661` | a_only |
-| PL4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:702` | a_only |
-| SM2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:560` | a_only |
-| SM3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:576` | a_only |
-| SM4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:617` | a_only |
-| VS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:897` | a_only |
-| VS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:913` | a_only |
-| VS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:954` | a_only |
+| GS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:813` | not_applicable |
+| GS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:829` | not_applicable |
+| GS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:870` | not_applicable |
+| PL2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:645` | not_applicable |
+| PL3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:661` | not_applicable |
+| PL4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:702` | not_applicable |
+| SM2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:560` | not_applicable |
+| SM3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:576` | not_applicable |
+| SM4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:617` | not_applicable |
+| VS2IP（Exceeds expectations） | index | — | `逆向/01_解包/app/view/html/index.html:897` | not_applicable |
+| VS3IP（Very easy） | index | — | `逆向/01_解包/app/view/html/index.html:913` | not_applicable |
+| VS4IP（Other） | index | — | `逆向/01_解包/app/view/html/index.html:954` | not_applicable |
 | flipaxis-slider（Flip Axis） | interferenceToolKit | `逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:695` | `逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:241` | matched |
 | hdr-slider（Enable HDR Mode） | interferenceToolKit | `逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:695` | `逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:30` | matched |
 | itdetectconfig-on-off（Interference Toolkit） | interferenceToolKit | `逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:695` | `逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:124` | matched |
@@ -202,36 +201,25 @@
 
 ## B 独占字段（B 有、A 没有 → 差异）
 
-去重后 42 个字段，展开 45 个 DOM 元素。这些名字在原版里找不到同名对应，要么是 B 新增的，要么是 B 改了键名而没在这里登记。
+去重后 32 个字段，展开 34 个 DOM 元素。这些名字在原版里找不到同名对应，要么是 B 新增的，要么是 B 改了键名而没在这里登记。
 
 | 字段 | 页面 | B 侧位置 |
 | --- | --- | --- |
-| cv-affix | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:435` |
-| cv-affix | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:439` |
 | cv-dest | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:411` |
 | cv-dest | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:415` |
 | cv-unknown | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:395` |
 | cv-unknown | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:399` |
-| destination | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:419` |
 | prefix | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:429` |
 | sample-rate | convert | `逆向/04_重实现/packages/app/src/web/panels/convert.js:383` |
 | frequency | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3718` |
-| lat | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:785` |
-| lon | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:787` |
 | mode | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3717` |
-| name | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:783` |
 | notification | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:791` |
-| radius | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:789` |
-| resolution | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3720` |
-| sensitivity | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3722` |
 | termBaud | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:882` |
 | termHost | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:884` |
 | termLine | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:893` |
 | termPath | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:880` |
 | termPort | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:886` |
 | tileInput | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:853` |
-| timeAverage | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3721` |
-| updateRate | gritJarvisInterface | `逆向/04_重实现/packages/app/src/web/panels/grit.js:3719` |
 | capture-select | index | `逆向/04_重实现/packages/app/src/web/index.html:105` |
 | from | playbackcontrol | `逆向/04_重实现/packages/app/src/web/panels/playback.js:807` |
 | showEvents | playbackcontrol | `逆向/04_重实现/packages/app/src/web/panels/playback.js:798` |
@@ -254,32 +242,15 @@
 
 ## A 独占字段（A 有、B 没有 → 差异）
 
-去重后 37 个字段，展开 44 个 DOM 元素。这些是原版有、B 侧没对上的字段。注意其中一部分所在页面由 A 侧自己用 JS 动态拼装，静态抽取会漏，所以这一列是**上界**，不是精确的缺口清单。
+去重后 20 个字段，展开 27 个 DOM 元素。这些是原版有、B 侧没对上的字段。注意其中一部分所在页面由 A 侧自己用 JS 动态拼装，静态抽取会漏，所以这一列是**上界**，不是精确的缺口清单。
 
 | 字段 | 页面 | A 侧位置 |
 | --- | --- | --- |
 | convertFileUploadInput | convert | `逆向/01_解包/app/view/convert/convert.html:103` |
-| destFolderPath | convert | `逆向/01_解包/app/view/convert/convert.html:354` |
-| prefix-option | convert | `逆向/01_解包/app/view/convert/convert.html:367` |
 | suffix-option | convert | `逆向/01_解包/app/view/convert/convert.html:374` |
 | connection-on-off | deviceManagement | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1050` |
 | connection-on-off | deviceManagement | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1749` |
-| CS2IP | index | `逆向/01_解包/app/view/html/index.html:729` |
-| CS3IP | index | `逆向/01_解包/app/view/html/index.html:745` |
-| CS4IP | index | `逆向/01_解包/app/view/html/index.html:786` |
 | fileUploadInput | index | `逆向/01_解包/app/view/html/index.html:355` |
-| GS2IP | index | `逆向/01_解包/app/view/html/index.html:813` |
-| GS3IP | index | `逆向/01_解包/app/view/html/index.html:829` |
-| GS4IP | index | `逆向/01_解包/app/view/html/index.html:870` |
-| PL2IP | index | `逆向/01_解包/app/view/html/index.html:645` |
-| PL3IP | index | `逆向/01_解包/app/view/html/index.html:661` |
-| PL4IP | index | `逆向/01_解包/app/view/html/index.html:702` |
-| SM2IP | index | `逆向/01_解包/app/view/html/index.html:560` |
-| SM3IP | index | `逆向/01_解包/app/view/html/index.html:576` |
-| SM4IP | index | `逆向/01_解包/app/view/html/index.html:617` |
-| VS2IP | index | `逆向/01_解包/app/view/html/index.html:897` |
-| VS3IP | index | `逆向/01_解包/app/view/html/index.html:913` |
-| VS4IP | index | `逆向/01_解包/app/view/html/index.html:954` |
 | elevation-greaterthan-90 | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:75` |
 | elevation-lessthan-90 | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:70` |
 | elevationMask | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:91` |
@@ -302,6 +273,52 @@
 | portName | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1693` |
 | ports-selected | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1712` |
 | usb-ports-selected | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1758` |
+
+## 收口依据：别名与问卷
+### 同一字段两种键名（别名，10 个）
+
+这些不是 B 多做的字段，是同一字段两侧键名不同。登记后判 `matched`，方法记 `alias`。**每条都能在两侧源码里查到那个键名**（`tests/test_suite_field_alias.py` 钉死），不是凭标签相似推定。
+
+| 页面 | A 键名 | B 键名 | 依据 |
+| --- | --- | --- | --- |
+| gritJarvisInterface | `poi-name-value` | `name` | POI 对话框的 Name；A 用 poi-name-value，B 用 data-poi-field=name |
+| gritJarvisInterface | `poi-radius-value` | `radius` | POI 对话框的 Radius (m)；标签两侧同为 Radius (m) |
+| gritJarvisInterface | `poi-latitude-value` | `lat` | POI 对话框的 Latitude；标签两侧同为 Latitude |
+| gritJarvisInterface | `poi-longitude-value` | `lon` | POI 对话框的 Longitude；标签两侧同为 Longitude |
+| gritJarvisInterface | `updateRateInput` | `updateRate` | 频谱 Update Rate；A 为 updateRateInput(79)，标签 Update Rate (Secs/s) |
+| gritJarvisInterface | `value` | `resolution` | 频谱分辨率；A 是 id=spectrumResolutionInput 上的 name="value"(86)，标签两侧同为 Spectrum Resolution (K) |
+| gritJarvisInterface | `timeAveragingInput` | `timeAverage` | 频谱 Time Averaging；A 为 timeAveragingInput(101) |
+| gritJarvisInterface | `detectionSensitivityInput` | `sensitivity` | 频谱 Detection Sensitivity；A 为 detectionSensitivityInput(108) |
+| convert | `prefix-option` | `cv-affix` | 输出名前缀/后缀单选组：A 是 prefix-option(367, value=PREFIX) 与 suffix-option(374, value=SUFFIX) 两个 id，B 合并为 name=cv-affix 的两个 radio（435 PREFIX / 439 SUFFIX），取值集合相同 |
+| convert | `destFolderPath` | `destination` | 目标目录：A 是隐藏的 webkitdirectory input（354），B 是只读文本框 data-el=destination（419）显示同一路径 |
+
+### 用户反馈问卷（判 not_applicable，15 个）
+
+`app/view/html/index.html` 里那批 `<textarea>`（`SM2IP` … `VS4IP`）落在
+`*-survey-section > carousel-fb-data > rating-msg-section` 里，是让用户给界面打分的意见框
+（"Very easy" / "Exceeds expectations" / "Other"），**不是设备参数**。
+B 侧没有复刻它们是对的——把这算成「漏做」会虚高差异。
+
+判据是**结构性的**：控件的祖先容器 class 命中 `survey-section` / `carousel-fb-data` / `rating-msg-section` 就排除，与具体 id 无关。
+写死 id 清单等于把当前样本当规律，原版改版就失效；而结构性判据判错的方向是「漏判」（仍留在差异里），不会误排除设备字段。
+
+| 字段 | 页面 | 理由 |
+| --- | --- | --- |
+| CS2IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| CS3IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| CS4IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| GS2IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| GS3IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| GS4IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| PL2IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| PL3IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| PL4IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| SM2IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| SM3IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| SM4IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| VS2IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| VS3IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
+| VS4IP | index | 用户反馈问卷控件（祖先容器 class 命中 survey-section/carousel-fb-data/rating-msg-section）：不是设备字段，B 侧不复刻是对的 |
 
 ## 未纳入范围的条目
 
@@ -327,3 +344,5 @@
 3. **`<button>` 白名单是启发式**。A 侧状态控件按 class 关键字识别（`select-device-btn` / `erase-checkbox` / `export-checkbox` / `toggle-switch` / `*-dropdown`）。原版若用别的 class 画开关，那个字段会漏，表现为 `a_only` 少一行——即差异数偏低，不是偏高。当前这 8 个关键字覆盖了实测全部 17 个状态按钮。
 4. **去重会把「真的该分开」的东西合到一起**。合并键是 (页面, 命名空间, 归一化字段名)，它假设同页同命名空间同名就是同一字段。已核对过的反例只有一种：原版自己把同一批控件重复写了两遍（`setUpMonitor.html` 的连接对话框有两个版本、`positionConfig.html` 的 `gpsl1-east` 出现两次、`deviceManagement.js` 的 `connection-on-off` 写了两遍）。这些在原版里就是同一个字段的两份 markup，合并是对的。若将来出现「同页同名但语义确实不同」的情况，这条规则会把它们错并，届时应在 `Field` 上补新的命名空间维度而不是放宽去重。
 5. **三档分辨率不溢出（1280/1440/1920）不在本工具范围**。EV-30 的这一项需要真机截图，本表只解决「字段逐项对得上」。
+6. **A 侧「无键名控件」抽不到，会表现为 `a_only` 或把对应 B 字段记成 `b_only`**。实测两例（`convert.html`）：采样率是 `<input class="common-sample-freq">`（L331，**没有 id 也没有 name**），未知数据是 `<li type="SEPARATE/INTERLEAVE">`（L340-341，不是表单控件）。两者在 A 侧都真实存在，但静态抽取拿不到稳定标识，于是 B 侧的 `sample-rate` / `cv-unknown` 被记成 `b_only`。这类**读作「工具抽不到」而不是「B 多做了」**；要收口得给抽取器补「按结构位置命名」的规则，本轮没做。
+7. **剩余 `b_only` 里有一批是 B 侧新增的功能对话框**。逐条看过：`manage.js` 的终端连接（`data-term`）、加设备（`data-adddev`）、配置文件选择（`data-cfg`）、重启确认（`data-reset`）四组，A 侧终端页 `terminalConsole.html` 只有一个命令行输入框（`terminal-input-box`），没有这些连接/加设备对话框；`grit.js` 的 `term*` 同理。这是**B 侧功能扩展**，不是 A 侧字段漏搬。要判 `not_applicable` 需要先确认这些对话框属于「原版没有、B 自加」，那要产品决策，不在本工具口径内。

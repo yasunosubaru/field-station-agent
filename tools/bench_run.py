@@ -94,8 +94,40 @@ def _sv_list() -> list[tuple[str, int]]:
     return out
 
 
+def _hour_aligned_chunk(chunk_epochs: int) -> int:
+    """把块大小向上取整到整小时。
+
+    **为什么必须整小时**：``writer`` 的分区键是 ``(station, date, hour)``，
+    写入是**整分区覆盖**（``_write_group`` 用 ``os.replace`` 换掉整个文件），
+    不是追加。块若跨进同一个小时，后一块会把前一块在该小时里的行整段覆盖掉——
+    实测 600 历元按 137 切块时，``obs`` 那个小时分区从 34,200 行掉到 2,964 行，
+    只剩最后一块。按小时对齐后，每个分区恰好只被写一次。
+    """
+    hours = -(-chunk_epochs // 3600)
+    return max(3600, hours * 3600)
+
+
 def _freq(signal: str) -> float:
     return {"L1": 1575.42e6, "L2": 1227.60e6, "L5": 1176.45e6}[signal]
+
+
+def rows_per_epoch() -> int:
+    """每历元的 `obs` 行数 = 卫星数 × 信号数。"""
+    return len(_sv_list()) * len(SIGNALS)
+
+
+def epochs_for_target_rows(target_rows: int) -> int:
+    """让 ``obs`` 总行数**不少于** ``target_rows`` 所需的最少历元数（每站）。
+
+    反算而不是写死：``每历元行数 × 站数 × 历元数 >= target``。返回最少的
+    那个历元数——多一个历元就超额，少一个就不够，可复算。
+    """
+    if isinstance(target_rows, bool) or not isinstance(target_rows, int):
+        raise ValueError(f"target_rows 必须是正整数，收到 {target_rows!r}")
+    if target_rows <= 0:
+        raise ValueError(f"target_rows 必须是正整数，收到 {target_rows!r}")
+    per_epoch = rows_per_epoch() * len(BENCH_STATIONS)
+    return -(-target_rows // per_epoch)  # 向上取整
 
 
 def synthetic_obs_rows(station: str, date: str = BENCH_DATE,
@@ -164,11 +196,16 @@ def iter_obs_rows(station: str, date: str = BENCH_DATE,
 
 
 def synthetic_tec_rows(station: str, date: str = BENCH_DATE,
-                       epochs: int = EPOCHS_PER_DAY) -> list[dict]:
-    """造 `tec` 行：每 SV 每历元一条（19 × 86400）。"""
+                       epochs: int = EPOCHS_PER_DAY,
+                       start_epoch: int = 0) -> list[dict]:
+    """造 `tec` 行：每 SV 每历元一条（19 × 86400）。
+
+    ``start_epoch`` 与 :func:`iter_obs_rows` 同义：``(start_epoch, epochs)``
+    这一段与一次性生成的前缀完全一致（公式只依赖绝对历元号）。
+    """
     day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     rows: list[dict] = []
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, start_epoch + epochs):
         ts = day + timedelta(seconds=epoch)
         for system, sv in _sv_list():
             vtec = 15.0 + 8.0 * math.sin((epoch % 86400) / 86400.0 * 2 * math.pi) + sv * 0.5
@@ -200,25 +237,28 @@ def synthetic_agg_hour_rows(obs_rows: Sequence[dict]) -> list[dict]:
 
     **必须从 obs 算出来**，不能另造一份 —— SQL-17 是「聚合表对账」，
     两边如果各造一份，对账就永远成立，那条查询就失去了意义。
+
+    分块建表时用 :func:`agg_hour_accumulator` 逐块喂，结果与一次喂全表相同。
+    """
+    return agg_hour_accumulator()(obs_rows)
+
+
+def agg_hour_accumulator():
+    """返回一个可增量喂的 `agg_hour` 累加器（``acc(rows) -> list[dict]``）。
+
+    **为什么需要增量**：1 亿行不可能整表读进内存算聚合（约 71 GB）。
+    但 `agg_hour` 的键是 ``(station, date, hour, system)``，每个键只在自己的
+    块里出现（obs 按小时分区、块按历元切），所以逐块累加与整表一次算**等价**。
+    这里把中间状态留在闭包里，每次 call 只吐「本次受影响的那些键」的最终行。
     """
     bucket: dict[tuple, dict[str, Any]] = {}
     cn0_by_key: dict[tuple, list[float]] = {}
     slip_by_key: dict[tuple, int] = {}
-    for row in obs_rows:
-        ts = datetime.strptime(row["epoch_utc"], "%Y-%m-%d %H:%M:%S")
-        key = (row["station"], ts.strftime("%Y-%m-%d"), ts.hour, row["system"])
-        acc = bucket.setdefault(key, {"n_obs": 0, "epochs": set(), "svs": set()})
-        acc["n_obs"] += 1
-        acc["epochs"].add(row["epoch_utc"])
-        acc["svs"].add(row["sv"])
-        cn0 = row["cn0_dbhz"]
-        if cn0 is not None:
-            cn0_by_key.setdefault(key, []).append(cn0)
-        if (row["quality_flag"] & 4) != 0:
-            slip_by_key[key] = slip_by_key.get(key, 0) + 1
-    out: list[dict] = []
-    for (station, date, hour, system), acc in sorted(bucket.items()):
-        values = cn0_by_key.get(key := (station, date, hour, system), [])
+
+    def _row(key: tuple) -> dict:
+        station, date, hour, system = key
+        acc = bucket[key]
+        values = cn0_by_key.get(key, [])
         if values:
             ordered = sorted(values)
             mean = sum(ordered) / len(ordered)
@@ -226,7 +266,7 @@ def synthetic_agg_hour_rows(obs_rows: Sequence[dict]) -> list[dict]:
             p95 = percentile(ordered, 0.95)
         else:
             mean = p50 = p95 = None
-        out.append({
+        return {
             "station": station,
             "date": date,
             # `hour` **必须是整数**：它是分区键 `hour=00` 的数值形式。
@@ -241,11 +281,37 @@ def synthetic_agg_hour_rows(obs_rows: Sequence[dict]) -> list[dict]:
             "mean_cn0": mean,
             "p50_cn0": p50,
             "p95_cn0": p95,
-            "missing_rate": (acc["n_obs"] - len(values)) / acc["n_obs"] if acc["n_obs"] else 0.0,
+            "missing_rate": ((acc["n_obs"] - len(values)) / acc["n_obs"]
+                             if acc["n_obs"] else 0.0),
             "slip_epochs": slip_by_key.get(key, 0),
             "qc_reject_rate": 0.0,
-        })
-    return out
+        }
+
+    def accumulate(rows: Sequence[dict]) -> list[dict]:
+        touched: set[tuple] = set()
+        for row in rows:
+            ts = datetime.strptime(row["epoch_utc"], "%Y-%m-%d %H:%M:%S")
+            key = (row["station"], ts.strftime("%Y-%m-%d"), ts.hour,
+                   row["system"])
+            touched.add(key)
+            acc = bucket.setdefault(key, {"n_obs": 0, "epochs": set(), "svs": set()})
+            acc["n_obs"] += 1
+            acc["epochs"].add(row["epoch_utc"])
+            acc["svs"].add(row["sv"])
+            cn0 = row["cn0_dbhz"]
+            if cn0 is not None:
+                cn0_by_key.setdefault(key, []).append(cn0)
+            if (row["quality_flag"] & 4) != 0:
+                slip_by_key[key] = slip_by_key.get(key, 0) + 1
+        return [_row(k) for k in sorted(touched)]
+
+    def finish() -> list[dict]:
+        """把**当前全部键**结算成行（分块建表末尾用它一次写盘）。"""
+        return [_row(k) for k in sorted(bucket)]
+
+    accumulate.finish = finish
+    accumulate.keys = lambda: sorted(bucket)
+    return accumulate
 
 
 def percentile(ordered: Sequence[float], fraction: float) -> float:
@@ -263,29 +329,75 @@ def percentile(ordered: Sequence[float], fraction: float) -> float:
 
 def synthetic_agg_daily_rows(obs_rows: Sequence[dict],
                              tec_rows: Sequence[dict]) -> list[dict]:
-    """由 obs 与 tec 聚合出 `agg_daily`。"""
-    out: list[dict] = []
-    for station in BENCH_STATIONS:
-        station_obs = [r for r in obs_rows if r["station"] == station]
-        station_tec = [r for r in tec_rows if r["station"] == station]
-        cn0 = sorted(r["cn0_dbhz"] for r in station_obs if r["cn0_dbhz"] is not None)
-        vtec = sorted(r["vTEC_TECU"] for r in station_tec if r["vTEC_TECU"] is not None)
-        epochs = {r["epoch_utc"] for r in station_obs}
-        out.append({
-            "station": station,
-            "date": BENCH_DATE,
-            "n_obs": len(station_obs),
-            "n_epochs": len(epochs),
-            "n_sv": len({r["sv"] for r in station_obs}),
-            "mean_cn0": sum(cn0) / len(cn0) if cn0 else None,
-            "p95_cn0": percentile(cn0, 0.95) if cn0 else None,
-            "missing_rate": (len(station_obs) - len(cn0)) / len(station_obs) if station_obs else 0.0,
-            "slip_epochs": sum(1 for r in station_obs if (r["quality_flag"] & 4) != 0),
-            "tec_mean": sum(vtec) / len(vtec) if vtec else None,
-            "tec_p95": percentile(vtec, 0.95) if vtec else None,
-            "coverage_s": len(epochs),
-        })
-    return out
+    """由 obs 与 tec 聚合出 `agg_daily`。
+
+    分块建表时用 :func:`agg_daily_accumulator` 逐块喂，结果与一次喂全表相同。
+    """
+    acc = agg_daily_accumulator()
+    acc(obs_rows, tec_rows)
+    return acc.finish()
+
+
+def agg_daily_accumulator():
+    """返回可增量喂的 `agg_daily` 累加器（``acc(obs, tec) -> None``）。
+
+    `agg_daily` 的键是台站（单日），分块的每一块都落在同一台上，
+    所以逐块累加与整表一次算等价；中间状态只存「排序所需的原始值」，
+    量级是 O(行数)，但**不保留整行 dict**（只留 cn0/vtec 的浮点与计数），
+    比分块模式保留整表小一个数量级。
+    """
+    state: dict[str, dict[str, Any]] = {
+        station: {"obs": 0, "epochs": set(), "svs": set(), "cn0": [],
+                  "slip": 0, "vtec": []}
+        for station in BENCH_STATIONS
+    }
+
+    def accumulate(obs_rows: Sequence[dict], tec_rows: Sequence[dict]) -> None:
+        for row in obs_rows:
+            st = state.setdefault(row["station"], {
+                "obs": 0, "epochs": set(), "svs": set(), "cn0": [],
+                "slip": 0, "vtec": []})
+            st["obs"] += 1
+            st["epochs"].add(row["epoch_utc"])
+            st["svs"].add(row["sv"])
+            cn0 = row["cn0_dbhz"]
+            if cn0 is not None:
+                st["cn0"].append(cn0)
+            if (row["quality_flag"] & 4) != 0:
+                st["slip"] += 1
+        for row in tec_rows:
+            st = state.setdefault(row["station"], {
+                "obs": 0, "epochs": set(), "svs": set(), "cn0": [],
+                "slip": 0, "vtec": []})
+            vtec = row["vTEC_TECU"]
+            if vtec is not None:
+                st["vtec"].append(vtec)
+
+    def finish() -> list[dict]:
+        out: list[dict] = []
+        for station in BENCH_STATIONS:
+            st = state[station]
+            cn0 = sorted(st["cn0"])
+            vtec = sorted(st["vtec"])
+            n_obs = st["obs"]
+            out.append({
+                "station": station,
+                "date": BENCH_DATE,
+                "n_obs": n_obs,
+                "n_epochs": len(st["epochs"]),
+                "n_sv": len(st["svs"]),
+                "mean_cn0": sum(cn0) / len(cn0) if cn0 else None,
+                "p95_cn0": percentile(cn0, 0.95) if cn0 else None,
+                "missing_rate": ((n_obs - len(cn0)) / n_obs) if n_obs else 0.0,
+                "slip_epochs": st["slip"],
+                "tec_mean": sum(vtec) / len(vtec) if vtec else None,
+                "tec_p95": percentile(vtec, 0.95) if vtec else None,
+                "coverage_s": len(st["epochs"]),
+            })
+        return out
+
+    accumulate.finish = finish
+    return accumulate
 
 
 # ---------------------------------------------------------------- 20 条
@@ -726,8 +838,20 @@ class BenchEnv:
 
 
 def build_dataset(root: Path, *, epochs: int = EPOCHS_PER_DAY,
-                  quiet: bool = False) -> BenchEnv:
-    """造 `bench_v1`。**必须复用 `writer.py`**，不绕过「Parquet 是唯一真相」。"""
+                  quiet: bool = False,
+                  chunk_epochs: int | None = None) -> BenchEnv:
+    """造 `bench_v1`。**必须复用 `writer.py`**，不绕过「Parquet 是唯一真相」。
+
+    ``chunk_epochs`` 给出时按块生成并逐块落盘：内存占用与**块大小**成正比，
+    与总量无关。亿级压测靠它（1 亿行整表驻留需约 71 GB，本机 63 GB 内存装不下）。
+    不给则沿用整表单次写入——小规模时更快，且与分块路径产出**逐字节相同**
+    （`tests/test_bench_streaming.py` 钉死）。
+    """
+    if chunk_epochs is not None:
+        if isinstance(chunk_epochs, bool) or not isinstance(chunk_epochs, int):
+            raise ValueError(f"chunk_epochs 必须是正整数，收到 {chunk_epochs!r}")
+        if chunk_epochs <= 0:
+            raise ValueError(f"chunk_epochs 必须是正整数，收到 {chunk_epochs!r}")
     root.mkdir(parents=True, exist_ok=True)
     obs_dir = root / "obs"
     tec_dir = root / "tec"
@@ -738,11 +862,8 @@ def build_dataset(root: Path, *, epochs: int = EPOCHS_PER_DAY,
 
     obs_rows: list[dict] = []
     tec_rows: list[dict] = []
-    for station in BENCH_STATIONS:
-        obs_rows.extend(synthetic_obs_rows(station, epochs=epochs))
-        tec_rows.extend(synthetic_tec_rows(station, epochs=epochs))
-    agg_hour_rows = synthetic_agg_hour_rows(obs_rows)
-    agg_daily_rows = synthetic_agg_daily_rows(obs_rows, tec_rows)
+    n_obs = 0
+    n_tec = 0
 
     def _write(rows: list[dict], directory: Path) -> None:
         """**批量写**，不是逐行 `write_one`。
@@ -758,6 +879,43 @@ def build_dataset(root: Path, *, epochs: int = EPOCHS_PER_DAY,
             return
         writer = NdjsonWriter(directory, parquet=True)
         writer.write(rows)
+
+    if chunk_epochs is None:
+        for station in BENCH_STATIONS:
+            obs_rows.extend(synthetic_obs_rows(station, epochs=epochs))
+            tec_rows.extend(synthetic_tec_rows(station, epochs=epochs))
+        n_obs, n_tec = len(obs_rows), len(tec_rows)
+        _write(obs_rows, obs_dir)
+        _write(tec_rows, tec_dir)
+        agg_hour_rows = synthetic_agg_hour_rows(obs_rows)
+        agg_daily_rows = synthetic_agg_daily_rows(obs_rows, tec_rows)
+    else:
+        # 分块：每站每块写完就丢，内存里最多只有「一站 × 一块」的行。
+        # **不能**在循环外累积 obs_rows —— 那等于没分块。
+        hour_acc = agg_hour_accumulator()
+        daily_acc = agg_daily_accumulator()
+        # 块必须按整小时对齐：分区键是 (station, date, hour)，写入是整分区
+        # 覆盖而非追加。块跨小时会让同一分区被写多次、后写覆盖前写。
+        step = _hour_aligned_chunk(chunk_epochs)
+        for station in BENCH_STATIONS:
+            for start in range(0, epochs, step):
+                span = min(step, epochs - start)
+                block_obs = list(iter_obs_rows(station, epochs=span,
+                                               start_epoch=start))
+                block_tec = synthetic_tec_rows(station, epochs=span,
+                                               start_epoch=start)
+                n_obs += len(block_obs)
+                n_tec += len(block_tec)
+                _write(block_obs, obs_dir)
+                _write(block_tec, tec_dir)
+                hour_acc(block_obs)
+                daily_acc(block_obs, block_tec)
+                del block_obs, block_tec
+        agg_hour_rows = hour_acc.finish()
+        agg_daily_rows = daily_acc.finish()
+
+    # 聚合表必须看到**全量** obs/tec。分块模式下已由累加器增量算完，
+    # 不把全表读回内存（1 亿行约 71 GB，本机装不下）。
 
     def _write_agg(rows: list[dict], directory: Path) -> None:
         """聚合表没有 `epoch_utc`，但分区器要一个时间。
@@ -779,15 +937,13 @@ def build_dataset(root: Path, *, epochs: int = EPOCHS_PER_DAY,
         writer = NdjsonWriter(directory, parquet=True)
         writer.write(stamped)
 
-    _write(obs_rows, obs_dir)
-    _write(tec_rows, tec_dir)
     _write_agg(agg_hour_rows, agg_hour_dir)
     _write_agg(agg_daily_rows, agg_daily_dir)
 
     return BenchEnv(
         root=root, obs_dir=obs_dir, tec_dir=tec_dir,
         agg_hour_dir=agg_hour_dir, agg_daily_dir=agg_daily_dir,
-        rows={"obs": len(obs_rows), "tec": len(tec_rows),
+        rows={"obs": n_obs, "tec": n_tec,
               "agg_hour": len(agg_hour_rows),
               "agg_daily": len(agg_daily_rows)},
     )
@@ -1018,8 +1174,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--workdir", help="在这造数据（默认临时目录）")
     parser.add_argument("--epochs", type=int, default=EPOCHS_PER_DAY,
                         help=f"每站历元数（默认 {EPOCHS_PER_DAY}）")
+    parser.add_argument("--target-rows", type=int,
+                        help="按目标 obs 总行数反算每站历元数（覆盖 --epochs）")
+    parser.add_argument("--chunk-epochs", type=int,
+                        help="分块生成时每块历元数（亿级必给，否则整表驻留内存）")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
+
+    epochs = args.epochs
+    if args.target_rows is not None:
+        epochs = epochs_for_target_rows(args.target_rows)
 
     workdir = Path(args.workdir) if args.workdir else Path(
         tempfile.mkdtemp(prefix="fsa-bench-"))
@@ -1037,9 +1201,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if not args.quiet:
             print(f"造数据 -> {workdir}")
-            print(f"  obs  {EPOCHS_PER_DAY if not args.epochs else args.epochs:,} 历元/站 × "
-                  f"{len(BENCH_STATIONS)} 站 × 19 SV × {len(SIGNALS)} 信号")
-        env = build_dataset(workdir, epochs=args.epochs, quiet=args.quiet)
+            print(f"  obs  {epochs:,} 历元/站 × "
+                  f"{len(BENCH_STATIONS)} 站 × {len(_sv_list())} SV × "
+                  f"{len(SIGNALS)} 信号"
+                  f"（目标 {epochs * rows_per_epoch() * len(BENCH_STATIONS):,} 行）")
+            if args.chunk_epochs:
+                print(f"  分块：每块 {args.chunk_epochs:,} 历元")
+        env = build_dataset(workdir, epochs=epochs, quiet=args.quiet,
+                            chunk_epochs=args.chunk_epochs)
         if not args.quiet:
             print(f"  obs={env.rows['obs']:,} tec={env.rows['tec']:,} "
                   f"agg_hour={env.rows['agg_hour']:,} agg_daily={env.rows['agg_daily']:,}")

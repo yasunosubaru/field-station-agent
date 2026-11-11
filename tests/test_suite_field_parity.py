@@ -107,7 +107,8 @@ class TestClassification(ReportFixture):
             self.assertIn(verdict, counts, f"缺少分类 {verdict}")
 
     def test_verdicts_are_from_known_set(self):
-        allowed = {"matched", "b_only", "a_only", "unverified"}
+        allowed = {"matched", "b_only", "a_only", "unverified",
+                   "not_applicable"}
         for row in self.report.rows:
             with self.subTest(page=row.page, key=row.field_key):
                 self.assertIn(row.verdict, allowed)
@@ -218,7 +219,8 @@ class TestRendering(ReportFixture):
         data_rows = [
             ln for ln in block.splitlines()
             if ln.startswith("| ") and ln.rstrip().endswith(
-                ("| matched |", "| b_only |", "| a_only |", "| unverified |"))
+                ("| matched |", "| b_only |", "| a_only |", "| unverified |",
+                 "| not_applicable |"))
         ]
         self.assertEqual(len(data_rows), self.report.elements)
 

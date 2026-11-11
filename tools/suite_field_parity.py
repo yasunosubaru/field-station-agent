@@ -160,8 +160,100 @@ FRAGMENT_RE = re.compile(r"""['"]([^'"]*\.html)['"]""")
 #: ``data-lang-xxx`` → 到 en.js 查英文。
 DATA_LANG_RE = re.compile(r"data-lang-([A-Za-z0-9_\-]+)")
 
+#: 字段**别名**：同一字段在两侧用了不同键名。
+#:
+#: ## 为什么需要这张表
+#:
+#: `page.grit` 在覆盖映射里指向 A 侧的 `GRIT/gritJarvisInterface.js`，而那是
+#: GRIT 的**装配器**——它按名字加载 20 个子页面（`'positionOverview':{...}`），
+#: 自己一个 `<input>` 都没有。真正的控件在子文件里，且键名风格与 B 不同：
+#: A 写 `poi-name-value`，B 写 `name`；A 写 `updateRateInput`，B 写 `updateRate`。
+#:
+#: 不登记这层等价关系，这些字段会落进 `b_only`，把「同一字段两种键名」错算成
+#: 「B 多做了 11 个字段」。登记之后判 `matched`，并把方法记成 `alias`，
+#: 报告里单独说明依据。
+#:
+#: ## 硬约束（`tests/test_suite_field_alias.py` 钉死）
+#:
+#: * 每条都必须两侧都能在源码里找到该键名——凭标签相似不算；
+#: * 只对声明的页面生效，不全局放开；
+#: * 是**白名单**：没登记的键名差异照旧算差异。
+FIELD_ALIASES: tuple[dict, ...] = (
+    # ---- GRIT / POI 对话框：A 的键名带 poi- 前缀与 -value 后缀
+    {"page": "gritJarvisInterface", "a_key": "poi-name-value",
+     "b_key": "name",
+     "a_file": "逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js",
+     "reason": "POI 对话框的 Name；A 用 poi-name-value，B 用 data-poi-field=name"},
+    {"page": "gritJarvisInterface", "a_key": "poi-radius-value",
+     "b_key": "radius",
+     "a_file": "逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js",
+     "reason": "POI 对话框的 Radius (m)；标签两侧同为 Radius (m)"},
+    {"page": "gritJarvisInterface", "a_key": "poi-latitude-value",
+     "b_key": "lat",
+     "a_file": "逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js",
+     "reason": "POI 对话框的 Latitude；标签两侧同为 Latitude"},
+    {"page": "gritJarvisInterface", "a_key": "poi-longitude-value",
+     "b_key": "lon",
+     "a_file": "逆向/01_解包/app/view/GRIT/positionOverview/addPOIDialog.js",
+     "reason": "POI 对话框的 Longitude；标签两侧同为 Longitude"},
+    # ---- GRIT / 频谱查看器：A 的键名带 Input 后缀或落在 name="value" 上
+    {"page": "gritJarvisInterface", "a_key": "updateRateInput",
+     "b_key": "updateRate",
+     "a_file": "逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html",
+     "reason": "频谱 Update Rate；A 为 updateRateInput(79)，标签 Update Rate (Secs/s)"},
+    {"page": "gritJarvisInterface", "a_key": "value",
+     "b_key": "resolution",
+     "a_file": "逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html",
+     "reason": "频谱分辨率；A 是 id=spectrumResolutionInput 上的 name=\"value\"(86)，"
+               "标签两侧同为 Spectrum Resolution (K)"},
+    {"page": "gritJarvisInterface", "a_key": "timeAveragingInput",
+     "b_key": "timeAverage",
+     "a_file": "逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html",
+     "reason": "频谱 Time Averaging；A 为 timeAveragingInput(101)"},
+    {"page": "gritJarvisInterface", "a_key": "detectionSensitivityInput",
+     "b_key": "sensitivity",
+     "a_file": "逆向/01_解包/app/view/GRIT/spectrumViewer/spectrumViewer.html",
+     "reason": "频谱 Detection Sensitivity；A 为 detectionSensitivityInput(108)"},
+    # ---- convert：A 侧 Prefix/Suffix 是两个 id、各带一个 value，
+    #      B 侧合成一个 name="cv-affix" 的 radio 组，取值同为 PREFIX/SUFFIX。
+    {"page": "convert", "a_key": "prefix-option",
+     "b_key": "cv-affix",
+     "reason": "输出名前缀/后缀单选组：A 是 prefix-option(367, value=PREFIX) 与 "
+               "suffix-option(374, value=SUFFIX) 两个 id，B 合并为 "
+               "name=cv-affix 的两个 radio（435 PREFIX / 439 SUFFIX），取值集合相同"},
+    # ---- convert：A 的目录选择是隐藏 file input，B 用只读文本框显示同一路径
+    {"page": "convert", "a_key": "destFolderPath",
+     "b_key": "destination",
+     "reason": "目标目录：A 是隐藏的 webkitdirectory input（354），"
+               "B 是只读文本框 data-el=destination（419）显示同一路径"},
+)
+
 #: ``<span>标签</span>``，B 侧靠它显示字段名。
 SPAN_TEXT_RE = re.compile(r"<span[^>]*>([^<]{1,80})</span>")
+
+#: 用户反馈问卷的容器 class 标记。命中即判 ``not_applicable``。
+#:
+#: ## 事实依据（逐条查过 `app/view/html/index.html`）
+#:
+#: ``SM2IP`` / ``PL3IP`` / ``CS4IP`` / ``GS2IP`` / ``VS4IP`` … 这 15 个
+#: ``<textarea>`` 的祖先链固定为
+#: ``*-survey-section > carousel-fb-data > rating-msg-section``（外加
+#: ``other-feature-option``）。它们是让用户给界面打分的意见框
+#: （"Very easy" / "Exceeds expectations" / "Other"），**不是设备参数**。
+#: B 侧没复刻它们是对的——那不是业务字段，算成「漏做」会虚高差异。
+#:
+#: ## 为什么用结构性判据而不是黑名单
+#:
+#: 写死那 15 个 id 等于把当前样本当规律，原版改版就失效。这里判**祖先容器
+#: 的 class**：只要控件落在问卷区里就排除，与具体 id 无关。
+SURVEY_CLASS_MARKERS: tuple[str, ...] = (
+    "survey-section",
+    "carousel-fb-data",
+    "rating-msg-section",
+)
+
+#: 容器标签（用来向上找祖先 class）。
+_CONTAINER_OPEN_RE = re.compile(r"<\s*(div|section|form|fieldset)\b([^>]*)", re.I)
 
 
 # --------------------------------------------------------------------- 模型
@@ -206,8 +298,9 @@ class Row:
     label: str
     b_field: Optional[Field]
     a_field: Optional[Field]
-    verdict: str        # matched / b_only / a_only / unverified
-    method: str         # key / fragment / none
+    verdict: str        # matched / b_only / a_only / unverified / not_applicable
+    method: str         # key / fragment / alias / none / survey
+    reason: str = ""    # not_applicable 的依据（其它结论留空）
 
     @property
     def nkey(self) -> str:
@@ -572,6 +665,54 @@ def fragment_index(b_file: str, cache: dict[str, dict[str, int]]) -> dict[str, i
     return cache[b_file]
 
 
+def survey_field_keys(path: Path) -> set[str]:
+    """返回该文件里落在**问卷容器**内的控件键名。
+
+    判据见 :data:`SURVEY_CLASS_MARKERS`：从控件位置向上找最近的若干个容器
+    开始标签，只要有一个的 `class` 命中问卷标记，就认为它在问卷区里。
+
+    只向上找**同级已闭合之前**的容器：HTML 是流式的，这里用「最近的 N 个
+    开始标签 + 其间没有对应闭合」的近似——对本仓库这些模板足够，因为问卷区
+    的容器 class 就在紧邻的 3 层里。判错的方向是**漏判**（问卷控件仍留在
+           差异里），不会是误判（把设备字段排除掉），这正是保守的方向。
+    """
+    if not path.exists():
+        return set()
+    text = read_text(path)
+    spans = comment_spans(text)
+    en = load_en_table(A_LANG)
+
+    out: set[str] = set()
+    for field in extract_fields(path, side="A", en=en):
+        if field.key in out:
+            continue
+        # 找到该控件在文本里的偏移：用行号反推该行的起始
+        offset = 0
+        for _ in range(field.line - 1):
+            nl = text.find("\n", offset)
+            if nl < 0:
+                break
+            offset = nl + 1
+        if in_spans(offset, spans):
+            continue
+        # 向上找最近的若干容器开始标签的 class。
+        # 窗口取 6000 字符（约 100 行）：`*4IP` 那几个隔着
+        # `other-feature-option > features-container > featureDetails` 三层，
+        # 再往上才是 `*-survey-section`。`classes[-6:]` 会把它切掉，故不截断。
+        lo = max(0, offset - 6000)
+        chunk = text[lo:offset]
+        survey_hit = False
+        for m in _CONTAINER_OPEN_RE.finditer(chunk):
+            attrs = parse_attrs(m.group(2))
+            cls = attrs.get("class", "")
+            if cls and any(mark in cls for mark in SURVEY_CLASS_MARKERS):
+                survey_hit = True
+                break
+        if survey_hit:
+            out.add(field.key)
+    return out
+
+
 def build_report(
     *,
     a_view: Path = A_VIEW,
@@ -613,11 +754,32 @@ def build_report(
             if b not in b_files:
                 b_files.append(b)
 
+    # ---- 1b. 别名引用的 A 侧文件也要抽（它们不在映射的 a.file 上）
+    #
+    # `page.grit` 的 a.file 是 GRIT 装配器，控件在 positionOverview/ 等子文件里。
+    # 别名表用 `a_file` 显式指向那些子文件，这里把它们一并纳入抽取范围。
+    # 注意：**不**把它们加进 `allowed` —— 它们不是「某条目的 A 侧」，
+    # 只是别名取证用的额外来源；否则会凭空多出配对、抬高字段数。
+    alias_a_files: list[str] = []
+    for alias in FIELD_ALIASES:
+        ref = str(alias.get("a_file") or "").strip()
+        if ref and ref not in a_files and ref not in alias_a_files:
+            alias_a_files.append(ref)
+
     # ---- 2. 抽取：每个文件只抽一次
     a_fields = {f: extract_fields(ROOT / f, side="A", en=en) for f in a_files}
     b_fields = {f: extract_fields(ROOT / f, side="B", en=en) for f in b_files}
+    # 别名取证用的 A 侧子文件：只抽不配对，供第 3.5 步按 (页面, 键名) 取用。
+    alias_a_fields = {
+        f: extract_fields(ROOT / f, side="A", en=en) for f in alias_a_files
+    }
+    # 问卷控件：判 not_applicable，不进差异口径（判据见 SURVEY_CLASS_MARKERS）。
+    survey_keys = {f: survey_field_keys(ROOT / f) for f in a_files}
     a_used = {f: [False] * len(v) for f, v in a_fields.items()}
     b_used = {f: [False] * len(v) for f, v in b_fields.items()}
+    alias_a_used = {
+        f: [False] * len(v) for f, v in alias_a_fields.items()
+    }
 
     frag_cache: dict[str, dict[str, int]] = {}
     rows: list[Row] = []
@@ -658,6 +820,73 @@ def build_report(
                             b_field=b_pos, a_field=a, verdict="matched",
                             method="fragment"))
 
+    # ---- 3.5 别名证据：同一字段两侧键名不同（只对声明的页面生效）
+    #
+    # 放在键名配对**之前**：别名是更具体的证据（它点名了页面与两侧键名），
+    # 若让它排在后面，键名配对可能先把某个同名候选认领走，别名就配不上了。
+    # 取证只从该别名 `a_file` 指向的 A 侧文件里取，不跨页面猜。
+    alias_pages = {a["page"] for a in FIELD_ALIASES}
+    for alias in FIELD_ALIASES:
+        page = alias["page"]
+        a_key = alias["a_key"]
+        b_key = alias["b_key"]
+        a_ref = str(alias.get("a_file") or "").strip()
+        for b_file in sorted(b_files):
+            # 只在该页面自己的 (A,B) 配对里找 B 字段
+            pair_pages = {page_of(a) for (a, bf) in allowed if bf == b_file}
+            if page not in pair_pages:
+                continue
+            for i, b in enumerate(b_fields[b_file]):
+                if b_used[b_file][i] or b.key != b_key:
+                    continue
+                # 找 A 侧的对应控件
+                hit = None
+                for a_file, fields in alias_a_fields.items():
+                    for j, a in enumerate(fields):
+                        if alias_a_used[a_file][j] or a.key != a_key:
+                            continue
+                        hit = (a_file, j, a)
+                        break
+                    if hit:
+                        break
+                if hit is None and a_ref:
+                    continue
+                if hit is None:
+                    # 没给 a_file 时退回映射里该页的 A 文件
+                    for a_file, fields in a_fields.items():
+                        if page_of(a_file) != page:
+                            continue
+                        for j, a in enumerate(fields):
+                            if a_used[a_file][j] or a.key != a_key:
+                                continue
+                            hit = (a_file, j, a)
+                            break
+                        if hit:
+                            break
+                if hit is None:
+                    continue
+                a_file, j, a = hit
+                if a_file in alias_a_used:
+                    alias_a_used[a_file][j] = True
+                else:
+                    a_used[a_file][j] = True
+                b_used[b_file][i] = True
+                rows.append(Row(page=page, field_key=b.key,
+                                label=b.label or a.label, b_field=b, a_field=a,
+                                verdict="matched", method="alias"))
+                # 同组其余元素（radio 的其它取值）一并认领：它们与刚认领的
+                # 那个元素是**同一字段的不同取值**。A 侧的对照控件只认领一次，
+                # 后面的取值复用它，不再去找第二个 A 控件——否则 SUFFIX 那行
+                # 会落回 b_only，把「一个字段」错算成「缺一个字段」。
+                for i2, b2 in enumerate(b_fields[b_file]):
+                    if b_used[b_file][i2] or b2.key != b_key:
+                        continue
+                    b_used[b_file][i2] = True
+                    rows.append(Row(page=page, field_key=b2.key,
+                                    label=b2.label or a.label, b_field=b2,
+                                    a_field=a, verdict="matched",
+                                    method="alias"))
+
     # ---- 4. 次强证据：同一条目允许的配对里，归一化键名相同
     #      B 字段逐个认领；候选多于一个时按 (a 文件, 行号) 取最小，确定性优先。
     for b_file in sorted(b_files):
@@ -683,6 +912,28 @@ def build_report(
             rows.append(Row(page=page_of(a_file), field_key=b.key,
                             label=b.label or a.label, b_field=b, a_field=a,
                             verdict="matched", method="key"))
+
+    # ---- 4.5 问卷控件：判 not_applicable，不进差异口径
+    #
+    # 放在「侧独有」结算之前：它们不是「B 漏做的字段」，先认领掉，
+    # 免得落进 a_only 虚高差异。判据是结构性的（祖先容器 class），
+    # 不是写死 id 清单——见 SURVEY_CLASS_MARKERS 的说明。
+    for a_file in sorted(a_files):
+        keys = survey_keys.get(a_file) or set()
+        if not keys:
+            continue
+        page = page_of(a_file)
+        for i, a in enumerate(a_fields[a_file]):
+            if a_used[a_file][i] or a.key not in keys:
+                continue
+            a_used[a_file][i] = True
+            rows.append(Row(
+                page=page, field_key=a.key, label=a.label,
+                b_field=None, a_field=a, verdict="not_applicable",
+                method="survey",
+                reason=("用户反馈问卷控件（祖先容器 class 命中 "
+                        + "/".join(SURVEY_CLASS_MARKERS)
+                        + "）：不是设备字段，B 侧不复刻是对的")))
 
     # ---- 5. 结算：剩下的一侧独有
     #      b_only 的页面不能取「字母序第一个」：``manage.js`` 被 5 个条目共用，
@@ -789,6 +1040,8 @@ def render_markdown(report: Report) -> str:
     add(f"| `a_only` | {uc.get('a_only', 0)} | {c.get('a_only', 0)} |")
     add(f"| `unverified`（A 侧未核对，不计入差异） | {uc.get('unverified', 0)} | "
         f"{c.get('unverified', 0)} |")
+    add(f"| `not_applicable`（问卷控件，不计入差异） | "
+        f"{uc.get('not_applicable', 0)} | {c.get('not_applicable', 0)} |")
     add(f"| **`mismatches`**（`b_only + a_only`） | **{report.mismatches}**"
         f"（契约要求 0） | {report.element_mismatches} |")
     add("")
@@ -933,6 +1186,46 @@ def render_markdown(report: Report) -> str:
                 f"{r.b_field.where if r.b_field else '—'} |")
         add("")
 
+    add("## 收口依据：别名与问卷")
+
+
+    alias_rows = [r for r in report.unique_fields if r.method == "alias"]
+    add(f"### 同一字段两种键名（别名，{len(alias_rows)} 个）")
+    add("")
+    add("这些不是 B 多做的字段，是同一字段两侧键名不同。登记后判 `matched`，"
+        "方法记 `alias`。**每条都能在两侧源码里查到那个键名**"
+        "（`tests/test_suite_field_alias.py` 钉死），不是凭标签相似推定。")
+    add("")
+    add("| 页面 | A 键名 | B 键名 | 依据 |")
+    add("| --- | --- | --- | --- |")
+    for alias in FIELD_ALIASES:
+        add(f"| {_cell(alias['page'])} | `{_cell(alias['a_key'])}` | "
+            f"`{_cell(alias['b_key'])}` | {_cell(alias['reason'])} |")
+    add("")
+
+    survey_rows = [r for r in report.unique_fields
+                   if r.verdict == "not_applicable"]
+    add(f"### 用户反馈问卷（判 not_applicable，{len(survey_rows)} 个）")
+    add("")
+    add("`app/view/html/index.html` 里那批 `<textarea>`（`SM2IP` … `VS4IP`）落在")
+    add("`*-survey-section > carousel-fb-data > rating-msg-section` 里，"
+        "是让用户给界面打分的意见框")
+    add("（\"Very easy\" / \"Exceeds expectations\" / \"Other\"），**不是设备参数**。")
+    add("B 侧没有复刻它们是对的——把这算成「漏做」会虚高差异。")
+    add("")
+    add("判据是**结构性的**：控件的祖先容器 class 命中 "
+        + " / ".join(f"`{m}`" for m in SURVEY_CLASS_MARKERS)
+        + " 就排除，与具体 id 无关。")
+    add("写死 id 清单等于把当前样本当规律，原版改版就失效；"
+        "而结构性判据判错的方向是「漏判」（仍留在差异里），不会误排除设备字段。")
+    add("")
+    if survey_rows:
+        add("| 字段 | 页面 | 理由 |")
+        add("| --- | --- | --- |")
+        for r in survey_rows:
+            add(f"| {_cell(r.field_key)} | {_cell(r.page)} | {_cell(r.reason)} |")
+        add("")
+
     add("## 未纳入范围的条目")
     add("")
     add("这些条目在映射里标为 `not_applicable` / `a_only`，或缺少 A/B 文件，"
@@ -964,6 +1257,21 @@ def render_markdown(report: Report) -> str:
         "届时应在 `Field` 上补新的命名空间维度而不是放宽去重。")
     add("5. **三档分辨率不溢出（1280/1440/1920）不在本工具范围**。"
         "EV-30 的这一项需要真机截图，本表只解决「字段逐项对得上」。")
+    add("6. **A 侧「无键名控件」抽不到，会表现为 `a_only` 或把对应 B 字段记成 "
+        "`b_only`**。实测两例（`convert.html`）：采样率是 "
+        "`<input class=\"common-sample-freq\">`（L331，**没有 id 也没有 name**），"
+        "未知数据是 `<li type=\"SEPARATE/INTERLEAVE\">`（L340-341，不是表单控件）。"
+        "两者在 A 侧都真实存在，但静态抽取拿不到稳定标识，于是 B 侧的 "
+        "`sample-rate` / `cv-unknown` 被记成 `b_only`。"
+        "这类**读作「工具抽不到」而不是「B 多做了」**；要收口得给抽取器补"
+        "「按结构位置命名」的规则，本轮没做。")
+    add("7. **剩余 `b_only` 里有一批是 B 侧新增的功能对话框**。逐条看过："
+        "`manage.js` 的终端连接（`data-term`）、加设备（`data-adddev`）、"
+        "配置文件选择（`data-cfg`）、重启确认（`data-reset`）四组，"
+        "A 侧终端页 `terminalConsole.html` 只有一个命令行输入框（`terminal-input-box`），"
+        "没有这些连接/加设备对话框；`grit.js` 的 `term*` 同理。"
+        "这是**B 侧功能扩展**，不是 A 侧字段漏搬。要判 `not_applicable` 需要"
+        "先确认这些对话框属于「原版没有、B 自加」，那要产品决策，不在本工具口径内。")
     add("")
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -983,6 +1291,7 @@ def summary_dict(report: Report) -> dict:
         "b_only": uc.get("b_only", 0),
         "a_only": uc.get("a_only", 0),
         "unverified": uc.get("unverified", 0),
+        "not_applicable": uc.get("not_applicable", 0),
         "elements": report.elements,
         "element_mismatches": report.element_mismatches,
         "merged": report.merged,
@@ -1004,6 +1313,7 @@ def print_summary(report: Report) -> None:
     print(f"  b_only      : {s['b_only']}")
     print(f"  a_only      : {s['a_only']}")
     print(f"  unverified  : {s['unverified']}")
+    print(f"  not_applicable: {s['not_applicable']}（问卷控件，不计入差异）")
     print(f"A 侧已解包    : {'是' if s['a_root_present'] else '否（A 侧未核对）'}")
     print(f"范围内条目    : {s['entries_in_scope']} / 全部 {s['entries_seen']}")
     if s["fields"] < MIN_FIELDS:
