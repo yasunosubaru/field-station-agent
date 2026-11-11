@@ -543,30 +543,37 @@ class ClickHouseEngine(BaseEngine):
         # 分区列（station/date/hour）在 hive 布局里被读成 `dictionary<string>`
         # 类型，与非分区文件里的 `string` 混不到一起（实测
         # `ArrowTypeError: Unable to merge: Field station has incompatible types`）。
-        # 统一裁成一致的 schema 再读。
-        table = pq.read_table(
-            files,
-            schema=_unified_arrow_schema(files),
-        )
-        if any(str(f.type).startswith("dictionary") for f in table.schema):
-            table = table.unify_dictionaries()
+        # 统一裁成一致的 schema：`_unified_arrow_schema` 只读各文件**元数据**，
+        # 不读数据块，所以传全部文件不会引入内存峰值。
+        schema = _unified_arrow_schema(files)
         # 用 pyarrow 的类型直接建表，**不做类型换算** —— 换算会引入舍入，
         # 两引擎比出来的差异就分不清是「方言」还是「我改了数」。
         columns = ", ".join(
-            f"`{field.name}` {_ch_type(field.type)}" for field in table.schema)
+            f"`{field.name}` {_ch_type(field.type)}" for field in schema)
         try:
             client.command(f"DROP TABLE IF EXISTS {target}")
+            # **必须是 MergeTree，不能是 Memory。**
+            # `ENGINE = Memory` 会把整张表放进 CH 的内存里：实测 1 亿行灌表时
+            # 报 `(total) memory limit exceeded: would use 13.31 GiB ... maximum:
+            # 13.31 GiB`，整条基准直接失败。MergeTree 落盘，内存只跟插入批次有关。
             client.command(
-                f"CREATE TABLE {target} ({columns}) ENGINE = Memory")
-            # 列式传值 + `column_oriented=True`。
-            # **漏掉这个标志**，客户端会把「每列的 list」当成「每行」，
-            # 报 `Insert data column count does not match column names` ——
-            # 报错信息完全指不到真正的原因上。
-            client.insert(
-                target,
-                [table.column(name).to_pylist() for name in table.column_names],
-                column_oriented=True,
-            )
+                f"CREATE TABLE {target} ({columns}) "
+                "ENGINE = MergeTree ORDER BY tuple()")
+            # **逐文件分批插入**：`pq.read_table(files)` 一次读全部 488 个分区，
+            # 光 pyarrow 侧就有 GB 级峰值；分批后内存只与单文件大小成正比。
+            for path in files:
+                block = pq.read_table(path, schema=schema)
+                if block.num_rows == 0:
+                    continue
+                # 列式传值 + `column_oriented=True`。
+                # **漏掉这个标志**，客户端会把「每列的 list」当成「每行」，
+                # 报 `Insert data column count does not match column names` ——
+                # 报错信息完全指不到真正的原因上。
+                client.insert(
+                    target,
+                    [block.column(name).to_pylist() for name in block.column_names],
+                    column_oriented=True,
+                )
         except Exception as exc:
             raise EngineError(f"灌表 {target} 失败：{exc}") from exc
 

@@ -42,6 +42,7 @@ TopN 里的位置 —— 这些都会给出「行数对、数不对」的结果�
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import shutil
@@ -75,6 +76,9 @@ ABS_TOL = 1e-12
 # ---------------------------------------------------------------- 数据集规格
 BENCH_STATIONS = ("WUHN", "BJFS")
 BENCH_DATE = "2026-10-01"
+
+#: 亿级压测结果（由 `--scale-out` 写出，`render_report` 读它生成那一节）。
+SCALE_RESULT_PATH = ROOT / "logs" / "bench_scale_1e8.json"
 SYSTEMS = (("GPS", 8), ("GLO", 6), ("GAL", 5))
 SIGNALS = ("L1", "L2", "L5")
 EPOCHS_PER_DAY = 86_400
@@ -1071,6 +1075,82 @@ def run_all(env: BenchEnv, *, quiet: bool = False) -> list[CaseOutcome]:
     return outcomes
 
 
+def _scale_section() -> str:
+    """「亿级压测」一节。数据来自 ``SCALE_RESULT_PATH`` 的 JSON，不手写。
+
+    ## 为什么单独一节
+
+    上面那张表是**默认规模**（2 站 × 86,400 历元 ≈ 246 万行 `obs`）。
+    EV-30 要的是「1 亿行压测 + p95」，那是另一组数字，混进同一张表会让人
+    分不清「哪一行的 ms 是 246 万行测的还是 1 亿行测的」。
+
+    ## 为什么先预热再计时
+
+    首次跑 ClickHouse 会把 488 个 Parquet 分区灌成 MergeTree 表：实测 SQL-01
+    首跑 **640 秒**，第 2 跑起 60 ms 级。把灌表时间算进 p95，等于把「导入快慢」
+    和「查询快慢」混成一个数——那不是这条基准要回答的问题。
+    """
+    path = SCALE_RESULT_PATH
+    if not path.is_file():
+        return "\n".join([
+            "## 亿级压测（未跑）",
+            "",
+            "本机还没有 `logs/bench_scale_1e8.json`。跑法：",
+            "",
+            "```powershell",
+            "$env:PYTHONPATH=\"src\"",
+            "python tools/bench_run.py --target-rows 100000000 --chunk-epochs 7200 \\",
+            "    --workdir <目录> --scale-out logs/bench_scale_1e8.json",
+            "```",
+            "",
+            "**这里不填任何数字** —— 没跑就是没跑。",
+        ])
+    data = json.loads(path.read_text(encoding="utf-8"))
+    rows = data.get("rows") or []
+    lines: list[str] = []
+    add = lines.append
+    add("## 亿级压测")
+    add("")
+    add("| 项 | 值 |")
+    add("|---|---|")
+    add(f"| `obs` 行数 | {int(data.get('scale_obs_rows', 0)):,} |")
+    add(f"| 分块历元数 | {int(data.get('chunk_epochs', 0)):,}"
+        "（必须整小时对齐，见下） |")
+    add(f"| 每查询重复 | {int(data.get('repeats', 0))} 次取 p50/p95 |")
+    add(f"| 预热 | {'是（灌表不计入）' if data.get('warmed_up') else '否'} |")
+    host = data.get("host") or {}
+    if host:
+        add(f"| 本机 | 内存 {host.get('memory_gb')} GB，"
+            f"ClickHouse {host.get('clickhouse')} |")
+    add("")
+    add("| 编号 | 主题 | DuckDB p50 | DuckDB p95 | CH p50 | CH p95 | 差异 |")
+    add("|---|---|---|---|---|---|---|")
+    for row in rows:
+        add(f"| {row['ident']} | {row['title']} | "
+            f"{row['duckdb_p50_ms']:.0f} ms | {row['duckdb_p95_ms']:.0f} ms | "
+            f"{row['ch_p50_ms']:.0f} ms | {row['ch_p95_ms']:.0f} ms | "
+            f"{row['diffs']} |")
+    add("")
+    total = sum(int(r.get("diffs") or 0) for r in rows)
+    add(f"**{len(rows)} 条查询、{int(data.get('scale_obs_rows', 0)):,} 行，"
+        f"差异合计 {total}。**")
+    add("")
+    add("### 分块建表：为什么块必须整小时对齐")
+    add("")
+    add("`writer` 的分区键是 `(station, date, hour)`，写入是**整分区覆盖**"
+        "（`os.replace` 换掉整个文件），不是追加。块若跨进同一个小时，"
+        "后一块会把前一块在该小时的行整段覆盖掉——实测 600 历元按 137 切块时，"
+        "那个小时分区从 34,200 行掉到 2,964 行。"
+        "`--chunk-epochs` 会向上取整到 3600 的整数倍，每个分区恰好只写一次。")
+    add("")
+    add("### 1 亿行为什么必须分块")
+    add("")
+    add("实测单行 dict 占 **709 B**：1 亿行 `obs` 整表驻留要 **71 GB**，"
+        "而本机物理内存 63.4 GB。分块后内存只与块大小成正比。"
+        "这是 `--chunk-epochs` 存在的唯一理由，不是性能优化。")
+    return "\n".join(lines)
+
+
 def render_report(env: BenchEnv, outcomes: Sequence[CaseOutcome],
                   readonly_problems: Sequence[str],
                   fallback: str) -> str:
@@ -1121,6 +1201,8 @@ def render_report(env: BenchEnv, outcomes: Sequence[CaseOutcome],
     add(f"**{ok_count}/{len(outcomes)} 条一致。** 判定口径：列名集合相同 + 行数相同 + "
         "每行每值相同（浮点相对误差 `1e-9`，整数精确）。")
     add("")
+    add(_scale_section())
+    add("")
     add("## 只读断言")
     add("")
     if readonly_problems:
@@ -1165,6 +1247,130 @@ def render_report(env: BenchEnv, outcomes: Sequence[CaseOutcome],
     return "\n".join(lines) + "\n"
 
 
+def load_dataset(root: Path) -> BenchEnv:
+    """读**已建好**的数据集，不重建。行数从各表的 ``_manifest.json`` 累加。
+
+    亿级压测重跑时用它：1 亿行重建要 2.6 小时纯写盘，而查询计时只需要数据在盘上。
+    manifest 缺了就直接报错——宁可失败，不能拿 0 行当「数据在」。
+    """
+    root = Path(root)
+    dirs = {name: root / name for name in ("obs", "tec", "agg_hour", "agg_daily")}
+    rows: dict[str, int] = {}
+    for name, directory in dirs.items():
+        manifest = directory / "_manifest.json"
+        if not manifest.is_file():
+            raise FileNotFoundError(f"{directory} 下没有 _manifest.json")
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        parts = data.get("partitions") or []
+        rows[name] = sum(int(p.get("rows") or 0) for p in parts)
+        if rows[name] <= 0:
+            raise ValueError(f"{name} 的 manifest 里行数为 0，数据不完整")
+    return BenchEnv(root=root, obs_dir=dirs["obs"], tec_dir=dirs["tec"],
+                    agg_hour_dir=dirs["agg_hour"],
+                    agg_daily_dir=dirs["agg_daily"], rows=rows)
+
+
+def _percentile(values: Sequence[float], fraction: float) -> float:
+    """线性插值分位数（与 ``quantile_cont`` 同口径）。"""
+    ordered = sorted(values)
+    if not ordered:
+        return float("nan")
+    if len(ordered) == 1:
+        return float(ordered[0])
+    pos = fraction * (len(ordered) - 1)
+    low = int(pos)
+    high = min(low + 1, len(ordered) - 1)
+    return float(ordered[low]) * (1 - (pos - low)) + float(ordered[high]) * (pos - low)
+
+
+def measure_scale(env: BenchEnv, *, cases: Sequence[str],
+                  repeats: int = 7, quiet: bool = False) -> dict:
+    """在已有数据集上测指定几条查询的 p50/p95。
+
+    ## 为什么先预热
+
+    首次跑 ClickHouse 要把 488 个 Parquet 分区灌成 MergeTree：实测 SQL-01
+    首跑 **640 秒**，第 2 跑起 60 ms 级。把灌表时间算进 p95，等于把
+    「导入快慢」和「查询快慢」混成一个数——那不是这条基准要回答的问题。
+    """
+    if repeats <= 0:
+        raise ValueError(f"repeats 必须是正整数，收到 {repeats!r}")
+    by_id = {c.ident: c for c in BENCH_SQL}
+    unknown = [c for c in cases if c not in by_id]
+    if unknown:
+        raise ValueError(f"未知查询编号：{unknown}")
+
+    if not quiet:
+        print("预热（灌表/缓存，不计时）…")
+    for ident in cases:
+        case = by_id[ident]
+        _duckdb_for(env, case.table).execute(dialects.to_duckdb(case.sql))
+        _clickhouse_for(env, case.table).execute(case.for_clickhouse())
+
+    out_rows: list[dict] = []
+    for ident in cases:
+        case = by_id[ident]
+        if not quiet:
+            print(f"=== {ident} {case.title} ===")
+        timings = {"duckdb": [], "clickhouse": []}
+        left = right = None
+        for index in range(repeats):
+            t0 = time.perf_counter()
+            left = _duckdb_for(env, case.table).execute(
+                dialects.to_duckdb(case.sql))
+            timings["duckdb"].append((time.perf_counter() - t0) * 1000)
+            t0 = time.perf_counter()
+            right = _clickhouse_for(env, case.table).execute(case.for_clickhouse())
+            timings["clickhouse"].append((time.perf_counter() - t0) * 1000)
+            if not quiet:
+                print(f"  run{index + 1}: duckdb {timings['duckdb'][-1]:.0f}ms  "
+                      f"ch {timings['clickhouse'][-1]:.0f}ms")
+        diffs = compare_results(case, left.rows, right.rows,
+                                left.columns, right.columns)
+        out_rows.append({
+            "ident": ident,
+            "title": case.title,
+            "duckdb_rows": len(left.rows),
+            "ch_rows": len(right.rows),
+            "duckdb_p50_ms": round(_percentile(timings["duckdb"], 0.50), 1),
+            "duckdb_p95_ms": round(_percentile(timings["duckdb"], 0.95), 1),
+            "ch_p50_ms": round(_percentile(timings["clickhouse"], 0.50), 1),
+            "ch_p95_ms": round(_percentile(timings["clickhouse"], 0.95), 1),
+            "diffs": len(diffs),
+        })
+        if not quiet:
+            print(f"  -> 行数 {len(left.rows)}/{len(right.rows)}，差异 {len(diffs)}")
+
+    return {
+        "kind": "fieldstation.bench_scale",
+        "note": ("亿级压测实测结果。先预热一次（ClickHouse 首次查询要把全部 "
+                 "Parquet 分区灌成 MergeTree），预热与灌表时间不计入下面任何数字。"),
+        "scale_obs_rows": int(env.rows.get("obs", 0)),
+        "scale_tec_rows": int(env.rows.get("tec", 0)),
+        "chunk_epochs": None,
+        "repeats": repeats,
+        "warmed_up": True,
+        "rows": out_rows,
+    }
+
+
+def _run_scale(env: BenchEnv, args) -> int:
+    """``--scale-out`` 的入口：测压测并把结果写成 JSON。"""
+    cases = [c.strip() for c in str(args.scale_cases).split(",") if c.strip()]
+    result = measure_scale(env, cases=cases, repeats=args.scale_repeats,
+                           quiet=args.quiet)
+    result["chunk_epochs"] = args.chunk_epochs
+    out = Path(args.scale_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                   encoding="utf-8")
+    bad = [r for r in result["rows"] if r["diffs"]]
+    print(f"\n压测结果 -> {out}")
+    print(f"{len(result['rows'])} 条查询，{result['scale_obs_rows']:,} 行，"
+          f"差异合计 {sum(r['diffs'] for r in result['rows'])}")
+    return 1 if bad else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="20 条基准 SQL 双引擎比对")
     parser.add_argument("--out", help="把报告写到这个路径（默认只打印摘要）")
@@ -1178,6 +1384,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="按目标 obs 总行数反算每站历元数（覆盖 --epochs）")
     parser.add_argument("--chunk-epochs", type=int,
                         help="分块生成时每块历元数（亿级必给，否则整表驻留内存）")
+    parser.add_argument("--reuse", action="store_true",
+                        help="复用 --workdir 里已建好的数据，不重建（亿级重跑用）")
+    parser.add_argument("--scale-out",
+                        help="把亿级压测结果写到这个路径（供 render_report 读）")
+    parser.add_argument("--scale-repeats", type=int, default=7,
+                        help="压测每查询重复次数（默认 7）")
+    parser.add_argument("--scale-cases", default="SQL-01,SQL-05,SQL-12",
+                        help="压测跑哪几条（逗号分隔，默认 SQL-01,SQL-05,SQL-12）")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1187,7 +1401,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     workdir = Path(args.workdir) if args.workdir else Path(
         tempfile.mkdtemp(prefix="fsa-bench-"))
-    if args.workdir and workdir.exists():
+    if args.reuse and not workdir.is_dir():
+        print(f"[bench] --reuse 给的目录不存在：{workdir}", file=sys.stderr)
+        return 2
+    if args.workdir and workdir.exists() and not args.reuse:
         # 复用同一个 workdir 时先清掉旧产物：分区器用 `os.replace` 覆盖
         # `_manifest.json`，旧文件若被别的进程占着会 WinError 5。
         #
@@ -1199,20 +1416,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             if child.is_dir():
                 shutil.rmtree(child, ignore_errors=True)
     try:
+        if args.reuse:
+            env = load_dataset(workdir)
+            if not args.quiet:
+                print(f"复用已建数据 -> {workdir}")
+                print(f"  obs={env.rows['obs']:,} tec={env.rows['tec']:,} "
+                      f"agg_hour={env.rows['agg_hour']:,} "
+                      f"agg_daily={env.rows['agg_daily']:,}")
+        else:
+            if not args.quiet:
+                print(f"造数据 -> {workdir}")
+                print(f"  obs  {epochs:,} 历元/站 × "
+                      f"{len(BENCH_STATIONS)} 站 × {len(_sv_list())} SV × "
+                      f"{len(SIGNALS)} 信号"
+                      f"（目标 {epochs * rows_per_epoch() * len(BENCH_STATIONS):,} 行）")
+                if args.chunk_epochs:
+                    print(f"  分块：每块 {args.chunk_epochs:,} 历元")
+            env = build_dataset(workdir, epochs=epochs, quiet=args.quiet,
+                                chunk_epochs=args.chunk_epochs)
         if not args.quiet:
-            print(f"造数据 -> {workdir}")
-            print(f"  obs  {epochs:,} 历元/站 × "
-                  f"{len(BENCH_STATIONS)} 站 × {len(_sv_list())} SV × "
-                  f"{len(SIGNALS)} 信号"
-                  f"（目标 {epochs * rows_per_epoch() * len(BENCH_STATIONS):,} 行）")
-            if args.chunk_epochs:
-                print(f"  分块：每块 {args.chunk_epochs:,} 历元")
-        env = build_dataset(workdir, epochs=epochs, quiet=args.quiet,
-                            chunk_epochs=args.chunk_epochs)
-        if not args.quiet:
-            print(f"  obs={env.rows['obs']:,} tec={env.rows['tec']:,} "
-                  f"agg_hour={env.rows['agg_hour']:,} agg_daily={env.rows['agg_daily']:,}")
             print()
+
+        if args.scale_out:
+            return _run_scale(env, args)
+
+        if not args.quiet:
             print("跑 20 条：")
 
         readonly_problems = check_readonly_both(env)

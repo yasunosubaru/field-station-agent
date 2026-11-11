@@ -1,0 +1,50 @@
+{
+  "kind": "fieldstation.bench_scale",
+  "note": "1e8 行压测实测结果。数据由 tools/bench_run.py --target-rows 100000000 --chunk-epochs 7200 建出（obs=100,000,002 行 / 488 个分区），再对 SQL-01/05/12 各跑 7 次取 p50/p95。先预热一次（ClickHouse 首次查询要灌 488 个 Parquet 分区成 MergeTree，实测 SQL-01 首跑 640 秒），预热与灌表时间**不计入**下面任何数字。",
+  "scale_obs_rows": 100000002,
+  "scale_tec_rows": 33333334,
+  "partitions": 488,
+  "chunk_epochs": 7200,
+  "repeats": 7,
+  "warmed_up": true,
+  "host": {
+    "memory_gb": 63.4,
+    "clickhouse": "26.11.1.1344",
+    "duckdb_view": "parquet 视图直读（不灌表）"
+  },
+  "rows": [
+    {
+      "ident": "SQL-01",
+      "title": "单站单日行数与历元数",
+      "duckdb_rows": 1,
+      "ch_rows": 1,
+      "duckdb_p50_ms": 312.0,
+      "duckdb_p95_ms": 335.7,
+      "ch_p50_ms": 63.3,
+      "ch_p95_ms": 66.9,
+      "diffs": 0
+    },
+    {
+      "ident": "SQL-05",
+      "title": "按卫星均值与缺测率",
+      "duckdb_rows": 19,
+      "ch_rows": 19,
+      "duckdb_p50_ms": 349.0,
+      "duckdb_p95_ms": 368.7,
+      "ch_p50_ms": 83.4,
+      "ch_p95_ms": 88.1,
+      "diffs": 0
+    },
+    {
+      "ident": "SQL-12",
+      "title": "两站同日对比",
+      "duckdb_rows": 2,
+      "ch_rows": 2,
+      "duckdb_p50_ms": 488.8,
+      "duckdb_p95_ms": 504.9,
+      "ch_p50_ms": 84.4,
+      "ch_p95_ms": 96.8,
+      "diffs": 0
+    }
+  ]
+}
