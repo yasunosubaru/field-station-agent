@@ -754,6 +754,72 @@ function createWindow(options = {}) {
     // 必须用 on 而不是 once：切视角也是 loadURL，换页之后属性就没了。
     syncPageAppearance(win, appearanceState());
     if (args.screenshot && win === firstWindow) captureAndQuit(win, args.screenshot);
+
+    /*
+     * 主动探一次页面是否真的挂载成功。
+     *
+     * 为什么不在页面里加：那时「点了没反应」只能靠猜。这里从主进程执行一段 JS，
+     * 直接问页面「关键节点在不在、监听器有没有响应」，答案进日志。
+     * 只检查结构，不改页面行为。
+     */
+    win.webContents.executeJavaScript(`(() => {
+      const q = (s) => document.querySelector(s);
+      const ta = q('textarea[aria-label="输入消息"]');
+      const btn = q('.vw-chat-example-btn');
+      const out = {
+        readyState: document.readyState,
+        hasTextarea: !!ta,
+        hasExampleBtn: !!btn,
+        textareaDisabled: ta ? ta.disabled : null,
+        scriptCount: document.scripts.length,
+      };
+      if (btn && ta) {
+        const before = ta.value;
+        btn.click();
+        out.valueAfterClick = ta.value;
+        out.clickWorked = ta.value !== before;
+        ta.value = before;
+      }
+      return out;
+    })()`).then((info) => {
+      console.log('[shell] 页面自检：' + JSON.stringify(info));
+    }).catch((error) => {
+      console.error('[shell] 页面自检失败：' + (error && error.message));
+    });
+  });
+
+  /*
+   * 渲染进程的控制台与未捕获异常**必须转发到主进程日志**。
+   *
+   * 为什么：之前「按钮点了没反应」排查了很久，因为页面里的 JS 报错全被吞掉 ——
+   * Electron 默认不把 console 输出到 stdout，于是界面看起来正常、点了没反应，
+   * 而主进程日志一片干净。加上这几条之后，「点了没反应」会直接看到原因。
+   *
+   * **Electron 35+ 的签名变了**：`console-message` 现在传一个事件对象
+   * (`event.level` / `event.message` / `event.lineNumber` / `event.sourceId`)，
+   * 旧的 `(event, level, message, line, sourceId)` 五个位置参数**不再填充**，
+   * 于是监听器挂了却什么都不打印 —— 这个坑本身就很隐蔽（实测 Electron 45.2.2）。
+   * 两种签名都兼容，避免升级/降级时又静默失效。
+   */
+  win.webContents.on('console-message', (...params) => {
+    const first = params[0];
+    let level, message, line, sourceId;
+    if (first && typeof first === 'object' && 'message' in first) {
+      ({ level, message, lineNumber: line, sourceId } = first);
+    } else {
+      [, level, message, line, sourceId] = params;
+    }
+    const tag = ['log', 'warn', 'error', 'debug'][level] || 'log';
+    const where = sourceId ? ` (${sourceId}:${line})` : '';
+    console.log(`[render:${tag}] ${message}${where}`);
+  });
+
+  win.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error(`[render] preload 加载失败 ${preloadPath}：${error && error.message}`);
+  });
+
+  win.webContents.on('did-fail-load', (_event, code, desc, url) => {
+    console.error(`[render] 页面加载失败 ${url}：${desc}（${code}）`);
   });
 
   const initialUrl = viewUrl(view, linkParam.id, linkParam.name);

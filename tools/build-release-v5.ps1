@@ -174,6 +174,27 @@ New-Item -ItemType Directory -Force -Path $stageTools | Out-Null
 Robo (Join-Path $Root 'tools') $stageTools "tools (agent_server + rpa)" `
      -ExtraXD 'DevChatApp', '__pycache__', '.pytest_cache'
 Write-Host "  copy tools (agent_server.py is REQUIRED for chat)"
+
+# 3.3d workflows -> app/workflows
+#     fieldstation.workflows.spec.load_all() reads <app>/workflows/*.yaml (8 RPA flows).
+#     Without it every workflow_* tool throws at runtime:
+#       WorkflowSpecError: workflow dir not found
+#     Measured: it surfaces as an error tool card inside the chat.
+$stageWf = Join-Path $Stage 'workflows'
+New-Item -ItemType Directory -Force -Path $stageWf | Out-Null
+Robo (Join-Path $Root 'workflows') $stageWf "workflows (8 RPA yaml)"
+Write-Host "  copy workflows (required by workflow_* tools)"
+
+# 3.3e docs/operations -> app/docs/operations
+#     `/api/suite/field-parity` reads <app>/docs/operations/suite-field-parity.md verbatim and
+#     returns it as markdown (suite.js parses it client side). Without the file the route 404s
+#     and the suite inspector is empty -- measured: /api/suite/field-parity -> 404.
+#     Only the operations subdir is needed; the rest of docs/ (plans, spec) is not runtime data.
+$stageDocs = Join-Path $Stage 'docs\operations'
+New-Item -ItemType Directory -Force -Path $stageDocs | Out-Null
+Robo (Join-Path $Root 'docs\operations') $stageDocs "docs/operations (parity table)"
+Write-Host "  copy docs/operations (suite field-parity source)"
+
 # 3.3 python package -> app/src/fieldstation
 $stagePy = Join-Path $Stage 'src\fieldstation'
 New-Item -ItemType Directory -Force -Path $stagePy | Out-Null
@@ -218,6 +239,7 @@ $checks = @(
     @{p = (Join-Path $Stage 'payload\runtime\python\Scripts\python.exe'); what = 'runtime python'},
     # Missing this = chat is dead (front end calls /api/agent/*).
     @{p = (Join-Path $Stage 'tools\agent_server.py'); what = 'tools/agent_server.py (chat)'},
+    @{p = (Join-Path $Stage 'workflows'); what = 'workflows/ (8 RPA yaml, workflow_* tools)'},
     @{p = (Join-Path $Stage 'config\providers.json'); what = 'config/providers.json'}
 )
 foreach ($c in $checks) {

@@ -79,9 +79,14 @@ async function mountView(view) {
 
   let mod;
   try {
-    // 同目录模块：`module` 字段形如 `views/chat.js`，而本文件就在 `/views/` 下，
-    // 所以要从**上一级**取基准。写死 `../` 而不是依赖 `import.meta.url` 相对解析，
-    // 是因为 `module` 的值是相对仓库 web 根写的（与 routes.js 的其它字段同一套口径）。
+    /*
+     * `module` 字段形如 `views/chat.js`（相对 **web 根**，见 routes.js），
+     * 本文件挂在 `/views/shell.js`。实测三种写法等价：
+     *   new URL('../views/chat.js', '/views/shell.js') -> /views/chat.js
+     *   new URL('./chat.js',        '/views/shell.js') -> /views/chat.js
+     * 保留 `../` 形式（与 routes.js 的口径一致），但**不要**简化成 `./chat.js`：
+     * 那样一旦 module 值带上 `views/` 前缀就会拼成 `/views/views/chat.js`。
+     */
     mod = await import(new URL(`../${view.module}`, import.meta.url).href);
   } catch (error) {
     // 模块加载失败必须说清「哪一块没起来」，并且**不能让外壳跟着挂掉** ——
@@ -412,7 +417,11 @@ state.subscribe((next, changed) => {
     railToggle?.setAttribute('aria-expanded', String(!next.railCollapsed));
   }
   if (changed.has('density')) {
-    document.documentElement.dataset.density = next.density;
+    // **必须写在 body 上**：CSS 的选择器是 `body[data-view][data-density="compact"]`
+    // （views.css L52）。原先写的是 `document.documentElement.dataset.density`，
+    // 而 `<html>` 上没有 `data-view`，两条选择器都匹配不上 ——
+    // 于是点「紧凑」只有按钮文字变了，行高字号一动不动（实测）。
+    document.body.dataset.density = next.density;
   }
   // 视角自己的模块已经通过 `state.subscribe` 各自订阅；这里只管全局那几块。
 });
