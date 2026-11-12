@@ -457,7 +457,7 @@ python tools/check_desensitization.py
 ## 代码量（机维护，请勿手改）
 
 - 入库 Python 文件数：**229** 个
-- 入库 Python 行数：**65,524** 行
+- 入库 Python 行数：**65,545** 行
 - 入库测试文件数：**133** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。

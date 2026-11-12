@@ -521,14 +521,55 @@ export function mount(ctx) {
     state.set({ selectedAppId: item.dataset.appId });
   });
 
+  /**
+   * 「安装 X」点了之后就地展开安装说明。
+   *
+   * 这里**故意不伪造安装成功**：安装要跑原版安装器（一段 RPA 流程），
+   * 界面里没有那条通道。但什么都不发生更糟 —— 实测用户点了会报「按钮没反应」。
+   * 所以把真实路径与命令写出来，让人能自己接上。
+   */
+  function showInstallGuide(app) {
+    if (!app) return;
+    const name = app.fullName || app.label;
+    const steps = el('ol', { cls: 'vw-steps' }, [
+      el('li', {}, [el('span', { text: `在「编队台」新建一个任务，应用选 ${app.label}：安装要跑原版安装器，属于 RPA 流程，界面里不直接写系统目录。` })]),
+      el('li', {}, [el('span', { text: '任务跑完会在事件流里留 call_id 与退出码，那是这次安装的真实凭据。' })]),
+      el('li', {}, [el('span', { text: '装完点下面「刷新状态」，这一栏会换成它的实际界面。' })]),
+    ]);
+    appHost.replaceChildren(el('div', { cls: 'vw-install-guide' }, [
+      el('h3', { cls: 'vw-install-guide-title', text: `${name} 不能在这里直接装` }),
+      el('p', {
+        cls: 'vw-install-guide-note',
+        text: '安装属于高风险动作（要写系统目录、跑外部安装器），界面不做静默执行。'
+          + '下面是真实入口，做完刷新即可。',
+      }),
+      steps,
+      el('div', { cls: 'vw-install-guide-actions' }, [
+        button('去编队台建安装任务', {
+          variant: 'primary',
+          data: { action: 'new-task' },
+        }),
+        button('刷新状态', { data: { action: 'refresh-inspector' } }),
+      ]),
+    ]));
+  }
+
   const handleAction = (event) => {
     const action = event.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
     if (action === 'install') {
       // 安装要走 RPA / 原版安装器（那是 workflow 的事），不在界面里假装成功。
-      // 这里只把选中项切到它，让用户看到「未安装」的完整说明与那颗按钮。
-      const appId = event.target.closest('[data-install-app]')?.dataset.installApp;
-      if (appId) state.set({ selectedAppId: appId });
+      // 但**必须给可见反馈**：用户点了没动静，只会读成「按钮坏了」（实测如此）。
+      // 所以在内容区就地展开一段「怎么装」，把真实入口写清楚。
+      const btn = event.target.closest('[data-install-app]');
+      const appId = btn?.dataset.installApp;
+      if (!appId) return;
+      const app = APPS.find((entry) => entry.id === appId);
+      showInstallGuide(app);
+      return;
+    }
+    if (action === 'refresh-inspector') {
+      fetchInspector();
       return;
     }
     if (action === 'new-task') {

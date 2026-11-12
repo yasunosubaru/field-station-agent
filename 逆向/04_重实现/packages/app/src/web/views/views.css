@@ -770,6 +770,51 @@ table.clean tbody tr:last-child td {
   flex-wrap: wrap;
 }
 
+/*
+ * 「安装 X」的就地说明。
+ *
+ * 点击后不伪造安装成功（安装是 RPA 流程），但必须给出可见反馈 ——
+ * 只用与 `.vw-empty` 相同的排版语言，不引入新的颜色。
+ */
+.vw-install-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 4px;
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.vw-install-guide-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.vw-install-guide-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.vw-install-guide-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.vw-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.vw-steps li {
+  margin: 2px 0;
+}
+
 /* 降级 / 警告条：内联，不弹窗（四级错误里的「警告」）。 */
 .vw-warn {
   display: flex;

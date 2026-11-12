@@ -61,6 +61,27 @@ def _post_json(url: str, body: dict, headers: dict, timeout: float = 120.0,
         raise RuntimeUnavailable("连不上运行时 %s：%s" % (url, exc)) from exc
 
 
+#: Chat 补全路径。
+#:
+#: **两种 provider 的 base_url 约定不同，这里必须自己补 `/v1`**：
+#:   - `agents/providers/openai_compatible.py` 的 `CHAT_PATH` 就是
+#:     `"/v1/chat/completions"`，所以它的 base_url **不带** `/v1`
+#:     （配置里写 `https://api.commandcode.ai/provider`）；
+#:   - 本模块原先拼 `"/chat/completions"`，于是同一条配置在这里变成
+#:     `/provider/chat/completions` -> 404（实测）。
+#:
+#: 这里同时容忍两种写法：base_url 已经以 `/v1` 结尾就不重复加。
+CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
+
+
+def _chat_url(base_url: str) -> str:
+    """按 base_url 是否已带 `/v1` 决定 chat 补全的完整地址。"""
+    base = (base_url or "").rstrip("/")
+    if base.endswith("/v1"):
+        return base + "/chat/completions"
+    return base + CHAT_COMPLETIONS_PATH
+
+
 class OpenAICompatibleRuntime:
     """任何 OpenAI 兼容端点（vLLM / Ollama / 网关；默认 http://127.0.0.1:11434/v1）。"""
 
@@ -114,7 +135,7 @@ class OpenAICompatibleRuntime:
 
         headers = {"Authorization": "Bearer " + self.api_key} if self.api_key else {}
         state = OpenAIState(req.session_id)
-        resp = _post_json(self.base_url + "/chat/completions", body, headers,
+        resp = _post_json(_chat_url(self.base_url), body, headers,
                           self.timeout, self.proxy)
         with resp:
             for _, payload in iter_sse(resp):

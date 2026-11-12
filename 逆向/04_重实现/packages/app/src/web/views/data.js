@@ -899,6 +899,19 @@ export function mount(ctx) {
 
   /* —— 交互 —— */
 
+  /**
+   * 「导入」的唯一入口：先选中 Convert，再跳套件台。
+   *
+   * 套件台记着上一次选中的应用（`selectedAppId` 也会持久化）。实测：上一次停在
+   * Graph，从数据台点「导入抓包」跳过去落在 **Graph** —— 那里没有任何导入入口，
+   * 只有「还没有图工程」。用户会以为导入坏了，而真正的通道在 Convert 面板。
+   * 所以跳转前必须把选中项切到 `convert`。
+   */
+  function goImport() {
+    state.set({ selectedAppId: 'convert' });
+    ctx.go('/suite');
+  }
+
   batchPicker.addEventListener('change', () => {
     selectBatch(batchPicker.value);
   });
@@ -909,7 +922,7 @@ export function mount(ctx) {
       selectBatch(row.dataset.batchId);
       return;
     }
-    if (event.target.closest('[data-action="import"]')) ctx.go('/suite');
+    if (event.target.closest('[data-action="import"]')) goImport();
     if (event.target.closest('[data-action="retry-batches"]')) fetchBatches(true);
   });
 
@@ -936,7 +949,7 @@ export function mount(ctx) {
     }
     if (event.target.closest('[data-action="import"]')) {
       // 导入走 Convert 面板（那里已有抓包 → Parquet 的通道），不在这里再造一个。
-      ctx.go('/suite');
+      goImport();
     }
   });
 

@@ -285,7 +285,18 @@ if not exist "%SECRET_FILE%" (
 )
 set /p FSA_OPENAI_API_KEY=<"%SECRET_FILE%"
 
-if "%FSA_HTTP_PROXY%"=="" set "FSA_HTTP_PROXY=http://127.0.0.1:7900"
+REM Auto-detect the local proxy port.
+REM Do NOT hardcode: Clash rotates its mixed port on restart (seen 7897 -> 7900 -> 7955).
+REM A dead port gives WinError 10061 "target machine actively refused" and the chat
+REM fails with a ProviderError, which looks like a code bug but is just a stale port.
+if "%FSA_HTTP_PROXY%"=="" (
+  for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$c=@(7897,7900,7955,7890,10809); foreach($p in $c){ if((Test-NetConnection 127.0.0.1 -Port $p -InformationLevel Quiet -WarningAction SilentlyContinue -ErrorAction SilentlyContinue)){ Write-Output ('http://127.0.0.1:' + $p); break } }"`) do set "FSA_HTTP_PROXY=%%P"
+)
+if "%FSA_HTTP_PROXY%"=="" (
+  echo [start] WARNING: no local proxy found; the gateway may refuse the direct connection.
+) else (
+  echo [start] proxy auto-detected: %FSA_HTTP_PROXY%
+)
 REM NOTE: no /v1 suffix -- provider appends /v1/chat/completions itself.
 set "FSA_OPENAI_BASE_URL=https://api.commandcode.ai/provider"
 set "FSA_OPENAI_MODEL=deepseek/deepseek-v4.1-flash"

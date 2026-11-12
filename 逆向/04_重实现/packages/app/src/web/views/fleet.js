@@ -673,13 +673,18 @@ export function mount(ctx) {
       return;
     }
     draftNote.hidden = false;
-    draftNote.replaceChildren(
+    /*
+     * `replaceChildren(...)` 会把 `null` 参数**转成字符串 "null" 插进 DOM**，
+     * 它不是「跳过」。实测：设备为空时草稿条显示「预填 从套件台建任务 null」。
+     * 所以条件项必须自己过滤掉，不能靠传 null 当作「不渲染」。
+     */
+    draftNote.replaceChildren(...[
       el('span', { cls: 'vw-draft-label', text: '预填' }),
       el('span', { cls: 'vw-draft-title', text: draft.title || '新任务' }),
       draft.device ? el('span', { cls: 'vw-draft-meta', text: `设备 ${draft.device}` }) : null,
       button('建这个任务', { variant: 'primary', data: { action: 'create-draft' } }),
       button('取消', { variant: 'text', data: { action: 'dismiss-draft' } }),
-    );
+    ].filter(Boolean));
   }
   paintDraft();
 
