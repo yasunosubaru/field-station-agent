@@ -3,7 +3,8 @@
 # Layout contract (from shell/electron/main.js):
 #   REPO_ROOT = SHELL_DIR/..
 #   SERVER_ENTRY = REPO_ROOT/<RE>/04_<RE>/packages/app/src/server.ts
-#   python       = REPO_ROOT/dist/py-runtime/Scripts/python.exe, PYTHONPATH=REPO_ROOT/src
+#   python       = REPO_ROOT/dist/py-runtime/python.exe (official embeddable),
+#                  fieldstation on sys.path via the bundled python311._pth
 #
 # electron-builder cannot consume the Chinese directory name reliably:
 # measured, `extraFiles` pointing at the reverse tree exits 0 with NO error but copies
@@ -24,7 +25,10 @@ param(
     [switch]$SkipDeps,
     [switch]$SkipBuild,
     [string]$PayloadDir = "",
-    [string]$OutDir = "dist\AllPoweredFSA-v5"
+    [string]$OutDir = "dist\AllPoweredFSA-v5",
+    # Unpacked dir of python.org *-embed-amd64.zip. Empty = .deps\python-embed.
+    # A venv is rejected: the script checks for pyvenv.cfg and fails.
+    [string]$PythonDir = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,8 +63,14 @@ function Need([string]$p, [string]$what) {
 
 function Robo([string]$src, [string]$dst, [string]$label, [string[]]$ExtraXD = @()) {
     Write-Host ("  copy " + $label)
-    $xd = @('node_modules', '.git') + $ExtraXD
-    $null = robocopy $src $dst /E /NFL /NDL /NJH /NJS /NP /XD @xd
+    # Exclude __pycache__: otherwise every build ships .pyc files into the package
+    # (measured 2026-11-18: 62 stray entries, incl. a whole site-packages __pycache__).
+    # Robo is the single funnel for all copies, so filtering here covers every caller.
+    $xd = @('node_modules', '.git', '__pycache__') + $ExtraXD
+    # *.bak* is this repo's backup naming convention (AGENTS.md requires a backup
+    # before overwrite). Those must never ship: measured a
+    # runner.py.bak-20261118-075550 sitting in dist/py-runtime.
+    $null = robocopy $src $dst /E /NFL /NDL /NJH /NJS /NP /XD @xd /XF '*.bak*' '*.pyc' '*.pyo'
     if ($LASTEXITCODE -ge 8) { Fail ("robocopy " + $label + " failed, code " + $LASTEXITCODE) }
 }
 
@@ -79,40 +89,123 @@ Write-Host ("  version            : " + $Version)
 Write-Host ("  reverse tree       : " + $ReRoot)
 
 # ---------------------------------------------------------------- py runtime
-Write-Step "2/7 python runtime (scheme A: bundled venv, NOT PyInstaller)"
+Write-Step "2/7 python runtime (official embeddable, NOT venv, NOT PyInstaller)"
+# Must be the official **embeddable** distribution (self-contained), not a **venv**
+# (which leans on the base Python installed on this machine).
+#
+# Why venv was dropped (measured 2026-11-17): the package built from .deps/venv
+# carried a pyvenv.cfg pointing at this box's uv install, and had no
+# python311.dll and no stdlib zip -- interpreter and stdlib lived outside the
+# package. On another machine that package dies with "No module named 'encodings'"
+# while still weighing 1489 MB (all of it site-packages).
+# The two copies (dist/py-runtime and payload/runtime/python) were byte-identical
+# at 1489.1 MB each -- that is where the double runtime came from.
+#
+# Now only an unpacked python.org python-3.x.y-embed-amd64.zip is accepted:
+#   python.exe + python311.dll + python311.zip (stdlib) + python311._pth
+# ~11 MB, no dependency on any Python installed on the host.
+$EmbedDefault = Join-Path $Root '.deps\python-embed'
+if (-not $PythonDir) { $PythonDir = $EmbedDefault }
+# Refuse a venv even if dist/py-runtime already exists -- a stale wrong runtime
+# would otherwise be silently reused and shipped again.
+if (Test-Path -LiteralPath (Join-Path $PyRuntime 'pyvenv.cfg')) {
+    Fail ("dist/py-runtime is still a venv (pyvenv.cfg found). Move it to the " +
+          "Recycle Bin first, then rebuild: " + $PyRuntime)
+}
 if (-not (Test-Path -LiteralPath $PyRuntime)) {
     if ($SkipDeps) { Fail ("-SkipDeps given but " + $PyRuntime + " missing") }
-    $venv = Join-Path $Root '.deps\venv'
-    Need $venv ".deps venv"
-    Robo $venv $PyRuntime "venv -> dist/py-runtime"
-    Robo $PySrc (Join-Path $PyRuntime 'fieldstation') "src -> fieldstation"
+    Need $PythonDir "python embeddable dir (--PythonDir, or .deps\python-embed)"
+    # gate: reject venv (pyvenv.cfg) and require interpreter dll + stdlib zip
+    if (Test-Path -LiteralPath (Join-Path $PythonDir 'pyvenv.cfg')) {
+        Fail ("--PythonDir points at a venv (pyvenv.cfg found): " + $PythonDir +
+              ". Use the unpacked python.org *-embed-amd64.zip instead.")
+    }
+    $dll = Get-ChildItem -LiteralPath $PythonDir -Filter 'python3*.dll' -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    $zip = Get-ChildItem -LiteralPath $PythonDir -Filter 'python3*.zip' -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    if (-not $dll) { Fail ("embeddable has no python3xx.dll: " + $PythonDir) }
+    if (-not $zip) { Fail ("embeddable has no stdlib zip (python3xx.zip): " + $PythonDir) }
+    Write-Host ("  source             : " + $PythonDir)
+    Write-Host ("  " + $dll.Name.PadRight(18) + " : " + [math]::Round($dll.Length/1MB,2) + " MB")
+    Write-Host ("  " + $zip.Name.PadRight(18) + " : " + [math]::Round($zip.Length/1MB,2) + " MB")
+    Robo $PythonDir $PyRuntime "embeddable -> dist/py-runtime"
+    # Business package goes to Lib\site-packages (embeddable has no Scripts\;
+    # its bundled ._pth controls sys.path).
+    $site = Join-Path $PyRuntime 'Lib\site-packages'
+    if (-not (Test-Path -LiteralPath $site)) { $null = New-Item -ItemType Directory -Path $site -Force }
+    Robo $PySrc (Join-Path $site 'fieldstation') "src -> fieldstation"
 }
-Need (Join-Path $PyRuntime 'Scripts\python.exe') "runtime python.exe"
-$smoke = & (Join-Path $PyRuntime 'Scripts\python.exe') -c "import fieldstation, sys; print('ok', sys.version.split()[0])" 2>&1
+Need (Join-Path $PyRuntime 'python.exe') "runtime python.exe"
+# An embeddable python ignores PYTHONPATH completely when a `python3xx._pth` file
+# sits next to python.exe. shell/electron/pyserver.js sets PYTHONPATH=<repo>/src,
+# which therefore has NO effect inside the packaged app -- the package only works
+# if Lib\site-packages is listed in that ._pth. Rewrite it deterministically.
+$pth = Get-ChildItem -LiteralPath $PyRuntime -Filter 'python3*._pth' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+if (-not $pth) {
+    Fail ("embeddable has no python3xx._pth: " + $PyRuntime + " (cannot wire sys.path)")
+}
+$zipName = (Get-ChildItem -LiteralPath $PyRuntime -Filter 'python3*.zip' | Select-Object -First 1).Name
+$pthBody = $zipName + "`r`n.`r`nLib\site-packages`r`n"
+[IO.File]::WriteAllText($pth.FullName, $pthBody, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host ("  " + $pth.Name.PadRight(18) + " : " + ($pthBody -replace "`r`n", ' | ').Trim())
+if (-not (Get-ChildItem -LiteralPath $PyRuntime -Filter 'python3*.dll' -ErrorAction SilentlyContinue)) {
+    Fail ("dist/py-runtime has no python3xx.dll: not an embeddable runtime")
+}
+# Run with -I (isolated): ignores PYTHONPATH/PYTHONHOME, so passing proves the
+# package really stands alone.
+# Refresh the business package first: when dist/py-runtime is reused (second run),
+# the branch above is skipped and fieldstation would otherwise stay stale.
+$siteFinal = Join-Path $PyRuntime 'Lib\site-packages'
+if (-not (Test-Path -LiteralPath $siteFinal)) { $null = New-Item -ItemType Directory -Path $siteFinal -Force }
+Robo $PySrc (Join-Path $siteFinal 'fieldstation') "src -> runtime site-packages" @('__pycache__')
+$smoke = & (Join-Path $PyRuntime 'python.exe') -I -c "import sys, fieldstation; print('ok', sys.version.split()[0]); print(sys.base_prefix)" 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host ($smoke | Out-String)
-    Fail "packaged python cannot import fieldstation"
+    Fail "packaged python cannot import fieldstation in isolated mode"
 }
-Write-Host ("  import smoke       : " + $smoke)
+$basePrefix = ($smoke | Select-Object -Last 1)
+$resolvedPy = (Resolve-Path -LiteralPath $PyRuntime).Path
+if ($basePrefix -notlike ($resolvedPy.TrimEnd('\') + '*')) {
+    Fail ("python base_prefix is outside the package: " + $basePrefix + " (expected prefix " + $resolvedPy + ")")
+}
+Write-Host ("  import smoke       : " + ($smoke | Select-Object -First 1))
+Write-Host ("  base_prefix        : " + $basePrefix + "  (inside package: OK)")
 
 # ---------------------------------------------------------------- stage
 Write-Step "3/7 stage (final layout, pure ASCII paths)"
 if (Test-Path -LiteralPath $Stage) {
-    # Only remove our own staging dir. Recursive delete is deliberate and scoped.
+    # Clean staging: do NOT erase, only rename it out of the way.
+    #
+    # Why rename instead of erasing: repo rules say any deletion must land in the
+    # Recycle Bin, and any erase-style API inside a build script is blocked by the
+    # guard -- the guard refuses to run the whole script when it sees the keyword.
+    # Renaming triggers nothing and keeps everything from the previous build
+    # (logs, half-written artifacts) recoverable by renaming back.
+    # Actual cleanup is the user's call: .retired-* dirs can go to the Recycle Bin.
     $resolved = (Resolve-Path -LiteralPath $Stage).Path
     if ($resolved -notlike ($Root + '\dist\_stage\app')) {
-        Fail ("refusing to delete unexpected path: " + $resolved)
+        Fail ("refusing to touch unexpected path: " + $resolved)
     }
-    Write-Host ("  clean stage        : " + $resolved)
-    Remove-Item -LiteralPath $resolved -Recurse -Force
+    $retired = $resolved + '.retired-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+    Write-Host ("  retire stage       : " + $resolved)
+    Write-Host ("                    -> " + $retired)
+    Move-Item -LiteralPath $resolved -Destination $retired -Force
 }
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
 # 3.1 shell entry files -> app/shell/electron/ (layout main.js expects)
+# ALL runtime modules main.js requires must be listed here. A missing one is a
+# hard startup failure: main.js does `require('./environment.js')` at module
+# scope, so the app dies before any window/log exists (measured 2026-11-17:
+# environment.js forgotten -> "startup failed: prepareEnvironment is not defined" in
+# the source tree, and a silent dead process in the packaged build).
 $stageShell = Join-Path $Stage 'shell\electron'
 New-Item -ItemType Directory -Force -Path $stageShell | Out-Null
 foreach ($f in @('main.js','preload.js','pyserver.js','payload.js','deeplink.js',
-                 'embed.js','package.json')) {
+                 'environment.js','embed.js','package.json')) {
+    Need (Join-Path $ShellDir $f) "shell entry file"
     Copy-Item -LiteralPath (Join-Path $ShellDir $f) -Destination $stageShell -Force
 }
 Write-Host "  copy shell entry files"
@@ -148,10 +241,22 @@ $appPkg = [ordered]@{ name = 'app'; version = '0.1.0'; private = $true; type = '
     ($appPkg | ConvertTo-Json -Depth 3),
     [System.Text.UTF8Encoding]::new($false))
 Write-Host "  write packages/app/package.json (type=module for server.ts)"
-# drop the app's own node_modules if robocopy pulled it (server.ts may need serialport)
-$appNm = Join-Path $Root (Join-Path $ReName 'packages\app\node_modules')
-if (Test-Path -LiteralPath $appNm) {
-    Robo $appNm (Join-Path $stageApp 'packages\app\node_modules') "app/node_modules"
+# Copy the app's own node_modules (serialport, node-gyp-build, @serialport...).
+# server.ts imports them at runtime; without them Node dies with
+# ERR_MODULE_NOT_FOUND and the window shows "Node service exited" instead of the UI.
+# NOTE: Robo (above) always passes -XD node_modules, so the copy at 3.2 never
+# brings it along and the old `Test-Path` on the STAGE path was always false.
+# Read from the SOURCE tree and copy explicitly.
+$appNmSrc = Join-Path $Root "$ReName\packages\app\node_modules"
+if (Test-Path -LiteralPath $appNmSrc) {
+    $appNmDst = Join-Path $stageApp 'packages\app\node_modules'
+    $null = robocopy $appNmSrc $appNmDst /E /NFL /NDL /NJH /NJS /NP
+    if ($LASTEXITCODE -ge 8) { Fail ("robocopy app/node_modules failed: " + $LASTEXITCODE) }
+    $nmCount = (Get-ChildItem -LiteralPath $appNmDst -ErrorAction SilentlyContinue).Count
+    if ($nmCount -eq 0) { Fail ("app/node_modules staged empty: " + $appNmDst) }
+    Write-Host ("  copy app/node_modules (" + $nmCount + " entries)")
+} else {
+    Fail ("missing app node_modules (server.ts needs serialport): " + $appNmSrc)
 }
 
 # 3.3b config -> app/config (runtime reads <app>/config/providers.json)
@@ -204,9 +309,25 @@ Robo (Join-Path $PySrc 'fieldstation') $stagePy "src/fieldstation"
 #     `pyserver.js::resolvePython` looks for `<payloadDir>/runtime/python/python.exe`
 #     first, so putting it there makes the packaged app find its own interpreter
 #     without touching the resolver logic.
+#     The whole embeddable tree (python.exe + python3xx.dll + python3xx.zip +
+#     Lib\site-packages\fieldstation + python3xx._pth) travels along, so the
+#     packaged app carries its own interpreter, stdlib and business package.
 $stageRuntime = Join-Path $Stage 'payload\runtime\python'
 New-Item -ItemType Directory -Force -Path $stageRuntime | Out-Null
 Robo $PyRuntime $stageRuntime "py-runtime -> payload/runtime/python"
+# Guard: the staged runtime must still be self-contained (a partial copy would
+# only fail on the target machine, where nobody can debug it).
+foreach ($req in @('python.exe', $zipName, $pth.Name, 'Lib\site-packages\fieldstation\__init__.py')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stageRuntime $req))) {
+        Fail ("staged runtime missing " + $req + ": " + $stageRuntime)
+    }
+}
+$stagedSmoke = & (Join-Path $stageRuntime 'python.exe') -I -c "import fieldstation; print('staged-ok')" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ($stagedSmoke | Out-String)
+    Fail "staged runtime cannot import fieldstation in isolated mode"
+}
+Write-Host ("  staged import smoke: " + ($stagedSmoke | Select-Object -First 1))
 
 # 3.5 payload (optional)
 if ($PayloadDir -eq "") {
@@ -233,10 +354,17 @@ Write-Host ("  stage size         : " + $stageCount + " files, " +
 Write-Step "4/7 verify stage layout"
 $checks = @(
     @{p = (Join-Path $Stage 'shell\electron\main.js'); what = 'main.js'},
+    # main.js requires these at module scope -- missing any one = dead app, no log.
+    @{p = (Join-Path $Stage 'shell\electron\environment.js'); what = 'shell/electron/environment.js'},
+    @{p = (Join-Path $Stage 'shell\electron\payload.js'); what = 'shell/electron/payload.js'},
+    @{p = (Join-Path $Stage 'shell\electron\pyserver.js'); what = 'shell/electron/pyserver.js'},
+    @{p = (Join-Path $Stage 'shell\electron\deeplink.js'); what = 'shell/electron/deeplink.js'},
+    @{p = (Join-Path $Stage 'shell\electron\preload.js'); what = 'shell/electron/preload.js'},
     @{p = (Join-Path $Stage ($ReName + '\packages\app\src\server.ts')); what = 'server.ts'},
+    @{p = (Join-Path $Stage ($ReName + '\packages\app\node_modules')); what = 'app/node_modules (serialport)'},
     @{p = (Join-Path $Stage ($ReName + '\packages\app\src\web\index.html')); what = 'web/index.html'},
     @{p = (Join-Path $Stage 'src\fieldstation\runtimes\server.py'); what = 'python server'},
-    @{p = (Join-Path $Stage 'payload\runtime\python\Scripts\python.exe'); what = 'runtime python'},
+    @{p = (Join-Path $Stage 'payload\runtime\python\python.exe'); what = 'runtime python'},
     # Missing this = chat is dead (front end calls /api/agent/*).
     @{p = (Join-Path $Stage 'tools\agent_server.py'); what = 'tools/agent_server.py (chat)'},
     @{p = (Join-Path $Stage 'workflows'); what = 'workflows/ (8 RPA yaml, workflow_* tools)'},
@@ -309,8 +437,8 @@ if not exist "%APP_DIR%AllPoweredFSA.exe" (
 )
 
 REM agent-bridge resolves NAS_PYTHON -> <repo>/runtime/python/python.exe -> PATH.
-REM The packaged runtime is a venv, so Scripts\ is part of the path.
-set "NAS_PYTHON=%APP_DIR%resources\app\payload\runtime\python\Scripts\python.exe"
+REM The packaged runtime is the official embeddable: python.exe sits at the root.
+set "NAS_PYTHON=%APP_DIR%resources\app\payload\runtime\python\python.exe"
 set "NAS_AGENT_SERVER=%APP_DIR%resources\app\tools\agent_server.py"
 
 if not exist "%NAS_PYTHON%" (
@@ -385,7 +513,7 @@ if (Test-Path -LiteralPath $unpacked) {
 Write-Step "7/7 release.json"
 $gitCommit = (& git -C $Root rev-parse --short HEAD 2>$null)
 if ($LASTEXITCODE -ne 0) { $gitCommit = 'unknown' }
-$pyVer = (& (Join-Path $PyRuntime 'Scripts\python.exe') --version 2>&1 | Out-String).Trim()
+$pyVer = (& (Join-Path $PyRuntime 'python.exe') --version 2>&1 | Out-String).Trim()
 
 $payloadInfo = $null
 if (($PayloadDir -ne "") -and (Test-Path -LiteralPath $PayloadDir)) {
@@ -401,7 +529,7 @@ $release = [ordered]@{
     version    = $Version
     built_at   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     git_commit = [string]$gitCommit
-    python     = 'scheme A (bundled venv, not PyInstaller)'
+    python     = 'scheme A (official embeddable, not PyInstaller)'
     toolchain  = [ordered]@{
         powershell = $PSVersionTable.PSVersion.ToString()
         node       = (& node --version 2>$null | Out-String).Trim()

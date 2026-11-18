@@ -86,3 +86,20 @@ _chrome_probe_profile*/
 shell/electron/smoke/payload.zip
 shell/electron/smoke/s1_*.log
 shell/electron/smoke/s1_*.log.err
+
+# VDD 驱动（tools/install-vdd.ps1 / tools/idd）在仓库根目录留下的 MSVC 编译中间产物。
+# 不是源码，也不参与任何构建；只有重新编译驱动时才会再生。
+# 驱动本体的签名文件在 tools/idd/ 下单独管理，别混在一起。
+/Driver.exp
+/Driver.lib
+/Driver.obj
+
+# --- 2026-11-18：构建产物 / 运行时数据 / 备份，一律不进版本库 ---
+逆向/NovAtelReverse.exe
+逆向/05_逆向/NovAtelReverseGui/
+tools/build/
+逆向/04_重实现/packages/app/.devices/
+*.bak-*
+*.bak2-*
+tools/idd/stage/
+tools/vdd/stage/
