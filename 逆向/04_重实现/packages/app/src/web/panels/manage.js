@@ -1431,6 +1431,15 @@ function defaultApi() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body ?? {}),
       }),
+    // 设备档案要能改名与删除（原版 deviceManagement 的 deleteDevice / deleteGroup），
+    // 只有 get/post 时这两件事在 UI 上做不了。
+    patch: (path, body) =>
+      request(path, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+      }),
+    delete: (path) => request(path, { method: 'DELETE' }),
   };
 }
 
@@ -1876,6 +1885,38 @@ function template() {
               <button type="button" class="mg-track-metric" data-track-metric="lock" aria-pressed="false">Lock Time</button>
             </div>
           </div>
+          <!-- Sort by / Show：原版 satelliteTracking.html:63-102 的五组控件。
+               B 侧的 UI 宿主是 panels/manage.js 的 Satellite Tracking 卡片；
+               packages/view/src/status/satelliteTracking.ts 是 1212 行的绘图层，
+               不含任何 markup。所以这五组控件住在 manage.js，
+               tools/suite_field_parity.py 的覆盖映射也已指向这里。
+               必须用 <input>：B 侧的 <button> 不参与字段抽取。 -->
+          <div class="mg-track-sort" role="radiogroup" aria-label="Sort by">
+            <span class="mg-track-sort-label">Sort by</span>
+            <label class="mg-track-opt is-active">
+              <input type="radio" name="trackingprn" value="trackingprn" checked>
+              <span>PRN</span>
+            </label>
+            <label class="mg-track-opt">
+              <input type="radio" name="elevation-lessthan-90" value="elevation-lessthan-90">
+              <span>Elevation 0&deg;&lt;90&deg;</span>
+            </label>
+            <label class="mg-track-opt">
+              <input type="radio" name="elevation-greaterthan-90" value="elevation-greaterthan-90">
+              <span>Elevation 0&deg;&gt;90&deg;</span>
+            </label>
+          </div>
+          <div class="mg-track-show" role="group" aria-label="Show">
+            <span class="mg-track-sort-label">Show</span>
+            <label class="mg-track-opt">
+              <input type="checkbox" name="elevationMask" value="on">
+              <span>Elevation Mask</span>
+            </label>
+            <label class="mg-track-opt">
+              <input type="checkbox" name="highLowValues" value="on">
+              <span>Highest / Lowest Values</span>
+            </label>
+          </div>
         </div>
         <div class="mg-track-legend" data-el="trackLegend"></div>
         <div class="mg-track-body" data-el="trackBody"></div>
@@ -1888,12 +1929,45 @@ function template() {
 </div>
 
 <div class="mg-list" data-el="list" hidden>
+  <!-- 设备档案架子：原版 deviceManagement 的 Manage 台首屏（welcome/deviceManagement）。
+       原版把设备存进 userData/devicesInfo.json，插拔之后仍在；B 侧原来只有一个
+       live 会话，拔线即消失。这一段是那份档案的界面。 -->
+  <section class="mg-shelf">
+    <div class="mg-list-head">
+      <h1 class="mg-list-title">Devices</h1>
+      <div class="mg-shelf-actions">
+        <input type="text" class="mg-shelf-group-name" data-el="shelfGroupName"
+               placeholder="New group name" spellcheck="false" maxlength="24">
+        <button type="button" class="mg-add-device" data-el="shelfAddGroup">Add group</button>
+        <button type="button" class="mg-add-device" data-mode-action="connect"
+                title="Add Device: open the live connection drawer (serial COM port or TCP bridge)."><span class="mg-plus" aria-hidden="true"></span>Add Device</button>
+      </div>
+    </div>
+    <p class="mg-list-note" data-el="shelfNote">Reading device profiles…</p>
+    <div class="mg-shelf-groups" data-el="shelfGroups" role="group" aria-label="Groups"></div>
+    <div class="mg-shelf-grid" data-el="shelfCards"></div>
+  </section>
+
   <div class="mg-list-head">
     <h1 class="mg-list-title">All captures</h1>
     <button type="button" class="mg-add-device" data-mode-action="connect" title="Add Device: open the live connection drawer (serial COM port or TCP bridge)."><span class="mg-plus" aria-hidden="true"></span>Add Device</button>
   </div>
   <p class="mg-list-note" data-el="listNote">Reading the capture list…</p>
   <div class="mg-list-grid" data-el="listCards"></div>
+
+  <!-- 最近跑过的固定流程及其结果。
+       这几条流程（gui.app.install / gui.app.update / gui.suite.autoupdate /
+       gui.device.add / gui.graph.newproject）本来只把结果写成 job 的 artifact，
+       界面上没有任何入口能看到 —— 跑完就等于石沉大海。这一段把
+       /api/workflows/jobs 的产物归属回 Manage 页，每条可展开看证据。 -->
+  <section class="mg-runs">
+    <div class="mg-list-head">
+      <h1 class="mg-list-title">Recent workflow runs</h1>
+      <button type="button" class="mg-add-device" data-el="runsReload">Refresh</button>
+    </div>
+    <p class="mg-list-note" data-el="runsNote">Reading job list…</p>
+    <div class="mg-runs-list" data-el="runsList"></div>
+  </section>
   <p class="mg-list-help"><span class="mg-help-disc" aria-hidden="true">?</span>
     One card per capture under <code>逆向/00_来源/samples</code>. Open one to see the device
     dashboard the original shows for a connected receiver.</p>
@@ -1913,9 +1987,9 @@ function template() {
     <label class="mg-term-field"><span>Baud</span>
       <input type="text" data-term="baud" value="115200" spellcheck="false"></label>
     <label class="mg-term-field"><span>or TCP</span>
-      <input type="text" data-term="host" placeholder="127.0.0.1" spellcheck="false"></label>
+      <input type="text" data-term="host" data-parity="ipAddress" placeholder="127.0.0.1" spellcheck="false"></label>
     <label class="mg-term-field"><span>Port</span>
-      <input type="text" data-term="port" placeholder="3001" spellcheck="false"></label>
+      <input type="text" data-term="port" data-parity="portName" placeholder="3001" spellcheck="false"></label>
     <button type="button" class="mg-term-btn" data-term="connect">Connect</button>
     <button type="button" class="mg-term-btn" data-term="disconnect">Disconnect</button>
   </div>
@@ -1945,14 +2019,54 @@ function template() {
       <section class="mg-adddev-manual">
         <h2 class="mg-adddev-h">Connect by address</h2>
         <div class="mg-adddev-rows">
+          <label class="mg-adddev-field"><span>Connection name</span>
+            <input type="text" data-adddev="name" data-parity="connectionName"
+                   maxlength="16" placeholder="My receiver" spellcheck="false"></label>
+          <label class="mg-adddev-field"><span>Group name</span>
+            <input type="text" data-adddev="group" data-parity="groupName"
+                   maxlength="16" placeholder="Group" spellcheck="false"></label>
           <label class="mg-adddev-field"><span>Serial port</span>
-            <input type="text" data-adddev="path" placeholder="COM10" spellcheck="false"></label>
+            <input type="text" data-adddev="path"
+                   placeholder="COM10" spellcheck="false"></label>
           <label class="mg-adddev-field"><span>Baud</span>
             <input type="text" data-adddev="baud" value="115200" spellcheck="false"></label>
           <label class="mg-adddev-field"><span>TCP / UDP host</span>
-            <input type="text" data-adddev="host" placeholder="192.168.1.20" spellcheck="false"></label>
+            <input type="text" data-adddev="host" data-parity="ipAddress"
+                   placeholder="192.168.1.20" spellcheck="false"></label>
           <label class="mg-adddev-field"><span>Port</span>
-            <input type="text" data-adddev="port" placeholder="3001" spellcheck="false"></label>
+            <input type="text" data-adddev="port" data-parity="portName"
+                   placeholder="3001" spellcheck="false"></label>
+        </div>
+        <!-- 原版 setUpMonitor.html 的串口/网络细节开关（1186-1197）。
+             B 侧原来没有这些开关，连接只能靠默认值；补上与两侧对齐。 -->
+        <div class="mg-adddev-toggles">
+          <label class="mg-adddev-toggle">
+            <input type="checkbox" data-adddev="passive" data-parity="passive-on-off">
+            <span>Passive</span></label>
+          <label class="mg-adddev-toggle">
+            <input type="checkbox" data-adddev="handshake" data-parity="handshake-on-off">
+            <span>Hardware handshake</span></label>
+          <label class="mg-adddev-toggle">
+            <input type="checkbox" data-adddev="pim222aRx" data-parity="pim222aRx-on-off">
+            <span>PIM222A receiver</span></label>
+          <label class="mg-adddev-toggle">
+            <input type="checkbox" data-adddev="connectOnAdd" data-parity="connection-on-off">
+            <span>Connect on add</span></label>
+        </div>
+        <!-- 原版的两个下拉：端口选择（ports-selected 1712）与波特率选择
+             （baudrate-selected 1723）。原版是自定义 li 下拉，
+             B 侧用原生 select，字段语义相同。 -->
+        <div class="mg-adddev-rows">
+          <label class="mg-adddev-field"><span>Port (selected)</span>
+            <select data-adddev="portsSelected" data-parity="ports-selected"></select></label>
+          <label class="mg-adddev-field"><span>Baud rate (selected)</span>
+            <select data-adddev="baudSelected" data-parity="baudrate-selected">
+              <option value="Auto">Auto</option>
+              <option value="115200">115200</option>
+              <option value="230400">230400</option>
+              <option value="460800">460800</option>
+              <option value="921600">921600</option>
+            </select></label>
         </div>
         <div class="mg-adddev-manual-actions">
           <button type="button" class="mg-cfg-btn" data-adddev="manual">Connect</button>
@@ -2069,6 +2183,327 @@ export function mount(root, ctx = {}) {
   root.classList.add('manage-panel');
   root.innerHTML = template();
   const el = collect(root);
+
+  /* ---------------- device shelf (原版 deviceManagement 的多设备档案) ----------------
+   *
+   * 原版把每次见过的接收机存进 userData/devicesInfo.json 并在 Manage 首屏铺成卡片：
+   * 可以命名、分组、打开、删除。B 侧原来只有一个 live 会话，拔线即从界面消失。
+   * 这一段是那份档案的界面层，数据在 `/api/devices`（src/devices.ts）。
+   */
+  const shelf = {
+    devices: [],
+    groups: [],
+    filter: '',
+    loaded: false,
+    error: '',
+  };
+
+  function shelfGroupName(groupKey) {
+    return shelf.groups.find((g) => g.key === groupKey)?.name || groupKey;
+  }
+
+  function shelfVisible() {
+    const want = shelf.filter;
+    return shelf.devices.filter((d) => (want ? d.groups.includes(want) : true));
+  }
+
+  function shelfRender() {
+    if (el.shelfNote) {
+      if (shelf.error) el.shelfNote.textContent = shelf.error;
+      else if (!shelf.loaded) el.shelfNote.textContent = 'Reading device profiles…';
+      else if (shelf.devices.length === 0) {
+        el.shelfNote.textContent =
+          'No device profile yet. Add Device records one here, so it is still listed after the cable is out.';
+      } else {
+        const n = shelfVisible().length;
+        el.shelfNote.textContent =
+          `${n} of ${shelf.devices.length} profile${shelf.devices.length === 1 ? '' : 's'}`;
+      }
+    }
+
+    if (el.shelfGroups) {
+      const all = `<button type="button" class="mg-shelf-group${shelf.filter ? '' : ' is-active'}"
+        data-shelf-filter="">All <span class="mg-shelf-group-n">${shelf.devices.length}</span></button>`;
+      const rest = shelf.groups.map((g) => {
+        const n = shelf.devices.filter((d) => d.groups.includes(g.key)).length;
+        const active = shelf.filter === g.key ? ' is-active' : '';
+        return `<span class="mg-shelf-group-wrap">
+          <button type="button" class="mg-shelf-group${active}" data-shelf-filter="${esc(g.key)}"
+            >${esc(g.name)} <span class="mg-shelf-group-n">${n}</span></button>
+          <button type="button" class="mg-shelf-group-x" data-shelf-delgroup="${esc(g.key)}"
+            aria-label="Delete group ${esc(g.name)}">&times;</button>
+        </span>`;
+      }).join('');
+      el.shelfGroups.innerHTML = all + rest;
+    }
+
+    if (!el.shelfCards) return;
+    const rows = shelfVisible();
+    if (rows.length === 0) {
+      el.shelfCards.innerHTML = '';
+      return;
+    }
+    el.shelfCards.innerHTML = rows.map((d) => {
+      const t = d.details;
+      const chips = d.groups
+        .map((g) => `<span class="mg-shelf-chip">${esc(shelfGroupName(g))}</span>`).join('');
+      const baud = t.baud ? ` @${t.baud}` : '';
+      return `<article class="mg-shelf-card" data-shelf-open="${esc(d.key)}">
+        <div class="mg-shelf-card-head">
+          <span class="mg-shelf-card-name">${esc(t.name || t.address)}</span>
+          <button type="button" class="mg-shelf-card-x" data-shelf-del="${esc(d.key)}"
+            aria-label="Delete profile ${esc(t.name || t.address)}">&times;</button>
+        </div>
+        <div class="mg-shelf-card-row"><span>Address</span><span>${esc(t.address)}${esc(baud)}</span></div>
+        <div class="mg-shelf-card-row"><span>Model</span><span>${esc(t.model || '--')}</span></div>
+        <div class="mg-shelf-card-row"><span>Type</span><span>${esc(t.type)}</span></div>
+        <div class="mg-shelf-card-chips">${chips}</div>
+      </article>`;
+    }).join('');
+  }
+
+  async function shelfLoad() {
+    try {
+      const data = await api.get('/api/devices');
+      shelf.devices = Array.isArray(data.devices) ? data.devices : [];
+      shelf.groups = Array.isArray(data.groups) ? data.groups : [];
+      shelf.error = '';
+    } catch (error) {
+      shelf.devices = [];
+      shelf.groups = [];
+      shelf.error = `Device profiles unavailable: ${error.message}`;
+    } finally {
+      shelf.loaded = true;
+      shelfRender();
+    }
+  }
+
+  /** 打开一张卡片 = 把它带进 live 会话（原版点 tile 就进设备台）。 */
+  async function shelfOpen(key) {
+    const device = shelf.devices.find((d) => d.key === key);
+    if (!device) return;
+    try {
+      await api.post(`/api/devices/${encodeURIComponent(key)}/use`);
+    } catch {
+      /* 时间戳只是排序提示，记不上不该挡住打开 */
+    }
+    openAddDevice();
+    if (adddevEls.path && device.details.type === 'serial') {
+      adddevEls.path.value = device.details.address;
+    }
+    if (adddevEls.baud && device.details.baud) {
+      adddevEls.baud.value = String(device.details.baud);
+    }
+    if (adddevEls.host && device.details.type !== 'serial') {
+      const [host, port] = String(device.details.address).split(':');
+      adddevEls.host.value = host || '';
+      if (adddevEls.port && port) adddevEls.port.value = port;
+    }
+    if (adddevEls.name) adddevEls.name.value = device.details.name || '';
+  }
+
+  async function shelfDelete(key) {
+    try {
+      await api.delete(`/api/devices/${encodeURIComponent(key)}`);
+    } catch (error) {
+      if (el.shelfNote) el.shelfNote.textContent = `Delete failed: ${error.message}`;
+      return;
+    }
+    shelf.devices = shelf.devices.filter((d) => d.key !== key);
+    shelfRender();
+  }
+
+  async function shelfAddGroup() {
+    const input = el.shelfGroupName;
+    const name = (input?.value ?? '').trim();
+    if (!name) return;
+    try {
+      const data = await api.post('/api/devices/groups', { name });
+      if (data.group) shelf.groups.push(data.group);
+      if (input) input.value = '';
+      shelfRender();
+    } catch (error) {
+      if (el.shelfNote) el.shelfNote.textContent = `Add group failed: ${error.message}`;
+    }
+  }
+
+  async function shelfDeleteGroup(key) {
+    try {
+      await api.delete(`/api/devices/groups/${encodeURIComponent(key)}`);
+    } catch (error) {
+      if (el.shelfNote) el.shelfNote.textContent = `Delete group failed: ${error.message}`;
+      return;
+    }
+    shelf.groups = shelf.groups.filter((g) => g.key !== key);
+    // 服务端会把设备上的归属一并摘掉，这里同步本地副本，免得等下一次刷新。
+    shelf.devices = shelf.devices.map((d) => ({
+      ...d, groups: d.groups.filter((g) => g !== key),
+    }));
+    if (shelf.filter === key) shelf.filter = '';
+    shelfRender();
+  }
+
+  if (el.shelfCards) {
+    el.shelfCards.addEventListener('click', (event) => {
+      const del = event.target.closest('[data-shelf-del]');
+      if (del) {
+        event.stopPropagation();
+        void shelfDelete(del.dataset.shelfDel);
+        return;
+      }
+      const open = event.target.closest('[data-shelf-open]');
+      if (open) void shelfOpen(open.dataset.shelfOpen);
+    });
+  }
+  if (el.shelfGroups) {
+    el.shelfGroups.addEventListener('click', (event) => {
+      const del = event.target.closest('[data-shelf-delgroup]');
+      if (del) {
+        void shelfDeleteGroup(del.dataset.shelfDelgroup);
+        return;
+      }
+      const pick = event.target.closest('[data-shelf-filter]');
+      if (pick) {
+        shelf.filter = pick.dataset.shelfFilter || '';
+        shelfRender();
+      }
+    });
+  }
+  if (el.shelfAddGroup) {
+    el.shelfAddGroup.addEventListener('click', () => { void shelfAddGroup(); });
+  }
+  if (el.shelfGroupName) {
+    el.shelfGroupName.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void shelfAddGroup();
+      }
+    });
+  }
+
+  /* ---------------- recent workflow runs (把 job 的产物归属回界面) ----------------
+   *
+   * 三条固定流程跑完只落 artifact，没有任何界面入口。这里列出最近的 job，
+   * 展开可以看到每一步的结论与它写下的证据文件名。
+   */
+  const runs = { jobs: [], loaded: false, error: '', open: null };
+
+  const RUN_STATUS_TEXT = {
+    succeeded: 'done', failed: 'failed', running: 'running', pending: 'queued',
+    waiting_approval: 'awaiting approval', waiting_operator: 'awaiting operator',
+    cancelled: 'cancelled',
+  };
+
+  function runTone(status) {
+    if (status === 'succeeded') return 'good';
+    if (status === 'failed' || status === 'cancelled') return 'bad';
+    if (status === 'running') return 'info';
+    return 'unknown';
+  }
+
+  function runsRender() {
+    if (el.runsNote) {
+      if (runs.error) el.runsNote.textContent = runs.error;
+      else if (!runs.loaded) el.runsNote.textContent = 'Reading job list…';
+      else if (runs.jobs.length === 0) {
+        el.runsNote.textContent =
+          'No workflow run yet. The fixed workflows record what they did here once they run.';
+      } else {
+        el.runsNote.textContent = `${runs.jobs.length} recent run${runs.jobs.length === 1 ? '' : 's'}`;
+      }
+    }
+    if (!el.runsList) return;
+    el.runsList.innerHTML = runs.jobs.map((job) => {
+      // 字段名以 /api/workflows/jobs 的实测返回为准：job_id / current_step /
+      // step_index / steps_total / failure / artifacts / next_actions。
+      const id = String(job.job_id ?? job.id ?? '');
+      const wf = String(job.workflow ?? job.workflow_id ?? '');
+      const status = String(job.status ?? '');
+      const tone = runTone(status);
+      const label = RUN_STATUS_TEXT[status] || status || '?';
+      const steps = job.steps_total
+        ? `${job.current_step || ''} (${job.step_index ?? '?'} / ${job.steps_total})`
+        : '';
+      const when = String(job.finished_at || job.updated_at || job.created_at || '');
+      const open = runs.open === id;
+      const body = open ? runsDetail(job) : '';
+      return `<article class="mg-run" data-run-id="${esc(id)}">
+        <div class="mg-run-head" data-run-toggle="${esc(id)}">
+          <span class="mg-run-wf">${esc(wf || '(unknown workflow)')}</span>
+          <span class="mg-badge mg-badge-${tone}">${esc(label)}</span>
+          <span class="mg-run-steps">${esc(steps)}</span>
+          <span class="mg-run-when">${esc(when.replace('T', ' ').replace('Z', '').slice(0, 19))}</span>
+        </div>
+        ${body}
+      </article>`;
+    }).join('');
+  }
+
+  function runsDetail(job) {
+    // 实测字段：failure {class, kind, message, step}、gate、artifacts[{name,kind}]、
+    // next_actions[]、warnings[]、params{}。没有逐 step 的列表，所以不编造。
+    const id = String(job.job_id ?? job.id ?? '');
+    const arts = Array.isArray(job.artifacts) ? job.artifacts : [];
+    const artRows = arts.map((a) => {
+      const name = String(a.name ?? '');
+      const kind = String(a.kind ?? '');
+      return `<li class="mg-run-art"><span class="mg-run-art-name">${esc(name)}</span>
+        <span class="mg-run-art-kind">${esc(kind)}</span></li>`;
+    }).join('');
+
+    const f = job.failure;
+    const failure = f && (f.class || f.message)
+      ? `<p class="mg-run-failure">Failed at step <code>${esc(String(f.step || '?'))}</code>
+         (${esc(String(f.class || '?'))}${f.kind ? ' / ' + esc(String(f.kind)) : ''}):
+         ${esc(String(f.message || ''))}</p>`
+      : '';
+    const gate = job.gate
+      ? `<p class="mg-run-gate">Waiting on gate <code>${esc(String(job.gate))}</code> — approve it from the workflow tools.</p>`
+      : '';
+    const next = Array.isArray(job.next_actions) && job.next_actions.length
+      ? `<ul class="mg-run-next">${job.next_actions.map((a) =>
+        `<li>${esc(typeof a === 'string' ? a : JSON.stringify(a))}</li>`).join('')}</ul>`
+      : '';
+    const warn = Array.isArray(job.warnings) && job.warnings.length
+      ? `<p class="mg-run-gate">${esc(String(job.warnings.length))} warning(s): ${esc(job.warnings
+        .map((w) => (typeof w === 'string' ? w : w.message || '')).filter(Boolean).join('; '))}</p>`
+      : '';
+
+    return `<div class="mg-run-body">
+      ${failure}${gate}${warn}
+      ${next ? `<p class="mg-run-label">Next actions</p>${next}` : ''}
+      ${arts ? `<p class="mg-run-label">Evidence</p><ul class="mg-run-arts">${artRows}</ul>`
+        : '<p class="mg-run-noarts">No artifact recorded.</p>'}
+      <p class="mg-run-idnote">job <code>${esc(id)}</code> · ${esc(String(job.driver || '?'))} · ${esc(String(job.engine || ''))}</p>
+    </div>`;
+  }
+
+  async function runsLoad() {
+    try {
+      const data = await api.get('/api/workflows/jobs', { limit: 12 });
+      runs.jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      runs.error = '';
+    } catch (error) {
+      runs.jobs = [];
+      runs.error = `Workflow runs unavailable: ${error.message}`;
+    } finally {
+      runs.loaded = true;
+      runsRender();
+    }
+  }
+
+  if (el.runsList) {
+    el.runsList.addEventListener('click', (event) => {
+      const head = event.target.closest('[data-run-toggle]');
+      if (!head) return;
+      const id = head.dataset.runToggle;
+      runs.open = runs.open === id ? null : id;
+      runsRender();
+    });
+  }
+  if (el.runsReload) {
+    el.runsReload.addEventListener('click', () => { void runsLoad(); });
+  }
 
   /* ---------------- live session + terminal (one poller feeds both) ---------------- */
 
@@ -2836,11 +3271,46 @@ export function mount(root, ctx = {}) {
       void livePoll();
       if (!live.pollTimer) startLivePolling();
       say(`Connected to ${status.target}`);
+      // 连上就记一份档案：这就是「插拔之后设备还在列表里」的全部实现。
+      // 失败不打断连接 —— 连上了才是主目标，档案是附带记录。
+      void shelfRemember(body, status);
       return status;
     } catch (error) {
       say(`Connect failed: ${error.message}`);
       return null;
     }
+  }
+
+  /** 把一次成功连接写成设备档案（同地址视为同一台，由服务端去重）。 */
+  async function shelfRemember(body, status) {
+    try {
+      const isSerial = (body.kind ?? 'serial') === 'serial';
+      const address = isSerial
+        ? String(body.path ?? '')
+        : `${body.host ?? '127.0.0.1'}:${body.port ?? 3001}`;
+      if (!address) return;
+      const data = await api.post('/api/devices', {
+        address,
+        type: isSerial ? 'serial' : 'tcp',
+        baud: isSerial ? Number(body.baud) || 115200 : null,
+        // 名字留空时卡片显示地址；已有的名字不会被覆盖（服务端按地址更新，
+        // 这里只传空名会把它清掉，所以已有档案时不传 name）。
+        name: existingName(address),
+        model: status?.model ?? null,
+      });
+      if (data.device) {
+        shelf.devices = [data.device, ...shelf.devices.filter((d) => d.key !== data.device.key)];
+        shelf.loaded = true;
+        shelf.error = '';
+        shelfRender();
+      }
+    } catch {
+      /* 档案是可选的记录，失败不打断正在进行的连接 */
+    }
+  }
+
+  function existingName(address) {
+    return shelf.devices.find((d) => d.details.address === address)?.details.name ?? '';
   }
   async function termDisconnect() {
     try {
@@ -2854,13 +3324,38 @@ export function mount(root, ctx = {}) {
   }
   /* ---- Add Device: the original's device list, filled from the machine's real ports ---- */
 
-  const adddev = { open: false, loading: false, list: null, selected: null, busy: false, status: '' };
+  const adddev = {
+    open: false,
+    loading: false,
+    list: null,
+    selected: null,
+    busy: false,
+    status: '',
+    // 上次保存的 ports-selected；串口扫描完成之前没有候选，先记着，扫完再回填。
+    pendingPortsSelected: '',
+  };
   const adddevEls = {};
   for (const node of root.querySelectorAll('[data-adddev]')) adddevEls[node.dataset.adddev] = node;
 
   function adddevSync() {
     const ports = adddev.list?.ports ?? [];
     const selected = ports.find((port) => port.path === adddev.selected);
+    // ports-selected（原版 setUpMonitor.html:1712）：候选来自串口扫描，
+    // 扫描之前是空的，所以保存过的值要等扫描结果回来再回填。
+    if (adddevEls.portsSelected) {
+      const want = adddev.selected || adddev.pendingPortsSelected || '';
+      const options = ports.map((p) => p.path);
+      const current = adddevEls.portsSelected;
+      const same = current.options.length === options.length
+        && options.every((o, i) => current.options[i]?.value === o);
+      if (!same) {
+        current.innerHTML = options
+          .map((o) => `<option value="${esc(o)}">${esc(o)}</option>`)
+          .join('');
+      }
+      if (want && options.includes(want)) current.value = want;
+      current.disabled = options.length === 0;
+    }
     if (adddevEls.note) {
       if (adddev.loading) adddevEls.note.textContent = 'Scanning serial ports…';
       else if (!adddev.list) adddevEls.note.textContent = 'No scan yet.';
@@ -2942,6 +3437,19 @@ export function mount(root, ctx = {}) {
       if (saved.baud && adddevEls.baud) adddevEls.baud.value = saved.baud;
       if (saved.host && adddevEls.host) adddevEls.host.value = saved.host;
       if (saved.port && adddevEls.port) adddevEls.port.value = saved.port;
+      // 原版 setUpMonitor 的字段（1130-1197 / 1712 / 1723）：两样都要恢复，
+      // 否则每次打开对话框都得重填连接名与开关状态。
+      if (saved.name && adddevEls.name) adddevEls.name.value = saved.name;
+      if (saved.group && adddevEls.group) adddevEls.group.value = saved.group;
+      if (adddevEls.passive) adddevEls.passive.checked = !!saved.passive;
+      if (adddevEls.handshake) adddevEls.handshake.checked = !!saved.handshake;
+      if (adddevEls.pim222aRx) adddevEls.pim222aRx.checked = !!saved.pim222aRx;
+      if (adddevEls.connectOnAdd) adddevEls.connectOnAdd.checked = !!saved.connectOnAdd;
+      if (saved.baudSelected && adddevEls.baudSelected) {
+        adddevEls.baudSelected.value = saved.baudSelected;
+      }
+      // ports-selected 的候选来自串口扫描结果，扫描完成时再回填。
+      if (saved.portsSelected) adddev.pendingPortsSelected = saved.portsSelected;
     } catch {
       /* a corrupt value is not worth an error: the fields just stay empty */
     }
@@ -2954,6 +3462,14 @@ export function mount(root, ctx = {}) {
         baud: (adddevEls.baud?.value ?? '').trim(),
         host: (adddevEls.host?.value ?? '').trim(),
         port: (adddevEls.port?.value ?? '').trim(),
+        name: (adddevEls.name?.value ?? '').trim(),
+        group: (adddevEls.group?.value ?? '').trim(),
+        passive: !!adddevEls.passive?.checked,
+        handshake: !!adddevEls.handshake?.checked,
+        pim222aRx: !!adddevEls.pim222aRx?.checked,
+        connectOnAdd: !!adddevEls.connectOnAdd?.checked,
+        baudSelected: adddevEls.baudSelected?.value ?? '',
+        portsSelected: adddevEls.portsSelected?.value ?? '',
       }));
     } catch {
       /* private mode: nothing to remember */
@@ -4553,6 +5069,11 @@ export function mount(root, ctx = {}) {
   }
 
   async function boot() {
+    // 设备档案与 captures 并列加载：两个都是首屏就要显示的列表，
+    // 串行会让「Devices」比「All captures」晚一屏才出现。
+    void shelfLoad();
+    // 三条固定流程的结果也在这里归属回界面（原先只有 job artifact，无处可看）。
+    void runsLoad();
     try {
       const data = await api.get('/api/captures');
       if (!state.alive) return;

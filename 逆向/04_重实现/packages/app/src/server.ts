@@ -47,6 +47,18 @@ import {
 } from './config-http.ts';
 import { LiveLink, type LiveTarget } from './live.ts';
 import { listSerialPorts } from './ports.ts';
+import {
+  addDeviceToGroup,
+  addGroup,
+  addProfile,
+  deleteGroup,
+  deleteProfile,
+  listGroups,
+  listProfiles,
+  markUsed,
+  removeDeviceFromGroup,
+  updateProfile,
+} from './devices.ts';
 import type { SerialOpener } from '../../session/src/transport.ts';
 import { readRecords, readTextRecords, summarizeLogs } from './logs.ts';
 import { playbackEvents, playbackExport, playbackFrame, playbackFrames, playbackInfo } from './playback.ts';
@@ -1476,7 +1488,11 @@ function loopbackRequest(
 const server = createServer((req, res) => {
   void (async () => {
     const method = (req.method ?? 'GET').toUpperCase();
-    if (method !== 'GET' && method !== 'HEAD' && method !== 'POST') {
+    /* Device shelf routes need PATCH (rename/profile edit) and DELETE (remove a profile or
+     * a group). Everything else stays GET/HEAD/POST: widening the whitelist beyond what a
+     * route actually implements would just move the 405 further away from its cause. */
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'POST'
+        && method !== 'PATCH' && method !== 'DELETE' && method !== 'PUT') {
       sendJson(res, 405, { ok: false, error: '不支持的请求方法' }, method);
       return;
     }
@@ -1568,6 +1584,116 @@ const server = createServer((req, res) => {
     const force = url.searchParams.get('refresh') === '1';
     sendJson(res, 200, { ok: true, ...(await listSerialPorts(force)) }, method);
     return;
+  }
+  /* ---- device shelf (原版 deviceManagement 的多设备档案) -------------------------------
+   * The original keeps `alldevices.devices/.groups` in userData and renders a shelf of
+   * tiles you can name, group, open and delete. B had only one live session and no
+   * record of anything, so a receiver vanished from the UI as soon as the cable was
+   * pulled. These routes are that record: same shape, same operations.
+   */
+  if (path === '/api/devices') {
+    if (method === 'GET') {
+      sendJson(res, 200, {
+        ok: true, devices: listProfiles(), groups: listGroups(),
+      }, method);
+      return;
+    }
+    if (method === 'POST') {
+      const body = await readJsonBody(req);
+      /* readJsonBody 返回 Record<string, unknown>，档案层要的是强类型；
+       * 这里做一次显式收敛，缺 address 时由 addProfile 自己报错。 */
+      const device = addProfile({
+        key: typeof body.key === 'string' ? body.key : undefined,
+        name: typeof body.name === 'string' ? body.name : undefined,
+        model: typeof body.model === 'string' ? body.model : null,
+        type: typeof body.type === 'string' ? body.type : undefined,
+        address: String(body.address ?? ''),
+        baud: typeof body.baud === 'number' ? body.baud : null,
+        groups: Array.isArray(body.groups) ? body.groups.map(String) : [],
+      });
+      sendJson(res, 200, { ok: true, device }, method);
+      return;
+    }
+    throw new HttpError(405, '/api/devices 只支持 GET / POST');
+  }
+  if (path.startsWith('/api/devices/')) {
+    /* 后面的段既可能是设备 key，也可能是 groups 子资源，先分清再分发。 */
+    const rest = path.slice('/api/devices/'.length);
+    if (rest === 'groups') {
+      if (method === 'GET') {
+        sendJson(res, 200, { ok: true, groups: listGroups() }, method);
+        return;
+      }
+      if (method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, {
+          ok: true,
+          group: addGroup(String(body.name ?? ''), String(body.appName ?? '')),
+        }, method);
+        return;
+      }
+      throw new HttpError(405, '/api/devices/groups 只支持 GET / POST');
+    }
+    if (rest.startsWith('groups/')) {
+      const groupKey = decodeURIComponent(rest.slice('groups/'.length));
+      if (method === 'DELETE') {
+        const removed = deleteGroup(groupKey);
+        sendJson(res, removed ? 200 : 404, { ok: removed }, method);
+        return;
+      }
+      throw new HttpError(405, '/api/devices/groups/<key> 只支持 DELETE');
+    }
+    /* `/api/devices/<key>/use` — 点开卡片就算用过，用来排序。 */
+    if (rest.endsWith('/use')) {
+      const key = decodeURIComponent(rest.slice(0, -'/use'.length));
+      if (method !== 'POST') throw new HttpError(405, '/api/devices/<key>/use 只支持 POST');
+      const device = markUsed(key);
+      sendJson(res, device ? 200 : 404, { ok: !!device, device }, method);
+      return;
+    }
+    /* `/api/devices/<key>/groups/<groupKey>` — 加入 / 移出分组。 */
+    const groupMatch = rest.match(/^(.+?)\/groups\/(.+)$/);
+    if (groupMatch) {
+      const deviceKey = decodeURIComponent(groupMatch[1]);
+      const groupKey = decodeURIComponent(groupMatch[2]);
+      if (method === 'POST') {
+        sendJson(res, 200, { ok: true, device: addDeviceToGroup(deviceKey, groupKey) }, method);
+        return;
+      }
+      if (method === 'DELETE') {
+        sendJson(res, 200, {
+          ok: true, device: removeDeviceFromGroup(deviceKey, groupKey),
+        }, method);
+        return;
+      }
+      throw new HttpError(405, '设备分组只支持 POST / DELETE');
+    }
+    const deviceKey = decodeURIComponent(rest);
+    if (method === 'GET') {
+      const device = listProfiles().find((d) => d.key === deviceKey) ?? null;
+      sendJson(res, device ? 200 : 404, { ok: !!device, device }, method);
+      return;
+    }
+    if (method === 'PATCH' || method === 'PUT') {
+      const body = await readJsonBody(req);
+      /* 只把请求里**真的出现**的字段下推。传 undefined 表示"没动这一项"，
+       * 传 null 才是"清空"——这两者不能混，否则改名会把 baud 一起抹掉
+       * （实测：PATCH {"name":"Renamed"} 把 baud 从 115200 变成了 null）。 */
+      const device = updateProfile(deviceKey, {
+        name: typeof body.name === 'string' ? body.name : undefined,
+        model: 'model' in body ? (typeof body.model === 'string' ? body.model : null) : undefined,
+        baud: 'baud' in body ? (typeof body.baud === 'number' ? body.baud : null) : undefined,
+        type: typeof body.type === 'string' ? body.type : undefined,
+      });
+      sendJson(res, 200, { ok: true, device }, method);
+      return;
+    }
+    if (method === 'DELETE') {
+      const removed = deleteProfile(deviceKey);
+      sendJson(res, removed ? 200 : 404, { ok: removed }, method);
+      return;
+    }
+    throw new HttpError(405, `/api/devices/${deviceKey} 不支持的方法`);
   }
   if (path === '/api/live/status') {
         sendJson(res, 200, { ok: true, ...liveLink().status() }, method);
@@ -1793,6 +1919,27 @@ const server = createServer((req, res) => {
       if (path === '/api/workflows/job') {
         const id = assertJobId(url.searchParams.get('id'));
         sendJson(res, 200, { ok: true, ...(await workflowBridge.status(id)) }, method);
+        return;
+      }
+      /* 某个流程最近一条 job：界面点完「安装 / 更新 / 新建工程」要先看到它跑到哪一步，
+       * 否则按钮点完没有任何反馈，只能去 job 目录里翻。 */
+      if (path === '/api/workflows/by-workflow') {
+        const id = assertWorkflowId(url.searchParams.get('id'));
+        const all = await workflowBridge.jobs(50);
+        const mine = all.filter((j) => String(j.workflow ?? '') === id);
+        sendJson(res, 200, {
+          ok: true, workflow: id, job: mine.length ? mine[0] : null, count: mine.length,
+        }, method);
+        return;
+      }
+      /* 作业列表：UI 上「最近跑过的固定流程及其结果」需要一个入口。
+       * 没有它，job 的 artifact 只能靠知道 id 才看得到，等于结果没有归属。 */
+      if (path === '/api/workflows/jobs') {
+        const limit = integer(url.searchParams.get('limit'), 20, 1, 200, 'limit');
+        const status = url.searchParams.get('status') || undefined;
+        sendJson(res, 200, {
+          ok: true, jobs: await workflowBridge.jobs(limit, status),
+        }, method);
         return;
       }
       if (path === '/api/workflows/job/gate') {
