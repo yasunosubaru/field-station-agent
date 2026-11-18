@@ -3688,14 +3688,111 @@ export function mount(root, ctx) {
       .join('');
   }
 
+  if (el.picker && !el.picker.dataset.sbfBound) {
+    el.picker.dataset.sbfBound = '1';
+    el.picker.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-sbf-flow]');
+      if (!target) return;
+      const what = target.dataset.sbfFlow;
+      if (what === 'start') void startSbfFlow();
+      if (what === 'refresh') {
+        const jobId = sbfFlow.job && (sbfFlow.job.job_id || sbfFlow.job.id);
+        if (jobId) void refreshSbfFlow(String(jobId));
+      }
+    });
+  }
   function showPicker(which) {
     if (!el.picker) return;
     el.picker.hidden = false;
     el.pickerTitle.textContent = which === 'new' ? 'New Project' : 'Open Project';
     el.pickerHint.textContent = which === 'new'
-      ? '本构建没有 Graph 的工程引擎（.gpf 解析与录制）。新建工程的落地方式就是挑一份 Graph 导出的 CSV。'
+      ? ('这个界面里没有 Graph 的工程引擎（.gpf 解析与录制），所以"新建"的落地方式是挑一份'
+         + ' Graph 导出的 CSV。真正从 SBF 生成工程（Pre-process 四步）由固定流程 '
+         + 'gui.graph.newproject 驱动原版套件完成 —— Plot 之前有一道人工闸门，界面不会替你按。')
       : `列出当前工程 ${state.project || state.projectKey || ''} 的 CSV（/api/graph/files?project=），选一份进入工作区。`;
     fillPicker();
+    paintSbfFlow();
+  }
+
+  /* ---------------- 从 SBF 新建工程：启动固定流程 ----------------
+   *
+   * 原来这里只有一行「本构建没有 Graph 的工程引擎」，等于把这件事标成做不到。
+   * 但 A 侧那四步 Pre-process 有一条真实可跑的固定流程（19 步），能在虚拟屏里
+   * 驱动原版套件走完，Plot 之前停在人工闸门。所以给一个启动入口并显示进展。
+   */
+  const sbfFlow = { job: null, error: '', busy: false };
+
+  async function startSbfFlow() {
+    sbfFlow.busy = true;
+    sbfFlow.error = '';
+    sbfFlow.job = null;
+    paintSbfFlow();
+    try {
+      const response = await fetch('/api/workflows/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'gui.graph.newproject', params: {} }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+      const jobId = body.job_id || (body.job && (body.job.job_id || body.job.id));
+      if (jobId) await refreshSbfFlow(jobId);
+      else sbfFlow.job = body.job || body;
+    } catch (error) {
+      sbfFlow.error = `启动 gui.graph.newproject 失败：${error.message}`;
+    } finally {
+      sbfFlow.busy = false;
+      paintSbfFlow();
+    }
+  }
+
+  async function refreshSbfFlow(jobId) {
+    try {
+      const response = await fetch(`/api/workflows/job?id=${encodeURIComponent(jobId)}`);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+      sbfFlow.job = body.job || body;
+      sbfFlow.error = '';
+    } catch (error) {
+      sbfFlow.error = `读取 job 失败：${error.message}`;
+    }
+    paintSbfFlow();
+  }
+
+  function paintSbfFlow() {
+    if (!el.picker) return;
+    let host = el.picker.querySelector('.gp-sbf-flow');
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'gp-sbf-flow';
+      el.pickerHint.after(host);
+    }
+    const job = sbfFlow.job;
+    const parts = [];
+    if (sbfFlow.error) parts.push(`<p class="gp-sbf-error">${esc(sbfFlow.error)}</p>`);
+    if (sbfFlow.busy && !job) parts.push('<p class="gp-sbf-note">启动中…</p>');
+    if (!job && !sbfFlow.error && !sbfFlow.busy) {
+      parts.push('<button type="button" class="gp-btn gp-btn-light" data-sbf-flow="start">'
+        + '从 SBF 新建工程（gui.graph.newproject）</button>');
+    }
+    if (job) {
+      const jobId = String(job.job_id || job.id || '');
+      const total = job.steps_total;
+      parts.push(`<p class="gp-sbf-head"><code>${esc(String(job.workflow || ''))}</code> `
+        + `<b>${esc(String(job.status || '?'))}</b> `
+        + `${esc(total ? `${job.current_step || ''}（${job.step_index ?? '?'} / ${total}）` : String(job.current_step || ''))}</p>`);
+      if (job.failure && (job.failure.class || job.failure.message)) {
+        parts.push(`<p class="gp-sbf-error">停在 ${esc(String(job.failure.step || '?'))}`
+          + `（${esc(String(job.failure.class || '?'))}）：${esc(String(job.failure.message || ''))}</p>`);
+      }
+      if (job.gate) {
+        parts.push(`<p class="gp-sbf-gate">闸门 <code>${esc(String(job.gate))}</code>：需要人工批准，`
+          + '请到 Manage 页的 Recent workflow runs 处理</p>');
+      }
+      parts.push(`<p class="gp-sbf-id">job ${esc(jobId)}</p>`);
+      parts.push('<button type="button" class="gp-btn" data-sbf-flow="refresh">刷新</button>');
+    }
+    host.innerHTML = parts.join('');
   }
 
   /** Files are what tell a tile whether its CSV exists, so a tab opened before this returns waits here. */

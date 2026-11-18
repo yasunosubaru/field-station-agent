@@ -257,5 +257,74 @@ class ShippedWorkflows(unittest.TestCase):
                 spec.load_all(base)
 
 
+class NativeDialogActions(unittest.TestCase):
+    """``dialog`` / ``fill_dialog`` —— 处理 Windows 原生对话框的两个 GUI 动作。
+
+    为什么需要它们（计划书 §8 第 11、12 项）：原生 Open / Select Folder 对话框是
+    **独立顶层窗口**，不在网页里，CDP 的页面查询完全看不到它。所以
+    `gui.app.install` 的「Import from your computer」、
+    `gui.graph.new-project` 的 Project Folder / Receiver Data 两处 Select
+    以前只能设成 human_gate 让人点。有了 UIA 驱动的这两个动作，这些步骤能自动。
+    """
+
+    def _build(self, actions):
+        return spec.build_spec(
+            {"id": "t.flow", "version": 1, "title": "t", "intent": "t.run",
+             "steps": [{"id": "g", "kind": "gui", "actions": actions}]},
+            source="memory")
+
+    def test_actions_are_registered(self):
+        self.assertIn("dialog", spec.GUI_ACTIONS)
+        self.assertIn("fill_dialog", spec.GUI_ACTIONS)
+
+    def test_dialog_without_value_is_allowed(self):
+        # 不给标题正则时驱动中英文都认，这是合法用法。
+        wf = self._build([{"action": "dialog", "timeout_s": 5}])
+        self.assertEqual(len(wf.steps), 1)
+
+    def test_dialog_value_must_be_string(self):
+        with self.assertRaises(spec.WorkflowSpecError):
+            self._build([{"action": "dialog", "value": 123}])
+
+    def test_fill_dialog_requires_value(self):
+        # 缺路径的 fill_dialog 没有意义；必须在建模期就拦下，而不是跑到一半才失败。
+        with self.assertRaises(spec.WorkflowSpecError):
+            self._build([{"action": "fill_dialog"}])
+
+    def test_fill_dialog_accepts_path_and_option(self):
+        wf = self._build([{"action": "fill_dialog", "value": "C:/tmp/a.zip",
+                           "option": "Open", "timeout_s": 20}])
+        self.assertEqual(len(wf.steps), 1)
+
+
+class GraphNewProjectGates(unittest.TestCase):
+    """`gui.graph.new-project` 的闸门降级（计划书 §8 第 12 项）。
+
+    原来有 3 处 human_gate，其中两处（选工程目录 / 选数据文件）的**唯一理由**是
+    「原生对话框 CDP 点不到」。现在能自动了，就不该再拦人。
+    留下的那处必须仍是「写盘不可逆」——不能因为图省事把真正的风险闸门也去掉。
+    """
+
+    def setUp(self):
+        self.wf = spec.load_spec(ROOT / "workflows" / "gui.graph.new-project.yaml")
+        self.ids = self.wf.step_ids()
+
+    def test_only_irreversible_step_is_gated(self):
+        gates = [s["id"] for s in self.wf.steps if s["kind"] == "human_gate"]
+        self.assertEqual(gates, ["approve_plot"],
+                         "只剩 Plot 前的那道闸门：它写盘且不可逆")
+
+    def test_choosing_folder_and_file_are_automated(self):
+        for step_id in ("choose_folder", "choose_file"):
+            step = next(s for s in self.wf.steps if s["id"] == step_id)
+            self.assertEqual(step["kind"], "gui")
+            actions = [a.get("action") for a in (step.get("actions") or [])]
+            self.assertIn("dialog", actions)
+            self.assertIn("fill_dialog", actions)
+
+    def test_gate_is_before_the_write(self):
+        self.assertLess(self.ids.index("approve_plot"), self.ids.index("plot"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -480,6 +480,46 @@
         "automationId": "project-desc-input",
         "note": "Graph 的 Project Description 多行输入框；CDP 9224 按 id 定位。"
       }
+    ],
+    "Playback": [
+      {
+        "names": [
+          "Playback"
+        ],
+        "controlType": "Button",
+        "cdpText": "Playback",
+        "note": "Home card div#Playback-welcome.application-container.PlaybackApp.standAloneApp. Card sits in the 'My Applications' grid; clicking opens that view."
+      }
+    ],
+    "Convert": [
+      {
+        "names": [
+          "Convert"
+        ],
+        "controlType": "Button",
+        "cdpText": "Convert",
+        "note": "Home card div#Convert-welcome.application-container.ConvertApp.standAloneApp. Card sits in the 'My Applications' grid; clicking opens that view."
+      }
+    ],
+    "GRIT Monitor": [
+      {
+        "names": [
+          "GRIT Monitor"
+        ],
+        "controlType": "Button",
+        "cdpText": "GRIT Monitor",
+        "note": "Home card div#GRITMonitor-welcome.application-container.GRITMonitorApp.standAloneApp. Card sits in the 'My Applications' grid; clicking opens that view."
+      }
+    ],
+    "Perception Viewer": [
+      {
+        "names": [
+          "Perception Viewer"
+        ],
+        "controlType": "Button",
+        "cdpText": "Perception Viewer",
+        "note": "Home card div#PerceptionViewer-welcome.application-container.PerceptionViewerApp.standAloneApp. Card sits in the 'My Applications' grid; clicking opens that view."
+      }
     ]
   }
 }

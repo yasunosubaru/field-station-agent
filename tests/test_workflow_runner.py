@@ -8,9 +8,11 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from fieldstation.workflows import engine as engine_mod
 from fieldstation.workflows import gui as gui_mod
@@ -131,6 +133,15 @@ class Harness(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.store = JobStore(self.root / "jobs")
+        # 流程里现在带头部步骤 `ensure_display`（计划书 §3.6：几何固化第三层）。
+        # 它读的是**虚拟屏**的模式，而 CI 上既没有虚拟屏、物理屏尺寸也各不相同。
+        # 测试验证的是流程逻辑，不是「这台机器有没有虚拟屏」，所以固定一个已知模式：
+        # `FSA_SCREEN_MODE` 是 runner 显式提供的测试/无人值守覆盖口，
+        # 优先级高于 EnumDisplaySettings（见 runner._screen_mode 的文档）。
+        # 用 patch.dict 而不是直接赋值，避免污染同一进程里的其它测试。
+        patcher = mock.patch.dict(os.environ, {"FSA_SCREEN_MODE": "1920x1080@60"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def spec(self, **overrides):
         data = {

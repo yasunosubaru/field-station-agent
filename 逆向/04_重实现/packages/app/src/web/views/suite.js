@@ -343,6 +343,14 @@ export function mount(ctx) {
         cls: 'vw-app-bar-tag',
         text: app.installed ? `已安装 · ${blocks.length} 块` : '未安装',
       }),
+      // 「更新应用」的入口。FLOW.update 一直有定义却没有按钮触发它，
+      // 所以 suite.updateApplication 有流程、有表单、没有入口，始终是 a_only。
+      el('button', {
+        cls: 'vw-app-bar-btn',
+        attr: { type: 'button' },
+        data: { action: 'update-app', updateApp: app.id },
+        text: '更新',
+      }),
     );
   }
 
@@ -528,35 +536,282 @@ export function mount(ctx) {
    * 界面里没有那条通道。但什么都不发生更糟 —— 实测用户点了会报「按钮没反应」。
    * 所以把真实路径与命令写出来，让人能自己接上。
    */
-  function showInstallGuide(app) {
-    if (!app) return;
-    const name = app.fullName || app.label;
-    const steps = el('ol', { cls: 'vw-steps' }, [
-      el('li', {}, [el('span', { text: `在「编队台」新建一个任务，应用选 ${app.label}：安装要跑原版安装器，属于 RPA 流程，界面里不直接写系统目录。` })]),
-      el('li', {}, [el('span', { text: '任务跑完会在事件流里留 call_id 与退出码，那是这次安装的真实凭据。' })]),
-      el('li', {}, [el('span', { text: '装完点下面「刷新状态」，这一栏会换成它的实际界面。' })]),
-    ]);
+  /* ---------------- 三处"只弹说明"改成真的启动固定流程 ----------------
+   *
+   * 原来这里只展开一段说明文字，理由是「安装要走 RPA / 原版安装器，不在界面里
+   * 假装安装成功」。理由成立，结论不成立：这三件事各有一条真实可跑的固定流程，
+   * 按钮应当把它们启动，并把 job 的进展显示出来。写盘动作仍在人工闸门之后，
+   * 界面既不越权执行，也不假装已经执行完。
+   */
+
+  const FLOW = {
+    install: {
+      id: 'gui.app.install',
+      title: '安装应用',
+      // 必填参数只能由人填：安装包路径与装完之后卡片上应出现的名字。
+      fields: [
+        { key: 'package', label: '应用安装包（.zip 路径）', type: 'text', required: true,
+          hint: '原版从本地选中的安装包；界面只读路径，不写系统目录' },
+        { key: 'expect_name', label: '装完后卡片名', type: 'text', required: true,
+          hint: '安装完成后 My Applications 里应出现的应用名，用于校验' },
+        { key: 'expect_version', label: '期望版本（可选）', type: 'text', required: false },
+      ],
+    },
+    update: {
+      id: 'gui.app.update',
+      title: '更新应用',
+      fields: [
+        { key: 'application', label: '要更新的应用名', type: 'text', required: true,
+          hint: '已安装应用在 My Applications 卡片上的名字' },
+        { key: 'expect_version', label: '更新后版本（可选）', type: 'text', required: false },
+      ],
+    },
+    newProject: {
+      id: 'gui.graph.newproject',
+      title: '从 SBF 新建工程',
+      fields: [
+        { key: 'source', label: 'SBF / CSV 文件路径', type: 'text', required: true },
+        { key: 'project_name', label: '工程名', type: 'text', required: true },
+        { key: 'project_dir', label: '工程目录', type: 'text', required: true },
+        { key: 'station', label: '测站（可选）', type: 'text', required: false },
+      ],
+    },
+  };
+
+  const flow = { kind: null, job: null, error: '', busy: false };
+
+  const FLOW_STATUS = {
+    succeeded: '完成', failed: '失败', running: '运行中',
+    waiting_approval: '等待批准', waiting_operator: '等待操作',
+    cancelled: '已取消', pending: '排队中',
+  };
+
+  function flowStatusTone(status) {
+    if (status === 'succeeded') return 'ok';
+    if (status === 'failed' || status === 'cancelled') return 'miss';
+    return 'warn';
+  }
+
+  async function postJson(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    return payload;
+  }
+
+  async function getJson(url) {
+    const response = await fetch(url);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    return payload;
+  }
+
+  /** 启动一条固定流程。含闸门的流程返回 202（已受理），不会立刻结束。 */
+  async function startFlow(kind, params) {
+    const spec = FLOW[kind];
+    if (!spec) return;
+    flow.kind = kind;
+    flow.error = '';
+    flow.job = null;
+    flow.busy = true;
+    paintFlow();
+    try {
+      const data = await postJson('/api/workflows/run', { id: spec.id, params: params || {} });
+      const jobId = data.job_id || (data.job && (data.job.job_id || data.job.id));
+      if (jobId) {
+        await refreshFlow(jobId);
+      } else if (data.job) {
+        flow.job = data.job;
+      } else {
+        flow.job = data;
+      }
+    } catch (error) {
+      flow.error = `启动 ${spec.id} 失败：${error.message}`;
+    } finally {
+      flow.busy = false;
+      paintFlow();
+    }
+  }
+
+  async function refreshFlow(jobId) {
+    try {
+      const data = await getJson(`/api/workflows/job?id=${encodeURIComponent(jobId)}`);
+      flow.job = data.job || data;
+      flow.error = '';
+    } catch (error) {
+      flow.error = `读取 job 失败：${error.message}`;
+    }
+    paintFlow();
+  }
+
+  /** 人工闸门：只有点了才走。这里绝不自动批准任何写盘步骤。 */
+  async function decideGate(decision) {
+    const job = flow.job;
+    const jobId = job && (job.job_id || job.id);
+    if (!jobId) return;
+    flow.busy = true;
+    paintFlow();
+    try {
+      await postJson('/api/workflows/job/gate', {
+        id: jobId, decision, by: 'operator', note: 'suite panel',
+      });
+      // gate 是 detached 的：立刻读可能还没落地，稍等再刷一次。
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await refreshFlow(jobId);
+    } catch (error) {
+      flow.error = `闸门提交失败：${error.message}`;
+    } finally {
+      flow.busy = false;
+      paintFlow();
+    }
+  }
+
+  function flowView() {
+    const job = flow.job;
+    if (!job && !flow.error && !flow.busy) return null;
+
+    const rows = [];
+    if (flow.error) rows.push(el('p', { cls: 'vw-flow-error', text: flow.error }));
+    if (flow.busy && !job) rows.push(el('p', { cls: 'vw-flow-note', text: '启动中…' }));
+
+    if (job) {
+      const jobId = String(job.job_id || job.id || '');
+      const status = String(job.status || '');
+      const total = job.steps_total;
+      rows.push(el('div', { cls: 'vw-flow-head' }, [
+        el('span', { cls: 'vw-flow-wf', text: String(job.workflow || '') }),
+        tag(FLOW_STATUS[status] || status || '?', flowStatusTone(status)),
+        el('span', {
+          cls: 'vw-flow-step',
+          text: total ? `${job.current_step || ''}（${job.step_index ?? '?'} / ${total}）`
+            : String(job.current_step || ''),
+        }),
+      ]));
+      if (job.failure && (job.failure.class || job.failure.message)) {
+        rows.push(el('p', {
+          cls: 'vw-flow-error',
+          text: `停在 ${job.failure.step || '?'}（${job.failure.class || '?'}）：${job.failure.message || ''}`,
+        }));
+      }
+      if (job.gate) {
+        rows.push(el('div', { cls: 'vw-flow-gate' }, [
+          el('span', { text: `闸门 ${job.gate}：需要人工决定，界面不会替你按` }),
+          button('批准', {
+            variant: 'primary',
+            data: { action: 'flow-gate', decision: 'approved' },
+          }),
+          button('驳回', { data: { action: 'flow-gate', decision: 'rejected' } }),
+        ]));
+      }
+      const arts = Array.isArray(job.artifacts) ? job.artifacts : [];
+      if (arts.length) {
+        rows.push(el('p', {
+          cls: 'vw-flow-arts',
+          text: '证据：' + arts.map((a) => a.name || '').filter(Boolean).join('、'),
+        }));
+      }
+      rows.push(el('p', { cls: 'vw-flow-id', text: `job ${jobId}` }));
+      rows.push(el('div', { cls: 'vw-flow-actions' }, [
+        button('刷新', { data: { action: 'flow-refresh' } }),
+      ]));
+    }
+    return el('div', { cls: 'vw-flow' }, rows);
+  }
+
+  /** 渲染流程面板：把上面拼好的那块贴到 appHost 底部（不覆盖正文）。 */
+  function paintFlow() {
+    if (!appHost) return;
+    const existing = appHost.querySelector('.vw-flow');
+    const view = flowView();
+    if (existing) existing.remove();
+    if (view) appHost.append(view);
+  }
+
+  /** 三处按钮的共同落点：说清由哪条流程负责，并给出启动入口。 */
+  function showInstallGuide(app, kind = 'install') {
+    const spec = FLOW[kind] || FLOW.install;
+    const name = app ? (app.fullName || app.label) : spec.title;
     appHost.replaceChildren(el('div', { cls: 'vw-install-guide' }, [
-      el('h3', { cls: 'vw-install-guide-title', text: `${name} 不能在这里直接装` }),
+      el('h3', { cls: 'vw-install-guide-title', text: `${name} — ${spec.title}` }),
       el('p', {
         cls: 'vw-install-guide-note',
-        text: '安装属于高风险动作（要写系统目录、跑外部安装器），界面不做静默执行。'
-          + '下面是真实入口，做完刷新即可。',
+        text: `这一步由固定流程 ${spec.id} 驱动原版套件完成：它在虚拟屏里点原生对话框、`
+          + `读回结果并留下证据。写盘动作停在人工闸门后面，界面不会替你按，`
+          + `也不会假装已经装完。`,
       }),
-      steps,
-      el('div', { cls: 'vw-install-guide-actions' }, [
-        button('去编队台建安装任务', {
-          variant: 'primary',
-          data: { action: 'new-task' },
+      el('div', { cls: 'vw-flow-form' }, (spec.fields || []).map((field) => el('label', {
+        cls: 'vw-flow-field',
+      }, [
+        el('span', { text: field.label + (field.required ? ' *' : '') }),
+        el('input', {
+          attr: {
+            type: 'text',
+            'data-flow-field': field.key,
+            'data-flow-required': field.required ? '1' : '',
+            placeholder: field.hint || '',
+          },
         }),
-        button('刷新状态', { data: { action: 'refresh-inspector' } }),
+      ]))),
+      el('p', { cls: 'vw-flow-note', text: '必填项来自流程本身（见各 yaml 的 params），界面不替你猜。' }),
+      el('div', { cls: 'vw-install-guide-actions' }, [
+        button(`启动 ${spec.id}`, { variant: 'primary', data: { action: 'flow-start', flow: kind } }),
       ]),
     ]));
+    const view = flowView();
+    if (view) appHost.append(view);
   }
 
   const handleAction = (event) => {
     const action = event.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
+    if (action === 'flow-start') {
+      // 三处「只弹说明」的统一入口：先收参数，再启动固定流程。
+      // 参数是流程的必填项，缺了服务端会直接拒（实测：缺少 package / expect_name）。
+      const kind = event.target.closest('[data-flow]')?.dataset.flow;
+      if (!kind) return;
+      const spec = FLOW[kind];
+      const params = {};
+      const missing = [];
+      for (const field of spec.fields || []) {
+        const input = appHost.querySelector(`[data-flow-field="${field.key}"]`);
+        const value = (input?.value ?? '').trim();
+        if (value) params[field.key] = value;
+        else if (field.required) missing.push(field.label);
+      }
+      if (missing.length) {
+        flow.error = `还缺必填参数：${missing.join('、')}`;
+        flow.kind = kind;
+        paintFlow();
+        return;
+      }
+      void startFlow(kind, params);
+      return;
+    }
+    if (action === 'flow-refresh') {
+      const job = flow.job;
+      const jobId = job && (job.job_id || job.id);
+      if (jobId) void refreshFlow(jobId);
+      return;
+    }
+    if (action === 'flow-gate') {
+      const decision = event.target.closest('[data-decision]')?.dataset.decision;
+      if (decision) void decideGate(decision);
+      return;
+    }
+    if (action === 'update-app') {
+      // 与 install 同一条路径：先展开带必填项的表单，填好再启动 gui.app.update。
+      // 真正的写入停在人工闸门后面。
+      const btn = event.target.closest('[data-update-app]');
+      const appId = btn?.dataset.updateApp;
+      if (!appId) return;
+      const app = APPS.find((entry) => entry.id === appId);
+      showInstallGuide(app, 'update');
+      return;
+    }
     if (action === 'install') {
       // 安装要走 RPA / 原版安装器（那是 workflow 的事），不在界面里假装成功。
       // 但**必须给可见反馈**：用户点了没动静，只会读成「按钮坏了」（实测如此）。
@@ -565,7 +820,9 @@ export function mount(ctx) {
       const appId = btn?.dataset.installApp;
       if (!appId) return;
       const app = APPS.find((entry) => entry.id === appId);
-      showInstallGuide(app);
+      // 原来只弹说明。现在按同一入口启动 gui.app.install：
+      // 真正的写入仍在人工闸门后面。
+      showInstallGuide(app, 'install');
       return;
     }
     if (action === 'refresh-inspector') {

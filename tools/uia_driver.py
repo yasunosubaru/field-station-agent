@@ -68,7 +68,14 @@ $action = $env:UIA_ACTION
 $locator = $null
 if ($env:UIA_LOCATOR) { $locator = $env:UIA_LOCATOR | ConvertFrom-Json }
 $value = $env:UIA_VALUE
+$option = $env:UIA_OPTION
 $out = $env:UIA_OUT
+# Seconds to wait inside one step. dialog / fill_dialog wait for a native dialog.
+$seconds = 8
+if ($env:UIA_SECONDS) {
+  $parsed = 0
+  if ([int]::TryParse($env:UIA_SECONDS, [ref]$parsed) -and $parsed -gt 0) { $seconds = $parsed }
+}
 $processName = $env:UIA_PROCESS
 
 $winSig = @'
@@ -83,10 +90,23 @@ public class UiaWin {
 Add-Type -TypeDefinition $winSig -ErrorAction SilentlyContinue
 
 function Get-SuiteWindow {
-  $procs = @(Get-Process -Name $processName -ErrorAction SilentlyContinue |
-    Where-Object { $_.MainWindowHandle -ne 0 })
-  if ($procs.Count -eq 0) { return $null }
-  return [System.Windows.Automation.AutomationElement]::FromHandle($procs[0].MainWindowHandle)
+  # The suite may run under either exe name: the installed NovAtelApplicationSuite.exe,
+  # or the same suite copied as NASRunner.exe by suite_launcher. Hard-coding one name
+  # made the driver report "is not running" while the window was plainly there.
+  # ASCII only: _PS_SCRIPT is written out with encoding="ascii".
+  $names = @()
+  if ($env:UIA_PROCESS) { $names += $env:UIA_PROCESS }
+  # Always append the launcher's exe name: quite a few runs start the suite through
+  # suite_launcher.py, which copies the exe as NASRunner.exe. The window is the same.
+  $names += 'NASRunner'
+  foreach ($nm in $names) {
+    $procs = @(Get-Process -Name $nm -ErrorAction SilentlyContinue |
+      Where-Object { $_.MainWindowHandle -ne 0 })
+    if ($procs.Count -gt 0) {
+      return [System.Windows.Automation.AutomationElement]::FromHandle($procs[0].MainWindowHandle)
+    }
+  }
+  return $null
 }
 
 function Find-Desc([System.Windows.Automation.AutomationElement]$root, $desc) {
@@ -128,6 +148,28 @@ function Wait-El($root, $desc, $seconds) {
   do {
     $el = Find-Desc $root $desc
     if ($el) { return $el }
+    Start-Sleep -Milliseconds 200
+  } while ((Get-Date) -lt $deadline)
+  return $null
+}
+
+function Wait-TopLevelWindow($titlePattern, $seconds) {
+  # Native dialogs (Open / Save) are separate top-level windows, NOT inside the
+  # suite window's subtree, so enumerate from the desktop root by title regex.
+  # The regex accepts both English and CJK titles: this machine is zh-CN and
+  # the common dialog is titled U+6253 U+5F00 ('open') there.
+  $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+  $deadline = (Get-Date).AddSeconds($seconds)
+  do {
+    $cond = New-Object System.Windows.Automation.PropertyCondition(
+      [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+      [System.Windows.Automation.ControlType]::Window)
+    $children = $desktop.FindAll(
+      [System.Windows.Automation.TreeScope]::Children, $cond)
+    foreach ($c in $children) {
+      $n = [string]$c.Current.Name
+      if ($n -and ($n -match $titlePattern)) { return $c }
+    }
     Start-Sleep -Milliseconds 200
   } while ((Get-Date) -lt $deadline)
   return $null
@@ -241,6 +283,74 @@ try {
   elseif ($action -eq 'screenshot') {
     Save-Shot $win $out
     $result = @{ ok = $true; action = 'screenshot'; path = $out }
+  }
+  elseif ($action -eq 'dialog') {
+    # Native dialogs are separate top-level windows, not inside the suite window,
+    # so search from the desktop root. `$value` is a title regex. The machine is
+    # zh-CN, so the default accepts both English and CJK titles.
+    $openCjk = [string][char]0x6253 + [char]0x5F00      # 'open' in zh-CN
+    $saveCjk = [string][char]0x4FDD + [char]0x5B58      # 'save' in zh-CN
+    $title = if ($value) { $value }
+             else { 'Open|Save|' + $openCjk + '|' + $saveCjk }
+    $el = Wait-TopLevelWindow $title $seconds
+    if (-not $el) { throw "dialog not found (title pattern: $title)" }
+    $result = @{
+      ok = $true; action = 'dialog'; title = [string]$el.Current.Name
+      automationId = [string]$el.Current.AutomationId
+      className = [string]$el.Current.ClassName
+    }
+  }
+  elseif ($action -eq 'fill_dialog') {
+    # Fill a path into a native dialog and confirm. `$value` is '<path>|<button>';
+    # the confirm button defaults to the common Open / OK / Select Folder titles.
+    #
+    # ValuePattern, not InvokePattern: the file name box is an Edit control and
+    # only SetValue both writes it and enables the confirm button.
+    #
+    # Measured 2026-11-18: a Chinese Windows "Select Folder" dialog has buttons
+    # Measured 2026-11-18: a Chinese Windows Select Folder dialog has
+    # buttons: select-folder (confirm) / cancel / help, so the default
+    # confirm list below must contain that title too.
+    # The default confirm list must contain the select-folder title,
+    # not just Open|OK|open.
+    $selectFolderCjk = ([string][char]0x9009 + [char]0x62E9 + [char]0x6587 +
+                        [char]0x4EF6 + [char]0x5939)
+    $cancelCjk = [string][char]0x53D6 + [char]0x6D88
+    # value is the path alone; option is the confirm-button candidates.
+    # (Splitting "<path>|<buttons>" used to be ambiguous because the button list
+    # itself contains '|' - measured 2026-11-18.)
+    $target = $value
+    $openCjk = [string][char]0x6253 + [char]0x5F00
+    $confirm = if ($option) { $option }
+               else { 'Select Folder|Select|OK|' + $selectFolderCjk + '|' + $openCjk }
+    if (-not $target) { throw 'fill_dialog needs a path (value="<path>|<confirm button>")' }
+    if (-not (Test-Path -LiteralPath $target)) { throw "path does not exist: $target" }
+
+    $openCjk = [string][char]0x6253 + [char]0x5F00
+    $saveCjk = [string][char]0x4FDD + [char]0x5B58
+    $dlg = Wait-TopLevelWindow ('Select Folder|Open|Save|' + $selectFolderCjk + '|' +
+                                $openCjk + '|' + $saveCjk) $seconds
+    if (-not $dlg) { throw 'dialog not found' }
+    # File name box: the Win32 common dialog exposes AutomationId 1148 / class Edit.
+    $edit = Wait-El $dlg @{ automationId = '1148' } 3
+    if (-not $edit) { $edit = Wait-El $dlg @{ controlType = 'Edit' } 3 }
+    if (-not $edit) { throw 'file name edit box not found in dialog' }
+    $vp = $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+    $vp.SetValue($target)
+    Start-Sleep -Milliseconds 250
+
+    $btnNames = @()
+    if ($confirm) { $btnNames = @($confirm -split '\|') }
+    $btn = $null
+    foreach ($n in $btnNames) {
+      $btn = Wait-El $dlg @{ names = @($n); controlType = 'Button' } 2
+      if ($btn) { break }
+    }
+    if (-not $btn) { throw "confirm button not found: $confirm" }
+    [void](Invoke-El $btn)
+    Start-Sleep -Milliseconds 400
+    $result = @{ ok = $true; action = 'fill_dialog'; text = $target
+                 button = [string]$btn.Current.Name }
   }
   else {
     throw "unknown action: $action"
@@ -429,6 +539,46 @@ class UiaDriver:
         result = self._call("screenshot", out=str(path))
         return str(result.get("path") or path)
 
+    def dialog(self, title: str | None = None, *, seconds: float = 20.0) -> dict:
+        """等一个**原生对话框**出现（Open / Save / 确认框），返回它的标题与类名。
+
+        为什么单独一个动作：原生对话框是独立顶层窗口，不在套件主窗口子树里，
+        CDP 完全看不到它（`remote.dialog.showOpenDialog` 走的是系统对话框）。
+        没有这个动作，`gui.app.install` 的「Import from your computer」只能人工。
+
+        ``title`` 是标题正则；不给时中英文都认（本机系统语言是中文，
+        标题是「打开」而不是 "Open"）。
+        """
+        self._require()
+        result = self._call("dialog", value=title, seconds=seconds)
+        return {
+            "title": str(result.get("title", "")),
+            "automation_id": str(result.get("automationId", "")),
+            "class_name": str(result.get("className", "")),
+        }
+
+    def fill_dialog(self, path: str | Path, *, confirm: str | None = None,
+                    seconds: float = 20.0) -> str:
+        """在原生「打开」对话框里填入路径并点确认，返回路径。
+
+        ``confirm`` 是确认按钮名（默认中英文都认）。用途：`gui.app.install`
+        导入本地 ZIP —— 选文件这一步以前只能人工，现在能自动。
+        """
+        self._require()
+        target = Path(path)
+        if not target.exists():
+            raise GuiUnavailable(f"填进对话框的路径不存在：{target}")
+        # path 与 confirm 分开传，不再拼成一个字符串。
+        # 实测（2026-11-18）：confirm 自己也含 `|`（'选择文件夹|Select Folder|OK|...'），
+        # 拼成 "<path>|<confirm>" 之后 PS 侧只切一刀，$target 里会带着整串，
+        # 报错信息长这样（一眼看不出切分错了）：
+        #     confirm button not found: 选择文件夹|Select Folder|OK|确定|打开
+        #     （value='C:\...\sbf-project|选择文件夹|Select Folder|OK|确定|打开'）
+        result = self._call("fill_dialog", value=str(target),
+                            option=None if confirm is None else str(confirm),
+                            seconds=seconds)
+        return str(result.get("text") or target)
+
     # ------------------------------------------------------------------ 内部
     def _control(self, locator: str) -> object:
         controls = self.selectors.get("controls") or {}
@@ -442,21 +592,29 @@ class UiaDriver:
             f"选择器表里没有 {locator!r}；给 tools/uia_selectors.json 的 controls 补一条")
 
     def _call(self, action: str, *, locator: object = None, value: object = None,
-              out: object = None) -> dict:
+              option: object = None, out: object = None,
+              seconds: float | None = None) -> dict:
         payload = {"action": action, "ok": False}
         with tempfile.TemporaryDirectory(prefix="uia-") as tmp:
             script = Path(tmp) / "uia-action.ps1"
-            script.write_text(_PS_SCRIPT, encoding="ascii", newline="\r\n")
+            # write_text(newline=) 是 Python 3.10+ 的参数。本机 py -3 是 3.9，
+            # 直接写会 TypeError；而 .ps1 必须 CRLF，所以显式替换换行。
+            script.write_text(_PS_SCRIPT.replace("\n", "\r\n"), encoding="ascii")
             env = dict(os.environ)
             env.update({
                 "UIA_ACTION": action,
                 "UIA_VALUE": "" if value is None else str(value),
+                # fill_dialog 的确认按钮候选。**单独一个变量**：按钮候选自己含
+                # `|`，和 path 拼在一起再切分会歧义（实测 2026-11-18）。
+                "UIA_OPTION": "" if option is None else str(option),
                 "UIA_LOCATOR": "" if locator is None else json.dumps(
                     locator if isinstance(locator, dict) else {"names": [str(locator)]},
                     ensure_ascii=False),
                 "UIA_OUT": "" if out is None else str(out),
                 "UIA_PROCESS": self.process,
             })
+            if seconds is not None:
+                env["UIA_SECONDS"] = str(int(max(1, seconds)))
             try:
                 completed = subprocess.run(
                     ["powershell", "-NoProfile", "-NonInteractive",
@@ -498,6 +656,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--click", metavar="CONTROL", help="点一个逻辑控件")
     ap.add_argument("--open", metavar="PAGE", help="聚焦窗口或逐级打开菜单")
     ap.add_argument("--screenshot", metavar="PATH", help="打印窗口到 PNG")
+    ap.add_argument("--dialog", metavar="TITLE_REGEX",
+                    help="等一个原生对话框出现并打印它的标题/类名")
+    ap.add_argument("--fill-dialog", metavar="PATH",
+                    help="在原生「打开」对话框里填入路径并确认")
+    ap.add_argument("--seconds", type=float, default=20.0,
+                    help="--dialog / --fill-dialog 的等待秒数（默认 20）")
     args = ap.parse_args(argv)
 
     driver = UiaDriver()
@@ -514,6 +678,11 @@ def main(argv: list[str] | None = None) -> int:
             print(driver.read(args.read))
         if args.click:
             driver.click(args.click)
+        if args.dialog:
+            print(json.dumps(driver.dialog(args.dialog, seconds=args.seconds),
+                             ensure_ascii=False, sort_keys=True))
+        if args.fill_dialog:
+            print(driver.fill_dialog(args.fill_dialog, seconds=args.seconds))
         if args.screenshot:
             print(driver.screenshot(Path(args.screenshot)))
     except GuiUnavailable as exc:

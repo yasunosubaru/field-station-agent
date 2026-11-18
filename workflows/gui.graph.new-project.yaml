@@ -80,6 +80,23 @@ steps:
       json:
         ok: true
 
+  - id: home
+    kind: restore_home
+    description: >-
+      清残留弹窗/对话框并回到 My Applications。放在任何界面动作之前：
+      rpa-completion.md §5.6 记录过「上一条流程没关弹窗挡住下一条」的事故。
+    timeout_s: 20
+
+  - id: display
+    kind: ensure_display
+    description: >-
+      校验当前显示模式。几何三层（虚拟屏/视口/保活）任何一层失效都会让后面的
+      坐标失去意义；在这里提前变成明确的 environment 错误，而不是表现成「点不中」。
+    width: 1920
+    height: 1080
+    refresh: 60
+    allow_mismatch: false
+
   - id: digest
     kind: file_digest
     path: ${params.source}
@@ -150,15 +167,30 @@ steps:
     screenshot: true
 
   - id: choose_folder
-    kind: human_gate
-    risk: medium
-    reason: >
-      Project Folder 的「Select」开的是 Windows 原生 Select Folder 对话框（不是网页元素），
-      CDP 点不到，只能人工选。
-    prompt: |
-      请在 Graph 的 Project Wizard 里点「Project Folder」旁边的「Select」，
-      选中本 job 的 params.project_dir，然后选 approved。
-      注意：Project Name 与 Description 已经由流程填好，不要改。
+    # 原来是 human_gate，理由（原文）：「Project Folder 的「Select」开的是 Windows
+    # 原生 Select Folder 对话框，CDP 点不到，只能人工选」。现在 UIA 驱动有了
+    # `fill_dialog`，这一步可以自动。
+    #
+    # 为什么不再停闸门：这一步**只读不写**——选一个目录不会改动磁盘上的任何内容，
+    # 真正的写盘在后面 Plot 那里，那边仍然有 human_gate 把着。
+    # 「因为工具不够所以让人点」和「因为不可逆所以让人确认」是两件事，不能混。
+    kind: gui
+    port: 9224
+    description: 点 Project Folder 的 Select，在弹出的原生对话框里填 params.project_dir
+    actions:
+      - action: click
+        locator: "target:Select"
+      # 原生「选择文件夹」对话框。本机 zh-CN，标题是「选择文件夹」/「浏览文件夹」，
+      # 不给 value 时驱动默认同时认 Open / Save / 打开 / 保存。
+      - action: dialog
+        timeout_s: 20
+        value: 'Select Folder|选择文件夹|Browse|浏览|Open|打开'
+      - action: fill_dialog
+        value: ${params.project_dir}
+        # 选文件夹对话框的确认按钮是「选择文件夹」或「确定」。
+        option: '选择文件夹|Select Folder|OK|确定|打开'
+        timeout_s: 20
+    screenshot: true
 
   - id: next_receiver
     kind: gui
@@ -178,14 +210,22 @@ steps:
     timeout: 10
 
   - id: choose_file
-    kind: human_gate
-    risk: medium
-    reason: >
-      Receiver Data 的「Select」开的也是原生 Open 对话框；和 app.install 一样，
-      网页里没有可点的元素。
-    prompt: |
-      请点「NovAtel Receiver Data File」旁边的「Select」，选中本 job 的 params.source，
-      确认文件名出现在那一行，然后选 approved。
+    # 原来也是 human_gate，理由同上：原生 Open 对话框 CDP 点不到。
+    # 同样只读不写——选文件不产生副作用，写盘在后面 Plot。
+    kind: gui
+    port: 9224
+    description: 点 Receiver Data 的 Select，在弹出的原生对话框里填 params.source
+    actions:
+      - action: click
+        locator: "target:Select"
+      - action: dialog
+        timeout_s: 20
+        value: 'Open|打开|Select File|选择文件'
+      - action: fill_dialog
+        value: ${params.source}
+        option: 'Open|打开|OK|确定'
+        timeout_s: 20
+    screenshot: true
 
   - id: next_validate
     kind: gui

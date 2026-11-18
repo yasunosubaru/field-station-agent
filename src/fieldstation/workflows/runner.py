@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -744,9 +745,49 @@ class WorkflowRunner:
         extra = gui_mod.load_cdp_driver(key)
         if not getattr(extra, "available", False):
             raise StepFailure(
-                "environment", f"端口 {key} 上没有可用的 CDP 驱动（对应进程没起来？）")
+                "environment", f"端口 {key} 上没有可用的 CDP 驱动（对应程序没启动？）")
         self._port_drivers[key] = extra
         return extra
+
+    def _uia_driver(self):
+        """懒加载 UIA 驱动，专供原生对话框。
+
+        为什么单独一个入口：同一个步骤里可能既有页面元素（CDP 能点）又有原生
+        对话框（只有 UIA 能看见）。实测 gui.graph.new-project 第 10 步
+        choose_folder 就是这种：
+            click locator="target:Select"   -> 页面上的 Select 按钮（CDP）
+            dialog / fill_dialog            -> 弹出的 Windows「选择文件夹」（UIA）
+        把整步换成 UIA 会让 `target:` 这种 CDP 语义键找不到选择器。
+        """
+        cached = getattr(self, "_uia_driver_obj", None)
+        if cached is not None:
+            return cached if cached is not False else None
+        try:
+            drv = gui_mod.load_driver("uia")
+        except Exception:  # noqa: BLE001 —— 没有 UIA 就退回原驱动，报错交给分派处
+            self._uia_driver_obj = False
+            return None
+        if drv is None or not getattr(drv, "available", False):
+            self._uia_driver_obj = False
+            return None
+        self._uia_driver_obj = drv
+        return drv
+
+    def _uia_driver(self):
+        """懒加载 UIA 驱动；不可用时返回 None（保留原来那条明确的报错）。"""
+        cached = getattr(self, "_uia_driver_obj", None)
+        if cached is not None:
+            return cached if cached is not False else None
+        try:
+            drv = gui_mod.load_driver("uia")
+        except Exception:  # noqa: BLE001 —— 没有 UIA 就退回原驱动，报错交给分派处
+            self._uia_driver_obj = False
+            return None
+        if drv is None or not getattr(drv, "available", False):
+            self._uia_driver_obj = False
+            return None
+        self._uia_driver_obj = drv
+        return drv
 
     def _step_gui(self, step: dict, job: Job, ctx: dict) -> dict:
         driver = self._driver_for(step)
@@ -761,8 +802,20 @@ class WorkflowRunner:
                     performed.append({"action": "open", "page": page})
                 elif name == "click":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
-                    driver.click(locator)
-                    performed.append({"action": "click", "locator": locator})
+                    css = action.get("css")
+                    css = str(spec_mod.resolve(css, ctx)) if css else None
+                    if css:
+                        # 声明了 css 就走三级升级：语义 → 坐标+真鼠标 → 报错带全部原因。
+                        # 只声明 locator 时保持原行为（语义路径），不改变既有流程语义。
+                        entry = _click_escalating(driver, locator, css,
+                                                  allow_danger=_allows_danger(locator))
+                        performed.append({"action": "click", "locator": locator,
+                                          "css": css,
+                                          "escalation": entry.get("escalation"),
+                                          "x": entry.get("x"), "y": entry.get("y")})
+                    else:
+                        driver.click(locator)
+                        performed.append({"action": "click", "locator": locator})
                 elif name == "click_optional":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     try:
@@ -792,6 +845,53 @@ class WorkflowRunner:
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
                     performed.append({"action": "read", "locator": locator,
                                       "value": driver.read(locator)})
+                elif name == "dialog":
+                    # 等一个**原生对话框**出现（Open / Save / Select Folder）。
+                    # 这类窗口是独立顶层窗口，CDP 的页面查询完全看不到它，
+                    # 所以必须走 UIA（tools/uia_driver.py 的 dialog 动作）。
+                    #
+                    # `value` 是标题正则，可选；不给就中英文都认。
+                    pattern = action.get("value")
+                    pattern = str(spec_mod.resolve(pattern, ctx)) if pattern else None
+                    seconds = self._number(action, "timeout_s", 20.0, ctx)
+                    # 原生对话框只有 UIA 能看见（CDP 只认页面元素）。这里按**动作**
+                    # 换驱动，不按步骤换：同一步里可能既有页面按钮又有原生对话框。
+                    dialog_driver = self._uia_driver() or driver
+                    dialog = getattr(dialog_driver, "dialog", None)
+                    if not callable(dialog):
+                        raise StepFailure(
+                            "capability",
+                            f"步骤 {step['id']} 需要等原生对话框，但驱动 "
+                            f"{getattr(dialog_driver, 'name', '?')} 不支持 dialog()。"
+                            "原生对话框只能走 UIA（tools/uia_driver.py）；CDP 看不到它。")
+                    info = dialog(pattern, seconds=seconds) or {}
+                    performed.append({"action": "dialog",
+                                      "title": info.get("title"),
+                                      "class_name": info.get("class_name")})
+                elif name == "fill_dialog":
+                    # 在原生「打开 / 选择文件夹」对话框里填路径并确认。
+                    # 这是 app.install 导入 ZIP、graph.newproject 选目录/文件
+                    # 这几处以前只能人工的原因所在。
+                    value = spec_mod.resolve(action.get("value"), ctx)
+                    if value is None or str(value).strip() == "":
+                        raise StepFailure(
+                            "input", f"步骤 {step['id']} 的 fill_dialog 缺少 value（路径）")
+                    path = str(value)
+                    confirm = action.get("option")
+                    confirm = str(spec_mod.resolve(confirm, ctx)) if confirm else None
+                    seconds = self._number(action, "timeout_s", 20.0, ctx)
+                    # 同上：原生对话框只能走 UIA（CDP 只认页面元素）。
+                    fill_driver = self._uia_driver() or driver
+                    fill = getattr(fill_driver, "fill_dialog", None)
+                    if not callable(fill):
+                        raise StepFailure(
+                            "capability",
+                            f"步骤 {step['id']} 需要原生对话框，但驱动 "
+                            f"{getattr(fill_driver, 'name', '?')} 不支持 fill_dialog()。"
+                            "原生对话框只能走 UIA（tools/uia_driver.py）。")
+                    filled = fill(path, confirm=confirm, seconds=seconds)
+                    performed.append({"action": "fill_dialog", "path": str(filled),
+                                      "confirm": confirm})
                 else:
                     raise StepFailure("capability", f"不支持的 GUI 动作：{name!r}")
         except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的 GuiUnavailable
@@ -941,6 +1041,140 @@ class WorkflowRunner:
                       "timeout_s": timeout,
                       "elapsed_s": round(self.clock() - started, 3)})
 
+    def _step_restore_home(self, step: dict, job: Job, ctx: dict) -> dict:
+        """关掉残留弹窗、结束残留对话框、回首页，并**验证真的回到了首页**。
+
+        为什么需要这个步骤
+        ------------------
+        `tools/rpa_fixture.py` 里早就有 `restore_home(driver)`，但它只是一个 CLI 开关
+        （`--restore-home`），流程里用不到 —— 于是每条流程各写各的收尾，
+        而 `rpa-completion.md` §5.6 记录的事故正是「上一条流程没关弹窗会挡住下一条」。
+
+        实现顺序（与 `rpa_fixture.restore_home` 完全一致，避免两套行为）：
+        1. 判更新弹窗是否**真的可见**（关掉后节点仍在 DOM，只是尺寸为 0）；
+        2. 可见就点 Close；
+        3. 若页面里有 "New Connection" 就点 Cancel；
+        4. 点 `a.homemenu-title` 回首页；
+        5. 验证页面里出现 "My Applications"。
+
+        驱动层的 ``restore_home()`` 优先；驱动没有这个能力时（UIA / assisted），
+        退化为 ``open("manage")`` 并记 ``degraded: true``——不假装清过。
+        """
+        driver = self._driver_for(step)
+        timeout = self._number(step, "timeout_s", 20.0, ctx)
+        restore = getattr(driver, "restore_home", None)
+        actions: list
+        degraded = False
+        if callable(restore):
+            try:
+                actions = list(restore(timeout_s=timeout) or [])
+            except TypeError:
+                actions = list(restore() or [])
+            except Exception as exc:  # noqa: BLE001 —— 驱动各有自己的异常类型
+                raise self._step_failure(exc, step) from exc
+        else:
+            degraded = True
+            opener = getattr(driver, "open", None)
+            if callable(opener):
+                actions = [{"action": "open", "page": "manage",
+                            "why": "驱动没有 restore_home"}]
+                try:
+                    opener("manage")
+                except Exception as exc:  # noqa: BLE001
+                    # 前置清理失败不该拦整条流程。理由：这一步的职责是「别让上一条
+                    # 流程的残留挡住这一条」，不是本流程要验证的业务行为。环境里没有
+                    # GUI 驱动时，让它以 environment 失败等于把「环境准备」算成
+                    # 「业务失败」，而且会让所有不碰界面的回归测试连带失败。
+                    #
+                    # 但仍然如实记录：degraded=True + actions 里写明原因，不能假装清过。
+                    actions = [{"action": "open-failed", "page": "manage",
+                                "why": f"驱动没有 restore_home，open 也失败：{exc}"}]
+                    self.store.audit(job, "restore_home.degraded", step=step["id"],
+                                     reason=str(exc))
+            else:
+                # 第三层降级：驱动连导航能力都没有（例如只有 request/download 的
+                # 脚本引擎，或者测试替身）。这是一个**前置清理**步骤，不是本流程
+                # 要验证的行为——让整条流程因为「清不了残留」而失败，等于把
+                # 环境准备失败算成业务失败，方向是错的。
+                #
+                # 记 skipped 而不是 succeeded：审计里要能看出这一步没真做，
+                # 不能假装清过（rpa-completion.md §5.6 的教训是"不留痕=会重犯"）。
+                actions = [{"action": "skipped",
+                            "why": "驱动既没有 restore_home 也没有 open，无法清理残留"}]
+                degraded = True
+        self.store.audit(job, "restore_home.done", step=step["id"],
+                         actions=actions, degraded=degraded)
+        return {"actions": actions, "degraded": degraded, "driver": str(
+            getattr(driver, "name", "?"))}
+
+    def _step_ensure_display(self, step: dict, job: Job, ctx: dict) -> dict:
+        """校验当前主屏分辨率等于期望值；不符就报 ``environment``，**绝不继续点**。
+
+        为什么要有这一步
+        ----------------
+        §3 把几何固化做成三层，第一层（虚拟屏）由 `setup_display.ps1` 在外壳启动时
+        完成。但如果那一步悄悄失败了（驱动没装、切不过去、有人手动改了分辨率），
+        后面的坐标就全都失去意义——而且失败会表现成「点不中」，看起来像选择器坏了。
+
+        这一步把那种情况提前转换成明确的 ``environment`` 错误，消息里带实际值与期望值。
+
+        字段：``width`` / ``height``（必成对）、``refresh``（可选）、
+        ``tolerance``（默认 0）、``allow_mismatch``（默认 false）。
+        """
+        want_w = step.get("width")
+        want_h = step.get("height")
+        if want_w is None and want_h is None:
+            raise StepFailure("input", f"步骤 {step['id']} 的 ensure_display 没有给 width/height")
+        want_w = int(want_w)
+        want_h = int(want_h)
+        tolerance = int(step.get("tolerance", 0) or 0)
+        allow_mismatch = bool(step.get("allow_mismatch", False))
+        want_refresh = step.get("refresh")
+        want_refresh = int(want_refresh) if want_refresh is not None else None
+
+        actual = _screen_mode()
+        if actual is None:
+            raise StepFailure(
+                "environment",
+                "读不到当前显示模式（可能没有活动桌面会话）",
+                evidence={"expected": {"width": want_w, "height": want_h}})
+
+        width = int(actual.get("width") or 0)
+        height = int(actual.get("height") or 0)
+        refresh = actual.get("refresh")
+        problems: list[str] = []
+        if abs(width - want_w) > tolerance:
+            problems.append(f"宽 {width} ≠ {want_w}（容差 {tolerance}）")
+        if abs(height - want_h) > tolerance:
+            problems.append(f"高 {height} ≠ {want_h}（容差 {tolerance}）")
+        if want_refresh is not None and refresh is not None and int(refresh) != want_refresh:
+            problems.append(f"刷新率 {refresh} ≠ {want_refresh}")
+
+        evidence = {
+            "expected": {"width": want_w, "height": want_h, "refresh": want_refresh},
+            "actual": actual,
+            "problems": problems,
+        }
+        if problems:
+            if allow_mismatch:
+                job.warnings.append({
+                    "class": "environment", "step": step["id"],
+                    "message": "显示模式不符但 allow_mismatch=true：" + "；".join(problems),
+                    "at": _utcnow(),
+                })
+                self.store.save(job)
+                self.store.audit(job, "ensure_display.allowed", step=step["id"],
+                                 problems=problems, actual=actual)
+                return {"ok": False, "allowed": True, "actual": actual,
+                        "problems": problems}
+            raise StepFailure(
+                "environment",
+                "显示模式不符合几何固化要求：" + "；".join(problems)
+                + "。先跑 tools/setup_display.ps1 把虚拟屏切到目标模式。",
+                evidence=evidence)
+        self.store.audit(job, "ensure_display.ok", step=step["id"], actual=actual)
+        return {"ok": True, "allowed": False, "actual": actual, "problems": []}
+
     def _step_assert(self, step: dict, job: Job, ctx: dict) -> dict:
         results: list[dict] = []
         for check in step["checks"]:
@@ -1012,6 +1246,208 @@ class WorkflowRunner:
 
 # --------------------------------------------------------------------------- 工具
 _MISSING = object()
+
+
+def _allows_danger(locator: str) -> bool:
+    """``target!:`` 前缀表示流程作者显式承认这是危险目标（只是打开对话框）。"""
+    return str(locator).startswith("target!:")
+
+
+def _screen_mode() -> dict | None:
+    """读当前主屏的分辨率与刷新率。读不到返回 ``None``。
+
+    实现优先级：
+    1. 用户显式给的 ``FSA_SCREEN_MODE``（形如 ``1920x1080@60``）—— 测试与无人值守用；
+    2. Windows 上走 ``ctypes`` 调 ``GetSystemMetrics``（分辨率）+
+       ``EnumDisplaySettingsW``（刷新率）。
+
+    为什么不用 ``Get-CimInstance``/PowerShell：这一步在每条流程开头跑，
+    起一次 PowerShell 要 200~400ms，不值得；``ctypes`` 是标准库且一次调用几微秒。
+    """
+    import os
+
+    override = (os.environ.get("FSA_SCREEN_MODE") or "").strip()
+    if override:
+        text = override.lower()
+        refresh = None
+        if "@" in text:
+            text, _, tail = text.partition("@")
+            try:
+                refresh = int(tail)
+            except ValueError:
+                refresh = None
+        if "x" in text:
+            left, _, right = text.partition("x")
+            try:
+                return {"width": int(left), "height": int(right),
+                        "refresh": refresh, "source": "FSA_SCREEN_MODE"}
+            except ValueError:
+                return None
+
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:  # noqa: BLE001
+        return None
+
+    user32 = ctypes.windll.user32
+    # 必须先把自己标成 DPI-aware，否则 GetSystemMetrics 返回的是「虚拟化后」的像素：
+    # 本机 150% 缩放下 2560×1600 的屏会读成 1707×1067（实测比值 1.4997）。
+    # 那条假数字曾经被当成「物理屏自己变了」的证据写进计划书，见 probe_dpi_screen.py。
+    try:
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+    except Exception:  # noqa: BLE001 —— Win10 1703 之前没有这个符号
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:  # noqa: BLE001
+            pass
+    width = int(user32.GetSystemMetrics(0))   # SM_CXSCREEN
+    height = int(user32.GetSystemMetrics(1))  # SM_CYSCREEN
+    refresh: int | None = None
+    class DEVMODE(ctypes.Structure):
+        _fields_ = [
+            ("dmDeviceName", wintypes.WCHAR * 32),
+            ("dmSpecVersion", wintypes.WORD),
+            ("dmDriverVersion", wintypes.WORD),
+            ("dmSize", wintypes.WORD),
+            ("dmDriverExtra", wintypes.WORD),
+            ("dmFields", wintypes.DWORD),
+            ("dmPositionX", ctypes.c_int),
+            ("dmPositionY", ctypes.c_int),
+            ("dmDisplayOrientation", wintypes.DWORD),
+            ("dmDisplayFixedOutput", wintypes.DWORD),
+            ("dmColor", ctypes.c_short),
+            ("dmDuplex", ctypes.c_short),
+            ("dmYResolution", ctypes.c_short),
+            ("dmTTOption", ctypes.c_short),
+            ("dmCollate", ctypes.c_short),
+            ("dmFormName", wintypes.WCHAR * 32),
+            ("dmLogPixels", wintypes.WORD),
+            ("dmBitsPerPel", wintypes.DWORD),
+            ("dmPelsWidth", wintypes.DWORD),
+            ("dmPelsHeight", wintypes.DWORD),
+            ("dmDisplayFlags", wintypes.DWORD),
+            ("dmDisplayFrequency", wintypes.DWORD),
+            ("dmICMMethod", wintypes.DWORD),
+            ("dmICMIntent", wintypes.DWORD),
+            ("dmMediaType", wintypes.DWORD),
+            ("dmDitherType", wintypes.DWORD),
+            ("dmReserved1", wintypes.DWORD),
+            ("dmReserved2", wintypes.DWORD),
+            ("dmPanningWidth", wintypes.DWORD),
+            ("dmPanningHeight", wintypes.DWORD),
+        ]
+
+    devmode = DEVMODE()
+    devmode.dmSize = ctypes.sizeof(DEVMODE)
+    ENUM_CURRENT_SETTINGS = -1
+    # 读哪块屏：**虚拟屏优先**。
+    #
+    # 这是几何固化的内核。RPA 操作的是虚拟屏上的窗口，物理屏分辨率变化
+    # （插拔、RDP、DPI）与坐标无关；而 `GetSystemMetrics(SM_CXSCREEN)` 返回的是
+    # **主屏**，本机主屏是 2560×1600 的物理屏，虚拟屏是 1920×1080 —— 读主屏就会
+    # 得到「期望 1920×1080，实际 2560×1600」，把明明正确的几何判成环境错。
+    #
+    # 找法：遍历 `EnumDisplayDevices`，取**已接桌面**且描述里带虚拟驱动关键词的
+    # 那一个；找不到才退回主屏（并如实标注 source，让调用方知道退化过）。
+    target = _virtual_display_device()
+    if target is not None:
+        if user32.EnumDisplaySettingsW(target, ENUM_CURRENT_SETTINGS,
+                                       ctypes.byref(devmode)):
+            if devmode.dmPelsWidth:
+                width = int(devmode.dmPelsWidth)
+            if devmode.dmPelsHeight:
+                height = int(devmode.dmPelsHeight)
+            if devmode.dmDisplayFrequency and devmode.dmDisplayFrequency != 1:
+                refresh = int(devmode.dmDisplayFrequency)
+        if width > 0 and height > 0:
+            return {"width": width, "height": height, "refresh": refresh,
+                    "source": f"virtual:{target}", "device": target}
+    elif user32.EnumDisplaySettingsW(r"\\.\DISPLAY1", ENUM_CURRENT_SETTINGS,
+                                     ctypes.byref(devmode)):
+        # 没有虚拟屏时退回主屏。source 里写清楚，验收工具能看出这是退化值。
+        if devmode.dmPelsWidth:
+            width = int(devmode.dmPelsWidth)
+        if devmode.dmPelsHeight:
+            height = int(devmode.dmPelsHeight)
+        if devmode.dmDisplayFrequency and devmode.dmDisplayFrequency != 1:
+            refresh = int(devmode.dmDisplayFrequency)
+
+    if width <= 0 or height <= 0:
+        return None
+    return {"width": width, "height": height, "refresh": refresh,
+            "source": "GetSystemMetrics(aware)+EnumDisplaySettings(primary)"}
+
+
+#: 虚拟显示驱动的名字特征。`\\.\DISPLAYnn` 的 DeviceString 里会有这些词。
+_VIRTUAL_HINTS = ("virtual", "indirect", "idd", "vdd", "mtt", "parsec")
+
+
+def _virtual_display_device() -> str | None:
+    """返回**已接桌面**的虚拟屏设备名（``\\\\.\\DISPLAYnn``）；没有就 None。
+
+    判据与 `tools/ensure_virtual_display.py` 一致：`DISPLAY_DEVICE_ATTACHED_TO_DESKTOP`
+    且描述命中文档里的虚拟驱动关键词。未接桌面的虚拟屏不算 —— 它没有桌面坐标。
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:  # noqa: BLE001
+        return None
+
+    user32 = ctypes.windll.user32
+    ATTACHED = 0x00000001
+
+    class DISPLAY_DEVICEW(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("DeviceName", wintypes.WCHAR * 32),
+            ("DeviceString", wintypes.WCHAR * 128),
+            ("StateFlags", wintypes.DWORD),
+            ("DeviceID", wintypes.WCHAR * 128),
+            ("DeviceKey", wintypes.WCHAR * 128),
+        ]
+
+    index = 0
+    while True:
+        dd = DISPLAY_DEVICEW()
+        dd.cb = ctypes.sizeof(DISPLAY_DEVICEW)
+        if not user32.EnumDisplayDevicesW(None, index, ctypes.byref(dd), 0):
+            break
+        index += 1
+        if not (dd.StateFlags & ATTACHED):
+            continue
+        desc = str(devicesafe_description(dd))
+        if any(hint in desc.lower() for hint in _VIRTUAL_HINTS):
+            return str(dd.DeviceName)
+    return None
+
+
+def devicesafe_description(dd) -> str:
+    """``DISPLAY_DEVICEW.DeviceString`` 的安全读取（某些设备返回空串）。"""
+    try:
+        return str(dd.DeviceString) or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _click_escalating(driver, locator: str, css: str, *, allow_danger: bool) -> dict:
+    """在驱动层找 ``ClickEngine`` 并调用三级升级翻点。
+
+    为什么放在 runner 而不是驱动协议里：``GuiDriver`` 只需要 ``click()`` 这一个原语，
+    升级链是 **CDP 通道特有的增强**（UIA/assisted 没有这个概念）。所以这里做能力探测：
+    驱动能提供 ``escalating_click`` 就用，否则退化为普通 ``click`` 并把原因记下来。
+    """
+    engine_factory = getattr(driver, "escalating_click", None)
+    if callable(engine_factory):
+        return engine_factory(locator, css=css, allow_danger=allow_danger)
+    # 驱动不支持升级（UIA / assisted / scripted）：按普通 click 走，行为不变
+    driver.click(locator)
+    return {"escalation": "driver-click", "locator": locator}
 
 
 def _lookup(data: object, path: str) -> object:

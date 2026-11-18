@@ -37,6 +37,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import socket
 import struct
 import sys
@@ -186,12 +187,15 @@ class CdpDriver:
             raise GuiUnavailable(
                 f"套件没有开 CDP（{self.host}:{self.port}）：{exc}；"
                 "用 suite_launcher.py --launch --cdp-port 启动") from exc
-        for page in pages:
-            if page.get("type") == "page" and "index.html" in str(page.get("url", "")):
+        # 只认 type == "page"：browser target 不支持 Emulation.setDeviceMetricsOverride，
+        # 连上去会在钉视口时抛 "Target does not support metrics override"。
+        page_targets = [p for p in pages if p.get("type") == "page"]
+        for page in page_targets:
+            if "index.html" in str(page.get("url", "")):
                 return str(page["webSocketDebuggerUrl"])
-        if pages:
-            return str(pages[0]["webSocketDebuggerUrl"])
-        raise GuiUnavailable("CDP 没有页面（套件可能还在启动）")
+        if page_targets:
+            return str(page_targets[0]["webSocketDebuggerUrl"])
+        raise GuiUnavailable("CDP 没有 page 目标（套件可能还在启动）")
 
     @property
     def connected(self) -> bool:
@@ -274,6 +278,106 @@ class CdpDriver:
         self.log.append({"action": "read", "target": control})
         return str(value)
 
+    def fix_viewport(self, width: int, height: int) -> None:
+        """钉死页面 CSS 视口。坐标模式的前提，与物理屏/DPI 无关（已实测）。"""
+        self._require()
+        engine = _load_click_engine()
+        engine.ClickEngine(self).fix_viewport(int(width), int(height))
+
+    def clear_viewport(self) -> None:
+        self._require()
+        engine = _load_click_engine()
+        engine.ClickEngine(self).clear_viewport()
+
+    def restore_home(self, timeout_s: float = 20.0) -> list:
+        """关残留弹窗 → 结束残留对话框 → 回首页 → 验证。返回做过的动作。
+
+        逻辑与 ``tools/rpa_fixture.restore_home`` 一致（那边是同一套动作的 CLI 入口），
+        这里搬进驱动层，流程里的 ``restore_home`` 步骤就能直接用。
+        """
+        self._require()
+        engine = _load_click_engine()
+        ce = engine.ClickEngine(self)
+        done: list = []
+
+        def body_text() -> str:
+            return str(self.evaluate("document.body ? document.body.innerText : ''") or "")
+
+        def popup_visible() -> bool:
+            # 弹窗关掉后节点仍在 DOM，只是尺寸为 0
+            raw = self.evaluate(
+                "(() => { const n = document.querySelector('.update-software-popup');"
+                " return n ? (n.getBoundingClientRect().width > 0 &&"
+                " n.getBoundingClientRect().height > 0) : false; })()")
+            if raw:
+                return True
+            text = body_text()
+            return "Current Version" in text or "is up to date" in text
+
+        if popup_visible():
+            try:
+                ce.click("Close", require_effect=False, timeout=3.0)
+                done.append("close:update-popup")
+            except Exception:  # noqa: BLE001 —— 关不掉也要继续回首页
+                done.append("close-failed:update-popup")
+            time.sleep(0.5)
+
+        if "New Connection" in body_text():
+            try:
+                ce.click("Cancel", require_effect=False, timeout=3.0)
+                done.append("close:device-dialog")
+            except Exception:  # noqa: BLE001
+                done.append("close-failed:device-dialog")
+            time.sleep(0.5)
+
+        self.click("css:a.homemenu-title")
+        done.append("goto:home")
+
+        # 条件等待，不是盲睡：轮询 "My Applications" 出现
+        deadline = time.time() + max(float(timeout_s), 1.0)
+        while time.time() < deadline:
+            if "My Applications" in body_text():
+                done.append("verified:home")
+                return done
+            time.sleep(0.3)
+        raise GuiUnavailable(
+            f"点了 a.homemenu-title 但 {timeout_s:g}s 内没回到首页"
+            f"（页面里没有 'My Applications'）")
+
+    def escalating_click(self, locator: str, *, css: str | None = None,
+                         allow_danger: bool = False) -> dict:
+        """三级升级点击：语义（真鼠标）→ 坐标（CSS + 命中签名）→ 抛错带全部原因。
+
+        为什么必须用真鼠标而不是 ``el.click()``
+        --------------------------------------
+        ``_click_js`` 最后一行是 ``el.click()``，那是 **JS 合成事件**：
+        不发 ``pointerdown``/``mousedown``、不触发 ``:hover``、不更新焦点，
+        对被遮罩的元素也"成功"。原版套件里三类目标会因此静默失败：
+
+        1. 靠 ``pointerdown`` 判定的控件（合成事件不进它的处理器）；
+        2. 被半透明遮罩盖住的卡片（``el.click()`` 照样调用，用户点不到）；
+        3. 没有文字/role 的图标块（语义池找不到，直接返回 false）。
+
+        ``ClickEngine`` 的 ``_hover/_press/_release`` 走
+        ``Input.dispatchMouseEvent``，由浏览器自己做命中测试——
+        点不到会表现为断言失败，而不是假成功。
+        """
+        self._require()
+        engine = _load_click_engine()
+        key = locator
+        if locator.startswith("target!:"):
+            key = locator[len("target!:"):]
+        elif locator.startswith("target:"):
+            key = locator[len("target:"):]
+        css_sel = css or _locator_to_css(locator)
+        entry = engine.ClickEngine(self).click_escalating(
+            key, css=css_sel, allow_danger=allow_danger, require_effect=False)
+        time.sleep(0.15)
+        self.log.append({"action": "click", "target": locator,
+                         "escalation": entry.get("escalation"),
+                         "css": css_sel})
+        return entry
+
     def click(self, locator: str) -> None:
         self._require()
         if locator.startswith("target:") or locator.startswith("target!:"):
@@ -281,13 +385,27 @@ class CdpDriver:
             # 由流程作者在 YAML 里写死，可被 lint 检出；默认 target: 仍然拦截。
             allow = locator.startswith("target!:")
             key = locator[len("target!:"):] if allow else locator[len("target:"):]
-            from click_engine import ClickEngine  # 延迟导入，避免循环依赖
-            ClickEngine(self).click(key, require_effect=False, allow_danger=allow)
+            ce_mod = _load_click_engine()
+            ce_mod.ClickEngine(self).click(key, require_effect=False, allow_danger=allow)
             time.sleep(0.15)
             self.log.append({"action": "click", "target": locator})
             return
         clicked = self.evaluate(_click_js(locator))
         if not clicked:
+            # 语义池找不到（没有文字/role，或 cursor 不是 pointer 且非语义标签）：
+            # 直接 el.click() 是 JS 合成事件，本来也不可靠。升级到「坐标 + 命中签名」，
+            # 那里用的是真鼠标。locator 若不是 CSS 就没得升，按原样报错。
+            css = _locator_to_css(locator)
+            if css:
+                ce_mod = _load_click_engine()
+                recs = ce_mod.ClickEngine(self).record_coords([css])
+                rec = recs.get(css)
+                if rec:
+                    ce_mod.ClickEngine(self).click_point(rec, timeout=4.0)
+                    time.sleep(0.15)
+                    self.log.append({"action": "click", "target": locator,
+                                     "escalation": "coord-signature"})
+                    return
             raise GuiUnavailable(f"页面上找不到可点的 {locator!r}")
         time.sleep(0.15)
         self.log.append({"action": "click", "target": locator})
@@ -387,9 +505,15 @@ _READ_JS = "(() => {" + _PRELUDE + r"""
 })()"""
 
 _TYPE_JS = "(() => {" + _PRELUDE + r"""
-  let pool = __pool().filter((el) => ['INPUT','TEXTAREA'].includes(el.tagName));
+  // disabled / readOnly 的框不参与匹配。实测（2026-11-18，Graph Project Wizard）：
+  //   input#project-name-input  y=360  disabled=True   <- Project Folder（只读）
+  //   input#project-name-input  y=461  disabled=False  <- Project Name（要填的）
+  // 两个共用同一个 id；按 id 取第一个会写进只读那个，目标字段永远空，
+  // 于是必填校验不过、后续原生对话框不弹（后面一串 confirm 报错都是假象）。
+  let pool = __pool().filter(
+    (el) => ['INPUT','TEXTAREA'].includes(el.tagName) && !el.disabled && !el.readOnly);
   const want = String(__target);
-  // 1) 先按 id 精确匹配（页面里有同名 id 时取第一个）
+  // 1) 先按 id 精确匹配（页面里有同名 id 时取第一个**可写**的）
   let el = pool.find((n) => n.id === want) || pool.find((n) => n.name === want) || null;
   // 2) 再按 placeholder / aria-label 等描述匹配
   if (!el) {
@@ -421,6 +545,67 @@ _SELECT_JS = "(() => {" + _PRELUDE + r"""
   el.dispatchEvent(new Event('change', {bubbles: true}));
   return true;
 })()"""
+
+
+def _load_click_engine():
+    """按**文件路径**加载 ``click_engine``，不依赖 ``sys.path`` 里有 ``tools/``。
+
+    为什么不用裸 ``from click_engine import ClickEngine``：``gui.py`` 是用
+    ``importlib.util.spec_from_file_location`` 按路径加载本文件的，它**不会**把
+    ``tools/`` 塞进 ``sys.path``。裸导入在源码树里能跑（因为脚本目录自动进 path），
+    但打成一个包之后必然 ImportError —— 这是 `tools/probe_packaged_imports.py`
+    专门盯着的一条。
+    """
+    global _click_engine_module
+    if _click_engine_module is not None:
+        return _click_engine_module
+    import importlib.util as _iu
+    from pathlib import Path as _P
+    path = _P(__file__).with_name("click_engine.py")
+    if not path.is_file():
+        raise GuiUnavailable(f"click_engine.py 不在 {path.parent}")
+    spec = _iu.spec_from_file_location("_fsa_click_engine", path)
+    if spec is None or spec.loader is None:
+        raise GuiUnavailable(f"加载 click_engine.py 失败：{path}")
+    module = _iu.module_from_spec(spec)
+    # dataclasses 在解析字符串注解时会去 sys.modules 里找 cls.__module__；
+    # 不先注册就会拿到 None 并抛 AttributeError（Python 3.9 实测）。
+    import sys as _sys
+    _sys.modules["_fsa_click_engine"] = module
+    spec.loader.exec_module(module)
+    _click_engine_module = module
+    return module
+
+
+_click_engine_module = None
+
+
+#: 能被 ``_locator_to_css`` 认出来的定位写法
+_CSS_HINT = ("#", ".", "[")
+
+
+def _locator_to_css(locator: str) -> str | None:
+    """把 locator 尽量翻译成一个 CSS 选择器；翻不出就返回 ``None``。
+
+    只有翻得出 CSS 才谈得上坐标级——坐标必须有确定的那一个元素，
+    而按文字模糊匹配出来的"第 N 个候选"不适合当坐标基准。
+    """
+    text = (locator or "").strip()
+    if not text:
+        return None
+    if text.startswith("css:"):
+        return text[4:].strip() or None
+    if text.startswith("#"):
+        return text
+    if "__TARGET_JSON__" in text:  # 误传模板，不接
+        return None
+    # 形如 `.cls`、`div.cls`、`[data-x="y"]` 的直通
+    if text[0] in _CSS_HINT or text.split(" ")[0].endswith(tuple(".#[]")):
+        return text
+    # 纯 id 名（形如 sm-welcome）→ 补一个 #
+    if re.fullmatch(r"[A-Za-z][\w-]*", text):
+        return "#" + text
+    return None
 
 
 def _js_string(value: str) -> str:

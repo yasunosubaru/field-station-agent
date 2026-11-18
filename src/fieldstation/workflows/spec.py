@@ -72,10 +72,15 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
     }),
     "mark_cursor": frozenset(),
     "file_digest": frozenset({"path"}),
-    "gui": frozenset({"action", "actions", "page", "locator", "value", "option", "screenshot", "assisted", "port"}),
+    "gui": frozenset({"action", "actions", "page", "locator", "value", "option",
+                      "screenshot", "assisted", "port", "css"}),
     "verify_ui": frozenset({"control", "expect", "assisted", "port"}),
     "wait_ui": frozenset({
         "control", "expect", "timeout", "timeout_s", "poll_ms", "assisted", "port",
+    }),
+    "restore_home": frozenset({"port", "timeout_s"}),
+    "ensure_display": frozenset({
+        "width", "height", "refresh", "tolerance", "allow_mismatch",
     }),
     "human_gate": frozenset({"reason", "prompt", "risk"}),
     "assert": frozenset({"checks"}),
@@ -86,7 +91,8 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
 STEP_KINDS = tuple(STEP_FIELDS)
 #: ``click_optional`` = 「有就点，没有就算」：只用于关闭残留弹窗这类可空操作，
 #: 绝不能用来做真正的步骤（真正的点击必须失败可见）。
-GUI_ACTIONS = ("open", "click", "click_optional", "type", "select", "read", "sequence")
+GUI_ACTIONS = ("open", "click", "click_optional", "type", "select", "read", "sequence",
+               "dialog", "fill_dialog")
 
 _WORKFLOW_FIELDS = frozenset({
     "id", "version", "title", "summary", "intent", "risk", "tags", "requires",
@@ -99,7 +105,7 @@ _APPROVAL_FIELDS = frozenset({"required", "reason", "risk", "by"})
 _FAILURE_FIELDS = frozenset({"screenshot", "classes", "note"})
 _ARTIFACT_FIELDS = frozenset({"name", "kind", "description", "required"})
 _ASSISTED_FIELDS = frozenset({"enabled", "prompt"})
-_GUI_ACTION_FIELDS = ("action", "page", "locator", "value", "option")
+_GUI_ACTION_FIELDS = ("action", "page", "locator", "value", "option", "css")
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$")
 _STEP_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -494,6 +500,25 @@ def _check_step_body(kind: str, step: dict, where: str, errors: list[str]) -> No
         if "expect" in step and not isinstance(step["expect"], dict):
             errors.append(f"{where}.expect 必须是映射")
         _check_assisted(step.get("assisted"), where, errors)
+    elif kind == "restore_home":
+        # 关残留弹窗 + 回首页；没有必填字段，超时可选
+        if "timeout_s" in step and not _is_positive_or_template(step["timeout_s"]):
+            errors.append(f"{where}.timeout_s 必须是正数")
+    elif kind == "ensure_display":
+        for key in ("width", "height", "refresh"):
+            if key in step:
+                value = step[key]
+                if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                    errors.append(f"{where}.{key} 必须是正整数")
+        if "width" in step and "height" not in step:
+            errors.append(f"{where} 给了 width 就必须给 height")
+        if "height" in step and "width" not in step:
+            errors.append(f"{where} 给了 height 就必须给 width")
+        if "tolerance" in step and (
+                not isinstance(step["tolerance"], int) or step["tolerance"] < 0):
+            errors.append(f"{where}.tolerance 必须是非负整数")
+        if "allow_mismatch" in step and not isinstance(step["allow_mismatch"], bool):
+            errors.append(f"{where}.allow_mismatch 必须是 true/false")
     elif kind == "wait_ui":
         control = step.get("control")
         if not isinstance(control, str) or not control.strip():
@@ -560,7 +585,7 @@ def _check_gui_action(action: object, where: str, errors: list[str]) -> None:
     if not isinstance(action, dict):
         errors.append(f"{where} 必须是映射")
         return
-    allowed = {"action", "page", "locator", "value", "option"}
+    allowed = {"action", "page", "locator", "value", "option", "css", "timeout_s"}
     extra = sorted(set(action) - allowed)
     if extra:
         errors.append(f"{where} 未知字段：{', '.join(extra)}")
@@ -576,6 +601,23 @@ def _check_gui_action(action: object, where: str, errors: list[str]) -> None:
         errors.append(f"{where}.option 不能为空（action=select）")
     if name == "open" and not action.get("page"):
         errors.append(f"{where}.page 不能为空（action=open）")
+    if name == "fill_dialog" and "value" not in action:
+        # 填进对话框的路径是必填；没有它这个动作没有任何意义。
+        errors.append(f"{where}.value 不能为空（action=fill_dialog，需要文件/目录路径）")
+    if name == "dialog" and "value" in action:
+        # dialog 的 value 是标题正则；给了就得是字符串（空串视为「不给」）。
+        v = action["value"]
+        if not isinstance(v, str):
+            errors.append(f"{where}.value 必须是非空字符串或省略（action=dialog）")
+    if "css" in action:
+        css = action["css"]
+        if not isinstance(css, str) or not css.strip():
+            errors.append(f"{where}.css 必须是非空字符串")
+        elif name not in ("click", "click_optional", "read"):
+            # css 是「换一种定位方式」的兜底，只对点击/读取有意义；
+            # type/select 的兜底语义不同（它们本来就是直接写值），先不接。
+            errors.append(f"{where}.css 只支持 action=click / click_optional / read，"
+                          f"不支持 {name}")
 
 
 def _check_assisted(value: object, where: str, errors: list[str]) -> None:

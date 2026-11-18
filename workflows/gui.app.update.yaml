@@ -53,28 +53,57 @@ steps:
       json:
         ok: true
 
+  - id: home
+    kind: restore_home
+    description: >-
+      清残留弹窗/对话框并回到 My Applications。放在任何界面动作之前：
+      rpa-completion.md §5.6 记录过「上一条流程没关弹窗挡住下一条」的事故。
+    timeout_s: 20
+
+  - id: display
+    kind: ensure_display
+    description: >-
+      校验当前显示模式。几何三层（虚拟屏/视口/保活）任何一层失效都会让后面的
+      坐标失去意义；在这里提前变成明确的 environment 错误，而不是表现成「点不中」。
+    width: 1920
+    height: 1080
+    refresh: 60
+    allow_mismatch: false
+
   - id: open_popup
     kind: human_gate
     risk: medium
     reason: >
-      Update application 弹窗只能从首页顶部那张条件性横幅打开：横幅按钮
-      「New noncore app version available」在 0 个应用有更新时 display:none
-      （DOM 里没有可点的文字），CDP 点不到；更新清单又来自 AWS，本机拿不到。
-      所以「打开弹窗」这一步只能人工。
+      Update application 弹窗只能从首页顶部那张**条件性**横幅打开，而横幅是否出现
+      取决于真实数据：比较本机已装版本与远端最新版本，只有前者更旧时才显示。
+      「点横幅」本身是网页元素、CDP 能点；但**有没有横幅**不是流程能控制的，
+      所以这一步留闸门，让人确认「场景确实成立、弹窗确实打开了」，
+      避免流程在后面把「弹窗没出现」误报成「选择器坏了」。
     prompt: |
-      请在 My Applications 首页顶部找更新横幅：
-        · 有更新时按钮写着「New noncore app version available」，
-          或者文案是「Updates are available for N Applications」；
-        · 点它打开 Update application 弹窗。
-      本机当前没有可用更新（横幅不可见，0 个应用），如果确实没有横幅，
-      请选 rejected 并写明「本机无可用更新」——不要假装打开过。
-      打开后确认弹窗里出现了 params.application 对应的应用卡片，再选 approved。
+      请先确认更新横幅是否存在，再决定：
+
+      · 场景成立的判据（可用 `python tools/probe_update_banner.py` 直接查）：
+        `Updates are available for N Applications` 且 N ≥ 1，
+        且 `.noncore-app-update-banner` 的 display 是 block。
+      · 本机造场景的办法（已核实）：远端最新版本可从
+        `…/stageNonCoreAppDetails/fnNonCoreAppDetails?IsDev=F` 取到（实测
+        perceptionViewer=0.2.0 / manage2=2.2.0）；把
+        `%APPDATA%\NovAtelApplicationSuite\userSettings.json` 里
+        `app.addedAppDetails.<app>.version` 改成更低的合法三段式（如 0.1.0），
+        重启套件即可。改前备份那个 json。
+
+      场景成立时：点首页顶部的横幅按钮「New noncore app version available」
+      打开 Update application 弹窗，确认弹窗里出现了 params.application
+      对应的应用卡片，然后选 approved。
+
+      场景不成立（N = 0、横幅不可见）时：选 rejected，并在备注里写
+      「本机无可用更新」—— 不要假装打开过。
 
   - id: verify_popup
     kind: verify_ui
     description: >
       弹窗正文的真实文案是 “Select the application(s) to update”；
-      读不到就说明没有更新弹窗（本机就是这种情况）
+      读不到就说明没有更新弹窗（没有场景时本机就是这样）
     control: Select the application(s) to update
     expect:
       contains: Select the application(s) to update
