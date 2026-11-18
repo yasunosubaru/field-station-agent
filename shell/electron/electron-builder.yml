@@ -46,14 +46,24 @@ electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
 
 # staging 目录里已经按最终布局铺好；这里只排除不该进包的东西。
-# **注意**：不要用 `!**/dist/**` 之类宽规则 —— `dist/py-runtime` 是内置 Python
-# 运行时，被排掉就等于打出一个跑不起来的包（实测漏过一次）。
+#
+# **两条历史教训，都别再踩：**
+#
+# 1. 不要用 `!**/dist/**` 之类宽规则把整个 dist/ 排掉 —— 早期 `dist/py-runtime`
+#    是内置 Python 运行时，被排掉就等于打出一个跑不起来的包（实测漏过一次）。
+# 2. 反过来的坑也踩过：`dist/py-runtime` 与 `payload/runtime/python` 曾**逐字节相同**
+#    地各打一份（1489.1 MB × 2，用 tools/probe_py_payload.py 全量比对确认）。
+#    现在 Python 运行时**只走 payload 这一条**：由 tools/build_payload.py 收进
+#    payload.zip，再由外壳解压到 `<userData>/payload/runtime/python`。
+#    所以 dist/py-runtime 不该再出现；下面显式排除它，而不是指望它自己消失。
 files:
   - "**/*"
   - "!**/*.map"
   - "!**/__pycache__/**"
   - "!**/*.pyc"
   - "!**/node_modules/**/{test,tests,example,examples,docs}/**"
+  # Python 运行时只保留 payload 那一份（见上）。这条在 staging 里若出现旧残留时兜底。
+  - "!dist/py-runtime/**"
 
 asar: false
 

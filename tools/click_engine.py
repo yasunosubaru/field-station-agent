@@ -337,8 +337,12 @@ class ClickEngine:
         return {k: v for k, v in data.items() if v}
 
     def click_point(self, rec: dict, *, expect: dict | None = None,
-                    timeout: float = 6.0) -> dict:
-        """按记录下来的坐标点。落下之前先用 elementFromPoint 校验那块地方还是原来的东西。"""
+                    timeout: float = 6.0, require_effect: bool = True) -> dict:
+        """按记录下来的坐标点。落下之前先用 elementFromPoint 校验那块地方还是原来的东西。
+
+        ``require_effect=False`` 时不等待效果，交给流程后续步骤判断
+        （与 :meth:`click` 同一条语义：有的点击只是展开菜单，没有可读的完成标记）。
+        """
         x, y = float(rec["x"]), float(rec["y"])
         sig = self._hit_test(x, y)
         if not self._sig_matches(rec, sig):
@@ -349,7 +353,10 @@ class ClickEngine:
             self._hover(x, y)
             self._press(x, y)
             self._release(x, y)
-        ok = True if self.dry_run else self._wait_effect(expect, before, timeout)
+        if self.dry_run or not require_effect:
+            ok = True
+        else:
+            ok = self._wait_effect(expect, before, timeout)
         entry = {"target": rec.get("key"), "x": x, "y": y, "mode": "coord",
                  "sig": sig, "ok": ok, "expect": expect or {},
                  "before": before.get("hash"), "after": self._snapshot().get("hash")}
@@ -357,6 +364,70 @@ class ClickEngine:
         if not ok:
             raise ClickNoEffect("坐标点 (%d,%d) 没有预期效果" % (x, y))
         return entry
+
+    # -- 升级链：语义 → 真鼠标 → 坐标 -----------------------------------
+    def click_escalating(self, key: str, *, css: str | None = None,
+                         expect: dict | None = None, timeout: float = 6.0,
+                         allow_danger: bool = False,
+                         require_effect: bool = True) -> dict:
+        """三级升级点击，返回实际生效的那一级（写在 ``escalation`` 里）。
+
+        为什么需要升级链
+        ----------------
+        ``cdp_driver.click()`` 对普通 locator 走的是 ``_click_js`` → ``el.click()``，
+        那是**JS 合成事件**：不发 ``pointerdown``/``mousedown``、不触发 ``:hover``、
+        不更新焦点，对被遮挡的元素也"成功"。原版套件里有三类目标会因此静默失败：
+
+        1. 靠 ``pointerdown`` 判定的控件（合成 ``MouseEvent`` 不触发它的处理器）；
+        2. 被半透明遮罩盖住的卡片（``el.click()`` 照样调用，但用户点不到）；
+        3. 完全没有文字/role 的图标块（语义池里找不到，``_click_js`` 直接返回 false）。
+
+        三级分别覆盖：
+
+        | 级 | 定位 | 点击方式 | 覆盖 |
+        |---|---|---|---|
+        | 1 ``semantic-realmouse`` | ``collect()`` 池 + ``pick()`` | ``Input.dispatchMouseEvent`` 真鼠标 | 有文字/``cursor:pointer`` 的元素 |
+        | 2 ``coord-signature`` | CSS 选择器 → 中心点 | 真鼠标 + ``elementFromPoint`` 命中校验 | 语义池过滤掉的元素 |
+        | 3 抛错 | — | — | 带上每一级的失败原因，不静默 |
+
+        **第 1 级已经是真鼠标**，第 2 级不是"退回到更差的手段"，而是换一种
+        **定位方式**（CSS 直取，不受 ``collect()`` 的 ``cursor:pointer``/语义标签过滤限制）；
+        点击仍然是真鼠标，并且多一道命中签名校验。
+        """
+        reasons: list[str] = []
+
+        # 第 1 级：语义定位 + 真鼠标 + 效果断言
+        try:
+            entry = self.click(key, expect=expect, timeout=timeout,
+                               allow_danger=allow_danger,
+                               require_effect=require_effect)
+            entry["escalation"] = "semantic-realmouse"
+            return entry
+        except ClickError as first:
+            reasons.append("语义定位真鼠标失败：%s" % first)
+        except Exception as first:  # noqa: BLE001 —— 驱动层异常也要能升级
+            reasons.append("语义定位真鼠标异常：%s: %s" % (type(first).__name__, first))
+
+        # 第 2 级：CSS 直取 + 坐标 + 命中签名
+        if css:
+            try:
+                recs = self.record_coords([css])
+                rec = recs.get(css)
+                if rec is None:
+                    reasons.append("坐标记录失败：%r 没有可见尺寸或不在页面上" % css)
+                else:
+                    entry = self.click_point(rec, expect=expect, timeout=timeout,
+                                             require_effect=require_effect)
+                    entry["escalation"] = "coord-signature"
+                    return entry
+            except ClickError as second:
+                reasons.append("坐标点击失败：%s" % second)
+            except Exception as second:  # noqa: BLE001
+                reasons.append("坐标点击异常：%s: %s" % (type(second).__name__, second))
+        else:
+            reasons.append("没有可用的 CSS 选择器，跳过坐标级")
+
+        raise ClickError("三级点击全部失败：\n  " + "\n  ".join(reasons))
 
     def _hit_test(self, x: float, y: float) -> dict:
         raw = self.driver.evaluate(HIT_JS % (x, y))

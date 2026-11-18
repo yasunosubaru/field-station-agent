@@ -598,8 +598,11 @@ def main(argv: list[str] | None = None) -> int:
 
     MATRIX_PATH.parent.mkdir(parents=True, exist_ok=True)
     INVENTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MATRIX_PATH.write_text(matrix, encoding="utf-8", newline="\n")
-    INVENTORY_PATH.write_text(inventory, encoding="utf-8", newline="\n")
+    # write_text(newline=) 是 Python 3.10+ 参数；本机 py -3 是 3.9。
+    # 产物必须是 LF（与 --check 的逐字节比对一致），所以显式以文本模式写 LF。
+    for path, body in ((MATRIX_PATH, matrix), (INVENTORY_PATH, inventory)):
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(body)
     print(f"已生成 {rel(MATRIX_PATH)} 与 {rel(INVENTORY_PATH)}")
     return 0
 

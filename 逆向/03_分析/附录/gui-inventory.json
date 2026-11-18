@@ -854,6 +854,8 @@
       "/api/config/events/summary",
       "/api/config/pages",
       "/api/convert",
+      "/api/devices",
+      "/api/devices/groups",
       "/api/download",
       "/api/graph/data",
       "/api/graph/files",
@@ -878,12 +880,14 @@
       "/api/records",
       "/api/workflows",
       "/api/workflows/artifact",
+      "/api/workflows/by-workflow",
       "/api/workflows/describe",
       "/api/workflows/job",
       "/api/workflows/job/artifacts",
       "/api/workflows/job/cancel",
       "/api/workflows/job/gate",
       "/api/workflows/job/resume",
+      "/api/workflows/jobs",
       "/api/workflows/run"
     ],
     "cli_flags": [

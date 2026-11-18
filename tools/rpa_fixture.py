@@ -44,6 +44,33 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+# --- 按路径加载同目录模块（打包后 sys.path 里没有 tools/）----------------------
+# 由 tools/apply_loader_safe.py 生成。为什么不用裸导入、为什么必须写 sys.modules，
+# 见那个脚本的模块文档（和 tools/cdp_driver.py::_load_click_engine 的实现）。
+def _fsa_load_sibling(name: str):
+    """加载与当前文件同目录的 ``<name>.py``，返回模块对象。"""
+    import importlib.util as _iu
+    import sys as _sys
+    from pathlib import Path as _P
+
+    alias = f"_fsa_tool_{name}"
+    cached = _sys.modules.get(alias)
+    if cached is not None:
+        return cached
+    path = _P(__file__).with_name(f"{name}.py")
+    if not path.is_file():
+        raise ImportError(f"同目录缺少 {name}.py（{path}）")
+    spec = _iu.spec_from_file_location(alias, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"无法加载 {path}")
+    module = _iu.module_from_spec(spec)
+    # dataclasses 解析字符串注解时要靠 sys.modules 找到模块，必须先注册。
+    _sys.modules[alias] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ROOT = REPO_ROOT / "tests" / "fixtures" / "rpa"
 DEFAULT_PORT = 9223
@@ -52,10 +79,16 @@ MAX_HTML_BYTES = 2 * 1024 * 1024
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-try:  # 仓库内以 `python tools/rpa_fixture.py` 方式运行时
-    from tools.click_engine import ClickEngine, ClickError, Target, parse_targets, pick
-except ImportError:  # 以脚本所在目录为 sys.path[0] 时
-    from click_engine import ClickEngine, ClickError, Target, parse_targets, pick  # type: ignore
+# 按路径加载（tools/ 不一定在 sys.path）。原来这里是 try/except 双分支：
+#     try:    from tools.click_engine import ...
+#     except ImportError: from click_engine import ...
+# 两个分支都依赖 sys.path（仓库根或 tools/），打包后按路径加载时全失败。
+_click_engine_mod = _fsa_load_sibling("click_engine")
+ClickEngine = _click_engine_mod.ClickEngine
+ClickError = _click_engine_mod.ClickError
+Target = _click_engine_mod.Target
+parse_targets = _click_engine_mod.parse_targets
+pick = _click_engine_mod.pick
 
 SUITE_VERSION_RE = re.compile(r"NovAtelApplicationSuite/([0-9][0-9A-Za-z.\-]*)")
 HOME_PATH_RE = re.compile(r"(file:///[A-Za-z]:/Users/)[^/]+/", re.IGNORECASE)
@@ -355,10 +388,9 @@ def restore_home(driver) -> list:
 
 # ---------------------------------------------------------------- CLI
 def _connect(port: int):
-    try:
-        from tools.cdp_driver import CdpDriver
-    except ImportError:
-        from cdp_driver import CdpDriver  # type: ignore
+    # 按路径加载（tools/ 不一定在 sys.path）。原来是 try/except 双分支，
+    # 两个分支都依赖 sys.path，打包后按路径加载时全失败。
+    CdpDriver = _fsa_load_sibling("cdp_driver").CdpDriver
     driver = CdpDriver(port)
     driver.connect()
     return driver

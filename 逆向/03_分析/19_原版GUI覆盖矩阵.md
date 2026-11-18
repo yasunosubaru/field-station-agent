@@ -18,10 +18,10 @@
 
 | 处置 | 条数 | 含义 |
 |---|---|---|
-| B 已覆盖 | 34 | `covered` |
-| B 部分覆盖 | 4 | `partial` |
+| B 已覆盖 | 35 | `covered` |
+| B 部分覆盖 | 1 | `partial` |
 | A-only（B 没有） | 3 | `a_only` |
-| 本机 A 也不适用 | 9 | `not_applicable` |
+| 本机 A 也不适用 | 11 | `not_applicable` |
 | **合计** | **50** | |
 
 A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
@@ -32,13 +32,10 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 
 | 项 | A 项 | 处置 | 处理方式 | 理由与证据 |
 |---|---|---|---|---|
-| `tool.events` | Events（事件列表与详情） | B 部分覆盖 | 不做（等样本）：spoofing / jamming / L-Band 事件源要真实样本或固件支持才能定字段；本机 b1..b7 里没有，先不写猜测性代码。 | [观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。处置：现有两类保留，其余等样本，不编造。 |
 | `device.deviceUpdate` | Device ▸ Update（选固件、校验、Apply 刷写） | B 部分覆盖 | workflow `gui.device.update` | [观察] B 把 deviceUpdate 列入 READ_ONLY_PAGES，Browse/Apply 禁用、SOFTLOAD 帧丢弃（18 台账 §J6）；固定流程用 RPA + 人工闸门补这一段。 |
 | `graph.newProjectFromSbf` | Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process） | A-only（B 没有） | workflow `gui.graph.newproject` | [推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3），缺口由 gui.graph.newproject 兜住。 |
 | `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | workflow `gui.app.install` | [观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。 |
 | `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | workflow `gui.app.update` | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路，缺口由 gui.app.update 兜住（覆盖安装不可逆，必须人工闸门）。 |
-| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | workflow `gui.suite.autoupdate` | [观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源。处置从「补更新源」改为「明确不做 + 只读审计流程」，故保留 partial 但缺口有归宿。 |
-| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | workflow `gui.device.add` | [观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 的多档案仍未补，故保留 partial，缺口由 gui.device.add 兜住。 |
 
 ## 四、完整矩阵
 
@@ -47,7 +44,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
 | `entry.manage` | Manage 主界面（tab、状态带、状态 tile、配置页容器） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/setUpMonitor.html:2 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:15；[观察] B 的 manage.js 复刻 tab、50 px 黑色菜单条、状态带与 tile 容器；tile 集合见 status/ 包。 |
-| `entry.menu` | 套件菜单栏（Status / Configuration / Settings / Tools / Device / Events） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.html:5 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1570；[观察] B 的 manage.js 以 MENU 数组 + menuBar() 复刻同一组菜单项与下拉层级；页面本体由配置页类提供。 |
+| `entry.menu` | 套件菜单栏（Status / Configuration / Settings / Tools / Device / Events） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.html:5 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1579；[观察] B 的 manage.js 以 MENU 数组 + menuBar() 复刻同一组菜单项与下拉层级；页面本体由配置页类提供。 |
 | `entry.shell` | 套件外壳（页签栏、抓包条、设置/帮助/主题入口） | B 已覆盖 | [观察] 逆向/01_解包/app/view/html/index.html:320 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:122；[观察] 原版外壳在 01_解包/app/view/html/index.html；B 在 web/index.html 复刻了页签栏与设置/帮助/主题入口，主题语义见 18 台账 §Q。 |
 
 ### 状态 tile
@@ -60,7 +57,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 | `tile.logStatus` | Logging 状态 tile（日志请求/占用/丢弃） | B 已覆盖 | [观察] 逆向/01_解包/app/view/logStatus/logStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/logStatus.ts:20；[观察] B 的 LogStatus 类覆盖 LOGSTATUS/LOGLIST 字段；tile 在 Manage 状态带挂载。 |
 | `tile.portStatus` | Ports 状态 tile（端口连接/速率/收发计数） | B 已覆盖 | [观察] 逆向/01_解包/app/view/portStatus/portStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/portStatus.ts:38；[观察] B 的 PortStatus 类在 18 台账 §D2/§N 一轮补齐 tile；端口行由 INTERFACEMODE 回读驱动。 |
 | `tile.positionStatus` | Positioning 状态 tile（位置/速度/时间与解决方案状态） | B 已覆盖 | [观察] 逆向/01_解包/app/view/positionStatus/positionStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/positionStatus.ts:53；[观察] B 的 PositionStatus 类覆盖 BESTPOS/BESTVEL 等字段与 RAG；状态页 1 的 tile 已挂载。 |
-| `tile.satelliteTracking` | Satellite Tracking 跟踪表（每颗星的通道/状态/仰角） | B 已覆盖 | [观察] 逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/satelliteTracking.ts:126；[观察] B 的 SatelliteTracking 类在 18 台账 §D2 补齐；Manage 侧有 tile，Graph 侧另有 Tracking 页签。 |
+| `tile.satelliteTracking` | Satellite Tracking 跟踪表（每颗星的通道/状态/仰角） | B 已覆盖 | [观察] 逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/satelliteTracking.ts:126; [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:678；[观察] B 的 SatelliteTracking 类在 18 台账 §D2 补齐；Manage 侧有 tile，Graph 侧另有 Tracking 页签。 |
 | `tile.satelliteView` | Satellite View 天顶图（可见星/方位高度/信噪比） | B 已覆盖 | [观察] 逆向/01_解包/app/view/satelliteView/satelliteView.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/satelliteView.ts:32；[观察] B 的 SatelliteView 类按 SATVIS2 画天顶图；OEM729 只跟踪 GPS/BDS/QZSS 的边界见 18 台账 §H.1。 |
 | `tile.statusBar` | 状态条（RAG 灯、消息指示、连接/存储状态） | B 已覆盖 | [观察] 逆向/01_解包/app/view/statusBar/statusBar.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/statusBar.ts:49；[观察] B 有 StatusBar 类与 RAG 指示逻辑；原版 DOM 契约见 01_Manage 文档 §3.3。 |
 | `tile.alignStatus` | ALIGN 状态 tile（双天线航向/基线） | 本机 A 也不适用 | [观察] 逆向/01_解包/app/view/alignStatus/alignStatus.html:1 | [观察] 逆向/04_重实现/packages/view/src/status/alignStatus.ts:26；[推断] OEM729 只有一个 MMCX 射频口且 IMU/双天线未授权，ALIGN 数据不会出现；原版在本机同样只有空态（18 台账 §H.3）。 |
@@ -92,7 +89,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 |---|---|---|---|---|
 | `tool.interferenceToolKit` | Tools ▸ Interference Toolkit（ITK 检测表与写入类控件） | B 已覆盖 | [观察] 逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts:689；[观察] B 的 InterferenceToolkitPage 只读表 + 六组写入控件；HDR/带通/可编程滤波器在本机回 Message is invalid for this model（18 台账 §I）。 |
 | `tool.terminalConsole` | Tools ▸ Terminal（命令终端） | B 已覆盖 | [观察] 逆向/01_解包/app/view/terminalConsole/terminalConsole.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/terminalConsole.ts:11；[观察] B 的 TerminalConsolePage 通过 /api/live/command 发命令并回显；行/历史行为对齐原版 terminalConsole.js。 |
-| `tool.events` | Events（事件列表与详情） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/events/events.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/events.ts:131；[观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。处置：现有两类保留，其余等样本，不编造。 |
+| `tool.events` | Events（事件列表与详情） | 本机 A 也不适用 | [观察] 逆向/01_解包/app/view/events/events.html:1 | [观察] 逆向/04_重实现/packages/view/src/config/events.ts:131；[观察] [主动不做-等样本] Events 的 spoofing / jamming / L-Band 事件源要真实样本或固件支持才能定字段，本机 b1..b7 里没有。写猜测性代码会把「做不到」伪装成「做完了」，所以明确不做，等样本到手再补。不是漏做。 |
 
 ### 设备页
 
@@ -109,7 +106,7 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 |---|---|---|---|---|
 | `graph.newProjectFromSbf` | Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process） | A-only（B 没有） | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:9；[推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3），缺口由 gui.graph.newproject 兜住。；固定流程 `gui.graph.newproject` |
 | `graph.charts` | Graph 页签与图表（13 张图，含 Velocity / Heading & Attitude、Flags、地图） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:49；[观察] B 的 graph 面板已含 13 张图、Luciad 地图与 Flags store；GNSS _Mean 列序用工程元数据 sidecar 对齐（18 台账 §M/D4）。 |
-| `graph.export` | Graph 导出（PDF/CSV/HTML/KML、Message Summary、第 2 页底图） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:4346；[观察] B 的 exportAs 走 /api/graph/pdf 真 PDF；Message Summary、第 2 页底图与 8 页版式在 18 台账 §N/§D6 关闭；固定流程只读导出、无人工闸门。；固定流程 `gui.graph.export` |
+| `graph.export` | Graph 导出（PDF/CSV/HTML/KML、Message Summary、第 2 页底图） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:4443；[观察] B 的 exportAs 走 /api/graph/pdf 真 PDF；Message Summary、第 2 页底图与 8 页版式在 18 台账 §N/§D6 关闭；固定流程只读导出、无人工闸门。；固定流程 `gui.graph.export` |
 | `graph.project` | Graph 工程页（New/Open Project、Recent Projects、.gpf 读取） | B 已覆盖 | [观察] 逆向/01_解包/Graph/out/renderer/index.html:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/graph.js:9；[观察] B 的 graph 面板有工程页与 Recent Projects；多工程切换在 18 台账 §G 关闭。 |
 
 ### GRIT Monitor
@@ -136,30 +133,31 @@ A 侧扫描：51 个 view 目录、14 个菜单项、7 个外壳页。
 |---|---|---|---|---|
 | `suite.addApplication` | Add application（安装套件外应用/插件） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/addApplication/addApplication.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:151；[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。；固定流程 `gui.app.install` |
 | `suite.updateApplication` | Update Application（套件自更新/安装新版本） | A-only（B 没有） | [观察] 逆向/01_解包/app/view/updateApplication/updateApplication.js:1 | [观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路，缺口由 gui.app.update 兜住（覆盖安装不可逆，必须人工闸门）。；固定流程 `gui.app.update` |
-| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/autoUpdates/autoUpdates.js:1 | [观察] 逆向/04_重实现/packages/view/src/config/localSettings.ts:246；[观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源。处置从「补更新源」改为「明确不做 + 只读审计流程」，故保留 partial 但缺口有归宿。；固定流程 `gui.suite.autoupdate` |
+| `suite.autoUpdates` | Auto Updates 设置（套件自动更新） | 本机 A 也不适用 | [观察] 逆向/01_解包/app/view/autoUpdates/autoUpdates.js:1 | [观察] 逆向/04_重实现/packages/view/src/config/localSettings.ts:246；[观察] [主动不做-无更新源] 没有可信更新源与回滚能力。gui.suite.autoupdate 只读设置并留证据，真正升级走 gui.app.update。自动更新在这个前提下做出来只会是一个能点但不可信的开关，所以明确不做。；固定流程 `gui.suite.autoupdate` |
 
 ### 其它页面
 
 | 项 | A 项 | B 状态 | A 证据 | B 证据 / 说明 |
 |---|---|---|---|---|
+| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 已覆盖 | [观察] 逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:11；[观察] [实测] 多设备档案已实现：packages/app/src/devices.ts 提供 addProfile / updateProfile / deleteProfile / addGroup / deleteGroup / addDeviceToGroup / removeDeviceFromGroup / markUsed，形状与原版 alldevices.devices/.groups 一致（devicedetails.name/model/type + groups[]）；路由 /api/devices 实测增删改查、分组加入移出、删组联动摘归属全部通过；Manage 页渲染出设备卡与分组（CDP 实测 2 个档案 + 2 个分组），连接成功时自动记录档案；tests/test_device_shelf.py 7 条断言覆盖去重、保留未提交字段、删组摘归属等。原 backlog「多设备档案仍只有单 live 会话」已不成立。；固定流程 `gui.device.add` |
 | `page.dynamicTiles` | Dynamic Tiles 布局（拖动、撤销、重置、持久化） | B 已覆盖 | [观察] 逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html:1 | [观察] 逆向/04_重实现/packages/view/src/layout.ts:2；[观察] B 的 layout.ts 实现 packery 布局与持久化；原版行为见 01_Manage 文档 §3.4/§6.5。 |
 | `page.home` | My Applications 主页（五张应用卡片、连接数、Add application） | B 已覆盖 | [观察] 逆向/01_解包/app/view/welcome/welcome.html:124 | [观察] 逆向/04_重实现/packages/app/src/web/index.html:146；[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。 |
 | `page.menuBar` | 菜单栏行为（切换到状态页/配置页、Settings/Tools/Device 下拉） | B 已覆盖 | [观察] 逆向/01_解包/app/view/menuBar/menuBar.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:1283；[观察] B 的 manage.js 有同一组菜单切换与抽屉挂载逻辑；配置页由 config-host 提供。 |
-| `page.deviceManagement` | Add Device / 设备管理（端口扫描、设备档案、多设备切换） | B 部分覆盖 | [观察] 逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1 | [观察] 逆向/04_重实现/packages/app/src/web/panels/manage.js:11；[观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 的多档案仍未补，故保留 partial，缺口由 gui.device.add 兜住。；固定流程 `gui.device.add` |
 
 ## 五、B 清单（从代码扫描）
 
 ### 5.1 `/api/*` 路由
 
-共 41 条：
+共 45 条：
 
 - `/api/agent` · `/api/agent/...` · `/api/captures` · `/api/config/device/export` · `/api/config/device/import` · `/api/config/device/import/preview`
-- `/api/config/device/status` · `/api/config/events/summary` · `/api/config/pages` · `/api/convert` · `/api/download` · `/api/graph/data`
-- `/api/graph/files` · `/api/graph/flags` · `/api/graph/pdf` · `/api/graph/projects` · `/api/grit/tiles/config` · `/api/grit/tiles/{z}/{x}/{y}`
-- `/api/health` · `/api/live/command` · `/api/live/connect` · `/api/live/disconnect` · `/api/live/logs` · `/api/live/status`
-- `/api/logs` · `/api/playback/events` · `/api/playback/export` · `/api/playback/frame` · `/api/playback/frames` · `/api/playback/info`
-- `/api/ports` · `/api/records` · `/api/workflows` · `/api/workflows/artifact` · `/api/workflows/describe` · `/api/workflows/job`
-- `/api/workflows/job/artifacts` · `/api/workflows/job/cancel` · `/api/workflows/job/gate` · `/api/workflows/job/resume` · `/api/workflows/run`
+- `/api/config/device/status` · `/api/config/events/summary` · `/api/config/pages` · `/api/convert` · `/api/devices` · `/api/devices/groups`
+- `/api/download` · `/api/graph/data` · `/api/graph/files` · `/api/graph/flags` · `/api/graph/pdf` · `/api/graph/projects`
+- `/api/grit/tiles/config` · `/api/grit/tiles/{z}/{x}/{y}` · `/api/health` · `/api/live/command` · `/api/live/connect` · `/api/live/disconnect`
+- `/api/live/logs` · `/api/live/status` · `/api/logs` · `/api/playback/events` · `/api/playback/export` · `/api/playback/frame`
+- `/api/playback/frames` · `/api/playback/info` · `/api/ports` · `/api/records` · `/api/workflows` · `/api/workflows/artifact`
+- `/api/workflows/by-workflow` · `/api/workflows/describe` · `/api/workflows/job` · `/api/workflows/job/artifacts` · `/api/workflows/job/cancel` · `/api/workflows/job/gate`
+- `/api/workflows/job/resume` · `/api/workflows/jobs` · `/api/workflows/run`
 
 ### 5.2 配置页与菜单页
 

@@ -47,18 +47,46 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+
+# --- 按路径加载同目录模块（打包后 sys.path 里没有 tools/）----------------------
+# 由 tools/apply_loader_safe.py 生成。为什么不用裸导入、为什么必须写 sys.modules，
+# 见那个脚本的模块文档（和 tools/cdp_driver.py::_load_click_engine 的实现）。
+def _fsa_load_sibling(name: str):
+    """加载与当前文件同目录的 ``<name>.py``，返回模块对象。"""
+    import importlib.util as _iu
+    import sys as _sys
+    from pathlib import Path as _P
+
+    alias = f"_fsa_tool_{name}"
+    cached = _sys.modules.get(alias)
+    if cached is not None:
+        return cached
+    path = _P(__file__).with_name(f"{name}.py")
+    if not path.is_file():
+        raise ImportError(f"同目录缺少 {name}.py（{path}）")
+    spec = _iu.spec_from_file_location(alias, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"无法加载 {path}")
+    module = _iu.module_from_spec(spec)
+    # dataclasses 解析字符串注解时要靠 sys.modules 找到模块，必须先注册。
+    _sys.modules[alias] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOLS_DIR.parent
 for _path in (str(REPO_ROOT / "src"), str(TOOLS_DIR)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from agent_store import (  # noqa: E402
-    SessionNotFound,
-    SessionStore,
-    StoreError,
-    default_data_dir,
-)
+# 按路径加载：写成 `from agent_store import ...` 只有在 tools/ 进 sys.path 时成立，
+# 打成自包含包后必然 ImportError（tools/probe_packaged_imports.py 盯着这条）。
+_agent_store_mod = _fsa_load_sibling("agent_store")
+SessionNotFound = _agent_store_mod.SessionNotFound
+SessionStore = _agent_store_mod.SessionStore
+StoreError = _agent_store_mod.StoreError
+default_data_dir = _agent_store_mod.default_data_dir
 from fieldstation.agents import orchestrator  # noqa: E402
 from fieldstation.agents.demo_provider import DemoProvider  # noqa: E402
 
@@ -400,7 +428,9 @@ def _eval_results(repo_root: Path, batch_id: str):
 
     source = files[0]
     try:
-        import eval30_judge  # tools/ 已在 sys.path 上
+        # 按路径加载：这行原来是 `import eval30_judge  # tools/ 已在 sys.path 上`，
+        # 只在源码树里成立；打成自包含包后 tools/ 不在 sys.path，会 ImportError。
+        eval30_judge = _fsa_load_sibling("eval30_judge")
 
         tasks = {task.task_id: task for task in eval30_judge.load_tasks()}
         task = tasks.get(source.stem)
@@ -1781,9 +1811,8 @@ class AgentHandler(BaseHTTPRequestHandler):
 
 
 def _valid_session_id(value: str) -> bool:
-    from agent_store import is_valid_session_id
-
-    return is_valid_session_id(value)
+    # 按路径加载（tools/ 不一定在 sys.path）。
+    return _fsa_load_sibling("agent_store").is_valid_session_id(value)
 
 
 # --------------------------------------------------------------------------

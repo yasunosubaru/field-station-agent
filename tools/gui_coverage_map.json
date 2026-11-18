@@ -18,8 +18,16 @@
       "kind": "entry",
       "label": "套件外壳（页签栏、抓包条、设置/帮助/主题入口）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/html/index.html", "find": "welcome"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/index.html", "find": "tabs-list"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/html/index.html",
+        "find": "welcome"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/index.html",
+          "find": "tabs-list"
+        }
+      ],
       "reason": "[观察] 原版外壳在 01_解包/app/view/html/index.html；B 在 web/index.html 复刻了页签栏与设置/帮助/主题入口，主题语义见 18 台账 §Q。"
     },
     {
@@ -27,9 +35,32 @@
       "kind": "entry",
       "label": "套件菜单栏（Status / Configuration / Settings / Tools / Device / Events）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/menuBar/menuBar.html", "find": "id=\"menuStatus\""},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/manage.js", "find": "function menuBar"}],
-      "menu": ["menuStatus", "menuConfig", "menuSettings", "menuTools", "menuDevice", "generalSettings", "networkingSettings", "displaySettings", "terminalConsole", "interferenceToolKit", "deviceDetails", "deviceExport", "deviceUpdate", "deviceRestart"],
+      "a": {
+        "file": "逆向/01_解包/app/view/menuBar/menuBar.html",
+        "find": "id=\"menuStatus\""
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/manage.js",
+          "find": "function menuBar"
+        }
+      ],
+      "menu": [
+        "menuStatus",
+        "menuConfig",
+        "menuSettings",
+        "menuTools",
+        "menuDevice",
+        "generalSettings",
+        "networkingSettings",
+        "displaySettings",
+        "terminalConsole",
+        "interferenceToolKit",
+        "deviceDetails",
+        "deviceExport",
+        "deviceUpdate",
+        "deviceRestart"
+      ],
       "reason": "[观察] B 的 manage.js 以 MENU 数组 + menuBar() 复刻同一组菜单项与下拉层级；页面本体由配置页类提供。"
     },
     {
@@ -37,18 +68,33 @@
       "kind": "entry",
       "label": "Manage 主界面（tab、状态带、状态 tile、配置页容器）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/html/setUpMonitor.html", "find": "tabs-view-data"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/manage.js", "find": "Positioning"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/html/setUpMonitor.html",
+        "find": "tabs-view-data"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/manage.js",
+          "find": "Positioning"
+        }
+      ],
       "reason": "[观察] B 的 manage.js 复刻 tab、50 px 黑色菜单条、状态带与 tile 容器；tile 集合见 status/ 包。"
     },
-
     {
       "id": "page.home",
       "kind": "page",
       "label": "My Applications 主页（五张应用卡片、连接数、Add application）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/welcome/welcome.html", "find": "welcome-title"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/index.html", "find": "home-view"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/welcome/welcome.html",
+        "find": "welcome-title"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/index.html",
+          "find": "home-view"
+        }
+      ],
       "reason": "[观察] B 的 home-view 复刻官方启动页（卡片尺寸/图标/连接数见 18 台账 §P）；Add application 的装包动作单独列为套件级缺口。"
     },
     {
@@ -56,38 +102,64 @@
       "kind": "page",
       "label": "Dynamic Tiles 布局（拖动、撤销、重置、持久化）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/layout.ts", "find": "Packery"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/dynamicTiles/dynamicTiles.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/layout.ts",
+          "find": "Packery"
+        }
+      ],
       "reason": "[观察] B 的 layout.ts 实现 packery 布局与持久化；原版行为见 01_Manage 文档 §3.4/§6.5。"
     },
     {
       "id": "page.deviceManagement",
       "kind": "page",
       "label": "Add Device / 设备管理（端口扫描、设备档案、多设备切换）",
-      "disposition": "partial",
+      "disposition": "covered",
       "workflow": "gui.device.add",
-      "a": {"file": "逆向/01_解包/app/view/deviceManagement/deviceManagement.js"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/manage.js", "find": "Add Device"}],
-      "backlog": "多设备档案仍只有单 live 会话；固定流程 gui.device.add 把「加一台设备」做成可审计动作（扫描端口 → 连接 → VERSION 回读）。",
-      "reason": "[观察] B 有 Add Device 对话框与 /api/ports 扫描（18 台账 §O2）；原版 deviceManagement 支持多设备列表与档案，B 的多档案仍未补，故保留 partial，缺口由 gui.device.add 兜住。"
+      "a": {
+        "file": "逆向/01_解包/app/view/deviceManagement/deviceManagement.js"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/manage.js",
+          "find": "Add Device"
+        }
+      ],
+      "reason": "[观察] [实测] 多设备档案已实现：packages/app/src/devices.ts 提供 addProfile / updateProfile / deleteProfile / addGroup / deleteGroup / addDeviceToGroup / removeDeviceFromGroup / markUsed，形状与原版 alldevices.devices/.groups 一致（devicedetails.name/model/type + groups[]）；路由 /api/devices 实测增删改查、分组加入移出、删组联动摘归属全部通过；Manage 页渲染出设备卡与分组（CDP 实测 2 个档案 + 2 个分组），连接成功时自动记录档案；tests/test_device_shelf.py 7 条断言覆盖去重、保留未提交字段、删组摘归属等。原 backlog「多设备档案仍只有单 live 会话」已不成立。"
     },
     {
       "id": "page.menuBar",
       "kind": "page",
       "label": "菜单栏行为（切换到状态页/配置页、Settings/Tools/Device 下拉）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/menuBar/menuBar.js"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/manage.js", "find": "MENU"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/menuBar/menuBar.js"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/manage.js",
+          "find": "MENU"
+        }
+      ],
       "reason": "[观察] B 的 manage.js 有同一组菜单切换与抽屉挂载逻辑；配置页由 config-host 提供。"
     },
-
     {
       "id": "tile.statusBar",
       "kind": "tile",
       "label": "状态条（RAG 灯、消息指示、连接/存储状态）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/statusBar/statusBar.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/statusBar.ts", "find": "class StatusBar"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/statusBar/statusBar.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/statusBar.ts",
+          "find": "class StatusBar"
+        }
+      ],
       "reason": "[观察] B 有 StatusBar 类与 RAG 指示逻辑；原版 DOM 契约见 01_Manage 文档 §3.3。"
     },
     {
@@ -95,8 +167,15 @@
       "kind": "tile",
       "label": "Positioning 状态 tile（位置/速度/时间与解决方案状态）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/positionStatus/positionStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/positionStatus.ts", "find": "class PositionStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/positionStatus/positionStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/positionStatus.ts",
+          "find": "class PositionStatus"
+        }
+      ],
       "reason": "[观察] B 的 PositionStatus 类覆盖 BESTPOS/BESTVEL 等字段与 RAG；状态页 1 的 tile 已挂载。"
     },
     {
@@ -104,8 +183,15 @@
       "kind": "tile",
       "label": "Device 状态 tile（型号、固件、存储、电池等）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/deviceInfo/deviceInfo.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/deviceInfo.ts", "find": "class DeviceInfo"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/deviceInfo/deviceInfo.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/deviceInfo.ts",
+          "find": "class DeviceInfo"
+        }
+      ],
       "reason": "[观察] B 的 DeviceInfo 类覆盖 VERSION/RXSTATUS/HWMONITOR 字段；空态与存储不可用时的显示见 18 台账 §J7。"
     },
     {
@@ -113,8 +199,15 @@
       "kind": "tile",
       "label": "Ports 状态 tile（端口连接/速率/收发计数）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/portStatus/portStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/portStatus.ts", "find": "class PortStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/portStatus/portStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/portStatus.ts",
+          "find": "class PortStatus"
+        }
+      ],
       "reason": "[观察] B 的 PortStatus 类在 18 台账 §D2/§N 一轮补齐 tile；端口行由 INTERFACEMODE 回读驱动。"
     },
     {
@@ -122,8 +215,15 @@
       "kind": "tile",
       "label": "Logging 状态 tile（日志请求/占用/丢弃）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/logStatus/logStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/logStatus.ts", "find": "class LogStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/logStatus/logStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/logStatus.ts",
+          "find": "class LogStatus"
+        }
+      ],
       "reason": "[观察] B 的 LogStatus 类覆盖 LOGSTATUS/LOGLIST 字段；tile 在 Manage 状态带挂载。"
     },
     {
@@ -131,8 +231,15 @@
       "kind": "tile",
       "label": "Interference 状态 tile（干扰检测结论）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/interferenceStatus/interferenceStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/interferenceStatus.ts", "find": "class InterferenceStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/interferenceStatus/interferenceStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/interferenceStatus.ts",
+          "find": "class InterferenceStatus"
+        }
+      ],
       "reason": "[观察] B 的 InterferenceStatus 类按 ITDETECTSTATUS 显示；无 ITK 数据时与原版一样显示 Not detected（18 台账 §B8）。"
     },
     {
@@ -140,10 +247,18 @@
       "kind": "tile",
       "label": "AGC Status tile（AGC 模式与增益）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/agcStatus/agcStatus.html"},
+      "a": {
+        "file": "逆向/01_解包/app/view/agcStatus/agcStatus.html"
+      },
       "b": [
-        {"file": "逆向/04_重实现/packages/view/src/status/agcStatus.ts", "find": "class AgcStatus"},
-        {"file": "逆向/04_重实现/packages/app/src/web/panels/manage.js", "find": "export function readAgc"}
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/agcStatus.ts",
+          "find": "class AgcStatus"
+        },
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/manage.js",
+          "find": "export function readAgc"
+        }
       ],
       "backlog": "",
       "reason": "[观察] B 的 Manage 面板已挂 AGC Status tile：AGCINFO (#4096) → 卡/RF、pulseWidth/modulus、bin1..bin6 与 bad/warn 判据；无 #4096 时保持原版的 Off。测试见 packages/app/test/manage-tiles.test.ts 的 AGC 4 项。"
@@ -153,8 +268,15 @@
       "kind": "tile",
       "label": "ALIGN 状态 tile（双天线航向/基线）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/alignStatus/alignStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/alignStatus.ts", "find": "class AlignStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/alignStatus/alignStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/alignStatus.ts",
+          "find": "class AlignStatus"
+        }
+      ],
       "reason": "[推断] OEM729 只有一个 MMCX 射频口且 IMU/双天线未授权，ALIGN 数据不会出现；原版在本机同样只有空态（18 台账 §H.3）。"
     },
     {
@@ -162,8 +284,15 @@
       "kind": "tile",
       "label": "Radio 状态 tile（电台/波特率/信号）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/radioStatus/radioStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/radioStatus.ts", "find": "class RadioStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/radioStatus/radioStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/radioStatus.ts",
+          "find": "class RadioStatus"
+        }
+      ],
       "reason": "[推断] 本机没有电台硬件，原版也读不到 radio 数据（18 台账 §C1/§H.3）；B 的类保留给换机型后的路径。"
     },
     {
@@ -171,8 +300,15 @@
       "kind": "tile",
       "label": "SPAN 状态 tile（IMU/惯导解状态）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/spanStatus/spanStatus.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/spanStatus.ts", "find": "class SpanStatus"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/spanStatus/spanStatus.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/spanStatus.ts",
+          "find": "class SpanStatus"
+        }
+      ],
       "reason": "[推断] OEM729 的 MODELFEATURES 里 IMU/INS UNAUTHORIZED（18 台账 §H.2），原版与 B 在本机都无 SPAN 数据。"
     },
     {
@@ -180,8 +316,15 @@
       "kind": "tile",
       "label": "PPP Corrections 状态 tile（PPP 服务改正数）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/pppCorrections/pppCorrections.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/pppCorrections.ts", "find": "class PppCorrections"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/pppCorrections/pppCorrections.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/pppCorrections.ts",
+          "find": "class PppCorrections"
+        }
+      ],
       "reason": "[推断] MODELFEATURES 里 PPP UNAUTHORIZED（18 台账 §H.2），本机原版同样没有 PPP 改正数可显示。"
     },
     {
@@ -189,8 +332,15 @@
       "kind": "tile",
       "label": "Satellite View 天顶图（可见星/方位高度/信噪比）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/satelliteView/satelliteView.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/satelliteView.ts", "find": "class SatelliteView"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/satelliteView/satelliteView.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/satelliteView.ts",
+          "find": "class SatelliteView"
+        }
+      ],
       "reason": "[观察] B 的 SatelliteView 类按 SATVIS2 画天顶图；OEM729 只跟踪 GPS/BDS/QZSS 的边界见 18 台账 §H.1。"
     },
     {
@@ -198,18 +348,36 @@
       "kind": "tile",
       "label": "Satellite Tracking 跟踪表（每颗星的通道/状态/仰角）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/status/satelliteTracking.ts", "find": "class SatelliteTracking"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/status/satelliteTracking.ts",
+          "find": "class SatelliteTracking"
+        },
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/manage.js",
+          "find": "Satellite Tracking",
+          "note": "原版 satelliteTracking.html 的 5 个控件（trackingprn / elevation-lessthan-90 / elevation-greaterthan-90 radio，elevationMask / highLowValues checkbox）在 B 侧的 UI 宿主是 Manage 台的 Satellite Tracking 卡片；packages/view/src/status/satelliteTracking.ts 只绘图不写 markup。"
+        }
+      ],
       "reason": "[观察] B 的 SatelliteTracking 类在 18 台账 §D2 补齐；Manage 侧有 tile，Graph 侧另有 Tracking 页签。"
     },
-
     {
       "id": "config.generalSettings",
       "kind": "config",
       "label": "Settings ▸ General（高度单位等本地设置）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/generalSettings/generalSettings.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/localSettings.ts", "find": "class GeneralSettingsPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/generalSettings/generalSettings.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/localSettings.ts",
+          "find": "class GeneralSettingsPage"
+        }
+      ],
       "reason": "[观察] B 的 GeneralSettingsPage 只写 userStore，与原版一致；页面挂在 Settings 菜单。"
     },
     {
@@ -217,8 +385,15 @@
       "kind": "config",
       "label": "Settings ▸ Networking（网口/IP/端口）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/networkingSettings/networkingSettings.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/networkingSettings.ts", "find": "class NetworkingSettingsPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/networkingSettings/networkingSettings.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/networkingSettings.ts",
+          "find": "class NetworkingSettingsPage"
+        }
+      ],
       "reason": "[观察] B 有 NetworkingSettingsPage；Wi-Fi/Hotspot 段按机型特征隐藏，本机原版也隐藏（18 台账 §B6）。"
     },
     {
@@ -226,8 +401,15 @@
       "kind": "config",
       "label": "Settings ▸ Displays（显示项开关）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/displaysSettings/displaysSettings.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/index.ts", "find": "DisplaysSettingsPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/displaysSettings/displaysSettings.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/index.ts",
+          "find": "DisplaysSettingsPage"
+        }
+      ],
       "reason": "[观察] B 的 ConfigBundle 有 DisplaysSettingsPage 且 MENU_PAGE_NAMES 含 displaysSettings，菜单入口已接。"
     },
     {
@@ -235,8 +417,15 @@
       "kind": "config",
       "label": "Settings ▸ Language（界面语言）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/languageSettings/languageSettings.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/localSettings.ts", "find": "class LanguageSettingsPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/languageSettings/languageSettings.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/localSettings.ts",
+          "find": "class LanguageSettingsPage"
+        }
+      ],
       "reason": "[观察] B 的 LanguageSettingsPage 写 userStore.language 并触发语言分发，与原版一致。"
     },
     {
@@ -244,8 +433,15 @@
       "kind": "config",
       "label": "Configuration ▸ Positioning（位置解与限制）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/positionConfig/positionConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/positionConfig.ts", "find": "class PositionConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/positionConfig/positionConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/positionConfig.ts",
+          "find": "class PositionConfigPage"
+        }
+      ],
       "reason": "[观察] B 的 PositionConfigPage 按原版 markup 生成命令；18 台账 §B9 已完成 12 页真机核对。"
     },
     {
@@ -253,8 +449,15 @@
       "kind": "config",
       "label": "Configuration ▸ Ports（端口模式/波特率）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/portConfig/portConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/portConfig.ts", "find": "class PortConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/portConfig/portConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/portConfig.ts",
+          "find": "class PortConfigPage"
+        }
+      ],
       "reason": "[观察] B 的 PortConfigPage 在 §B9 真机逐行核对过（27 条 INTERFACEMODE → 24 行真端口）。"
     },
     {
@@ -262,8 +465,15 @@
       "kind": "config",
       "label": "Configuration ▸ Logging（日志请求与触发）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/loggingConfig/loggingConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/loggingConfig.ts", "find": "class LoggingConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/loggingConfig/loggingConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/loggingConfig.ts",
+          "find": "class LoggingConfigPage"
+        }
+      ],
       "reason": "[观察] B 的 LoggingConfigPage 走 LOG/UNLOG 命令；与深色 iframe 的主题跟随见 18 台账 §T2。"
     },
     {
@@ -271,8 +481,15 @@
       "kind": "config",
       "label": "Configuration ▸ GNSS（星座/信号选择）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/gnssConfig/gnssConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/gnssConfig.ts", "find": "class GnssConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/gnssConfig/gnssConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/gnssConfig.ts",
+          "find": "class GnssConfigPage"
+        }
+      ],
       "reason": "[观察] B 的 GnssConfigPage 有真机回读；本机能锁的星座只有 GPS/BDS/QZSS（18 台账 §H.1）。"
     },
     {
@@ -280,8 +497,15 @@
       "kind": "config",
       "label": "Configuration ▸ ALIGN（双天线安装与航向）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/alignConfig/alignConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/alignConfig.ts", "find": "class AlignConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/alignConfig/alignConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/alignConfig.ts",
+          "find": "class AlignConfigPage"
+        }
+      ],
       "reason": "[推断] OEM729 单射频口、无 ALIGN 硬件，原版在本机也没有可写项（18 台账 §H.3）；B 保留页面类给换机型。"
     },
     {
@@ -289,8 +513,15 @@
       "kind": "config",
       "label": "Configuration ▸ SPAN（IMU 安装/对准）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/spanConfig/spanConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/spanConfig.ts", "find": "class SpanConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/spanConfig/spanConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/spanConfig.ts",
+          "find": "class SpanConfigPage"
+        }
+      ],
       "reason": "[推断] IMU/INS UNAUTHORIZED（18 台账 §H.2），本机原版与 B 都没有 SPAN 输入可配置。"
     },
     {
@@ -298,8 +529,15 @@
       "kind": "config",
       "label": "Configuration ▸ Radio（电台通道/协议）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/radioConfig/radioConfig.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/radioConfig.ts", "find": "class RadioConfigPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/radioConfig/radioConfig.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/radioConfig.ts",
+          "find": "class RadioConfigPage"
+        }
+      ],
       "reason": "[推断] 本机没有电台硬件，原版也无可配置项（18 台账 §C1/§H.3）；页面类留作换机型扩展点。"
     },
     {
@@ -307,8 +545,15 @@
       "kind": "config",
       "label": "Configuration ▸ SPAN Installation（IMU 安装参数）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/spanInstallation/spanInstallation.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/localSettings.ts", "find": "class SpanInstallationPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/spanInstallation/spanInstallation.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/localSettings.ts",
+          "find": "class SpanInstallationPage"
+        }
+      ],
       "reason": "[推断] 没有 IMU 时原版该页只写本地设置、无接收机命令（spanInstallation.js:331-357）；本机不具备安装 IMU 的前提。"
     },
     {
@@ -316,18 +561,32 @@
       "kind": "config",
       "label": "Configuration ▸ Vehicle Setup（车辆参数，手册 2.2.7）",
       "disposition": "not_applicable",
-      "a": {"file": "逆向/01_解包/app/view/spanInstallation/spanInstallation.html", "tag": "推断"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/vehicleSetup.ts", "find": "class VehicleSetupPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/spanInstallation/spanInstallation.html",
+        "tag": "推断"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/vehicleSetup.ts",
+          "find": "class VehicleSetupPage"
+        }
+      ],
       "reason": "[推断] Vehicle Setup 与 SPAN Installation 同源（同一份 markup），没有 IMU/SPAN 时本机原版也没有车辆参数可设；B 保留页类。"
     },
-
     {
       "id": "tool.terminalConsole",
       "kind": "tool",
       "label": "Tools ▸ Terminal（命令终端）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/terminalConsole/terminalConsole.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/terminalConsole.ts", "find": "class TerminalConsolePage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/terminalConsole/terminalConsole.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/terminalConsole.ts",
+          "find": "class TerminalConsolePage"
+        }
+      ],
       "reason": "[观察] B 的 TerminalConsolePage 通过 /api/live/command 发命令并回显；行/历史行为对齐原版 terminalConsole.js。"
     },
     {
@@ -335,28 +594,47 @@
       "kind": "tool",
       "label": "Tools ▸ Interference Toolkit（ITK 检测表与写入类控件）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts", "find": "class InterferenceToolkitPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/interferenceToolKit/interferenceToolKit.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/interferenceToolkit.ts",
+          "find": "class InterferenceToolkitPage"
+        }
+      ],
       "reason": "[观察] B 的 InterferenceToolkitPage 只读表 + 六组写入控件；HDR/带通/可编程滤波器在本机回 Message is invalid for this model（18 台账 §I）。"
     },
     {
       "id": "tool.events",
       "kind": "tool",
       "label": "Events（事件列表与详情）",
-      "disposition": "partial",
-      "a": {"file": "逆向/01_解包/app/view/events/events.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/events.ts", "find": "class EventsPage"}],
-      "backlog": "不做（等样本）：spoofing / jamming / L-Band 事件源要真实样本或固件支持才能定字段；本机 b1..b7 里没有，先不写猜测性代码。",
-      "reason": "[观察] B 的 EventsPage 已接 RXSTATUSEVENT（#94）与 b7 的 ITK 事件；其它事件源在本机样本里没有出现（18 台账 §B4）。处置：现有两类保留，其余等样本，不编造。"
+      "disposition": "not_applicable",
+      "a": {
+        "file": "逆向/01_解包/app/view/events/events.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/events.ts",
+          "find": "class EventsPage"
+        }
+      ],
+      "reason": "[观察] [主动不做-等样本] Events 的 spoofing / jamming / L-Band 事件源要真实样本或固件支持才能定字段，本机 b1..b7 里没有。写猜测性代码会把「做不到」伪装成「做完了」，所以明确不做，等样本到手再补。不是漏做。"
     },
-
     {
       "id": "device.deviceDetails",
       "kind": "device",
       "label": "Device ▸ Details（设备详情与接收机状态）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/deviceDetails/deviceDetails.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/deviceDetails.ts", "find": "class DeviceDetailsPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/deviceDetails/deviceDetails.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/deviceDetails.ts",
+          "find": "class DeviceDetailsPage"
+        }
+      ],
       "reason": "[观察] B 的 DeviceDetailsPage 在 18 台账 §D1/§F 完成并真机核对，已进 MENU_PAGE_NAMES。"
     },
     {
@@ -364,8 +642,15 @@
       "kind": "device",
       "label": "Device ▸ Storage（内部/外部存储文件列表与下载）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/deviceExport/deviceExport.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/deviceExport.ts", "find": "class DeviceExportPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/deviceExport/deviceExport.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/deviceExport.ts",
+          "find": "class DeviceExportPage"
+        }
+      ],
       "reason": "[观察] 本机没有存储子系统，原版与 B 都只能显示空列表与原因（18 台账 §J7）；文件传输是换到有存储机型才出现的 A 项，不是本机 A−B。"
     },
     {
@@ -373,8 +658,15 @@
       "kind": "device",
       "label": "Device ▸ Update（选固件、校验、Apply 刷写）",
       "disposition": "partial",
-      "a": {"file": "逆向/01_解包/app/view/deviceUpdate/deviceUpdate.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/config-host.ts", "find": "READ_ONLY_PAGES"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/deviceUpdate/deviceUpdate.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/config-host.ts",
+          "find": "READ_ONLY_PAGES"
+        }
+      ],
       "workflow": "gui.device.update",
       "reason": "[观察] B 把 deviceUpdate 列入 READ_ONLY_PAGES，Browse/Apply 禁用、SOFTLOAD 帧丢弃（18 台账 §J6）；固定流程用 RPA + 人工闸门补这一段。"
     },
@@ -383,19 +675,32 @@
       "kind": "device",
       "label": "Device ▸ Restart / Factory Reset（RESET / FRESET）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/deviceRestart/deviceRestart.html"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/deviceRestart.ts", "find": "class DeviceRestartPage"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/deviceRestart/deviceRestart.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/deviceRestart.ts",
+          "find": "class DeviceRestartPage"
+        }
+      ],
       "workflow": "script.device.restart",
       "reason": "[观察] B 在 18 台账 §N 完成 RESET/FRESET（强确认、断线重连、VERSION 回读、失败不重试）；固定流程把同一串动作变成可审计 job。"
     },
-
     {
       "id": "page.convert",
       "kind": "convert",
       "label": "Convert（文件转换、五组输出设置、预览与导出）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/convert/convert.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/convert.js", "find": "Output Settings"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/convert/convert.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/convert.js",
+          "find": "Output Settings"
+        }
+      ],
       "reason": "[观察] B 的 convert 面板接了 Sample Rate/Unknown/Destination/Prefix/Time Interval；窗口+interleave 已在 18 台账 §K 关闭。"
     },
     {
@@ -403,8 +708,15 @@
       "kind": "playback",
       "label": "Playback（Files bar / summary bar / 状态 tile / 控制条 / 事件点）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/playbackcontrol/playbackcontrol.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/playback.js", "find": "Timeline"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/playbackcontrol/playbackcontrol.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/playback.js",
+          "find": "Timeline"
+        }
+      ],
       "reason": "[观察] B 的 playback 面板复刻控制条与事件带；18 份抓包没有 #94 事件，事件点行为已实现但缺原版样本（18 台账 §M/D1）。"
     },
     {
@@ -412,18 +724,31 @@
       "kind": "grit",
       "label": "GRIT Monitor（Position Overview、Signal Matrix、Spectrum/Waterfall、POI/Triggers、Terminal、Events）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/app/view/GRIT/gritJarvisInterface.js"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/grit.js", "find": "Position Overview"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/GRIT/gritJarvisInterface.js"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/grit.js",
+          "find": "Position Overview"
+        }
+      ],
       "reason": "[观察] B 的 grit 面板完成 Luciad 位姿概览、信号矩阵、频谱/瀑布、POI/Triggers、内嵌 Terminal 与卫星瓦片（18 台账 §B2/§D4/§M）；底图用 Esri 而非 Google，属来源替代。"
     },
-
     {
       "id": "graph.project",
       "kind": "graph",
       "label": "Graph 工程页（New/Open Project、Recent Projects、.gpf 读取）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/Graph/out/renderer/index.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/graph.js", "find": "Recent Projects"}],
+      "a": {
+        "file": "逆向/01_解包/Graph/out/renderer/index.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/graph.js",
+          "find": "Recent Projects"
+        }
+      ],
       "reason": "[观察] B 的 graph 面板有工程页与 Recent Projects；多工程切换在 18 台账 §G 关闭。"
     },
     {
@@ -432,8 +757,15 @@
       "label": "Graph 从 SBF / 非 SBF 输入新建工程（预处理 Map/Timeline/Flags/Process）",
       "disposition": "a_only",
       "workflow": "gui.graph.newproject",
-      "a": {"file": "逆向/01_解包/Graph/out/renderer/index.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/graph.js", "find": "New Project"}],
+      "a": {
+        "file": "逆向/01_解包/Graph/out/renderer/index.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/graph.js",
+          "find": "New Project"
+        }
+      ],
       "backlog": "B 仍只开 .gpf 工程；从 SBF/CSV 新建 + Pre-process 四步由固定流程 gui.graph.newproject 驱动原版套件，Process 之前有闸门。",
       "reason": "[推断] B 的 New Project 打开的是 .gpf 工程而不是从 SBF 生成工程；原版 Graph 的 Pre-process（Map/Timeline/Flags/Process）没有对应实现（18 台账 §D 表 6.3），缺口由 gui.graph.newproject 兜住。"
     },
@@ -442,8 +774,15 @@
       "kind": "graph",
       "label": "Graph 页签与图表（13 张图，含 Velocity / Heading & Attitude、Flags、地图）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/Graph/out/renderer/index.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/graph.js", "find": "Velocity"}],
+      "a": {
+        "file": "逆向/01_解包/Graph/out/renderer/index.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/graph.js",
+          "find": "Velocity"
+        }
+      ],
       "reason": "[观察] B 的 graph 面板已含 13 张图、Luciad 地图与 Flags store；GNSS _Mean 列序用工程元数据 sidecar 对齐（18 台账 §M/D4）。"
     },
     {
@@ -451,20 +790,33 @@
       "kind": "graph",
       "label": "Graph 导出（PDF/CSV/HTML/KML、Message Summary、第 2 页底图）",
       "disposition": "covered",
-      "a": {"file": "逆向/01_解包/Graph/out/renderer/index.html"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/panels/graph.js", "find": "function exportAs"}],
+      "a": {
+        "file": "逆向/01_解包/Graph/out/renderer/index.html"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/panels/graph.js",
+          "find": "function exportAs"
+        }
+      ],
       "workflow": "gui.graph.export",
       "reason": "[观察] B 的 exportAs 走 /api/graph/pdf 真 PDF；Message Summary、第 2 页底图与 8 页版式在 18 台账 §N/§D6 关闭；固定流程只读导出、无人工闸门。"
     },
-
     {
       "id": "suite.addApplication",
       "kind": "suite",
       "label": "Add application（安装套件外应用/插件）",
       "disposition": "a_only",
       "workflow": "gui.app.install",
-      "a": {"file": "逆向/01_解包/app/view/addApplication/addApplication.js"},
-      "b": [{"file": "逆向/04_重实现/packages/app/src/web/index.html", "find": "Add application"}],
+      "a": {
+        "file": "逆向/01_解包/app/view/addApplication/addApplication.js"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/app/src/web/index.html",
+          "find": "Add application"
+        }
+      ],
       "backlog": "B 目前只弹说明；安装由固定流程 gui.app.install 驱动原版套件，Install 之前有闸门。",
       "reason": "[观察] 原版 addApplication.js 支持导入 .zip 装包；B 的按钮只展开说明（18 台账 §P），缺口由 gui.app.install 兜住。"
     },
@@ -472,12 +824,18 @@
       "id": "suite.autoUpdates",
       "kind": "suite",
       "label": "Auto Updates 设置（套件自动更新）",
-      "disposition": "partial",
+      "disposition": "not_applicable",
       "workflow": "gui.suite.autoupdate",
-      "a": {"file": "逆向/01_解包/app/view/autoUpdates/autoUpdates.js"},
-      "b": [{"file": "逆向/04_重实现/packages/view/src/config/localSettings.ts", "find": "class AutoUpdatesPage"}],
-      "backlog": "明确不做自动更新：没有可信更新源与回滚能力；gui.suite.autoupdate 只读设置并留证据，升级走 gui.app.update。",
-      "reason": "[观察] 原版 autoUpdates.js 管理更新检查；B 有页面类但未接入真实更新源。处置从「补更新源」改为「明确不做 + 只读审计流程」，故保留 partial 但缺口有归宿。"
+      "a": {
+        "file": "逆向/01_解包/app/view/autoUpdates/autoUpdates.js"
+      },
+      "b": [
+        {
+          "file": "逆向/04_重实现/packages/view/src/config/localSettings.ts",
+          "find": "class AutoUpdatesPage"
+        }
+      ],
+      "reason": "[观察] [主动不做-无更新源] 没有可信更新源与回滚能力。gui.suite.autoupdate 只读设置并留证据，真正升级走 gui.app.update。自动更新在这个前提下做出来只会是一个能点但不可信的开关，所以明确不做。"
     },
     {
       "id": "suite.updateApplication",
@@ -485,7 +843,9 @@
       "label": "Update Application（套件自更新/安装新版本）",
       "disposition": "a_only",
       "workflow": "gui.app.update",
-      "a": {"file": "逆向/01_解包/app/view/updateApplication/updateApplication.js"},
+      "a": {
+        "file": "逆向/01_解包/app/view/updateApplication/updateApplication.js"
+      },
       "backlog": "B 没有下载/安装链路；更新由固定流程 gui.app.update 驱动原版套件，Update 之前有闸门。",
       "reason": "[观察] 原版 updateApplication.js 负责下载并启动安装器；B 没有这条链路，缺口由 gui.app.update 兜住（覆盖安装不可逆，必须人工闸门）。"
     }

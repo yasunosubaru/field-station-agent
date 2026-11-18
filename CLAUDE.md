@@ -40,6 +40,45 @@
 理由见 `docs/spec/2026-10-13-野外台站智能体基础设计.md` §2：三个仓库互不并库、
 各提交各的路径。搬运只在 `PROVENANCE.md` 登记后进行，一次只搬清单里点名的文件。
 
+## 2.5 排查疑难：先读日志和官方文档，再动代码
+
+**这一节来自 2026-11-16 的一次事故，写下来是为了不再重犯。**
+
+当时装一块自编译的 IDD 虚拟显示驱动，设备报 `[Error]` / `0x1F` / `0xC0000001`。
+连续改了 **6 轮**代码（签名、Security 描述符、UMDF 版本 2.15→2.25→2.35、
+错误码传播、返回值），每一轮都"看起来有道理"，**但一轮都没解决问题**。
+
+真正的两个根因，都写在**本机现成的日志和官方文档**里，一直没去读：
+
+| 根因 | 在哪一行 |
+|---|---|
+| `UmdfLibraryVersion` 必须是 `2.23`，写 2.25 被拒 | `C:\Windows\inf\setupapi.dev.log`：<br>`Using WDF schema version 2.23 when section requires version 2.25` |
+| `pnputil` 不覆盖同名文件，改 6 轮测的都是同一份旧二进制 | 哈希对比：`build 0873EDE0` vs `deployed 79FFDBC9`，差 50 分钟 |
+
+而当时我给出的结论「根因是 WPP 工具链」是**纯粹的错误推断** —— `Driver.cpp`
+里根本没有 WPP 宏调用。
+
+### 硬性流程
+
+1. **先读错误码对应的日志，不要先猜。** 驱动/安装类问题：
+   `C:\Windows\inf\setupapi.dev.log`、`setupact.log`、`%windir%\temp\wudf_update.log`；
+   UMDF/内核类还要看 `Microsoft-Windows-DriverFrameworks-UserMode/Operational`
+   与 `Microsoft-Windows-Kernel-PnP/Configuration` 事件通道。**事件日志不够，文件日志里
+   往往直接写着结论。**
+2. **改动生效必须自己证明。** 产物哈希 / 时间戳 / 版本号三选一以上，逐项比对
+   「构建出来的」和「实际被加载的」。`pnputil`、`devcon` 这类工具的"成功"只代表
+   包入库，**不代表文件被替换**。
+3. **同一处失败改到第 3 次就停下。** 不许接着试第 4 个猜测；改为
+   (a) 上网搜该错误码 + 组件名，(b) 找官方文档，(c) 对比一个**已知能工作的同类实现**
+   （本机 `OrayIddDriver`、`GameViewerIddDriver` 就是现成的对照组）。
+4. **结论要标明证据等级。** 「我猜」和「日志第 N 行写着」不能混在一句话里说。
+
+### 允许并鼓励联网
+
+排查时可以且应当用 `websearch` / `webfetch` 查报错原文、官方文档、issue 讨论。
+社区里踩过同一个坑的记录（如 OSR 论坛关于 `IddCxLibraryBindClient` 抛异常的帖子）
+常常比重新推理快得多。
+
 ## 3. 提交纪律
 
 - **不用 `git add -A`，也不用 `git add .`。** 逐个列出**本次改动涉及的**路径，一个不漏，

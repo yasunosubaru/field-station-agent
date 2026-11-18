@@ -132,6 +132,12 @@ ATTR_RE = re.compile(
 #: 这份名单是从实测出现的组合里挑的（见文档「B 侧绑定属性」小节），
 #: 不用「所有 data-*」是因为 ``data-tone="good"`` 之类的状态标记不是字段。
 B_KEY_ATTRS: tuple[str, ...] = (
+    # 复现端补上的「原版字段名」：有些 B 侧控件已经有自己的一套 data-*
+    # （被 JS 当索引键用，改了会破坏行为，实测 12 处读取 adddevEls.path/host/port/baud），
+    # 但它们的字段名与原版不同，导致同一个控件在两侧被认成两个字段。
+    # data-parity 只写原版的名字，不参与任何运行时查询，只用来让对照表认出同一字段。
+    # 必须排第一：extract_fields 取「第一个稳定属性」，排在后面就永远轮不到它。
+    "data-parity",
     "data-el",
     "data-term",
     "data-adddev",
@@ -143,6 +149,8 @@ B_KEY_ATTRS: tuple[str, ...] = (
     "data-spec",
     "data-track-metric",
     "data-track-system",
+    "data-track-sort",
+    "data-track-show",
     "data-basemap",
     "name",
     "id",
@@ -1376,7 +1384,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(rendered, encoding="utf-8", newline="\n")
+    # write_text(newline=) 是 Python 3.10+ 参数；本机 py -3 是 3.9，直接写会 TypeError。
+    # 产物必须是 LF（文档是给 git 与 markdown 看的），所以显式以二进制写。
+    with open(out_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(rendered)
 
     if args.json:
         print(json.dumps(summary_dict(report), ensure_ascii=False, indent=1))

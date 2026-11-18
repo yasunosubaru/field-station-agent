@@ -57,6 +57,7 @@ const path = require('node:path');
 const { parseDeepLink, linkFromArgv } = require('./deeplink.js');
 // payload 解压（壳-1）与 Python 服务（壳-2）同理：逻辑都在各自模块里，
 // main.js 只负责「什么时候调、失败时怎么报」。
+const environment = require('./environment.js');
 const payload = require('./payload.js');
 const pyserver = require('./pyserver.js');
 
@@ -144,6 +145,12 @@ function parseArgs(argv) {
     attachPython: false,
     // 壳-1：payload.zip 的位置。空 = 用 payload.js 的默认/环境变量。
     payloadZip: '',
+    // 几何固化（计划书 §3.6）：是否接受物理屏做坐标基准。
+    // 默认 false —— 必须有虚拟屏；没有就报 environment 停下，绝不在物理屏上悄悄点。
+    // 只在「这台机器确实没有可用虚拟屏、且只跑单机单屏」时才显式打开。
+    // 用环境变量而不是开关，是因为它要能被打包后的快捷方式预设，而窗口参数不该
+    // 让用户每次手打。
+    preferPhysical: process.env.FSA_PREFER_PHYSICAL === '1',
   };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
@@ -236,6 +243,13 @@ let pythonError = '';
  * 没有这一步，解压期间用户看到的就是一个什么都不发生的桌面。
  */
 let payloadProgress = { done: 0, total: 0, text: '', state: 'idle' };
+
+/**
+ * 几何固化（计划书 §3.6）的结果快照。
+ * shape: { ok, display:{status}, virtualDisplay:{status,reason}, keepDesktop:{status}, error? }
+ * 页面与验收工具从 shell:info 读它；窗口不受它阻挡（理由见 boot() 的注释）。
+ */
+let environmentState = null;
 
 /** 当前密度；菜单切换时改它，窗口创建和切换后都用它。 */
 let density = args ? args.density : DENSITIES[0];
@@ -1200,6 +1214,8 @@ async function boot() {
     versions: { electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome },
     // 壳-2：Python 服务的状态。附加上去的字段，老页面读不到也不受影响。
     python: { state: pythonState, url: pythonUrl, error: pythonError, port: args.pythonPort },
+    // 几何固化：display / virtualDisplay / keepDesktop 各自的状态与原因。
+    environment: environmentState,
     // 壳-1：解压目标。页面若将来要显示「payload 目录」，不必自己拼 app.getPath。
     payloadDir: payloadDir(),
     // 壳-1：解压进度。窗口建好时可能已经解压完了，所以这里是**快照**而不是订阅；
@@ -1218,11 +1234,36 @@ async function boot() {
   try {
     /*
      * 顺序是有意的：
-     *   ① payload 解压（壳-1）—— 它是「这台机器上有没有一套可用的文件树」的前提，
+     *   ① 几何固化（计划书 §3.6）—— 必须在起服务之前把「坐标基准」定下来，
+     *      否则后面所有点击都建立在一个会变的基础上；
+     *   ② payload 解压（壳-1）—— 它是「这台机器上有没有一套可用的文件树」的前提，
      *      Python 解释器也可能就在里面（`payload/runtime/python/python.exe`）；
-     *   ② 两个服务并行拉起 —— Node 出界面、Python 出 Agent 后端，谁先起来都行；
+     *   ③ 两个服务并行拉起 —— Node 出界面、Python 出 Agent 后端，谁先起来都行；
      *      只用 await Node 的就绪来定「能不能开窗口」，Python 的失败不挡窗口。
+     *
+     * 几何固化失败**不挡窗口**：与「Python 起不来」同一类判断——用户仍应看到界面
+     * 和日志，而不是被一个错误框挡在门外。失败状态写进 shell:info 的
+     * `environment`，供页面和验收工具读取；手工点到会由 runner 的 ensure_display
+     * 拦下来并报 environment。
      */
+    const environmentPromise = environment.prepareEnvironment(REPO_ROOT, {
+      preferPhysical: args.preferPhysical === true,
+      log: (line) => console.log(line),
+    }).then((result) => {
+      environmentState = result;
+      const v = result.virtualDisplay || {};
+      console.log(`[shell] 几何：display=${result.display.status} `
+        + `virtualDisplay=${v.status || '?'} keepDesktop=${result.keepDesktop.status}`);
+      if (v.status === 'failed') {
+        console.warn(`[shell] 虚拟屏未接上：${v.reason || '未知原因'}`);
+      }
+      return result;
+    }).catch((error) => {
+      environmentState = { ok: false, error: String(error && error.message || error) };
+      console.error('[shell] 几何固化异常：', environmentState.error);
+      return environmentState;
+    });
+
     await preparePayload();
 
     if (!args.attach) startServer();
@@ -1239,9 +1280,8 @@ async function boot() {
       createWindow({ view: args.view });
     }
     createTray();
-    // 窗口先开、再等 Python：它能跑几十秒（首次 import 一整棵运行时栈），
-    // 让用户在窗口里等着，而不是盯着一个没有响应的事件循环。
-    await pythonPromise;
+    // 几何固化与 Python 一起等，但都不挡窗口。
+    await Promise.all([environmentPromise, pythonPromise]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[shell] 启动失败：', message);

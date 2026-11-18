@@ -52,12 +52,44 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+
+# --- 按路径加载同目录模块（打包后 sys.path 里没有 tools/）----------------------
+# 由 tools/apply_loader_safe.py 生成。为什么不用裸导入、为什么必须写 sys.modules，
+# 见那个脚本的模块文档（和 tools/cdp_driver.py::_load_click_engine 的实现）。
+def _fsa_load_sibling(name: str):
+    """加载与当前文件同目录的 ``<name>.py``，返回模块对象。"""
+    import importlib.util as _iu
+    import sys as _sys
+    from pathlib import Path as _P
+
+    alias = f"_fsa_tool_{name}"
+    cached = _sys.modules.get(alias)
+    if cached is not None:
+        return cached
+    path = _P(__file__).with_name(f"{name}.py")
+    if not path.is_file():
+        raise ImportError(f"同目录缺少 {name}.py（{path}）")
+    spec = _iu.spec_from_file_location(alias, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"无法加载 {path}")
+    module = _iu.module_from_spec(spec)
+    # dataclasses 解析字符串注解时要靠 sys.modules 找到模块，必须先注册。
+    _sys.modules[alias] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:  # 允许 ``python tools/rpa_calibrate.py`` 直接跑
     sys.path.insert(0, str(TOOLS_DIR))
 
-from click_engine import ClickEngine, ClickError  # noqa: E402
-from cdp_driver import CdpDriver, GuiUnavailable  # noqa: E402
+# 按路径加载（tools/ 不一定在 sys.path）。
+_click_engine_mod = _fsa_load_sibling("click_engine")
+ClickEngine = _click_engine_mod.ClickEngine
+ClickError = _click_engine_mod.ClickError
+_cdp_driver_mod = _fsa_load_sibling("cdp_driver")
+CdpDriver = _cdp_driver_mod.CdpDriver
+GuiUnavailable = _cdp_driver_mod.GuiUnavailable
 
 BASELINE_PATH = TOOLS_DIR / "rpa_targets.json"
 DEFAULT_PORT = int(os.environ.get("FSA_CDP_PORT", "9223"))

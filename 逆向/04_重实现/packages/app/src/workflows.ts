@@ -127,6 +127,26 @@ export class WorkflowBridge {
     return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   }
 
+  /**
+   * 最近跑过的作业。
+   *
+   * 为什么要这一条：三条固定流程（gui.app.install / gui.app.update /
+   * gui.suite.autoupdate）的结果以 `kind: artifact` 落盘，但 UI 上没有任何入口
+   * 能列出它们——只有知道 job id 才看得到，等于「跑完了但结果不属于任何人」。
+   * Python 侧已有 `list_jobs(limit, status)`，这里只是把它透出来。
+   */
+  async jobs(limit = 20, status?: string): Promise<Record<string, unknown>[]> {
+    const args = ['jobs', '--limit', String(Math.max(1, Math.min(200, Number(limit) || 20)))];
+    if (status) {
+      // 只允许作业状态词，不让任意字符串进命令行参数。
+      const ok = /^[a-z_]{1,24}$/.test(status);
+      if (!ok) throw new HttpError(400, `不合法的作业状态：${status}`);
+      args.push('--status', status);
+    }
+    const data = (await this.call(args)).data;
+    return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  }
+
   /** Raw bytes of one artifact, resolved through the executor's own artifacts directory. */
   artifactBytes(jobId: string, name: string): Buffer {
     assertJobId(jobId);

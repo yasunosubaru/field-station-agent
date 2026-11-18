@@ -593,10 +593,58 @@
       add.addEventListener('click', function () {
         var note = $('home-add-note');
         if (!note) return;
-        note.hidden = !note.hidden;
-        note.textContent = 'This build ships the five core applications (Manage, Playback, Convert, '
-          + 'GRIT Monitor, Graph). The original installs additional packages from NovAtel here; '
-          + 'this reimplementation has no package store, so there is nothing to add.';
+        // 原来这里只翻一段"本构建没有包仓库"的说明。原文没错，但那条流程是真实
+        // 存在的（gui.app.install 14 步，含人工闸门），所以按钮应当把它启动，
+        // 而不是停在一条不会变的提示上。真正的写入仍在闸门后面。
+        // gui.app.install 有两个必填参数（package / expect_name），只能由人给。
+        // 因此这里展开一张小表单，填好再启动 —— 不猜参数，也不伪造成功。
+        if (!note.hidden) { note.hidden = true; return; }
+        note.hidden = false;
+        if (note.querySelector('.home-add-form')) return;
+        note.textContent = '';
+        var form = document.createElement('div');
+        form.className = 'home-add-form';
+        form.innerHTML =
+          '<label>应用安装包（.zip 路径）<input type="text" data-add-field="package" '
+          + 'placeholder="例如 D:\\packages\\app-1.2.0.zip"></label>'
+          + '<label>装完后卡片名 *<input type="text" data-add-field="expect_name" '
+          + 'placeholder="My Applications 里应出现的名字"></label>'
+          + '<label>期望版本（可选）<input type="text" data-add-field="expect_version"></label>'
+          + '<button type="button" data-add-run="1">启动 gui.app.install</button>'
+          + '<p class="home-add-status"></p>';
+        note.append(form);
+        form.querySelector('[data-add-run]').addEventListener('click', function () {
+          var status = form.querySelector('.home-add-status');
+          var params = {};
+          var missing = [];
+          form.querySelectorAll('[data-add-field]').forEach(function (input) {
+            var key = input.getAttribute('data-add-field');
+            var value = (input.value || '').trim();
+            if (value) params[key] = value;
+            else if (key === 'package' || key === 'expect_name') missing.push(key);
+          });
+          if (missing.length) {
+            status.textContent = '还缺必填参数：' + missing.join('、');
+            return;
+          }
+          status.textContent = '正在启动固定流程 gui.app.install…';
+          fetch('/api/workflows/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: 'gui.app.install', params: params }),
+          })
+            .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+            .then(function (res) {
+              if (!res.ok) throw new Error(res.b.error || 'HTTP ' + res.status);
+              var id = res.b.job_id || (res.b.job && (res.b.job.job_id || res.b.job.id)) || '';
+              status.textContent = id
+                ? '已受理：job ' + id + '。安装由原版套件执行，写盘前停在人工闸门；进度见 Manage 页 Recent workflow runs。'
+                : '已受理；进度见 Manage 页 Recent workflow runs。';
+            })
+            .catch(function (error) {
+              status.textContent = '启动失败：' + (error && error.message ? error.message : error);
+            });
+        });
       });
     }
   }

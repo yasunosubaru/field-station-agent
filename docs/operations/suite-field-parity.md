@@ -10,21 +10,21 @@
 
 | 指标 | 去重字段（判分口径） | DOM 元素（逐行口径） |
 | --- | --- | --- |
-| 总数 | **129**（契约要求 ≥ 60） | 149 |
-| `matched` | 62 | 73 |
-| `b_only` | 32 | 34 |
-| `a_only` | 20 | 27 |
+| 总数 | **126**（契约要求 ≥ 60） | 146 |
+| `matched` | 77 | 90 |
+| `b_only` | 29 | 31 |
+| `a_only` | 5 | 10 |
 | `unverified`（A 侧未核对，不计入差异） | 0 | 0 |
 | `not_applicable`（问卷控件，不计入差异） | 15 | 15 |
-| **`mismatches`**（`b_only + a_only`） | **52**（契约要求 0） | 61 |
+| **`mismatches`**（`b_only + a_only`） | **34**（契约要求 0） | 41 |
 
 「去重字段」= 不同 (页面, 命名空间, 归一化字段名) 的个数；「DOM 元素」= 表的行数。两者差 20 个，是同一字段的多个控件（radio / checkbox 的各个取值、以及原版自己重复写了两遍的同名控件）被合并的结果。
 
-**EV-30 未达成**：`mismatches = 52 > 0`。下面「B 独占」「A 独占」两节逐条列出，不做口径调整。
+**EV-30 未达成**：`mismatches = 34 > 0`。下面「B 独占」「A 独占」两节逐条列出，不做口径调整。
 
 ## 口径
 
-- **范围**：`tools/gui_coverage_map.json` 里 `disposition` 为 `covered` / `partial` 的条目（本机 38 条）。`not_applicable` / `a_only` 本来就没有 B 侧，算成差异会把「明确不做」误报成「漏做」，所以排除，并在此声明。
+- **范围**：`tools/gui_coverage_map.json` 里 `disposition` 为 `covered` / `partial` 的条目（本机 36 条）。`not_applicable` / `a_only` 本来就没有 B 侧，算成差异会把「明确不做」误报成「漏做」，所以排除，并在此声明。
 - **A 侧**：`逆向/01_解包/app/view/**` 里的 `<input|select|textarea>`，外加 A 侧用 `<button>` 承载的**状态控件**（原版用 CSS 给按钮画开关外观，如 `<button id="erase-nvm" class="erase-checkbox">`、`<button id="rtk-on-off" class="select-device-btn">`）。只收 class 命中开关/下拉白名单的按钮，`Apply` / `Cancel` / `Add` 这类动作按钮不算字段。字段标识取 `name`（优先）或 `id`，显示名取 `data-lang-*` 经 `languageSupport/en.js` 翻译。**A 侧只读，一个字节都没改。**
 - **B 侧**：两套实现。① `packages/app/src/web/panels/*.js|*.html` 的`data-el` / `data-term` / `data-adddev` / `data-cfg` / `data-reset` 等分组绑定；② `packages/view/src/config/*.ts`，它们不写 HTML，而是 `fragmentPath` 指向原版片段，由 `config-host.ts` 的 `fragments.load()` 从 `<appRoot>/view` 读入。
 - **配对上的一条硬规则**：若 B 文件声明的 `fragmentPath` 与 A 文件名相同，则该页渲染的就是那份原版 HTML（同一份 DOM），逐字段判 `matched`，方法记 `fragment`，B 侧位置写 `fragmentPath` 所在行。这不是「推定相似」，是同一份文件。
@@ -38,7 +38,7 @@
 - **命名空间必须进去重键**：`manage.js` 的终端对话框用 `data-term="path"`、加设备对话框用 `data-adddev="path"`，同名却是两个字段。只有 A 侧且无命名空间差异时，这一维度等同于无。
 - **页面取 A 侧文件名主干，不取目录名**：`app/view/html/` 一个目录装着`index.html`（外壳）、`setUpMonitor.html`（Manage 台）、`welcome.html`。按目录都叫 `html` 会把外壳与 Manage 台的连接对话框错并成一个字段。
 - 但**表里仍然逐元素保留每一行**，因为「具体哪个取值缺失」只能靠行去看；去重后每个字段的代表行取该组里证据最强的那个元素（`matched` > `unverified` > `b_only` / `a_only`），并保留它的 `文件:行号`，随时可回溯。
-- 本机两个数字：**去重字段 129 个 / DOM 元素 149 个**（合并 20 个）。
+- 本机两个数字：**去重字段 126 个 / DOM 元素 146 个**（合并 20 个）。
 - **A 侧是否核对过**：是。`逆向/01_解包/app/view/` 在本机存在，所有 A 位置都是真实行号。
 
 ## 对照表
@@ -70,7 +70,7 @@
 | suffix-option（Prefix） | convert | — | `逆向/01_解包/app/view/convert/convert.html:374` | a_only |
 | InputAuthCode（Apply New Auth Code） | deviceDetails | `逆向/04_重实现/packages/view/src/config/deviceDetails.ts:100` | `逆向/01_解包/app/view/deviceDetails/deviceDetails.html:258` | matched |
 | select-unselect-logs（Download） | deviceExport | `逆向/04_重实现/packages/view/src/config/deviceExport.ts:41` | `逆向/01_解包/app/view/deviceExport/deviceExport.html:37` | matched |
-| connection-on-off（Connect） | deviceManagement | — | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1050` | a_only |
+| connection-on-off（PIM222A receiver） | deviceManagement | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2053` | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1050` | matched |
 | connection-on-off（Connect） | deviceManagement | — | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1749` | a_only |
 | erase-nvm（Restart） | deviceRestart | `逆向/04_重实现/packages/view/src/config/deviceRestart.ts:25` | `逆向/01_解包/app/view/deviceRestart/deviceRestart.html:15` | matched |
 | gnss-elevation-mask-value（Elevation Mask） | gnssConfig | `逆向/04_重实现/packages/view/src/config/gnssConfig.ts:29` | `逆向/01_解包/app/view/gnssConfig/gnssConfig.html:10` | matched |
@@ -161,47 +161,44 @@
 | rtk-on-off（Input Ports） | positionConfig | `逆向/04_重实现/packages/view/src/config/positionConfig.ts:125` | `逆向/01_解包/app/view/positionConfig/positionConfig.html:67` | matched |
 | sbas-on-off（Region Selection） | positionConfig | `逆向/04_重实现/packages/view/src/config/positionConfig.ts:125` | `逆向/01_解包/app/view/positionConfig/positionConfig.html:178` | matched |
 | survey-time | positionConfig | `逆向/04_重实现/packages/view/src/config/positionConfig.ts:125` | `逆向/01_解包/app/view/positionConfig/positionConfig.html:251` | matched |
-| elevation-greaterthan-90（Elevation 0°>90°） | satelliteTracking | — | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:75` | a_only |
-| elevation-lessthan-90（PRN） | satelliteTracking | — | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:70` | a_only |
-| elevationMask（Elevation Mask） | satelliteTracking | — | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:91` | a_only |
-| highLowValues | satelliteTracking | — | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:97` | a_only |
-| trackingprn | satelliteTracking | — | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:66` | a_only |
-| baud（Baud） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1914` | — | b_only |
-| baud（Baud） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1951` | — | b_only |
-| baudrate-selected（Baud Rate） | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1723` | a_only |
+| elevation-greaterthan-90（Elevation 0&deg;&lt;90&deg;） | satelliteTracking | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1905` | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:75` | matched |
+| elevation-lessthan-90（PRN） | satelliteTracking | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1901` | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:70` | matched |
+| elevationMask（Show） | satelliteTracking | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1912` | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:91` | matched |
+| highLowValues（Elevation Mask） | satelliteTracking | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1916` | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:97` | matched |
+| trackingprn（Sort by） | satelliteTracking | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1897` | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:66` | matched |
+| baud（Baud） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1988` | — | b_only |
+| baud（Baud） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2032` | — | b_only |
+| baudrate-selected（Baud rate (selected)） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2063` | `逆向/01_解包/app/view/html/setUpMonitor.html:1723` | matched |
 | connection-on-off（Connected） | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1856` | a_only |
-| connectionName（Connection Name） | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1130` | a_only |
+| connectionName（Connection name） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2023` | `逆向/01_解包/app/view/html/setUpMonitor.html:1130` | matched |
 | connectionName | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1666` | a_only |
-| eraseNvm（Type the receiver model to confirm） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2041` | — | b_only |
-| file（Choose a .cfg） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2009` | — | b_only |
-| groupName | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:2052` | a_only |
-| handshake-on-off | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1189` | a_only |
+| eraseNvm（Type the receiver model to confirm） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2155` | — | b_only |
+| file（Choose a .cfg） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2123` | — | b_only |
+| groupName（Group name） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2026` | `逆向/01_解包/app/view/html/setUpMonitor.html:2052` | matched |
+| handshake-on-off（Passive） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2047` | `逆向/01_解包/app/view/html/setUpMonitor.html:1189` | matched |
 | handshake-on-off | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1743` | a_only |
-| host（or TCP） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1916` | — | b_only |
-| host（TCP / UDP host） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1953` | — | b_only |
-| ipAddress | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1146` | a_only |
-| ipAddress（Host Name） | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1688` | a_only |
-| line（&gt;） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1925` | — | b_only |
-| page（Page） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1978` | — | b_only |
-| passive-on-off | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1186` | a_only |
+| ipAddress（or TCP） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1990` | `逆向/01_解包/app/view/html/setUpMonitor.html:1146` | matched |
+| ipAddress（TCP / UDP host） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2034` | `逆向/01_解包/app/view/html/setUpMonitor.html:1688` | matched |
+| line（&gt;） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1999` | — | b_only |
+| page（Page） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2092` | — | b_only |
+| passive-on-off（Port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2044` | `逆向/01_解包/app/view/html/setUpMonitor.html:1186` | matched |
 | passive-on-off | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1739` | a_only |
-| path（Serial） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1912` | — | b_only |
-| path（Serial port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1949` | — | b_only |
-| pim222aRx-on-off | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1195` | a_only |
+| path（Serial） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1986` | — | b_only |
+| path（Serial port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2029` | — | b_only |
+| pim222aRx-on-off（Hardware handshake） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2050` | `逆向/01_解包/app/view/html/setUpMonitor.html:1195` | matched |
 | pim222aRx-on-off | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1747` | a_only |
-| port（Port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1918` | — | b_only |
-| port（Port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1955` | — | b_only |
-| portName | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1151` | a_only |
-| portName | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1693` | a_only |
-| ports-selected（Port） | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1712` | a_only |
-| text（Choose a .cfg） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2011` | — | b_only |
-| typed（Type the receiver model to confirm） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2038` | — | b_only |
+| portName（Port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1992` | `逆向/01_解包/app/view/html/setUpMonitor.html:1151` | matched |
+| portName（Port） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2037` | `逆向/01_解包/app/view/html/setUpMonitor.html:1693` | matched |
+| ports-selected（Port (selected)） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2061` | `逆向/01_解包/app/view/html/setUpMonitor.html:1712` | matched |
+| shelfGroupName | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1939` | — | b_only |
+| text（Choose a .cfg） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2125` | — | b_only |
+| typed（Type the receiver model to confirm） | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2152` | — | b_only |
 | usb-ports-selected | setUpMonitor | — | `逆向/01_解包/app/view/html/setUpMonitor.html:1758` | a_only |
 | terminal-input-box（Terminal） | terminalConsole | `逆向/04_重实现/packages/view/src/config/terminalConsole.ts:40` | `逆向/01_解包/app/view/terminalConsole/terminalConsole.html:21` | matched |
 
 ## B 独占字段（B 有、A 没有 → 差异）
 
-去重后 32 个字段，展开 34 个 DOM 元素。这些名字在原版里找不到同名对应，要么是 B 新增的，要么是 B 改了键名而没在这里登记。
+去重后 29 个字段，展开 31 个 DOM 元素。这些名字在原版里找不到同名对应，要么是 B 新增的，要么是 B 改了键名而没在这里登记。
 
 | 字段 | 页面 | B 侧位置 |
 | --- | --- | --- |
@@ -225,53 +222,33 @@
 | showEvents | playbackcontrol | `逆向/04_重实现/packages/app/src/web/panels/playback.js:798` |
 | speed | playbackcontrol | `逆向/04_重实现/packages/app/src/web/panels/playback.js:796` |
 | to | playbackcontrol | `逆向/04_重实现/packages/app/src/web/panels/playback.js:810` |
-| baud | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1914` |
-| baud | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1951` |
-| eraseNvm | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2041` |
-| file | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2009` |
-| host | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1916` |
-| host | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1953` |
-| line | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1925` |
-| page | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1978` |
-| path | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1912` |
-| path | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1949` |
-| port | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1918` |
-| port | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1955` |
-| text | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2011` |
-| typed | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2038` |
+| baud | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1988` |
+| baud | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2032` |
+| eraseNvm | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2155` |
+| file | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2123` |
+| line | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1999` |
+| page | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2092` |
+| path | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1986` |
+| path | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2029` |
+| shelfGroupName | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:1939` |
+| text | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2125` |
+| typed | setUpMonitor | `逆向/04_重实现/packages/app/src/web/panels/manage.js:2152` |
 
 ## A 独占字段（A 有、B 没有 → 差异）
 
-去重后 20 个字段，展开 27 个 DOM 元素。这些是原版有、B 侧没对上的字段。注意其中一部分所在页面由 A 侧自己用 JS 动态拼装，静态抽取会漏，所以这一列是**上界**，不是精确的缺口清单。
+去重后 5 个字段，展开 10 个 DOM 元素。这些是原版有、B 侧没对上的字段。注意其中一部分所在页面由 A 侧自己用 JS 动态拼装，静态抽取会漏，所以这一列是**上界**，不是精确的缺口清单。
 
 | 字段 | 页面 | A 侧位置 |
 | --- | --- | --- |
 | convertFileUploadInput | convert | `逆向/01_解包/app/view/convert/convert.html:103` |
 | suffix-option | convert | `逆向/01_解包/app/view/convert/convert.html:374` |
-| connection-on-off | deviceManagement | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1050` |
 | connection-on-off | deviceManagement | `逆向/01_解包/app/view/deviceManagement/deviceManagement.js:1749` |
 | fileUploadInput | index | `逆向/01_解包/app/view/html/index.html:355` |
-| elevation-greaterthan-90 | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:75` |
-| elevation-lessthan-90 | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:70` |
-| elevationMask | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:91` |
-| highLowValues | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:97` |
-| trackingprn | satelliteTracking | `逆向/01_解包/app/view/satelliteTracking/satelliteTracking.html:66` |
-| baudrate-selected | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1723` |
 | connection-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1856` |
-| connectionName | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1130` |
 | connectionName | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1666` |
-| groupName | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:2052` |
-| handshake-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1189` |
 | handshake-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1743` |
-| ipAddress | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1146` |
-| ipAddress | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1688` |
-| passive-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1186` |
 | passive-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1739` |
-| pim222aRx-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1195` |
 | pim222aRx-on-off | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1747` |
-| portName | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1151` |
-| portName | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1693` |
-| ports-selected | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1712` |
 | usb-ports-selected | setUpMonitor | `逆向/01_解包/app/view/html/setUpMonitor.html:1758` |
 
 ## 收口依据：别名与问卷
@@ -333,8 +310,10 @@ B 侧没有复刻它们是对的——把这算成「漏做」会虚高差异。
 - `config.radioConfig`
 - `config.spanInstallation`
 - `config.vehicleSetup`
+- `tool.events`
 - `graph.newProjectFromSbf`
 - `suite.addApplication`
+- `suite.autoUpdates`
 - `suite.updateApplication`
 
 ## 局限（不掩盖）

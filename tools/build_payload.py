@@ -102,6 +102,22 @@ ITEMS: tuple[Item, ...] = (
     Item("tools/agent_store.py", "tools/agent_store.py", kind="file"),
     Item("tools/suite_launcher.py", "tools/suite_launcher.py", kind="file"),
     Item("tools/secret_store.py", "tools/secret_store.py", kind="file"),
+    # 几何三层（计划书 §3.3-3.6）。少了任何一个，自体包里对应步骤会 ImportError：
+    #   click_engine      三级升级链的真鼠标实现，cdp_driver 与 rpa_fixture 都按路径加载它
+    #   rpa_fixture       restore_home 的原始实现（workflows 的 restore_home 步骤依赖）
+    #   rpa_calibrate     坐标校准（记录/回放）
+    #   rpa_lint          流程静态检查，CI 与验收都要用
+    #   *.ps1             setup_display / keep-desktop 是启动链上的两个 PowerShell 步骤
+    #   ensure_virtual_display  虚拟屏接桌面，启动链第三步（v6 新增）
+    #   install-vdd       首次装机时安装签名 IDD 驱动
+    Item("tools/click_engine.py", "tools/click_engine.py", kind="file"),
+    Item("tools/rpa_fixture.py", "tools/rpa_fixture.py", kind="file"),
+    Item("tools/rpa_calibrate.py", "tools/rpa_calibrate.py", kind="file"),
+    Item("tools/rpa_lint.py", "tools/rpa_lint.py", kind="file"),
+    Item("tools/setup_display.ps1", "tools/setup_display.ps1", kind="file"),
+    Item("tools/keep-desktop.ps1", "tools/keep-desktop.ps1", kind="file"),
+    Item("tools/ensure_virtual_display.py", "tools/ensure_virtual_display.py", kind="file"),
+    Item("tools/install-vdd.ps1", "tools/install-vdd.ps1", kind="file"),
     Item("config", "config"),
     Item("docs/operations", "docs/operations", required=False,
          note="optional operating docs"),
@@ -304,11 +320,55 @@ def node_info(node: Path) -> dict:
     return info
 
 
+#: embeddable 运行时的必备文件。缺任何一个都不是自足的。
+EMBEDDABLE_REQUIRED = ("python.exe", "python311.dll", "python311.zip")
+#: 只可能出现在 venv 里的文件。出现即说明传的是 venv。
+VENV_MARKERS = ("pyvenv.cfg",)
+
+
+def validate_python_dir(py_dir: Path) -> list[str]:
+    """检查 ``py_dir`` 是不是**可移植的 embeddable** 运行时。返回问题列表（空=合格）。
+
+    两类失败分开报，因为修法完全不同：
+
+    * **venv**（`pyvenv.cfg` 在）：解释器和标准库留在本机 base Python 里，
+      包里只有 `site-packages`。体积可以很大（本机实测 1489 MB），
+      换台机器必然 `No module named 'encodings'`。
+    * **缺文件**：不是 embeddable 解压目录，或者解压不完整。
+    """
+    problems: list[str] = []
+    for marker in VENV_MARKERS:
+        if (py_dir / marker).is_file():
+            try:
+                cfg = (py_dir / marker).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                cfg = ""
+            home = next((ln.split("=", 1)[1].strip()
+                         for ln in cfg.splitlines() if ln.strip().startswith("home")), "")
+            problems.append(
+                f"这是 venv 而不是 embeddable（发现 {marker}"
+                + (f"，home={home}" if home else "")
+                + "）。venv 的解释器与标准库在包外，换机器必失效。")
+    for name in EMBEDDABLE_REQUIRED:
+        if not (py_dir / name).is_file():
+            problems.append(f"缺 {name}（embeddable 解压目录里应有它）")
+    # embeddable 用 ._pth 控制 sys.path；venv 没有这个文件
+    if not any(py_dir.glob("python3*._pth")) and not problems:
+        problems.append("缺 python3xx._pth（embeddable 用它设定 sys.path）")
+    return problems
+
+
 def python_info(py_dir: Path | None) -> dict | None:
     if py_dir is None:
         return None
+    # embeddable 的 python.exe 在根；venv 的在 Scripts/ 下。两处都认，
+    # 但 present/version 只说明「能不能跑」，是否可移植由 validate_python_dir 判。
     exe = py_dir / "python.exe"
-    info: dict = {"exe": "python.exe", "present": exe.is_file()}
+    if not exe.is_file():
+        exe = py_dir / "Scripts" / "python.exe"
+    info: dict = {"exe": str(exe.relative_to(py_dir)).replace("\\", "/"),
+                  "present": exe.is_file(),
+                  "embeddable": not validate_python_dir(py_dir)}
     if exe.is_file():
         try:
             proc = subprocess.run([str(exe), "-c", "import sys;print(sys.version.split()[0])"],
@@ -504,6 +564,21 @@ def main(argv: list[str] | None = None) -> int:
         py_dir = Path(args.python_dir).expanduser().resolve()
         if not py_dir.is_dir():
             raise SystemExit(f"--python-dir not found: {py_dir}")
+        # 必须是 **embeddable**（自足），不能是 **venv**（依赖本机安装的 base Python）。
+        #
+        # 为什么加这道门禁（2026-11-17 实测）：以前 `--python-dir` 指向 `.deps/venv`，
+        # 打出来的包里 pyvenv.cfg 的 home 指向**本机**的 uv 安装目录
+        # （形如 <用户目录>\\AppData\\Roaming\\uv\\python\\...），而且没有
+        # python311.dll / 标准库 zip —— 解释器和标准库都在包外。
+        # 那个包换一台机器必然 `No module named 'encodings'`，但体积却有 1489 MB
+        # （全是 site-packages）。人眼看不出来，所以让脚本拒绝。
+        problems = validate_python_dir(py_dir)
+        if problems:
+            raise SystemExit(
+                "--python-dir 不是可移植的 embeddable 运行时：\n  - "
+                + "\n  - ".join(problems)
+                + "\n  下载 python-3.x.y-embed-amd64.zip 解压后传它的目录；"
+                  "\n  不要传 venv（venv 把解释器留在本机，包里只有 site-packages）。")
     original = None
     if args.with_original:
         suite = Path(args.suite_dir).expanduser() if args.suite_dir else DEFAULT_SUITE
