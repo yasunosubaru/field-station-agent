@@ -92,13 +92,44 @@ def item_01() -> tuple[str, str]:
 
 
 def item_02() -> tuple[str, str]:
-    """RDP 断开 → tscon 救回绘制。"""
-    return "SKIP", "需要一次真实 RDP 连入→断开来造 Disc 会话；本机当前无 Disc 会话"
+    """RDP 断开 -> tscon 救回绘制。
+
+    实现：tools/session_guard.py（会话表解析 + tscon 救回 + 前景窗口）
+    取证：tools/probe_rdp_session.py --item 2
+
+    分两级报：
+      有 Disc 会话 -> 真救回并验证 has_disc 变 False（强证据）
+      无 Disc 会话 -> 验 tscon 就绪与预演命令，detail 里注明
+                     「未在真实 Disc 场景下验证」（不假装验过）
+    """
+    rc, out = py("probe_rdp_session.py", "--item", "2", timeout=300)
+    if rc == -2:
+        return "SKIP", out
+    if rc == 2:
+        return "SKIP", one_line(out)
+    if rc != 0:
+        return "FAIL", one_line(out, ("FAIL",))
+    return "PASS", one_line(out, ("item 2:",))
 
 
 def item_03() -> tuple[str, str]:
-    """RDP 最小化后 GetForegroundWindow 非 0。"""
-    return "SKIP", "需要 RDP 最小化场景；注册表键可写已验证，生效未验"
+    """RDP 最小化后 GetForegroundWindow 非 0。
+
+    实现：tools/session_guard.py::foreground_window()
+    取证：tools/probe_rdp_session.py --item 3
+
+    判据：读得到句柄且非 0。若为 0，区分两种情况：
+      有 Disc 会话 -> 桌面合成已停，先救回（item_02）再验
+      无 Disc 会话 -> 可能跑在服务会话里，没有活动桌面
+    """
+    rc, out = py("probe_rdp_session.py", "--item", "3", timeout=180)
+    if rc == -2:
+        return "SKIP", out
+    if rc == 2:
+        return "SKIP", one_line(out)
+    if rc != 0:
+        return "FAIL", one_line(out, ("FAIL",))
+    return "PASS", one_line(out, ("item 3:",))
 
 
 def item_04() -> tuple[str, str]:
@@ -210,8 +241,24 @@ def item_10a() -> tuple[str, str]:
 
 
 def item_10b() -> tuple[str, str]:
-    """断开 RDP 后跑 gui.suite.autoupdate 仍 succeeded。"""
-    return "SKIP", "需要 RDP 断开 + 套件在线；第 2、3 条同样受限"
+    """断开 RDP 后跑 gui.suite.autoupdate 仍能稳定到同一状态。
+
+    「succeeded」在原文里是目标，但实际这条流程必定停在 dismiss_stale 人工闸门，
+    所以真正可判的是**断线前后三元组一致**：
+        (status, current_step, step_index)
+
+    取证：tools/probe_rdp_session.py --item 10b
+      当前无 Disc -> 只取一次基线，detail 注明未验断线场景
+      当前有 Disc -> 基线 + 断线后各跑一次，要求一致
+    """
+    rc, out = py("probe_rdp_session.py", "--item", "10b", timeout=900)
+    if rc == -2:
+        return "SKIP", out
+    if rc == 2:
+        return "SKIP", one_line(out)
+    if rc != 0:
+        return "FAIL", one_line(out, ("FAIL", "不一致"))
+    return "PASS", one_line(out, ("item 10b:",))
 
 
 def item_11() -> tuple[str, str]:
