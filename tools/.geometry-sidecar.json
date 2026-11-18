@@ -1,0 +1,7 @@
+﻿{
+    "recorded_at":  "2026-11-17T16:00:58Z",
+    "gameViewerRun":  "\"C:\\Program Files\\Netease\\GameViewer\\GameViewer.exe\" --auto-run",
+    "gameServiceStartType":  "Automatic",
+    "gameServiceRunning":  true,
+    "why":  "GameViewer capture session holds the GPU swapchain, so the VDD gets no frames and Windows drops it 4s after we extend (measured 1 -\u003e 2 -\u003e 1). Disabling its autostart keeps the VDD stable; -RestoreGameViewer puts it back."
+}

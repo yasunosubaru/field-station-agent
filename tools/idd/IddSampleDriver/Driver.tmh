@@ -1,0 +1,5 @@
+// Minimal stand-in for the WPP-generated Driver.tmh.
+// The real file is produced by the WDK TraceWpp step, which needs the missing
+// WindowsUserModeDriver10.0 toolset. We only use this driver to prove the modified
+// mode list builds; tracing macros are no-ops outside of an ETW-instrumented build.
+#pragma once
