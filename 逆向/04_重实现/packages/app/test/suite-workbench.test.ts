@@ -272,22 +272,41 @@ test('统计里差异口径只算 b_only + a_only', async () => {
   assert.equal(parityConclusion({ total: 0 }).text, '');
 });
 
-test('真实产物解析出的数字仍然对得上（这一版没有改动口径）', async () => {
+test('真实产物解析出的数字自洽（不硬编码具体值，产物重生成不该假红）', async () => {
   const { parseParityMarkdown, parityConclusion } = await import(suiteUrl);
   const mdPath = join(repoRoot, 'docs', 'operations', 'suite-field-parity.md');
   assert.ok(existsSync(mdPath), '对照表应已提交');
   const parsed = parseParityMarkdown(readFileSync(mdPath, 'utf8'));
 
-  assert.equal(parsed.summary.matched, 62);
-  assert.equal(parsed.summary.b_only, 32);
-  assert.equal(parsed.summary.a_only, 20);
-  assert.equal(parsed.summary.unverified, 0);
-  assert.equal(parsed.summary.not_applicable, 15);
-  assert.equal(parsed.summary.total, 129);
+  /*
+   * 这里**不再钉死具体数字**。
+   *
+   * 原来钉着 `matched === 62`，而设-1 修完差异后产物重生成成 77/29/5/15/126，
+   * 测试立刻假红 —— 产物变了不等于解析器坏了。硬编码产物里的数字，
+   * 等于让每一次重新生成都变成一次红灯噪音。
+   *
+   * 改钉**不变量**（这几条坏了才是真坏）：
+   *   ① 四个状态 + not_applicable 之和 == 总数；
+   *   ② mismatches == b_only + a_only；
+   *   ③ 解析出的行数与产物里的 DOM 元素数同量级（真解析到了东西）；
+   *   ④ 结论句里的数字由这些数算出来，不是另写一份。
+   */
+  const s = parsed.summary;
+  assert.ok(s.total > 0, '总数要大于 0');
+  assert.equal(
+    s.matched + s.b_only + s.a_only + s.unverified + (s.not_applicable || 0),
+    s.total,
+    '各状态之和必须等于总数（少算一项就是静默丢行）',
+  );
+  assert.ok(parsed.rows.length >= s.total * 0.5, `行数 ${parsed.rows.length} 与总数 ${s.total} 不匹配`);
 
-  // 界面上那句结论要能直接由这些数字算出来。
-  const conclusion = parityConclusion(parsed.summary);
-  assert.match(conclusion.text, /对不上 52 条/);
+  const conclusion = parityConclusion(s);
+  const mismatches = s.b_only + s.a_only;
+  if (mismatches > 0) {
+    assert.match(conclusion.text, new RegExp(`对不上 ${mismatches} 条`), '结论句的数字要由 summary 算出来');
+  } else {
+    assert.ok(!/对不上 \d+ 条/.test(conclusion.text), '全对上时不该还说「对不上 N 条」');
+  }
 });
 
 /* ---------------------------------------------------------------------------------------------

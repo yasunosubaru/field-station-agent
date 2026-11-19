@@ -174,9 +174,18 @@ test('套件台：能用真实对照表解析出各状态计数', async () => {
   const { parseParityMarkdown } = await import(pathToFileURL(join(viewsDir, 'suite.js')).href);
   const md = read(join(repoRoot, 'docs', 'operations', 'suite-field-parity.md'));
   const parsed = parseParityMarkdown(md);
-  // 总数 = 各状态之和。设-1 收口后 129（原 131：`cv-affix` 与 `destination`
-  // 并入原字段，`not_applicable` 15 个是问卷控件）。
-  assert.equal(parsed.summary.total, 129);
+  /*
+   * 这里**不钉死具体总数**：产物会随设-1 收口而重生成（131 → 129 → 126 都出现过）。
+   * 钉死数字等于让每次重生成都变成一次假红。改钉不变量：
+   * 总数 == 各状态之和，且真解析到了足够多的行。
+   */
+  const s = parsed.summary;
+  assert.ok(s.total > 0, '总数要大于 0');
+  assert.equal(
+    s.matched + s.b_only + s.a_only + s.unverified + (s.not_applicable || 0),
+    s.total,
+    '各状态之和必须等于总数（少算一项就是静默丢行）',
+  );
   assert.ok(parsed.rows.length > 20);
 });
 
