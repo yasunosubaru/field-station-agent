@@ -74,6 +74,11 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
     "file_digest": frozenset({"path"}),
     "gui": frozenset({"action", "actions", "page", "locator", "value", "option",
                       "screenshot", "assisted", "port", "css"}),
+    # 原生文件夹对话框：agent-desktop 用 accessibility ref + --headed 物理输入
+    # 操作（CDP/JS click 都不弹 Electron 原生对话框，实测 2026-11-24）。
+    "select_folder": frozenset({"app", "project_dir", "timeout_s", "screenshot"}),
+    # 原生文件对话框（Open）：同一套 agent-desktop 机制，填文件名而非目录。
+    "select_file": frozenset({"app", "file", "timeout_s", "screenshot"}),
     "verify_ui": frozenset({"control", "expect", "assisted", "port"}),
     "wait_ui": frozenset({
         "control", "expect", "timeout", "timeout_s", "poll_ms", "assisted", "port",
@@ -91,8 +96,14 @@ STEP_FIELDS: dict[str, frozenset[str]] = {
 STEP_KINDS = tuple(STEP_FIELDS)
 #: ``click_optional`` = 「有就点，没有就算」：只用于关闭残留弹窗这类可空操作，
 #: 绝不能用来做真正的步骤（真正的点击必须失败可见）。
-GUI_ACTIONS = ("open", "click", "click_optional", "type", "select", "read", "sequence",
-               "dialog", "fill_dialog")
+#:
+#: ``real_mouse`` = 用真鼠标（SetCursorPos + mouse_event）点元素中心。
+#: 为什么必须单独一个动作：Electron 的 dialog.showOpenDialog() 要求真实用户
+#: 手势，CDP 的 element.click() 是合成事件、不算手势。实测（2026-11-18）
+#: Graph 的 Project Wizard 里 Select 按钮：JS click 无任何反应，
+#: 真鼠标立刻弹出 #32770「选择文件夹」。
+GUI_ACTIONS = ("open", "click", "click_optional", "real_mouse", "type", "select",
+               "read", "sequence", "dialog", "fill_dialog")
 
 _WORKFLOW_FIELDS = frozenset({
     "id", "version", "title", "summary", "intent", "risk", "tags", "requires",
@@ -593,7 +604,7 @@ def _check_gui_action(action: object, where: str, errors: list[str]) -> None:
     if name not in GUI_ACTIONS:
         errors.append(f"{where}.action 必须是 {GUI_ACTIONS} 之一")
         return
-    if name in ("click", "click_optional", "type", "select", "read") and not action.get("locator"):
+    if name in ("click", "click_optional", "real_mouse", "type", "select", "read") and not action.get("locator"):
         errors.append(f"{where}.locator 不能为空（action={name}）")
     if name == "type" and "value" not in action:
         errors.append(f"{where}.value 不能为空（action=type）")

@@ -64,8 +64,15 @@ REQUIRED_SYMBOLS = (
     "function Wait-TopLevelWindow",
     "function Find-Desc",
     "function Invoke-El",
+    # A/B/C hardening: multi-window disambiguation + button fallback + diagnostics.
+    "function Test-DialogHasButton",
+    "function Get-DialogButtons",
+    "function Format-DialogDiag",
+    "UiaSkipTitles",
+    "UIA_OPTION",
     "'dialog'",
     "'fill_dialog'",
+    "fallback = $usedFallback",
     "UIA_SECONDS",
 )
 

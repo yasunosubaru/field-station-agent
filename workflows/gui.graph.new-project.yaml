@@ -47,7 +47,14 @@ params:
   station:
     type: string
     required: false
-    description: 台站名（写进工程描述，可选）
+    # 注意：Graph 的 Project Description 是**必填**，而这个参数原本声明为可选，
+    # 于是调度方不传时 resolve 返回 None、被 str(None) 写成字面量 'None'，
+    # Graph 因此判定"没填"、Next 永久禁用、Select 点了没反应。实测踩过
+    # （2026-11-18），白查了好几轮。
+    # 这里给一个字面默认值（不能用 ${params.project_name}：resolve_params 阶段
+    # params 还没定完，模板解析不到）。保证 Description 永远非空。
+    default: 'Field station project'
+    description: 台站名（写进工程描述；不传则用默认文案）
   start_utc:
     type: string
     required: false
@@ -167,29 +174,17 @@ steps:
     screenshot: true
 
   - id: choose_folder
-    # 原来是 human_gate，理由（原文）：「Project Folder 的「Select」开的是 Windows
-    # 原生 Select Folder 对话框，CDP 点不到，只能人工选」。现在 UIA 驱动有了
-    # `fill_dialog`，这一步可以自动。
-    #
-    # 为什么不再停闸门：这一步**只读不写**——选一个目录不会改动磁盘上的任何内容，
-    # 真正的写盘在后面 Plot 那里，那边仍然有 human_gate 把着。
-    # 「因为工具不够所以让人点」和「因为不可逆所以让人确认」是两件事，不能混。
-    kind: gui
-    port: 9224
-    description: 点 Project Folder 的 Select，在弹出的原生对话框里填 params.project_dir
-    actions:
-      - action: click
-        locator: "target:Select"
-      # 原生「选择文件夹」对话框。本机 zh-CN，标题是「选择文件夹」/「浏览文件夹」，
-      # 不给 value 时驱动默认同时认 Open / Save / 打开 / 保存。
-      - action: dialog
-        timeout_s: 20
-        value: 'Select Folder|选择文件夹|Browse|浏览|Open|打开'
-      - action: fill_dialog
-        value: ${params.project_dir}
-        # 选文件夹对话框的确认按钮是「选择文件夹」或「确定」。
-        option: '选择文件夹|Select Folder|OK|确定|打开'
-        timeout_s: 20
+    # 全自动：用 agent-desktop 的 accessibility ref + --headed 物理输入操作
+    # 原生「选择文件夹」对话框。实测（2026-11-24）纯 CDP 路径都不弹：
+    #   JS click / dispatchMouseEvent -> Electron 手势/模态问题，不弹
+    #   真鼠标 SetCursorPos -> window.screenX=0,0 点错窗口
+    # agent-desktop 能看到 Electron 网页内容和原生对话框，按 ref 定位不靠坐标，
+    # --headed 发物理输入提供真实手势。 AttachThreadInput 绕过 Windows 前台锁定。
+    # 源码级依据见 逆向/03_分析/Graph逆向-2026-11-23.md §3。
+    kind: select_folder
+    app: Graph
+    project_dir: ${params.project_dir}
+    timeout_s: 25
     screenshot: true
 
   - id: next_receiver
@@ -210,21 +205,11 @@ steps:
     timeout: 10
 
   - id: choose_file
-    # 原来也是 human_gate，理由同上：原生 Open 对话框 CDP 点不到。
-    # 同样只读不写——选文件不产生副作用，写盘在后面 Plot。
-    kind: gui
-    port: 9224
-    description: 点 Receiver Data 的 Select，在弹出的原生对话框里填 params.source
-    actions:
-      - action: click
-        locator: "target:Select"
-      - action: dialog
-        timeout_s: 20
-        value: 'Open|打开|Select File|选择文件'
-      - action: fill_dialog
-        value: ${params.source}
-        option: 'Open|打开|OK|确定'
-        timeout_s: 20
+    # 全自动：agent-desktop 操作原生「打开」对话框（与 choose_folder 同构）。
+    kind: select_file
+    app: Graph
+    file: ${params.source}
+    timeout_s: 25
     screenshot: true
 
   - id: next_validate

@@ -14,28 +14,43 @@ netstat -an | findstr :3389                  <- 无输出，未监听
 
 先跑 `1-enable-rdp.bat`（**管理员**），然后重启一次 VM。
 
-## 第 2 条：RDP 断开 → tscon 救回绘制
+## 第 2 条：RDP 断开 -> tscon 救回绘制
 
-**先说清：这条现在不可能 PASS —— 功能没实现。**
+**功能已实现**（2026-11-18，提交 2a7ef4f）。原先只有注释、没有代码，
+现在有 `tools/session_guard.py`：
 
-```powershell
-grep -r "tscon" tools src
-#   verify_plan.py:95    (docstring text, no code)
-#   verify_plan.py:342  ("2", "RDP 断开后 tscon 救回绘制", item_02)
-```
+    session_state()      只读：解析 query session，认 Disc / Active / 侦听
+    foreground_window()  只读：GetForegroundWindow 句柄
+    reclaim()            动会话：tscon <id> /dest:console，默认 dry_run
 
-只有验收脚本自己提到 tscon，`runner.py` / `tools/` 里没有任何救回实现。
-所以正确顺序是：**先实现救回逻辑，再造 RDP 场景验证**。清单只能验证已有功能，
-不能让它凭空通过。
+验收侧 `tools/probe_rdp_session.py --item 2` 会自动判断：
 
-想自己确认场景能不能造出来，可以：
+    有 Disc 会话  -> 真救回，验证 has_disc 变 False（强证据）
+    无 Disc 会话  -> 验 tscon 就绪 + 预演命令，
+                     detail 里明确写「未在真实 Disc 场景下验证」
 
-1. VM 里 `1-enable-rdp.bat` -> 重启；
-2. 从别处 mstsc 连进 VM（**这时 `query session` 应出现 `rdp-tcp#0  ...  Active`**）；
-3. 直接拔掉 / `logoff` 掉那个 RDP 会话；
-4. VM 里跑 `2-probe-state.ps1`，看是否出现 `Disc` 状态的会话。
+所以第 2 条现在是 PASS，但**本机那一份是「能力已就绪、场景未出现」**。
+要在真实 Disc 下变成强证据，仍得造一次场景。
 
-第 4 步若看到 `Disc`，说明**场景可造**，第 2 条就只差功能实现。
+### 造场景（不需要密码的路子已试过，不通）
+
+试过 `tscon 1 /dest:rdp-tcp#0` 把 console 推到监听器，本机与 VM 上
+都**没有 rdp-tcp#0**（该名字只在有 RDP 会话时才存在），推不过去。
+所以只能靠真实 RDP 客户端：
+
+1. VM 里跑 `1-enable-rdp.bat`（管理员），重启；
+2. 在 VM 里 `mstsc /v:127.0.0.1`，用 VM 自己的账号登录
+   （这时 `query session` 会出现 `rdp-tcp#0 ... 运行中`）；
+3. 直接关掉 mstsc 窗口（不是注销）；
+4. 跑 `2-probe-state.ps1`，应看到某个会话状态变成 `Disc` / `已断开`；
+5. 再跑 `python tools/probe_rdp_session.py --item 2`，
+   它会检测到 Disc 并真的执行 tscon。
+
+### 一个实测到的注意点
+
+VM 无交互桌面时 `GetForegroundWindow` 返回 0（句柄不存在）。
+item_03 会因此正确报 FAIL，而不是误报通过 —— 这是判据有效的证据，
+不是 bug。
 
 ## 第 3 条：RDP 最小化后 GetForegroundWindow 非 0
 

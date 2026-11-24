@@ -315,12 +315,17 @@ class GraphNewProjectGates(unittest.TestCase):
                          "只剩 Plot 前的那道闸门：它写盘且不可逆")
 
     def test_choosing_folder_and_file_are_automated(self):
-        for step_id in ("choose_folder", "choose_file"):
-            step = next(s for s in self.wf.steps if s["id"] == step_id)
-            self.assertEqual(step["kind"], "gui")
-            actions = [a.get("action") for a in (step.get("actions") or [])]
-            self.assertIn("dialog", actions)
-            self.assertIn("fill_dialog", actions)
+        # choose_folder 已升级为 agent-desktop 驱动（原生对话框的 accessibility
+        # ref + --headed 物理输入），实测 2026-11-24 全自动打通；
+        # 旧的 gui + dialog/fill_dialog 方案 CDP 弹不出 Electron 原生对话框。
+        folder = next(s for s in self.wf.steps if s["id"] == "choose_folder")
+        self.assertEqual(folder["kind"], "select_folder")
+        self.assertEqual(folder.get("project_dir"), "${params.project_dir}")
+
+        # choose_file 也升级为 agent-desktop 驱动（原生 Open 对话框）
+        file_step = next(s for s in self.wf.steps if s["id"] == "choose_file")
+        self.assertEqual(file_step["kind"], "select_file")
+        self.assertEqual(file_step.get("file"), "${params.source}")
 
     def test_gate_is_before_the_write(self):
         self.assertLess(self.ids.index("approve_plot"), self.ids.index("plot"))

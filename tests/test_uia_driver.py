@@ -12,9 +12,20 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# 让 `python -m unittest tests.test_uia_driver` 从仓库根就能跑通：fieldstation
+# 在 src/ 下（和本仓库其它测试的做法一致）。
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
 
 from fieldstation.workflows import gui as gui_mod
 from fieldstation.workflows import yaml_lite  # noqa: F401  （保证包能整体导入）
@@ -119,6 +130,106 @@ class Script(unittest.TestCase):
         uia = _load_uia()
         for banned in ("mouse_event", "Cursor.Position", "SetCursorPos", "ClickAt"):
             self.assertNotIn(banned, uia._PS_SCRIPT)
+
+
+class ScriptHardening(unittest.TestCase):
+    """内嵌 PowerShell 的回归门禁：实测修复的符号、中文候选、可解析性。
+
+    这里只做静态检查 + 字符串断言，绝不启动真实 UIA（无 GUI 的 CI 会挂）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.uia = _load_uia()
+        cls.script = cls.uia._PS_SCRIPT
+
+    def test_required_symbols_survive(self):
+        # Bug 1/2/3 的实测修复 + 改进 A/B/C 的符号，少一个说明被回退了。
+        for symbol in (
+            "UiaSkipTitles",          # Bug 1: VNC 窗口黑名单（脚本级）
+            "UiaSkipped",             # Bug 1: 诊断记录
+            "UIA_OPTION",             # Bug 2: path/confirm 独立传参
+            "'fill_dialog'",          # Bug 3: 填路径动作
+            "Test-DialogHasButton",   # A: 多窗口消歧
+            "Get-DialogButtons",      # B/C: 按钮清单
+            "Format-DialogDiag",      # C: 失败诊断
+            "fallback = $usedFallback",  # B: 兜底标记写进返回值
+        ):
+            self.assertIn(symbol, self.script, symbol)
+
+    def test_confirm_candidates_include_english_and_cjk(self):
+        # 脚本必须纯 ASCII，中文按钮名只能用 [char]0x.... 拼出来。
+        # 把码点还原成中文，逐一断言脚本里确实拼了这些字。
+        self.assertIn("'Select Folder|Select|OK|'", self.script)
+        for ch in "选择文件夹打开":
+            self.assertIn(f"[char]0x{ord(ch):04X}", self.script, ch)
+
+    def test_select_folder_char_codes_assemble_to_cjk(self):
+        # 防回退：直接还原 PS 侧 $selectFolderCjk 表达式里的 [char] 序列，
+        # 验证它拼出来的就是「选择文件夹」，而不是一串写错的码点。
+        marker = "$selectFolderCjk = "
+        start = self.script.index(marker)
+        # 只取到闭合括号那一行，别把后面的 $openCjk / $saveCjk 码点也算进来。
+        end = self.script.index("\n", self.script.index(")", start))
+        chunk = self.script[start:end]
+        codes = re.findall(r"\[char\]0x([0-9A-Fa-f]{4})", chunk)
+        self.assertEqual(len(codes), 5, codes)
+        self.assertEqual("".join(chr(int(c, 16)) for c in codes), "选择文件夹")
+
+    def test_option_is_not_concatenated_into_value(self):
+        # Bug 2 回归：path 与 confirm 必须分别进 UIA_VALUE / UIA_OPTION。
+        src = (_ROOT / "tools" / "uia_driver.py").read_text(encoding="utf-8")
+        self.assertIn('"UIA_VALUE": "" if value is None else str(value)', src)
+        self.assertIn('"UIA_OPTION": "" if option is None else str(option)', src)
+
+    def test_fill_result_keeps_path_and_exposes_fallback(self):
+        # 改进 B：兜底标记写进返回值；同时保持 str 兼容 runner.py 的 str(filled)。
+        r = self.uia._FillResult("C:/tmp/a.zip", button="OK", fallback=True,
+                                 dialog_title="Open", buttons=["OK", "Cancel"])
+        self.assertIsInstance(r, str)
+        self.assertEqual(str(r), "C:/tmp/a.zip")
+        self.assertTrue(r.fallback)
+        self.assertEqual(r.button, "OK")
+        self.assertEqual(r.buttons, ["OK", "Cancel"])
+
+    def test_powershell_syntax_parses(self):
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+        if not powershell:
+            self.skipTest("没有 powershell.exe，跳过语法检查")
+
+        # 用 Parser::ParseFile 只解析、不执行；纯 ASCII，避免命令行编码问题。
+        checker = (
+            "$tokens = $null\n"
+            "$errors = $null\n"
+            "[void][System.Management.Automation.Language.Parser]::ParseFile("
+            "$env:UIA_SRC, [ref]$tokens, [ref]$errors)\n"
+            "if ($errors -and $errors.Count -gt 0) {\n"
+            "  foreach ($e in $errors) {\n"
+            "    Write-Output ('ERR ' + $e.Extent.StartLineNumber + ': ' + $e.Message)\n"
+            "  }\n"
+            "  exit 1\n"
+            "}\n"
+            "Write-Output 'SYNTAX_OK'\n"
+        )
+        with tempfile.TemporaryDirectory(prefix="uia-syntax-test-") as tmp:
+            src = Path(tmp) / "uia-action.ps1"
+            src.write_bytes(self.script.encode("ascii").replace(b"\n", b"\r\n"))
+            chk = Path(tmp) / "check.ps1"
+            chk.write_bytes(checker.encode("ascii").replace(b"\n", b"\r\n"))
+            env = dict(os.environ)
+            env["UIA_SRC"] = str(src)
+            proc = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(chk)],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=120, env=env,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        out = (proc.stdout or "").strip()
+        errs = [ln for ln in out.splitlines() if ln.startswith("ERR ")]
+        self.assertEqual(proc.returncode, 0,
+                         "; ".join(errs) or out or (proc.stderr or "")[:300])
+        self.assertIn("SYNTAX_OK", out)
 
 
 class DriverLoading(unittest.TestCase):

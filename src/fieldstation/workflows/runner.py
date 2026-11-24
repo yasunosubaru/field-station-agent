@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -831,14 +832,41 @@ class WorkflowRunner:
                     else:
                         performed.append({"action": "click_optional", "locator": locator,
                                           "clicked": True})
+                elif name == "real_mouse":
+                    # 真鼠标点击：Electron 的原生对话框要求真实用户手势，
+                    # JS element.click() 不算（实测，见文件头注释）。
+                    locator = str(spec_mod.resolve(action.get("locator"), ctx))
+                    info = _real_mouse_click(driver, locator)
+                    performed.append({"action": "real_mouse", "locator": locator,
+                                      **info})
                 elif name == "type":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
-                    value = str(spec_mod.resolve(action.get("value"), ctx))
+                    raw = spec_mod.resolve(action.get("value"), ctx)
+                    # 可选参数未提供时 resolve 返回 None。**不能 str(None)**：
+                    # 那会把字面量 'None' 填进输入框，而大部分应用的表单校验
+                    # 会因此判定"没填"，按钮永久禁用，点它毫无反应。
+                    # 实测踩过（2026-11-18，Graph 的 Project Description 被填成
+                    # 'None'，导致 Next 一直 disabled、Select 点不动，我因此
+                    # 误判成"Graph 不弹原生对话框"，白查了好几轮）。
+                    if raw is None:
+                        performed.append({"action": "type", "locator": locator,
+                                          "skipped": "value 为 None（可选参数未提供）"})
+                        continue
+                    value = str(raw)
+                    if value == "":
+                        performed.append({"action": "type", "locator": locator,
+                                          "skipped": "value 为空字符串"})
+                        continue
                     driver.type_text(locator, value)
                     performed.append({"action": "type", "locator": locator})
                 elif name == "select":
                     locator = str(spec_mod.resolve(action.get("locator"), ctx))
-                    option = str(spec_mod.resolve(action.get("option"), ctx))
+                    raw_opt = spec_mod.resolve(action.get("option"), ctx)
+                    if raw_opt is None:
+                        performed.append({"action": "select", "locator": locator,
+                                          "skipped": "option 为 None（可选参数未提供）"})
+                        continue
+                    option = str(raw_opt)
                     driver.select(locator, option)
                     performed.append({"action": "select", "locator": locator, "option": option})
                 elif name == "read":
@@ -1175,6 +1203,124 @@ class WorkflowRunner:
         self.store.audit(job, "ensure_display.ok", step=step["id"], actual=actual)
         return {"ok": True, "allowed": False, "actual": actual, "problems": []}
 
+    def _step_select_folder(self, step: dict, job: Job, ctx: dict) -> dict:
+        """用 agent-desktop 操作原生「选择文件夹」对话框（全自动）。
+
+        ## 为什么单独一个 kind
+
+        Project Folder 的 Select 走 Electron IPC -> 主进程 dialog.showOpenDialog。
+        实测（2026-11-24）所有纯 CDP 路径都不弹原生对话框：
+          JS click / CDP dispatchMouseEvent -> 手势/模态问题，不弹
+          真鼠标 SetCursorPos -> window.screenX=0,0 点错窗口
+        agent-desktop 的 Windows accessibility 能看到 Electron 网页内容和原生
+        对话框，按 ref 定位、--headed 发物理输入，正好绕开这两个问题。
+
+        ## 前置
+
+        - Graph 必须已在 Information 页（由前一步 fill_information 保证）
+        - agent-desktop 已 npm install（默认在 AGENT_DESKTOP_DIR）
+        - Windows 前台锁定时会 AttachThreadInput 强制把 Graph 提到前台
+
+        失败一律 StepFailure("capability"/"dialog_unavailable")，
+        不静默、不假装成功。
+        """
+        import importlib.util
+
+        from . import spec as spec_mod
+
+        app = str(spec_mod.resolve(step.get("app", "Graph"), ctx))
+        raw_dir = spec_mod.resolve(step.get("project_dir"), ctx)
+        if raw_is_none := (raw_dir is None):
+            raise StepFailure("input", "select_folder 缺 project_dir")
+        project_dir = str(raw_dir)
+        timeout = self._number(step, "timeout_s", 20.0, ctx)
+
+        # 按路径加载 tools/agent_desktop_driver.py（不用裸导入，打包安全）
+        # runner.py 在 <repo>/src/fieldstation/workflows/，仓库根是 parents[3]。
+        # 同时兼容从别的目录布局加载时按 gui_mod._ROOT 兜底。
+        _candidates = [
+            Path(__file__).resolve().parents[3] / "tools" / "agent_desktop_driver.py",
+            Path(getattr(gui_mod, "_ROOT", ".")) / "tools" / "agent_desktop_driver.py",
+        ]
+        driver_path = next((p for p in _candidates if p.is_file()), _candidates[0])
+        if not driver_path.is_file():
+            raise StepFailure("capability",
+                              "找不到 tools/agent_desktop_driver.py")
+        sp = importlib.util.spec_from_file_location("_fsa_agent_desktop", driver_path)
+        if sp is None or sp.loader is None:
+            raise StepFailure("capability", "无法加载 agent_desktop_driver")
+        mod = importlib.util.module_from_spec(sp)
+        sys.modules["_fsa_agent_desktop"] = mod
+        try:
+            sp.loader.exec_module(mod)
+        except Exception as exc:  # noqa: BLE001
+            raise StepFailure("capability",
+                              "agent_desktop_driver 加载失败：%s" % exc) from exc
+
+        try:
+            result = mod.select_folder(project_dir, app=app, timeout_s=timeout)
+        except Exception as exc:  # noqa: BLE001
+            raise StepFailure("dialog_unavailable",
+                              "agent-desktop 选目录失败：%s" % exc) from exc
+
+        if not result.get("ok"):
+            raise StepFailure(
+                "dialog_unavailable",
+                "agent-desktop 选目录失败：%s（步骤：%s）"
+                % (result.get("error"), result.get("steps")))
+
+        self.store.audit(job, "select_folder.ok", step=step["id"],
+                         project_dir=project_dir, steps=result.get("steps"))
+        return {"ok": True, "project_dir": project_dir,
+                "steps": result.get("steps", [])}
+
+    def _step_select_file(self, step: dict, job: Job, ctx: dict) -> dict:
+        """用 agent-desktop 操作原生「打开」对话框选文件（全自动）。
+
+        与 select_folder 同构：CDP 弹不出 Electron 原生对话框，agent-desktop
+        的 accessibility ref + --headed 物理输入可以。见 _step_select_folder。
+        """
+        import importlib.util
+
+        from . import spec as spec_mod
+
+        app = str(spec_mod.resolve(step.get("app", "Graph"), ctx))
+        raw = spec_mod.resolve(step.get("file"), ctx)
+        if raw is None:
+            raise StepFailure("input", "select_file 缺 file")
+        file_path = str(raw)
+        timeout = self._number(step, "timeout_s", 20.0, ctx)
+
+        driver_path = Path(__file__).resolve().parents[3] / "tools" / "agent_desktop_driver.py"
+        if not driver_path.is_file():
+            driver_path = Path(getattr(gui_mod, "_ROOT", ".")) / "tools" / "agent_desktop_driver.py"
+        if not driver_path.is_file():
+            raise StepFailure("capability", "找不到 tools/agent_desktop_driver.py")
+        sp = importlib.util.spec_from_file_location("_fsa_agent_desktop_file", driver_path)
+        if sp is None or sp.loader is None:
+            raise StepFailure("capability", "无法加载 agent_desktop_driver")
+        mod = importlib.util.module_from_spec(sp)
+        sys.modules["_fsa_agent_desktop_file"] = mod
+        try:
+            sp.loader.exec_module(mod)
+        except Exception as exc:  # noqa: BLE001
+            raise StepFailure("capability", "agent_desktop_driver 加载失败：%s" % exc) from exc
+
+        try:
+            result = mod.select_file(file_path, app=app, timeout_s=timeout)
+        except Exception as exc:  # noqa: BLE001
+            raise StepFailure("dialog_unavailable",
+                              "agent-desktop 选文件失败：%s" % exc) from exc
+        if not result.get("ok"):
+            raise StepFailure(
+                "dialog_unavailable",
+                "agent-desktop 选文件失败：%s（步骤：%s）"
+                % (result.get("error"), result.get("steps")))
+
+        self.store.audit(job, "select_file.ok", step=step["id"],
+                         file=file_path, steps=result.get("steps"))
+        return {"ok": True, "file": file_path, "steps": result.get("steps", [])}
+
     def _step_assert(self, step: dict, job: Job, ctx: dict) -> dict:
         results: list[dict] = []
         for check in step["checks"]:
@@ -1251,6 +1397,111 @@ _MISSING = object()
 def _allows_danger(locator: str) -> bool:
     """``target!:`` 前缀表示流程作者显式承认这是危险目标（只是打开对话框）。"""
     return str(locator).startswith("target!:")
+
+
+def _real_mouse_click(driver, locator: str) -> dict:
+    """点页面元素，确保**真的点到它**。
+
+    三次踩坑记录（2026-11-18），每次都让结论完全跑偏：
+
+      1. JS `element.click()`：DOM 上看着生效，但 Electron 的
+         `dialog.showOpenDialog()` 要求真实用户手势，合成事件不算 -> 不弹窗。
+      2. 直接用 Win32 `SetCursorPos` + 屏幕坐标：`window.screenX` 在无边框
+         Electron 窗口里报 (0,0)，算出来的坐标落到了**别的窗口**
+         （实测落在 OpenChamber 上，`WindowFromPoint` 抓到）。Graph 根本
+         没收到点击。
+      3. 窗口被遮住时，任何屏幕级点击都会打到遮挡者身上。
+
+    所以这里按顺序做：
+      a) 用 CDP `Input.dispatchMouseEvent` 按**视口坐标**派发（不经过 Win32，
+         不受窗口位置与遮挡影响）；
+      b) 再用 `WindowFromPoint` 自检目标坐标上是哪个窗口，若不是本应用，
+         记录进返回值供审计（不静默）。
+    """
+    import time
+
+    if locator.startswith("target:"):
+        want = locator.split(":", 1)[1]
+        finder = ("[...document.querySelectorAll('button,a,[role=button]')]"
+                  ".find(e => (e.innerText||'').trim() === %s)" % _js_str(want))
+    else:
+        finder = "document.querySelector(%s)" % _js_str(locator)
+
+    js = """(() => {
+      const el = __FINDER__;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return {err: "元素尺寸为 0"};
+      const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+      const hit = document.elementFromPoint(cx, cy);
+      const self = hit === el || (hit && el.contains(hit));
+      return {vx: cx, vy: cy, self: !!self,
+              hitText: hit ? String(hit.innerText || '').trim().slice(0, 30) : ""};
+    })()"""
+
+    info = driver.evaluate(js.replace("__FINDER__", finder))
+    if not info:
+        raise StepFailure("selector_drift", "real_mouse 找不到元素：%s" % locator)
+    if info.get("err"):
+        raise StepFailure("selector_drift",
+                          "real_mouse 目标不可点：%s（%s）" % (locator, info["err"]))
+    if not info.get("self"):
+        raise StepFailure(
+            "selector_drift",
+            "real_mouse 目标被遮挡：%s 中心处是 %r" % (locator, info.get("hitText")))
+
+    vx, vy = float(info["vx"]), float(info["vy"])
+
+    # a) 视口坐标派发：不依赖窗口在屏幕上的位置
+    driver.call("Input.dispatchMouseEvent", {
+        "type": "mouseMoved", "x": vx, "y": vy, "button": "none"})
+    time.sleep(0.05)
+    driver.call("Input.dispatchMouseEvent", {
+        "type": "mousePressed", "x": vx, "y": vy,
+        "button": "left", "clickCount": 1})
+    time.sleep(0.06)
+    driver.call("Input.dispatchMouseEvent", {
+        "type": "mouseReleased", "x": vx, "y": vy,
+        "button": "left", "clickCount": 1})
+
+    # b) 自检：屏幕坐标上是不是本进程的窗口（只记录，不阻断）
+    screen_hit = None
+    try:
+        import ctypes
+        from ctypes import wintypes as _wt
+
+        class _POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        user32 = ctypes.windll.user32
+        try:
+            user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:  # noqa: BLE001
+            pass
+        sx = int(driver.evaluate(
+            "(() => Math.round(window.screenX + %f))()" % vx) or 0)
+        sy = int(driver.evaluate(
+            "(() => Math.round(window.screenY + %f))()" % vy) or 0)
+        user32.WindowFromPoint.restype = _wt.HWND
+        user32.WindowFromPoint.argtypes = [_POINT]
+        h = user32.WindowFromPoint(_POINT(sx, sy))
+        if h:
+            root = user32.GetAncestor(h, 2) or h
+            t = ctypes.create_unicode_buffer(200)
+            user32.GetWindowTextW(root, t, 200)
+            screen_hit = t.value.strip()
+        else:
+            screen_hit = ""
+    except Exception:  # noqa: BLE001
+        screen_hit = None
+
+    return {"x": round(vx, 1), "y": round(vy, 1), "via": "cdp_mouse",
+            "verified": True, "screen_would_hit": screen_hit}
+
+
+def _js_str(v: str) -> str:
+    import json
+    return json.dumps(str(v), ensure_ascii=False)
 
 
 def _screen_mode() -> dict | None:

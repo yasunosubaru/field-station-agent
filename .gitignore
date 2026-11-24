@@ -103,3 +103,5 @@ tools/build/
 *.bak2-*
 tools/idd/stage/
 tools/vdd/stage/
+逆向/参考项目/pywinauto/
+逆向/参考项目/agent-desktop/

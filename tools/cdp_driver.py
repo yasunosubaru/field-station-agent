@@ -411,11 +411,46 @@ class CdpDriver:
         self.log.append({"action": "click", "target": locator})
 
     def type_text(self, locator: str, text: str) -> None:
+        """往输入框里填文字，走浏览器**真实输入管线**。
+
+        为什么不能用 `el.value = x`：React 受控组件读 state 不读 DOM 属性，
+        手动赋值 + 派发合成事件 React 收不到，state 仍是空。表现出来是
+        "看起来填好了、但表单校验说没填、按钮永久禁用、点它毫无反应"。
+        实测踩过（2026-11-18，Graph 的 Project Wizard）。
+
+        正确路径：focus -> 全选清空 -> CDP Input.insertText。
+        insertText 不可用时退到逐字符 dispatchKeyEvent，仍然走真实输入事件。
+        """
         self._require()
-        ok = self.evaluate(_type_js(locator, text))
-        if not ok:
+
+        # 1) 聚焦 + 确认元素存在（用原 JS 只做定位与聚焦，不写值）
+        ready = self.evaluate(_focus_for_type_js(locator))
+        if not ready:
             raise GuiUnavailable(f"页面上找不到可填的 {locator!r}")
-        self.log.append({"action": "type", "target": locator})
+
+        # 2) 全选 + 删除，避免在旧值后面追加
+        for modifiers, vk, key, code in ((2, 65, "a", "KeyA"),):
+            self.call("Input.dispatchKeyEvent", {
+                "type": "keyDown", "modifiers": modifiers,
+                "windowsVirtualKeyCode": vk, "key": key, "code": code})
+            self.call("Input.dispatchKeyEvent", {
+                "type": "keyUp", "modifiers": modifiers,
+                "windowsVirtualKeyCode": vk, "key": key, "code": code})
+        self.call("Input.dispatchKeyEvent", {
+            "type": "keyDown", "windowsVirtualKeyCode": 46,
+            "key": "Delete", "code": "Delete"})
+        self.call("Input.dispatchKeyEvent", {
+            "type": "keyUp", "windowsVirtualKeyCode": 46,
+            "key": "Delete", "code": "Delete"})
+
+        # 3) 真实输入
+        try:
+            self.call("Input.insertText", {"text": text})
+        except Exception:  # noqa: BLE001 —— 老版本 CDP 可能没有 insertText
+            for ch in text:
+                self.call("Input.dispatchKeyEvent", {
+                    "type": "char", "text": ch, "key": ch})
+        self.log.append({"action": "type", "target": locator, "via": "insertText"})
 
     def select(self, locator: str, option: str) -> None:
         self._require()
@@ -619,6 +654,30 @@ def _click_js(name: str) -> str:
 def _read_js(name: str) -> str:
     return _READ_JS.replace("__TARGET_JSON__", _js_string(name))
 
+
+_FOCUS_FOR_TYPE_JS = "(() => {" + _PRELUDE + r"""
+  let pool = __pool().filter(
+    (el) => ['INPUT','TEXTAREA'].includes(el.tagName) && !el.disabled && !el.readOnly);
+  const want = String(__target);
+  let el = pool.find((n) => n.id === want) || pool.find((n) => n.name === want) || null;
+  if (!el) {
+    const byName = pool.filter((n) => {
+      const label = [n.name, n.id, n.placeholder, n.getAttribute('aria-label'),
+        n.getAttribute('data-lang')].filter(Boolean).join(' ');
+      return label.toLowerCase().includes(want.toLowerCase());
+    });
+    el = byName[0] || null;
+  }
+  if (!el && pool.length === 1) el = pool[0];
+  if (!el) return false;
+  el.focus();
+  if (el.select) { try { el.select(); } catch (e) {} }
+  return document.activeElement === el;
+})()"""
+
+
+def _focus_for_type_js(name: str) -> str:
+    return _FOCUS_FOR_TYPE_JS.replace("__TARGET_JSON__", _js_string(name))
 
 def _type_js(name: str, value: str) -> str:
     return _TYPE_JS.replace("__TARGET_JSON__", _js_string(name)).replace(

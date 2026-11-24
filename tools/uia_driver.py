@@ -153,14 +153,112 @@ function Wait-El($root, $desc, $seconds) {
   return $null
 }
 
-function Wait-TopLevelWindow($titlePattern, $seconds) {
+# Titles of known remote-control / remote-desktop products. A native file dialog
+# is never titled with one of these; skipping them avoids the measured 2026-11-18
+# false match on a VMware VNC window. Script scope keeps it visible to every
+# helper below and to the diagnostic dump.
+$script:UiaSkipTitles = @('VNC', 'VMware', 'TeamViewer', 'AnyDesk', 'RustDesk',
+                          'Remote Desktop')
+
+function Test-DialogHasButton($win, $names) {
+  # True when the window contains a Button whose Name matches one of $names.
+  # This is the disambiguation signal: among several title-matching top-level
+  # windows, the real file dialog is the one that actually has the confirm button.
+  if (-not $win) { return $false }
+  if (-not $names -or $names.Count -eq 0) { return $false }
+  $cond = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::Button)
+  $buttons = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  foreach ($b in $buttons) {
+    $bn = [string]$b.Current.Name
+    foreach ($n in $names) {
+      if ($bn -eq $n) { return $true }
+    }
+  }
+  return $false
+}
+
+function Get-DialogButtons($win) {
+  # Enumerate every Button descendant with the facts needed for diagnosis and
+  # for the bottom-right fallback pick. One bad element must never abort the run.
+  $info = @()
+  if (-not $win) { return $info }
+  $cond = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::Button)
+  $buttons = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  foreach ($b in $buttons) {
+    $hasInvoke = $false
+    $hasLegacy = $false
+    try { $p = $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern); if ($p) { $hasInvoke = $true } } catch {}
+    try { $p = $b.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern); if ($p) { $hasLegacy = $true } } catch {}
+    $right = 0
+    $bottom = 0
+    try { $r = $b.Current.BoundingRectangle; $right = [int]$r.Right; $bottom = [int]$r.Bottom } catch {}
+    $info += [pscustomobject]@{
+      Element = $b
+      Name = [string]$b.Current.Name
+      AutomationId = [string]$b.Current.AutomationId
+      ClassName = [string]$b.Current.ClassName
+      HasInvoke = $hasInvoke
+      HasLegacy = $hasLegacy
+      Right = $right
+      Bottom = $bottom
+    }
+  }
+  return $info
+}
+
+function Format-DialogDiag($win) {
+  # Human-readable dump for error messages: a future "confirm button not found"
+  # now shows WHICH window was matched and what buttons it really had.
+  $lines = @()
+  if ($win) {
+    $lines += ('window title=' + [string]$win.Current.Name)
+    $lines += ('window automationId=' + [string]$win.Current.AutomationId)
+    $lines += ('window className=' + [string]$win.Current.ClassName)
+  } else {
+    $lines += 'window=<none>'
+  }
+  if ($script:UiaSkipped -and $script:UiaSkipped.Count -gt 0) {
+    $lines += ('candidates/skipped=' + ($script:UiaSkipped -join '; '))
+  }
+  if ($win) {
+    $btns = @(Get-DialogButtons $win)
+    $lines += ('buttons=' + $btns.Count)
+    foreach ($b in $btns) {
+      $lines += ('  name=[' + $b.Name + '] aid=[' + $b.AutomationId +
+                 '] cls=[' + $b.ClassName + '] invoke=' + $b.HasInvoke +
+                 ' legacy=' + $b.HasLegacy)
+    }
+  }
+  return ($lines -join "`n")
+}
+
+function Wait-TopLevelWindow($titlePattern, $seconds, $confirmNames) {
   # Native dialogs (Open / Save) are separate top-level windows, NOT inside the
   # suite window's subtree, so enumerate from the desktop root by title regex.
-  # The regex accepts both English and CJK titles: this machine is zh-CN and
-  # the common dialog is titled U+6253 U+5F00 ('open') there.
+  #
+  # MEASURED 2026-11-18: a naive title regex picks the WRONG window. While the
+  # real file dialog was opening, a VMware VNC window (class #32770) was also on
+  # screen, and because -match is an unanchored substring test the candidate
+  # list matched it. The script then looked for a confirm button inside that
+  # unrelated window and reported "confirm button not found", which reads like a
+  # missing selector but is really a wrong-window bug.
+  #
+  # Guards:
+  #   1. $titlePattern holds only dialog-SPECIFIC words - never generic OK/Select;
+  #   2. $script:UiaSkipTitles blacklists known remote-control product titles;
+  #   3. when $confirmNames is given, ALL matching windows are collected and the
+  #      one that actually contains a confirm button wins (not simply the first).
+  #      Every candidate is recorded in $script:UiaSkipped for diagnosis.
   $desktop = [System.Windows.Automation.AutomationElement]::RootElement
   $deadline = (Get-Date).AddSeconds($seconds)
+  $script:UiaSkipped = @()
+  $candidates = @()
   do {
+    $candidates = @()
     $cond = New-Object System.Windows.Automation.PropertyCondition(
       [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
       [System.Windows.Automation.ControlType]::Window)
@@ -168,10 +266,45 @@ function Wait-TopLevelWindow($titlePattern, $seconds) {
       [System.Windows.Automation.TreeScope]::Children, $cond)
     foreach ($c in $children) {
       $n = [string]$c.Current.Name
-      if ($n -and ($n -match $titlePattern)) { return $c }
+      if (-not $n) { continue }
+      $skipped = $false
+      foreach ($s in $script:UiaSkipTitles) {
+        if ($n -match [regex]::Escape($s)) { $skipped = $true; break }
+      }
+      if ($skipped) {
+        $entry = 'skip:' + $n
+        if ($script:UiaSkipped -notcontains $entry) { $script:UiaSkipped += $entry }
+        continue
+      }
+      if ($n -match $titlePattern) {
+        $candidates += $c
+        $entry = 'candidate:' + $n
+        if ($script:UiaSkipped -notcontains $entry) { $script:UiaSkipped += $entry }
+      }
+    }
+    if ($candidates.Count -gt 0) {
+      if ($confirmNames -and $confirmNames.Count -gt 0) {
+        foreach ($c in $candidates) {
+          if (Test-DialogHasButton $c $confirmNames) {
+            $script:UiaMatchedTitle = [string]$c.Current.Name
+            return $c
+          }
+        }
+        # A matching window exists but its buttons are not up yet: keep polling
+        # instead of committing to a window that may be the wrong one.
+      } else {
+        $script:UiaMatchedTitle = [string]$candidates[0].Current.Name
+        return $candidates[0]
+      }
     }
     Start-Sleep -Milliseconds 200
   } while ((Get-Date) -lt $deadline)
+  # Out of time. Return any candidate so the caller can emit a rich diagnostic
+  # naming the window and its buttons instead of a bare "not found".
+  if ($candidates.Count -gt 0) {
+    $script:UiaMatchedTitle = [string]$candidates[0].Current.Name
+    return $candidates[0]
+  }
   return $null
 }
 
@@ -301,56 +434,81 @@ try {
     }
   }
   elseif ($action -eq 'fill_dialog') {
-    # Fill a path into a native dialog and confirm. `$value` is '<path>|<button>';
-    # the confirm button defaults to the common Open / OK / Select Folder titles.
+    # Fill a path into a native dialog and confirm. `$value` is the path alone;
+    # `$option` is the confirm-button candidate list (separate env var because
+    # the button list itself contains '|' - measured 2026-11-18).
     #
     # ValuePattern, not InvokePattern: the file name box is an Edit control and
     # only SetValue both writes it and enables the confirm button.
     #
-    # Measured 2026-11-18: a Chinese Windows "Select Folder" dialog has buttons
-    # Measured 2026-11-18: a Chinese Windows Select Folder dialog has
-    # buttons: select-folder (confirm) / cancel / help, so the default
-    # confirm list below must contain that title too.
-    # The default confirm list must contain the select-folder title,
-    # not just Open|OK|open.
+    # MEASURED 2026-11-18: a Chinese Windows Select Folder dialog has buttons
+    # select-folder (confirm) / cancel / help, so the default confirm list below
+    # must contain that title too, not just Open|OK|open.
     $selectFolderCjk = ([string][char]0x9009 + [char]0x62E9 + [char]0x6587 +
                         [char]0x4EF6 + [char]0x5939)
-    $cancelCjk = [string][char]0x53D6 + [char]0x6D88
-    # value is the path alone; option is the confirm-button candidates.
-    # (Splitting "<path>|<buttons>" used to be ambiguous because the button list
-    # itself contains '|' - measured 2026-11-18.)
-    $target = $value
-    $openCjk = [string][char]0x6253 + [char]0x5F00
-    $confirm = if ($option) { $option }
-               else { 'Select Folder|Select|OK|' + $selectFolderCjk + '|' + $openCjk }
-    if (-not $target) { throw 'fill_dialog needs a path (value="<path>|<confirm button>")' }
-    if (-not (Test-Path -LiteralPath $target)) { throw "path does not exist: $target" }
-
     $openCjk = [string][char]0x6253 + [char]0x5F00
     $saveCjk = [string][char]0x4FDD + [char]0x5B58
+    $target = $value
+    $confirm = if ($option) { $option }
+               else { 'Select Folder|Select|OK|' + $selectFolderCjk + '|' + $openCjk }
+    if (-not $target) { throw 'fill_dialog needs a path (UIA_VALUE)' }
+    if (-not (Test-Path -LiteralPath $target)) { throw "path does not exist: $target" }
+
+    $btnNames = @()
+    if ($confirm) { $btnNames = @($confirm -split '\|') }
+    # Pass the confirm names into the window search: when several top-level
+    # windows share the title, the one that actually has the confirm button wins.
     $dlg = Wait-TopLevelWindow ('Select Folder|Open|Save|' + $selectFolderCjk + '|' +
-                                $openCjk + '|' + $saveCjk) $seconds
-    if (-not $dlg) { throw 'dialog not found' }
+                                $openCjk + '|' + $saveCjk) $seconds $btnNames
+    if (-not $dlg) {
+      throw ('dialog not found (title pattern: Select Folder|Open|Save|CJK names); ' +
+             (Format-DialogDiag $null))
+    }
     # File name box: the Win32 common dialog exposes AutomationId 1148 / class Edit.
     $edit = Wait-El $dlg @{ automationId = '1148' } 3
     if (-not $edit) { $edit = Wait-El $dlg @{ controlType = 'Edit' } 3 }
-    if (-not $edit) { throw 'file name edit box not found in dialog' }
+    if (-not $edit) {
+      throw ('file name edit box not found in dialog; ' + (Format-DialogDiag $dlg))
+    }
     $vp = $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     $vp.SetValue($target)
     Start-Sleep -Milliseconds 250
 
-    $btnNames = @()
-    if ($confirm) { $btnNames = @($confirm -split '\|') }
+    # Snapshot buttons once: used for the exact-name match, the fallback ranking,
+    # the success report and the failure diagnostic.
+    $btnInfo = @(Get-DialogButtons $dlg)
     $btn = $null
     foreach ($n in $btnNames) {
       $btn = Wait-El $dlg @{ names = @($n); controlType = 'Button' } 2
       if ($btn) { break }
     }
-    if (-not $btn) { throw "confirm button not found: $confirm" }
+    $usedFallback = $false
+    if (-not $btn) {
+      # FALLBACK: dialog title and confirm-button text can differ (e.g. a zh-CN
+      # dialog whose confirm button is not named exactly like the title). Rank
+      # buttons that expose Invoke or LegacyIAccessible by position, rightmost
+      # and lowest first - the confirm button sits at the bottom-right corner.
+      $actionable = @($btnInfo | Where-Object { $_.HasInvoke -or $_.HasLegacy } |
+                      Sort-Object -Property @{ Expression = 'Right'; Descending = $true },
+                                            @{ Expression = 'Bottom'; Descending = $true })
+      if ($actionable.Count -gt 0) {
+        $btn = $actionable[0].Element
+        $usedFallback = $true
+      }
+    }
+    if (-not $btn) {
+      throw ('confirm button not found (no Name match and no actionable Button); ' +
+             (Format-DialogDiag $dlg))
+    }
     [void](Invoke-El $btn)
     Start-Sleep -Milliseconds 400
+    # `fallback` tells the caller the confirm button was picked by pattern/position
+    # rather than by an exact Name match; `buttons` is the observed button list.
     $result = @{ ok = $true; action = 'fill_dialog'; text = $target
-                 button = [string]$btn.Current.Name }
+                 button = [string]$btn.Current.Name
+                 fallback = $usedFallback
+                 dialog_title = [string]$dlg.Current.Name
+                 buttons = @($btnInfo | ForEach-Object { $_.Name }) }
   }
   else {
     throw "unknown action: $action"
@@ -367,6 +525,23 @@ if (-not $result.ok) { exit 3 }
 
 class GuiUnavailable(RuntimeError):
     """原版套件不在、控件找不到，或这个驱动在这一步做不了。"""
+
+
+class _FillResult(str):
+    """``fill_dialog`` 的返回值：仍是路径字符串，但附带本次确认按钮的诊断。
+
+    用 ``str`` 子类而不是 dict，是因为 ``workflows/runner.py`` 直接 ``str(filled)``
+    当路径用；这样既保持兼容，又让调用方读到 ``fallback`` / ``button`` 等字段。
+    """
+
+    def __new__(cls, value: str, *, button: str, fallback: bool,
+                dialog_title: str, buttons: list[str]):
+        obj = super().__new__(cls, value)
+        obj.button = button
+        obj.fallback = fallback
+        obj.dialog_title = dialog_title
+        obj.buttons = buttons
+        return obj
 
 
 def load_selectors(path: str | Path | None = None) -> dict:
@@ -577,7 +752,13 @@ class UiaDriver:
         result = self._call("fill_dialog", value=str(target),
                             option=None if confirm is None else str(confirm),
                             seconds=seconds)
-        return str(result.get("text") or target)
+        return _FillResult(
+            str(result.get("text") or target),
+            button=str(result.get("button") or ""),
+            fallback=bool(result.get("fallback", False)),
+            dialog_title=str(result.get("dialog_title") or ""),
+            buttons=list(result.get("buttons") or []),
+        )
 
     # ------------------------------------------------------------------ 内部
     def _control(self, locator: str) -> object:
@@ -635,8 +816,16 @@ class UiaDriver:
         except ValueError as exc:
             raise GuiUnavailable(
                 f"UIA 输出不是 JSON：{raw[:300]!r}\n{(completed.stderr or '')[:300]}") from exc
-        self.log.append({"action": action, "ok": bool(payload.get("ok")),
-                         "value": value, "out": out})
+        entry = {"action": action, "ok": bool(payload.get("ok")),
+                 "value": value, "out": out}
+        # 把 PowerShell 侧的诊断（确认按钮、是否走了兜底、实际看到的按钮列表）带进
+        # 日志。fill_dialog 的公开返回值仍是路径字符串（runner.py 按 str 用），
+        # 所以诊断信息走 log，不改返回类型。
+        for key in ("button", "fallback", "dialog_title", "buttons",
+                    "matched_title"):
+            if key in payload:
+                entry[key] = payload[key]
+        self.log.append(entry)
         if not payload.get("ok"):
             raise GuiUnavailable(
                 f"UIA {action} 失败：{payload.get('error') or '未知原因'}"
