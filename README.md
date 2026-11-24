@@ -16,79 +16,62 @@
   一半让智能体接管野外台站，一半把接收机那套厂商软件拆开重写
 </p>
 
-<a href="#交付物">交付物</a>
-·
-<a href="#仓库地图">仓库地图</a>
-·
-<a href="#a-野外台站智能体">智能体</a>
-·
-<a href="#b-novatel-套件逆向与重实现">逆向重实现</a>
-·
-<a href="#质量门禁">质量门禁</a>
-·
-<a href="docs/README.md">文档索引</a>
-·
-<a href="../../issues/new">汇报缺陷</a>
+[交付物](#交付物) · [v1.0.0 详解](#v100-混合版交付详解) · [智能体](#a-野外台站智能体) ·
+[逆向重实现](#b-novatel-套件逆向与重实现) · [质量门禁](#质量门禁) ·
+[文档索引](docs/README.md) · [汇报缺陷](../../issues/new)
 
 </div>
 
-> **当前交付 `FieldStation Hybrid` v1.0.0（2026-11-24，[Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0)）**：
-> 一个 Windows 单文件 GUI 安装器（`FieldStationHybrid-GUI-Setup.exe`，约 838 MB），
-> 内含**原版 NovAtel Application Suite 2.11.0 + B 重实现 + RPA 驱动层**三部分。
-> 双击安装后桌面出现 GUI 程序，打开即进 **My Applications 五卡片**
-> （Manage / Playback / Convert / GRIT Monitor / Graph），**不进入四视角 Agent 工作台**。
-> 自带 Node 与 Python 运行时，目标机无需装任何依赖；内置 `agent-desktop.exe` 让两个原生对话框全自动。
-> 交付边界与已知限制见[覆盖边界](#覆盖边界)与[套件级 RPA](#套件级RPA)。
-
-> **历史版本**：`NovAtelReverse` 0.1.10（2026-11-03，[Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v0.1.10)）
-> 与 `All powered-FSA` 0.2.0（四视角 Agent 工作台）仍是归档交付物，不再是主推形态。
-> v4 实施基线（ADR-008/009/010）的界面底座与四视角方案作为**已归档决策**保留在
-> [`docs/decisions/`](docs/decisions/) 与 [`docs/spec/`](docs/spec/)，未在本交付中实现。
+> **一句话现状**：仓库交付两件互相独立的成果——**A** 用五类智能体接管野外台站的监测、质控、研判、
+> 派单、归档；**B** 把厂商的 NovAtel Application Suite 2.11.0 拆成文档与可运行重实现。
+> 当前主推形态是 **v1.0.0 混合版**（原版套件 + B 重实现 + RPA 驱动层）的 GUI 安装器，
+> 见 [Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0)。
 
 <!-- 目录 -->
 <details>
-  <summary>目录</summary>
-  <ol>
-    <li><a href="#交付物">交付物</a></li>
-    <li>
-      <a href="#v100-混合版交付详解">v1.0.0 混合版交付详解</a>
-      <ul>
-        <li><a href="#包内容">包内容</a></li>
-        <li><a href="#安装与启动">安装与启动</a></li>
-        <li><a href="#实测验证">实测验证</a></li>
-        <li><a href="#发布资产对比">发布资产对比</a></li>
-      </ul>
-    </li>
-    <li><a href="#界面速览">界面速览</a></li>
-    <li><a href="#仓库地图">仓库地图</a></li>
-    <li>
-      <a href="#a-野外台站智能体">A · 野外台站智能体</a>
-      <ul>
-        <li><a href="#五类智能体">五类智能体</a></li>
-        <li><a href="#系统怎么流转">系统怎么流转</a></li>
-        <li><a href="#开始使用">开始使用</a></li>
-        <li><a href="#数据现在是什么情况">数据现在是什么情况</a></li>
-        <li><a href="#路线图">路线图</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#b-novatel-套件逆向与重实现">B · NovAtel 套件逆向与重实现</a>
-      <ul>
-        <li><a href="#逆向产出了什么">逆向产出了什么</a></li>
-        <li><a href="#gui-跑起来">GUI 跑起来</a></li>
-        <li><a href="#保真度约定">保真度约定</a></li>
-        <li><a href="#证据与不入库的东西">证据与不入库的东西</a></li>
-        <li><a href="#覆盖边界">覆盖边界</a></li>
-        <li><a href="#套件级RPA">套件级 RPA 的八条流程</a></li>
-      </ul>
-    </li>
-    <li><a href="#质量门禁">质量门禁</a></li>
-    <li><a href="#参与贡献">参与贡献</a></li>
-    <li><a href="#许可证">许可证</a></li>
-    <li><a href="#notices开源许可登记">Notices（开源许可登记）</a></li>
-    <li><a href="#联系方式">联系方式</a></li>
-    <li><a href="#致谢">致谢</a></li>
-  </ol>
+<summary>目录</summary>
+<ol>
+  <li><a href="#交付物">交付物</a></li>
+  <li>
+    <a href="#v100-混合版交付详解">v1.0.0 混合版交付详解</a>
+    <ul>
+      <li><a href="#包内容">包内容</a></li>
+      <li><a href="#安装与启动">安装与启动</a></li>
+      <li><a href="#实测验证">实测验证</a></li>
+      <li><a href="#发布资产对比">发布资产对比</a></li>
+    </ul>
+  </li>
+  <li><a href="#界面速览">界面速览</a></li>
+  <li><a href="#仓库地图">仓库地图</a></li>
+  <li>
+    <a href="#a-野外台站智能体">A · 野外台站智能体</a>
+    <ul>
+      <li><a href="#五类智能体">五类智能体</a></li>
+      <li><a href="#系统怎么流转">系统怎么流转</a></li>
+      <li><a href="#开始使用">开始使用</a></li>
+      <li><a href="#数据现在是什么情况">数据现在是什么情况</a></li>
+      <li><a href="#路线图">路线图</a></li>
+    </ul>
+  </li>
+  <li>
+    <a href="#b-novatel-套件逆向与重实现">B · NovAtel 套件逆向与重实现</a>
+    <ul>
+      <li><a href="#逆向产出了什么">逆向产出了什么</a></li>
+      <li><a href="#gui-跑起来">GUI 跑起来</a></li>
+      <li><a href="#保真度约定">保真度约定</a></li>
+      <li><a href="#证据与不入库的东西">证据与不入库的东西</a></li>
+      <li><a href="#覆盖边界">覆盖边界</a></li>
+      <li><a href="#套件级RPA">套件级 RPA 的八条流程</a></li>
+    </ul>
+  </li>
+  <li><a href="#质量门禁">质量门禁</a></li>
+  <li><a href="#技术构成">技术构成</a></li>
+  <li><a href="#参与贡献">参与贡献</a></li>
+  <li><a href="#许可证">许可证</a></li>
+  <li><a href="#notices开源许可登记">Notices（开源许可登记）</a></li>
+  <li><a href="#联系方式">联系方式</a></li>
+  <li><a href="#致谢">致谢</a></li>
+</ol>
 </details>
 
 <!-- 交付物 -->
@@ -99,14 +82,18 @@
 
 | | A. 野外台站智能体 | B. NovAtel 套件逆向与重实现 |
 |---|---|---|
-| 一句话 | 用五类智能体接管野外台站的监测、质控、研判、派单、归档 | 把厂商的 Electron 套件拆成文档 + 可运行重实现，再收成一个连 OEM729 的单文件 GUI |
+| 一句话 | 用五类智能体接管野外台站的监测、质控、研判、派单、归档 | 把厂商的 Electron 套件拆成文档 + 可运行重实现，再收成连 OEM729 的 GUI |
 | 代码 | Python 3.11，纯标准库 | 零依赖 TypeScript（Node ≥ 22.6 直接跑 `.ts`）+ WinForms/WebView2 外壳 |
 | 原料 | 合成观测（M0/M1 阶段刻意不接真实数据） | 解包后的厂商二进制 + 真机抓取的 golden 文件 |
-| 现在 | M0–M7 已结题（看板 142/142 Done）；真实样本相关验收受硬件限制如实标注 | 逆向文档 31 篇；重实现 1242 项测试；**混合版 v1.0.0 GUI 已发布**；A−B 缺口固化为 8 条工作流 |
+| 现在 | M0–M7 已结题；看板 142/142 Done；真实样本相关验收受硬件限制如实标注 | 逆向分析文档 27 篇；重实现 1242 项测试；**混合版 v1.0.0 GUI 已发布**；A−B 缺口固化为 8 条工作流 |
 | 入口 | [`src/`](src/) · [`docs/`](docs/) · [`harness/`](harness/) | [`逆向/`](逆向/README.md) · [`dist/`](dist/)（不入库） |
 
 两只交付物的关系：台站里那套厂商软件只给二进制，行为却直接决定我们能不能自动读出接收机状态。
 所以 B 是 A 的**取数前置**——先用 B 把接收机侧的数据通路打通，A 才有东西可判、可调度。
+
+历史交付物（`NovAtelReverse` 0.1.10、`All powered-FSA` 0.2.0 四视角版）仍是归档产物，不再是主推形态；
+v4 实施基线（ADR-008/009/010）的四视角方案作为已归档决策保留在 [`docs/decisions/`](docs/decisions/)，
+未在 v1.0.0 中实现。
 
 <a href="#readme-top">回到顶部</a>
 
@@ -115,8 +102,7 @@
 ## v1.0.0 混合版交付详解
 
 v1.0.0 是本仓库当前主推形态：把「原版 NAS 套件 + B 重实现 + RPA 驱动层」装进一个
-Windows GUI 安装器，**与四视角 Agent 工作台无关**。本章给出包内容、启动流程、
-实测证据与发布资产对比；其它章节讲工程背景，本章讲"交付物到底是什么、怎么验的"。
+Windows GUI 安装器，**与四视角 Agent 工作台无关**。本章讲清"交付物到底是什么、怎么验的"。
 
 <a id="包内容"></a>
 ### 包内容
@@ -132,7 +118,7 @@ Windows GUI 安装器，**与四视角 Agent 工作台无关**。本章给出包
 | 运行时 | Node v24 + Python 3.11.9 embeddable | 自带，目标机不需要装 Node/Python 或配 PYTHONPATH |
 
 前端保持 0.1.10 版是为了拿到正确的 My Applications 界面；驱动层则是工作树最新版。
-这一差异在下面[已知边界](#发布资产对比)里说明。
+这一差异在[已知边界](#发布资产对比)里说明。
 
 <a id="安装与启动"></a>
 ### 安装与启动
@@ -149,7 +135,7 @@ Windows GUI 安装器，**与四视角 Agent 工作台无关**。本章给出包
 #    端口:     %LOCALAPPDATA%\AllPoweredFSA\runtime.json 内的 node_port
 ```
 
-VS 旧版的差别：不再有 cmd 黑框启动器、不再默认进四视角 Agent 工作台。
+和旧版的差别：不再有 cmd 黑框启动器、不再默认进四视角 Agent 工作台。
 两套历史备选包（A 轻量 / B 完整）仍用 cmd 启动，只作归档保留。
 
 <a id="实测验证"></a>
@@ -157,7 +143,7 @@ VS 旧版的差别：不再有 cmd 黑框启动器、不再默认进四视角 Ag
 
 | 验证项 | 结果 |
 |---|---|
-| GUI 安装器 `/S` 静默安装 | 装出 `FieldStationHybrid.exe`（约 927 MB），**0 个 cmd 文件** |
+| GUI 安装器 `/S` 静默安装 | 装出 `FieldStationHybrid.exe`（约 927 MB），0 个 cmd 文件 |
 | 从安装目录双击 exe | 窗口标题「FieldStation Hybrid」，引擎端口 LISTEN |
 | 界面 | My Applications 五卡片（Manage / Playback / Convert / GRIT Monitor / Graph） |
 | payload 新驱动层 | `select_folder` 命中、agent-desktop.exe 存在、8 条流程齐全 |
@@ -190,11 +176,8 @@ VS 旧版的差别：不再有 cmd 黑框启动器、不再默认进四视角 Ag
 <a id="界面速览"></a>
 ## 界面速览
 
-重实现的 GUI（`NovAtelReverse` 0.1.10，以及 **v1.0.0 混合版 GUI**）——上半为浅色默认，下半为暗色主题；暗色是可选开关，不跟随系统。
-
-> **v1.0.0 混合版**：双击 `FieldStationHybrid-GUI-Setup.exe` 安装后，桌面 GUI 程序启动即进
-> My Applications 五卡片（下方第一张图即其首页）。与 0.1.10 的差别：打包了原版套件与最新驱动层，
-> 启动后不再显示 Agent 工作台；两个原生对话框（选择文件夹 / 打开文件）由 `agent-desktop` 全自动完成。
+重实现的 GUI（`NovAtelReverse` 0.1.10，以及 v1.0.0 混合版）——上半为浅色默认，下半为暗色主题；
+暗色是可选开关，不跟随系统。v1.0.0 启动即进 My Applications 五卡片，不显示 Agent 工作台。
 
 | | |
 |---|---|
@@ -216,14 +199,14 @@ VS 旧版的差别：不再有 cmd 黑框启动器、不再默认进四视角 Ag
 | 路径 | 是什么 | 入口文档 |
 |---|---|---|
 | [`src/fieldstation/`](src/fieldstation/) | 交付物 A 的全部实现（智能体、摄取、质控、存储、看板） | [设计文档](docs/spec/2026-10-13-野外台站智能体基础设计.md) |
-| [`tests/`](tests/) | 交付物 A 的回归：固定命令 `python -m unittest discover -s tests -t .` | [测试纪律](#参与贡献) |
+| [`tests/`](tests/) | 交付物 A 的回归：固定命令 `python -m unittest discover -s tests -t .` | [测试纪律](#开始使用) |
 | [`harness/`](harness/) | 发布门禁（五项）与确定性回放 | [selftest.py](harness/selftest.py) |
 | [`tools/`](tools/) | 数字回源、脱敏守卫、软著源程序、图表生成等工具 | [工具表](docs/README.md#工具) |
 | [`docs/`](docs/) | 设计文档、决策记录、运维手册、结题材料 | [文档索引](docs/README.md) |
 | [`逆向/`](逆向/README.md) | 交付物 B：来源、解包、证据、分析、重实现、打包 | [逆向说明](逆向/README.md) |
 | [`逆向/03_分析/`](逆向/03_分析/) | 逐子系统逆向文档，`文件:行号` 引用 + 可验收断言 | [约定](逆向/03_分析/_约定.md) |
-| [`逆向/04_重实现/`](逆向/04_重实现/) | 可运行重实现：协议 / 会话 / 视图 / 应用 / 图表 / 回放 / 桌面 | [重实现说明](逆向/04_重实现/README.md) |
-| [`workflows/`](workflows/README.md) | 原版 GUI 缺口的固定流程（YAML）与执行入口：状态机、锁、幂等、审计、人工闸门；应用内 **Workflows** 页签直接跑 | [流程目录](workflows/README.md) |
+| [`逆向/04_重实现/`](逆向/04_重实现/) | 可运行重实现：协议 / 会话 / 视图 / 应用 / 图表 / 回放 / CLI / 桌面 | [重实现说明](逆向/04_重实现/README.md) |
+| [`workflows/`](workflows/README.md) | 原版 GUI 缺口的固定流程（YAML）与执行入口：状态机、锁、幂等、审计、人工闸门 | [流程目录](workflows/README.md) |
 | [`逆向/05_打包/`](逆向/05_打包/) | WinForms + WebView2 外壳源码与打包说明 | [打包说明](逆向/05_打包/NovAtelReverseGui/README.md) |
 | [`dist/`](dist/) | 发布产物（v1.0.0 GUI 安装器约 838 MB，**不入库**，见 Releases） | [Releases](../../releases) |
 | [`logs/`](logs/) `data/` `config/` `figures/` | 回放日志、知识库与样本、配置样例、可入论文的图表 | [运维手册](docs/operations/dashboard.md) |
@@ -356,18 +339,20 @@ python harness/heartbeat_replay.py --notify   # Webhook 默认 dry-run，不发�
 ### 路线图
 
 阶段顺序：骨架 → 旧代码整合 → 框架 → 真实数据。评测底座在接真数据之前先做实。
+项目看板 142/142 项已完成（结题）；真实样本相关验收受硬件限制，如实标注：
+真实样本到位后按 `REPRODUCE` 重跑换基线即可，口径不变。
 
 - [x] **M0** 仓库骨架、旧代码整合、运行时最小核、评测底座
-- [x] **M1** 需求调研与接口梳理（看板已结题；真实样本验收受 #28/#33 硬件限制如实标注）
+- [x] **M1** 需求调研与接口梳理
 - [x] **M2** 真实数据接入层
 - [x] **M3** 数据质量校验智能体（M3-0…M3-3 已完成；M3-4 标注样本受真实样本限制）
 - [x] **M4** 研判、调度、归档智能体与知识库（M4-0…M4-4 已完成）
 - [x] **M5** 集成联调与告警看板（M5-1…M5-4 已落地）
 - [x] **M6** 试运行与指标评估（无人值守前置已落地；真实试运行受样本限制）
-- [x] **M7** 成果整理与结题验收（项目看板 142/142 Done）
+- [x] **M7** 成果整理与结题验收
 
-[开放议题](../../issues) 里能看到全部提案和已知问题。逐阶段决策见
-[`docs/superpowers/`](docs/superpowers/) 与 [`docs/decisions/`](docs/decisions/)。
+[开放议题](../../issues) 与 [Project 看板](https://github.com/users/yasunosubaru/projects/1/views/1)
+记录全部提案与状态。逐阶段决策见 [`docs/superpowers/`](docs/superpowers/) 与 [`docs/decisions/`](docs/decisions/)。
 
 <a href="#readme-top">回到顶部</a>
 
@@ -385,8 +370,8 @@ python harness/heartbeat_replay.py --notify   # Webhook 默认 dry-run，不发�
 
 | 项 | 现状 |
 |---|---|
-| 分析文档 | [`逆向/03_分析/`](逆向/03_分析/) 下 31 篇、约 16 700 行，**R1–R101** 条可验收断言（协议 / 解析 / Manage / 配置 / Convert / Playback / GRIT / Graph / Edie / 安装更新） |
-| 重实现 | 零依赖 TypeScript，8 个包（协议 / 会话 / 视图 / 应用 / 图表 / 回放 / CLI / 桌面），**1242 项测试**（其中 1 项心跳用例对时序敏感，隔离运行必过） |
+| 分析文档 | [`逆向/03_分析/`](逆向/03_分析/) 下 27 篇文档，含 R1–R101 条可验收断言（协议 / 解析 / Manage / 配置 / Convert / Playback / GRIT / Graph / Edie / 安装更新） |
+| 重实现 | 零依赖 TypeScript，8 个包（协议 / 会话 / 视图 / 应用 / 图表 / 回放 / CLI / 桌面），1242 项测试（其中 1 项心跳用例对时序敏感，隔离运行必过） |
 | 协议层 | CRC32（对过 OEM7 手册向量）、SBF 长/短头、成帧、ASCII/二进制命令、123 条消息 879 个字段、31 条重复块布局 |
 | 会话层 | TCP / UDP / 串口、心跳、日志订阅，回环端到端 |
 | 应用层 | Convert 9 种格式、Graph 13 类图表与 8 页 PDF、GRIT 频谱与 Signal Matrix、Playback 回放与事件带、Manage 19 个配置页与 11 个状态瓦片 |
@@ -493,10 +478,22 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | 测试 | `python -m unittest discover -s tests -t .` | 交付物 A 全绿，且 skip 为零 |
 | 五项自检 | `python harness/selftest.py` | 测试全绿 / 无源项目包名残留 / PROVENANCE 与 `src/` 双向一致 / 同 seed 可复现 / README 数字回源 |
 | 数字回源 | `python tools/audit_claims.py` | README 里每个对外数字等于仓库实际状态 |
-| 脱敏守卫 | `python tools/check_desensitization.py` | 本机路径、邮箱、手机号、学号、私钥、token 不进公开仓库（绊线，不是证明）。当前仍有 4 处既有命中（`tools/probe_repeat.py`、`probe_selfcontained.py`、`uia_driver.py` 的本机路径硬编码/注释示例），属历史遗留、非交付阻断项，待单独清理 |
+| 脱敏守卫 | `python tools/check_desensitization.py` | 本机路径、邮箱、手机号、学号、私钥、token 不进公开仓库（绊线，不是证明）。当前仍有 4 处既有命中（`tools/probe_repeat.py`、`probe_selfcontained.py`、`uia_driver.py` 的本机路径硬编码/注释示例），属历史遗留、非交付阻断项 |
 | 重实现测试 | `node --test --test-force-exit "packages/*/test/*.test.ts"` | 交付物 B 的协议、会话、应用、图表、回放 |
 | 覆盖矩阵 | `python tools/gui_coverage.py --check` | A（原版 GUI）× B（重实现）逐项映射与源码一致，A 无漏项、引用无失效 |
 | §9 完整验收 | `python tools/verify_plan.py` | 全链路 16/16 PASS（FAIL 0 / SKIP 0）；两条硬件相关项如实标注未在真机验证 |
+
+<a id="技术构成"></a>
+## 技术构成
+
+| 组件 | 用在哪 | 状态 |
+|---|---|---|
+| Python 3.11 | 交付物 A 的全部代码 | 唯一运行时，无第三方依赖 |
+| LangGraph | 交付物 A 的智能体运行时 | [ADR-001](docs/decisions/2026-10-14-智能体运行时选型.md) 选定，尚未导入 |
+| MCP | 工具接口协议 | 同上 |
+| Node 22.6+ | 交付物 B 的重实现（原生类型擦除直接跑 `.ts`） | 构建期依赖为零 |
+| WinForms + WebView2 | 交付物 B 的 GUI 外壳 | 打包成单文件 exe |
+| `serialport`（可选） | 重实现的串口传输 | 只有 `--serial` 路径才加载 |
 
 <a id="参与贡献"></a>
 ## 参与贡献
@@ -557,22 +554,6 @@ python tools/check_desensitization.py
 
 <p align="right">(<a href="#readme-top">回到顶部</a>)</p>
 
-<!-- 技术构成 -->
-<a id="技术构成"></a>
-## 技术构成
-
-| 组件 | 用在哪 | 状态 |
-|---|---|---|
-| [Python 3.11](https://www.python.org/) | 交付物 A 的全部代码 | 唯一运行时，无第三方依赖 |
-| [LangGraph](docs/decisions/2026-10-14-智能体运行时选型.md) | 交付物 A 的智能体运行时 | [ADR-001](docs/decisions/2026-10-14-智能体运行时选型.md) 选定，尚未导入 |
-| [MCP](docs/decisions/2026-10-14-智能体运行时选型.md) | 工具接口协议 | 同上 |
-| Node 22.6+ | 交付物 B 的重实现（原生类型擦除直接跑 `.ts`） | 唯一构建期依赖为零 |
-| WinForms + WebView2 | 交付物 B 的 GUI 外壳 | 打包成单文件 exe |
-| `serialport`（可选） | 重实现的串口传输 | 只有 `--serial` 路径才加载 |
-
-<a href="#readme-top">回到顶部</a>
-
-<!-- 许可证 -->
 <a id="许可证"></a>
 ## 许可证
 
@@ -581,13 +562,12 @@ python tools/check_desensitization.py
 
 一句话版本：宽松、无附加义务、不限制团队后续把同一套代码用于论文、专利或软著。
 
-有一个例外要说在前面：`PROVENANCE.md` 表内 17 个搬运件来自一个校内结项项目，
-上游未见许可声明。MIT 覆盖的是本仓库自有代码，不覆盖那 17 件的上游授权，
+有一个例外要说在前面：`PROVENANCE.md` 表内搬运件来自一个校内结项项目，
+上游未见许可声明。MIT 覆盖的是本仓库自有代码，不覆盖那部分的上游授权，
 引用或复用那一部分前请自行确认上游。逐项登记见下一节。
 
 <p align="right">(<a href="#readme-top">回到顶部</a>)</p>
 
-<!-- 开源许可登记 -->
 <a id="notices开源许可登记"></a>
 ## Notices（开源许可登记）
 
@@ -597,7 +577,7 @@ python tools/check_desensitization.py
 | matplotlib | `tools/make_cli_figures.py` 的 PNG 出图，可选依赖；缺它时该工具以退出码 2 优雅中止，测试与五项门禁不受影响（登记于 `docs/known-issues.md` KI-09） | BSD-3-Clause（Matplotlib License） |
 | [Best-README-Template](https://github.com/othneildrew/Best-README-Template) | 本页的页面结构 | MIT |
 | [shields.io](https://github.com/badges/shields) | 本页顶部的状态徽章 | CC0-1.0 |
-| [LangGraph](https://github.com/langchain-ai/langgraph) | ADR-001 选定的智能体运行时，尚未导入，M3 起引入 | MIT |
+| [LangGraph](https://github.com/langchain-ai/langgraph) | ADR-001 选定的智能体运行时，尚未导入 | MIT |
 | [Langfuse](https://github.com/langfuse/langfuse) | ADR-001 选定的 trace 格式参照，尚未导入；参照的是其 schema，不复用其代码 | MIT（核心仓库） |
 | NovAtel Application Suite 2.11.0（厂商软件） | `逆向/` 下**仅**自产的分析文档与重实现代码；解包产物、原生模块、安装包与手册原文不入库（见 [`逆向/.gitignore`](逆向/.gitignore)） | 厂商专有。重实现是行为复刻，不复用其代码；解包证据需从本机安装目录重建 |
 
@@ -605,13 +585,12 @@ python tools/check_desensitization.py
 
 | 来源 | 涉及范围 | 状态 |
 |---|---|---|
-| GNSS接收机TEC反演（校内结项项目） | `PROVENANCE.md` 表内 17 个文件 | 未见许可声明。MIT 不覆盖这部分的上游授权，复用前请自行确认 |
+| GNSS接收机TEC反演（校内结项项目） | `PROVENANCE.md` 表内搬运件 | 未见许可声明。MIT 不覆盖这部分的上游授权，复用前请自行确认 |
 
 徽章与许可标志只是速记，以本表为准。
 
 <p align="right">(<a href="#readme-top">回到顶部</a>)</p>
 
-<!-- 联系方式 -->
 <a id="联系方式"></a>
 ## 联系方式
 
@@ -628,7 +607,6 @@ CI 里有一道脱敏守卫（`tools/check_desensitization.py`）：扫入库文
 
 <p align="right">(<a href="#readme-top">回到顶部</a>)</p>
 
-<!-- 致谢 -->
 <a id="致谢"></a>
 ## 致谢
 
