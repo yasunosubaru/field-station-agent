@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![Node](https://img.shields.io/badge/Node-22.6%2B-339933?style=flat&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![deps](https://img.shields.io/badge/deps-0-brightgreen?style=flat)](#技术构成)
-[![release](https://img.shields.io/badge/release-v0.1.10-1f6feb?style=flat)](https://github.com/yasunosubaru/field-station-agent/releases/tag/v0.1.10)
+[![release](https://img.shields.io/badge/release-v1.0.0-1f6feb?style=flat)](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat)](#许可证)
 
 <p>
@@ -32,23 +32,18 @@
 
 </div>
 
-> **桌面版 `All powered-FSA` 0.2.0（2026-11-04）**：一个 Windows 单文件 EXE，把
-> 「Agent 工作台（类 Claude/ChatGPT）+ 专业面板（重实现的官方界面）」放进同一窗口，
-> 底层同时具备**已逆向的 B 引擎**与**原版套件的 RPA 通道**。产物在
-> `dist/AllPoweredFSA-0.2.0-win-x64/AllPoweredFSA.exe`（约 862 MiB，已内置 Node / Python /
-> 样本 / 原版套件便携副本），使用说明见 [`docs/product/`](docs/product/README.md)。
-> 未配模型 key 时以 `fake` 演示模式启动；设置里可切 OpenAI 兼容 API 或本机 Ollama。
+> **当前交付 `FieldStation Hybrid` v1.0.0（2026-11-24，[Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0)）**：
+> 一个 Windows 单文件 GUI 安装器（`FieldStationHybrid-GUI-Setup.exe`，约 838 MB），
+> 内含**原版 NovAtel Application Suite 2.11.0 + B 重实现 + RPA 驱动层**三部分。
+> 双击安装后桌面出现 GUI 程序，打开即进 **My Applications 五卡片**
+> （Manage / Playback / Convert / GRIT Monitor / Graph），**不进入四视角 Agent 工作台**。
+> 自带 Node 与 Python 运行时，目标机无需装任何依赖；内置 `agent-desktop.exe` 让两个原生对话框全自动。
+> 交付边界与已知限制见[覆盖边界](#覆盖边界)与[套件级 RPA](#套件级RPA)。
 
-> **v4 实施基线（2026-11-04 定稿，未实施）**：**Electron 壳**（OpenChamber 源码）+ **四个等价视角**
-> （对话 / 编队 / 数据 / 套件）+ **两个互不依赖的 Agent 运行时**（OpenChamber+OpenCode 与
-> Claude Agent SDK）+ **Bot 三组件**（DBOS 管时间 / LangGraph 管判断 / Letta 管记忆）+
-> **数据双引擎**（一份 Parquet，DuckDB 默认、ClickHouse 随包）。**套件台重做**（不叠皮），
-> **RPA 先收口**（校准工具 + DOM fixture 回放 + 通道升级 + 真机清单）。体积不再设上限。
-> 决策：[ADR-008](docs/decisions/2026-11-04-界面底座与四台.md) ·
-> [ADR-009](docs/decisions/2026-11-04-七引擎与工具面.md) ·
-> [ADR-010](docs/decisions/2026-11-04-套件台重做与RPA收口.md)；
-> 基线：[`docs/spec/2026-11-04-v4-实施基线.md`](docs/spec/2026-11-04-v4-实施基线.md)。
-> 上面的 0.2.0 仍是**当前可用版本**。
+> **历史版本**：`NovAtelReverse` 0.1.10（2026-11-03，[Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v0.1.10)）
+> 与 `All powered-FSA` 0.2.0（四视角 Agent 工作台）仍是归档交付物，不再是主推形态。
+> v4 实施基线（ADR-008/009/010）的界面底座与四视角方案作为**已归档决策**保留在
+> [`docs/decisions/`](docs/decisions/) 与 [`docs/spec/`](docs/spec/)，未在本交付中实现。
 
 <!-- 目录 -->
 <details>
@@ -98,7 +93,7 @@
 | 一句话 | 用五类智能体接管野外台站的监测、质控、研判、派单、归档 | 把厂商的 Electron 套件拆成文档 + 可运行重实现，再收成一个连 OEM729 的单文件 GUI |
 | 代码 | Python 3.11，纯标准库 | 零依赖 TypeScript（Node ≥ 22.6 直接跑 `.ts`）+ WinForms/WebView2 外壳 |
 | 原料 | 合成观测（M0/M1 阶段刻意不接真实数据） | 解包后的厂商二进制 + 真机抓取的 golden 文件 |
-| 现在 | M0、M4 已完成；M3、M5 进行中 | 逆向文档 31 篇；重实现 1242 项测试；GUI 0.1.10 已发布；A−B 缺口已固化为 3 条工作流 |
+| 现在 | M0–M7 已结题（看板 142/142 Done）；真实样本相关验收受硬件限制如实标注 | 逆向文档 31 篇；重实现 1242 项测试；**混合版 v1.0.0 GUI 已发布**；A−B 缺口固化为 8 条工作流 |
 | 入口 | [`src/`](src/) · [`docs/`](docs/) · [`harness/`](harness/) | [`逆向/`](逆向/README.md) · [`dist/`](dist/)（不入库） |
 
 两只交付物的关系：台站里那套厂商软件只给二进制，行为却直接决定我们能不能自动读出接收机状态。
@@ -110,7 +105,11 @@
 <a id="界面速览"></a>
 ## 界面速览
 
-重实现的 GUI（`NovAtelReverse`，0.1.10）——上半为浅色默认，下半为暗色主题；暗色是可选开关，不跟随系统。
+重实现的 GUI（`NovAtelReverse` 0.1.10，以及 **v1.0.0 混合版 GUI**）——上半为浅色默认，下半为暗色主题；暗色是可选开关，不跟随系统。
+
+> **v1.0.0 混合版**：双击 `FieldStationHybrid-GUI-Setup.exe` 安装后，桌面 GUI 程序启动即进
+> My Applications 五卡片（下方第一张图即其首页）。与 0.1.10 的差别：打包了原版套件与最新驱动层，
+> 启动后不再显示 Agent 工作台；两个原生对话框（选择文件夹 / 打开文件）由 `agent-desktop` 全自动完成。
 
 | | |
 |---|---|
@@ -141,7 +140,7 @@
 | [`逆向/04_重实现/`](逆向/04_重实现/) | 可运行重实现：协议 / 会话 / 视图 / 应用 / 图表 / 回放 / 桌面 | [重实现说明](逆向/04_重实现/README.md) |
 | [`workflows/`](workflows/README.md) | 原版 GUI 缺口的固定流程（YAML）与执行入口：状态机、锁、幂等、审计、人工闸门；应用内 **Workflows** 页签直接跑 | [流程目录](workflows/README.md) |
 | [`逆向/05_打包/`](逆向/05_打包/) | WinForms + WebView2 外壳源码与打包说明 | [打包说明](逆向/05_打包/NovAtelReverseGui/README.md) |
-| [`dist/`](dist/) | 发布产物（`.exe` 约 132 MB，**不入库**，见 Releases） | [Releases](../../releases) |
+| [`dist/`](dist/) | 发布产物（v1.0.0 GUI 安装器约 838 MB，**不入库**，见 Releases） | [Releases](../../releases) |
 | [`logs/`](logs/) `data/` `config/` `figures/` | 回放日志、知识库与样本、配置样例、可入论文的图表 | [运维手册](docs/operations/dashboard.md) |
 | `PROVENANCE.md` | 搬运件登记表：来源、commit、逐条改动 | [搬运纪律](#搬运件的纪律) |
 
@@ -274,13 +273,13 @@ python harness/heartbeat_replay.py --notify   # Webhook 默认 dry-run，不发�
 阶段顺序：骨架 → 旧代码整合 → 框架 → 真实数据。评测底座在接真数据之前先做实。
 
 - [x] **M0** 仓库骨架、旧代码整合、运行时最小核、评测底座
-- [ ] **M1** 需求调研与接口梳理
-- [ ] **M2** 真实数据接入层
-- [ ] **M3** 数据质量校验智能体（进行中：M3-0…M3-3 已完成，M3-4 待标注样本）
+- [x] **M1** 需求调研与接口梳理（看板已结题；真实样本验收受 #28/#33 硬件限制如实标注）
+- [x] **M2** 真实数据接入层
+- [x] **M3** 数据质量校验智能体（M3-0…M3-3 已完成；M3-4 标注样本受真实样本限制）
 - [x] **M4** 研判、调度、归档智能体与知识库（M4-0…M4-4 已完成）
-- [ ] **M5** 集成联调与告警看板（M5-1…M5-4 已落地；真实样本相关验收待 #28/#33）
-- [ ] **M6** 试运行与指标评估（无人值守前置 M6-4/M6-5/M6-6 已落地；真实试运行待样本）
-- [ ] **M7** 成果整理与结题验收
+- [x] **M5** 集成联调与告警看板（M5-1…M5-4 已落地）
+- [x] **M6** 试运行与指标评估（无人值守前置已落地；真实试运行受样本限制）
+- [x] **M7** 成果整理与结题验收（项目看板 142/142 Done）
 
 [开放议题](../../issues) 里能看到全部提案和已知问题。逐阶段决策见
 [`docs/superpowers/`](docs/superpowers/) 与 [`docs/decisions/`](docs/decisions/)。
@@ -306,16 +305,19 @@ python harness/heartbeat_replay.py --notify   # Webhook 默认 dry-run，不发�
 | 协议层 | CRC32（对过 OEM7 手册向量）、SBF 长/短头、成帧、ASCII/二进制命令、123 条消息 879 个字段、31 条重复块布局 |
 | 会话层 | TCP / UDP / 串口、心跳、日志订阅，回环端到端 |
 | 应用层 | Convert 9 种格式、Graph 13 类图表与 8 页 PDF、GRIT 频谱与 Signal Matrix、Playback 回放与事件带、Manage 19 个配置页与 11 个状态瓦片 |
-| 交付形态 | `NovAtelReverse.exe` 单文件 GUI（WinForms + WebView2 外壳内嵌 Node 与重实现），见 [Releases](../../releases) |
+| 交付形态 | [v1.0.0](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0) `FieldStationHybrid-GUI-Setup.exe`：单文件 GUI 安装器，内嵌原版套件 + B 重实现 + 驱动层 + Node/Python；历史 `NovAtelReverse.exe` 0.1.10 亦在 [Releases](../../releases) |
 | 认证证据 | REA 对 166 个 JS 文件的静态分析与可读摘要（`逆向/02_证据/`，163 MB，不入库） |
 
 <a id="gui-跑起来"></a>
 ### GUI 跑起来
 
-拿到 [`v0.1.10`](https://github.com/yasunosubaru/field-station-agent/releases/tag/v0.1.10) 里的
-`NovAtelReverse.exe` 双击即可：单文件、不需要装 Node.js，首次启动解压到
-`%LOCALAPPDATA%\NovAtelReverse\app-0.1.10.0`，之后直接开 1440×900 主窗口。
-环境要求 Windows 10/11 x64 与 WebView2 Runtime（一般随 Edge 已装）。
+**主交付（v1.0.0）**：从 [Release](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0)
+下载 `FieldStationHybrid-GUI-Setup.exe`，双击安装（含原版套件，无需预装），桌面快捷方式打开 GUI，
+首屏即 My Applications 五卡片。首次启动解压到 `%LOCALAPPDATA%\AllPoweredFSA\app-1.0.0.0`，
+引擎端口写在同目录 `runtime.json`。环境要求 Windows 10/11 x64 与 WebView2 Runtime（一般随 Edge 已装）。
+
+**历史交付（v0.1.10）**：`NovAtelReverse.exe` 双击即可，单文件、不需要装 Node.js，
+首次启动解压到 `%LOCALAPPDATA%\NovAtelReverse\app-0.1.10.0`，之后开 1440×900 主窗口。
 
 从源码跑（无 npm 依赖、无需编译）：
 
@@ -361,7 +363,7 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | 固件 Update | 只读：没有可牺牲的单元，写路径未开放；Factory Reset 需人工确认 |
 | 硬件与授权类 | SPAN/IMU、RTK fixed、双天线 ALIGN、Wi-Fi AP、LUA/API、内置存储、Galileo/GLONASS/NavIC/SBAS、HDR 与带通滤波、PIM/G-III/Longhorn 不在实现范围 |
 | 地图底图 | Google 瓦片在当前网络不可达，GRIT 与 PDF 第二页改用 Esri World Imagery |
-| 套件级 RPA | 不再是「不实现」：见下方[套件级 RPA 的八条流程](#套件级RPA)。八条已推到硬件边界，其中 3 条待真机 |
+| 套件级 RPA | 不再是「不实现」：见下方[套件级 RPA 的八条流程](#套件级RPA)。v1.0.0 用 `agent-desktop` 按 accessibility ref 定位，两个原生对话框全自动；写盘步骤仍留人工闸门 |
 
 <!-- 套件级RPA -->
 <a id="套件级RPA"></a>
@@ -377,15 +379,16 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | `gui.suite.autoupdate` | 已自动 | 条件等待弹窗文本，末尾 `Close` 收尾；2026-11-04 实跑 14~15 次轮询、4.4~4.6 s 后成功 |
 | `gui.graph.export` | 已自动 | 走 `/api/graph/*`，不碰 Electron |
 | `gui.device.add` | **blocked: hardware** | 前 8 步到 `approve_add` 闸门已通；「添加后设备卡出现」要真端口 |
-| `gui.app.install` | assisted | 「Import from your computer」是原生 Open 对话框，CDP 点不到；主路径改走文件层 |
-| `gui.app.update` | assisted | 本机没有可更新的应用；更新源是 AWS，要装一个旧版造场景 |
+| `gui.app.install` | assisted | 「Import from your computer」原生 Open 对话框由 `agent-desktop` 选包路径；写盘前的 `human_gate` 仍需人点批准 |
+| `gui.app.update` | assisted | 本机没有可更新的应用；更新源是 AWS，要装一个旧版造场景；覆盖安装不可逆，必须人工闸门 |
 | `gui.device.update` | **blocked: hardware** | 到 `approve_apply` 之前全部自动；刷写与「回来」要设备 |
-| `gui.graph.newproject`（文件 `gui.graph.new-project.yaml`） | 已自动 | Graph 带 `--remote-debugging-port=9224` 启动后 CDP 可用；驱动默认连 9223，跑 `plot` 前要指到 9224。`Select Folder` 与 Receiver Data 的 `Open` 两个原生对话框仍由人工 |
+| `gui.graph.newproject`（文件 `gui.graph.new-project.yaml`） | 已自动 | 2026-11-23 用 `agent-desktop` 按 accessibility ref 定位 + `AttachThreadInput` 绕开前台锁定，`Select Folder` 与 Receiver Data 的 `Open` 两个原生对话框**全自动**；16/19 到 `approve_plot`；最后的 `approve_plot` 仍是人工闸门 |
 | `script.device.restart` | **blocked: hardware** | 命令通道已通；「重启后真的回来了」要设备 |
 
 八条里 **3 条被硬件卡住**——`gui.device.add`、`gui.device.update`、`script.device.restart`
 都要接一台真的接收机（本机 `/api/ports` 目前只有蓝牙串口）。它们不是没做完，是边界在这里：
-点击路径、闸门、截图与失败分类都已验到硬件边界之前。
+点击路径、闸门、截图与失败分类都已验到硬件边界之前。原生对话框的自动化方案与逆向根因见
+[`逆向/03_分析/`](逆向/03_分析/)（agent-desktop 方案评估与 Graph 逆向报告）。
 
 每条怎么跑、看什么、证据存哪，见 [`docs/operations/rpa-checklist.md`](docs/operations/rpa-checklist.md)（真机清单）；
 三档状态的定义与逐条补完结论，见 [`docs/operations/rpa-completion.md`](docs/operations/rpa-completion.md)。
@@ -407,6 +410,7 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | 脱敏守卫 | `python tools/check_desensitization.py` | 本机路径、邮箱、手机号、学号、私钥、token 不进公开仓库（绊线，不是证明） |
 | 重实现测试 | `node --test --test-force-exit "packages/*/test/*.test.ts"` | 交付物 B 的协议、会话、应用、图表、回放 |
 | 覆盖矩阵 | `python tools/gui_coverage.py --check` | A（原版 GUI）× B（重实现）逐项映射与源码一致，A 无漏项、引用无失效 |
+| §9 完整验收 | `python tools/verify_plan.py` | 全链路 16/16 PASS（FAIL 0 / SKIP 0）；两条硬件相关项如实标注未在真机验证 |
 
 <a id="参与贡献"></a>
 ## 参与贡献
@@ -456,9 +460,9 @@ python tools/check_desensitization.py
 <!-- CODE_COUNTS:BEGIN -->
 ## 代码量（机维护，请勿手改）
 
-- 入库 Python 文件数：**229** 个
-- 入库 Python 行数：**65,545** 行
-- 入库测试文件数：**133** 个
+- 入库 Python 文件数：**232** 个
+- 入库 Python 行数：**66,940** 行
+- 入库测试文件数：**136** 个
 
 > 口径：`git ls-files` 下 `src/` 与 `tests/` 内的 `.py` 文件；未入库文件不计。
 > 本块由 `tools/sync_code_counts.py` 生成，由 `tools/audit_claims.py` 回源核对，

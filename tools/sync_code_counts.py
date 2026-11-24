@@ -157,7 +157,8 @@ def main(argv=None):
             out.append(ln)
     text = "\n".join(out)
 
-    README.write_text(text, encoding="utf-8", newline="")
+    # Python 3.9's Path.write_text has no newline= kwarg; write bytes to keep LF exactly.
+    README.write_bytes(text.encode("utf-8"))
     print(f"[OK] 已同步 {README.name}")
     return 0
 
