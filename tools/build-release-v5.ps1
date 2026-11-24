@@ -232,6 +232,32 @@ Write-Host "  write app root package.json (main -> shell/electron/main.js)"
 #     app/: ERR_MODULE_NOT_FOUND at startup.
 $stageApp = Join-Path $Stage $ReName
 Robo (Join-Path $ReRoot 'packages') (Join-Path $stageApp 'packages') "reverse packages"
+
+# samples/ is data the Node engine serves (server.ts health + capture lookups).
+# Robo above only copies packages/, so the samples data dir never makes it in.
+# Without it the API works but every capture lookup is empty.
+$srcName = '00_' + ([char]0x6765) + ([char]0x6E90)
+$samplesSrc = Join-Path $ReRoot ($srcName + '\samples')
+$samplesDst = Join-Path $stageApp ($ReName + '\' + $srcName + '\samples')
+if (Test-Path -LiteralPath $samplesSrc) {
+    $null = robocopy $samplesSrc $samplesDst /E /NFL /NDL /NJH /NJS /NP
+    if ($LASTEXITCODE -ge 8) { Fail ("robocopy samples failed: " + $LASTEXITCODE) }
+    Write-Host "  copy samples (Node engine data)"
+}
+
+# Bundled Node runtime: main.js spawns `node` to run server.ts. A double-clicked
+# single-file exe has no system Node on PATH, so ship node.exe in the package and
+# main.js auto-detects <app>/runtime/node/node.exe (NAS_NODE still overrides).
+# Node.js is MIT-licensed and freely redistributable.
+$bundledNode = Join-Path $env:ProgramFiles 'nodejs\node.exe'
+$stageNodeDir = Join-Path $Stage 'runtime\node'
+if (Test-Path -LiteralPath $bundledNode) {
+    New-Item -ItemType Directory -Force -Path $stageNodeDir | Out-Null
+    Copy-Item -LiteralPath $bundledNode -Destination (Join-Path $stageNodeDir 'node.exe') -Force
+    Write-Host "  copy bundled node.exe (self-contained engine)"
+} else {
+    Write-Host "  WARN: system node.exe not found; package will rely on PATH"
+}
 # `server.ts` is ESM. Node decides the module type by the NEAREST package.json,
 # so put one at packages/app/ with type=module. Measured without it:
 #   SyntaxError: Cannot use import statement outside a module

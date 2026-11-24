@@ -279,7 +279,16 @@ function startServer() {
    * Electron 内置的 Node 版本未必支持，而 README 里写明的运行前提本来就是 Node ≥ 22.18。
    * `NAS_NODE` 可以指定别的解释器。
    */
-  const nodeBinary = process.env.NAS_NODE || 'node';
+  const nodeBinary = (() => {
+    // 打包环境：优先用包内自带的 node.exe（自包含，双击即可用，不依赖系统 Node）。
+    // 源码环境：没有包内 node 时退回系统 `node`（开发时用）。
+    // NAS_NODE 显式指定时优先级最高。
+    if (process.env.NAS_NODE) return process.env.NAS_NODE;
+    const bundled = path.join(REPO_ROOT, 'runtime', 'node',
+                              process.platform === 'win32' ? 'node.exe' : 'node');
+    if (fs.existsSync(bundled)) return bundled;
+    return 'node';
+  })();
   serverChild = spawn(
     nodeBinary,
     [SERVER_ENTRY, '--port', String(args.port)],

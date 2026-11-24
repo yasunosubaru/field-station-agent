@@ -229,8 +229,14 @@ function resolvePython({ repoRoot, payloadDir = null, platform = process.platfor
    */
   const bundledRoot = path.join(repoRoot, 'payload', 'runtime', 'python');
   candidates.push(win
-    ? { path: path.join(bundledRoot, 'Scripts', 'python.exe'), source: 'bundled' }
-    : { path: path.join(bundledRoot, 'bin', 'python3'), source: 'bundled' });
+    ? { path: path.join(bundledRoot, 'Scripts', 'python.exe'), source: 'bundled-venv' }
+    : { path: path.join(bundledRoot, 'bin', 'python3'), source: 'bundled-venv' });
+  // scheme A (official embeddable, not a venv): python.exe sits at the root,
+  // no Scripts/ level. build_payload.py ships this layout; measured on the
+  // single-file build where only this path existed and the app said "no Python".
+  candidates.push(win
+    ? { path: path.join(bundledRoot, 'python.exe'), source: 'bundled-embed' }
+    : { path: path.join(bundledRoot, 'python3'), source: 'bundled-embed' });
   for (const name of ['.deps/venv', '.venv', 'venv']) {
     const dir = path.join(repoRoot, ...name.split('/'));
     candidates.push({
