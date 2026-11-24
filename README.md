@@ -50,6 +50,15 @@
   <summary>目录</summary>
   <ol>
     <li><a href="#交付物">交付物</a></li>
+    <li>
+      <a href="#v100-混合版交付详解">v1.0.0 混合版交付详解</a>
+      <ul>
+        <li><a href="#包内容">包内容</a></li>
+        <li><a href="#安装与启动">安装与启动</a></li>
+        <li><a href="#实测验证">实测验证</a></li>
+        <li><a href="#发布资产对比">发布资产对比</a></li>
+      </ul>
+    </li>
     <li><a href="#界面速览">界面速览</a></li>
     <li><a href="#仓库地图">仓库地图</a></li>
     <li>
@@ -98,6 +107,82 @@
 
 两只交付物的关系：台站里那套厂商软件只给二进制，行为却直接决定我们能不能自动读出接收机状态。
 所以 B 是 A 的**取数前置**——先用 B 把接收机侧的数据通路打通，A 才有东西可判、可调度。
+
+<a href="#readme-top">回到顶部</a>
+
+<!-- v1.0.0 交付详解 -->
+<a id="v100-混合版交付详解"></a>
+## v1.0.0 混合版交付详解
+
+v1.0.0 是本仓库当前主推形态：把「原版 NAS 套件 + B 重实现 + RPA 驱动层」装进一个
+Windows GUI 安装器，**与四视角 Agent 工作台无关**。本章给出包内容、启动流程、
+实测证据与发布资产对比；其它章节讲工程背景，本章讲"交付物到底是什么、怎么验的"。
+
+<a id="包内容"></a>
+### 包内容
+
+`FieldStationHybrid-GUI-Setup.exe`（约 838 MB，LZMA solid 压缩）安装后是
+`<安装目录>/FieldStationHybrid.exe`（约 927 MB 单文件）。exe 内嵌 payload，四部分如下：
+
+| 部分 | 内容 | 体积/说明 |
+|---|---|---|
+| 原版 NAS 套件 | payload 内 `original/` | 1.44 GB，NovAtel Application Suite 2.11.0 全套；直接内嵌，不依赖静默安装 |
+| B 重实现 | `逆向/04_重实现/packages/` | 0.1.10 版前端（My Applications 五卡片）+ 重实现服务；**不含四视角 Agent 工作台** |
+| 驱动层（本轮最新） | `workflows/*.yaml`（8 条）、`select_folder`/`select_file` 全自动、`agent_desktop_driver.py`、`agent-desktop.exe`、cdp/uia/click 驱动 | 原生对话框按 accessibility ref 定位，不靠坐标 |
+| 运行时 | Node v24 + Python 3.11.9 embeddable | 自带，目标机不需要装 Node/Python 或配 PYTHONPATH |
+
+前端保持 0.1.10 版是为了拿到正确的 My Applications 界面；驱动层则是工作树最新版。
+这一差异在下面[已知边界](#发布资产对比)里说明。
+
+<a id="安装与启动"></a>
+### 安装与启动
+
+```powershell
+# 1. 从 Release 下载 FieldStationHybrid-GUI-Setup.exe 并双击安装
+#    桌面出现「FieldStation Hybrid」快捷方式；无需预装原版套件或任何运行时
+
+# 2. 双击快捷方式 -> GUI 窗口，首屏即 My Applications 五卡片
+#    外壳（WinForms + WebView2）启动后自动切 pro 模式并回首页，不进 Agent 工作台
+
+# 3. 运行时状态（首次启动解压 / 引擎端口）
+#    payload:  %LOCALAPPDATA%\AllPoweredFSA\app-1.0.0.0
+#    端口:     %LOCALAPPDATA%\AllPoweredFSA\runtime.json 内的 node_port
+```
+
+VS 旧版的差别：不再有 cmd 黑框启动器、不再默认进四视角 Agent 工作台。
+两套历史备选包（A 轻量 / B 完整）仍用 cmd 启动，只作归档保留。
+
+<a id="实测验证"></a>
+### 实测验证
+
+| 验证项 | 结果 |
+|---|---|
+| GUI 安装器 `/S` 静默安装 | 装出 `FieldStationHybrid.exe`（约 927 MB），**0 个 cmd 文件** |
+| 从安装目录双击 exe | 窗口标题「FieldStation Hybrid」，引擎端口 LISTEN |
+| 界面 | My Applications 五卡片（Manage / Playback / Convert / GRIT Monitor / Graph） |
+| payload 新驱动层 | `select_folder` 命中、agent-desktop.exe 存在、8 条流程齐全 |
+| §9 完整验收（`tools/verify_plan.py`） | 16/16 PASS（FAIL 0 / SKIP 0）；两条硬件相关项如实标注未真机验证 |
+
+<a id="发布资产对比"></a>
+### 发布资产对比
+
+[Release v1.0.0](https://github.com/yasunosubaru/field-station-agent/releases/tag/v1.0.0) 含三个安装器：
+
+| 资产 | 大小 | 启动方式 | 状态 |
+|---|---|---|---|
+| `FieldStationHybrid-GUI-Setup.exe` | 约 838 MB | **GUI exe** | **主交付** |
+| `FieldStationHybrid-B-Setup.exe` | 约 395 MB | cmd + 官方原版静默安装 | 归档备选 |
+| `FieldStationHybrid-A-Setup.exe` | 约 61 MB | cmd + 找本机已装原版 | 归档备选 |
+
+**已知边界（诚实标注）**：
+
+- 覆盖矩阵 50 项中 35 项 B 已覆盖、1 项部分覆盖、3 项 A-only（靠 RPA 驱动原版兜）、
+  11 项本机 OEM729 硬件/授权不适用；详见[覆盖边界](#覆盖边界)。
+- `graph.newproject` 两个原生对话框全自动，但 `approve_plot` 仍是人工闸门；
+  `gui.app.install/update` 因写盘不可逆也停在人工闸门。
+- v1.0.0 内嵌的前端是 0.1.10 版；工作树最新前端（含四视角相关代码）**没有**打进这个 exe。
+- B 方案"官方原版静默安装"分支未在干净机器实跑（本机已装原版，检测到后跳过）；
+  GUI 版直接内嵌原版套件，不依赖该分支。
 
 <a href="#readme-top">回到顶部</a>
 
@@ -358,6 +443,7 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 
 | 边界 | 说明 |
 |---|---|
+| 覆盖矩阵（50 项） | 35 项 B 已覆盖 / 1 项部分覆盖 / 3 项 A-only（RPA 兜） / 11 项本机不适用；脚本 `tools/gui_coverage.py --check` 与源码逐项一致 |
 | OEM729 / OEM7 路径 | 一比一对齐，含与真机对接的 `probe.ts`、串口与 TCP 连接流程 |
 | Longhorn（PIM222A） | 只到结构与文档，需要真机才能推进 |
 | 固件 Update | 只读：没有可牺牲的单元，写路径未开放；Factory Reset 需人工确认 |
@@ -407,7 +493,7 @@ node packages/app/src/server.ts --port 4711                  # 无外壳，直�
 | 测试 | `python -m unittest discover -s tests -t .` | 交付物 A 全绿，且 skip 为零 |
 | 五项自检 | `python harness/selftest.py` | 测试全绿 / 无源项目包名残留 / PROVENANCE 与 `src/` 双向一致 / 同 seed 可复现 / README 数字回源 |
 | 数字回源 | `python tools/audit_claims.py` | README 里每个对外数字等于仓库实际状态 |
-| 脱敏守卫 | `python tools/check_desensitization.py` | 本机路径、邮箱、手机号、学号、私钥、token 不进公开仓库（绊线，不是证明） |
+| 脱敏守卫 | `python tools/check_desensitization.py` | 本机路径、邮箱、手机号、学号、私钥、token 不进公开仓库（绊线，不是证明）。当前仍有 4 处既有命中（`tools/probe_repeat.py`、`probe_selfcontained.py`、`uia_driver.py` 的本机路径硬编码/注释示例），属历史遗留、非交付阻断项，待单独清理 |
 | 重实现测试 | `node --test --test-force-exit "packages/*/test/*.test.ts"` | 交付物 B 的协议、会话、应用、图表、回放 |
 | 覆盖矩阵 | `python tools/gui_coverage.py --check` | A（原版 GUI）× B（重实现）逐项映射与源码一致，A 无漏项、引用无失效 |
 | §9 完整验收 | `python tools/verify_plan.py` | 全链路 16/16 PASS（FAIL 0 / SKIP 0）；两条硬件相关项如实标注未在真机验证 |
