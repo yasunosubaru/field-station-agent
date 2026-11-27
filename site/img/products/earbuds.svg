@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Earbuds image">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="74.2" y="171.4" width="251.7" height="57.2" rx="28.6" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="26" fill="#1d1d1f"><tspan x="200" y="209.1"><tspan font-weight="600">Earbuds</tspan> image</tspan></text></g>
+  <g class="short"><rect x="23.1" y="138.4" width="353.9" height="123.2" rx="61.6" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="56" fill="#1d1d1f"><tspan x="200" y="219.6"><tspan font-weight="600">Earbuds</tspan></tspan></text></g>
+</svg>

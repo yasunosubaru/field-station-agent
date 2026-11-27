@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kit — Global navigation</title>
+  <link rel="icon" href="../../assets/img/pear.svg">
+  <link rel="stylesheet" href="../css/kit.css">
+</head>
+<body class="kit">
+  <!-- The menu is plain HTML: nav.js only adds the behaviour. A link with aria-controls opens the panel with that id. -->
+  <header class="kit-nav kit-nav--sticky" data-kit-nav>
+    <div class="kit-nav__curtain"></div>
+    <div class="kit-nav__frame">
+      <nav class="kit-nav__bar" aria-label="Global">
+        <a class="kit-nav__logo" href="#" aria-label="Pear Store home"><svg viewBox="5 2 14 20.5" aria-hidden="true"><path fill="currentColor" d="M12 6.2c-2.1 0-3.2 1.8-3.4 3.7-.2 1.6-2.9 2.9-2.9 6.4 0 3.4 2.8 5.7 6.3 5.7s6.3-2.3 6.3-5.7c0-3.5-2.7-4.8-2.9-6.4-.2-1.9-1.3-3.7-3.4-3.7Z"/><path fill="currentColor" d="M12.3 5.6c1.1-2.4 3.3-3.4 5.4-3-.7 2.2-2.9 3.5-5.4 3Z"/><path fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" d="M11.9 6.3c0-1.3-.3-2.4-.9-3.3"/></svg></a>
+        <ul class="kit-nav__list">
+          <li><a class="kit-nav__link" href="#store" aria-controls="fly-store">Store</a></li>
+          <li><a class="kit-nav__link" href="#computers" aria-controls="fly-computers">Computers</a></li>
+          <li><a class="kit-nav__link" href="#jpad" aria-controls="fly-jpad">jPad</a></li>
+          <li><a class="kit-nav__link" href="#jphone" aria-controls="fly-jphone">jPhone</a></li>
+          <li><a class="kit-nav__link" href="#watch" aria-controls="fly-watch">Watch</a></li>
+          <li><a class="kit-nav__link" href="#vision" aria-controls="fly-vision">Vision</a></li>
+          <li><a class="kit-nav__link" href="#pearpods" aria-controls="fly-pearpods">PearPods</a></li>
+          <li><a class="kit-nav__link" href="#home" aria-controls="fly-home">TV & Home</a></li>
+          <li><a class="kit-nav__link" href="#accessories" aria-controls="fly-accessories">Accessories</a></li>
+          <li><a class="kit-nav__link" href="#support" aria-controls="fly-support">Support</a></li>
+        </ul>
+        <div class="kit-nav__tools">
+          <button class="kit-nav__tool" type="button" aria-label="Search" aria-controls="fly-search"><svg viewBox="0 0 15 44" aria-hidden="true"><circle cx="6.5" cy="21" r="5.3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10.4 25l4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+          <button class="kit-nav__tool" type="button" aria-label="Bag" aria-controls="fly-bag"><svg viewBox="0 0 14 44" aria-hidden="true"><path d="M1.5 17.5h11v12a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M4.5 17.5v-1a2.5 2.5 0 0 1 5 0v1" fill="none" stroke="currentColor" stroke-width="1.1"/></svg><span class="kit-nav__badge" aria-hidden="true"></span></button>
+        </div>
+        <button class="kit-nav__burger" type="button" aria-label="Menu" aria-controls="fly-menu"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><line x1="2" y1="5" x2="16" y2="5"/><line x1="2" y1="12" x2="16" y2="12"/></svg></button>
+      </nav>
+      <div class="kit-nav__flyout">
+          <div class="kit-nav__panel" id="fly-store">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#store">Shop the latest</a></li><li><a href="#store">jPhone</a></li><li><a href="#store">Computers</a></li><li><a href="#store">Watch</a></li><li><a href="#store">Accessories</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Quick links</h2><ul><li><a href="#store">Find a store</a></li><li><a href="#store">Order status</a></li><li><a href="#store">Financing</a></li><li><a href="#store">Trade in</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop special stores</h2><ul><li><a href="#store">Certified refurbished</a></li><li><a href="#store">Education</a></li><li><a href="#store">Upgrade program</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-computers">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore computers</h2><ul><li><a href="#computers">PearBook Air</a></li><li><a href="#computers">PearBook Pro</a></li><li><a href="#computers">jMac</a></li><li><a href="#computers">Mini</a></li><li><a href="#computers">Displays</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#computers">Shop computers</a></li><li><a href="#computers">Accessories</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">More</h2><ul><li><a href="#computers">Compare</a></li><li><a href="#computers">Support</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-jpad">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore all jPad</h2><ul><li><a href="#jpad">jPad Pro</a></li><li><a href="#jpad">jPad Air</a></li><li><a href="#jpad">jPad mini</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#jpad">Shop tablets</a></li><li><a href="#jpad">Accessories</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-jphone">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore all jPhone</h2><ul><li><a href="#jphone">jPhone 18 Pro</a></li><li><a href="#jphone">jPhone Duo</a></li><li><a href="#jphone">jPhone Air</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#jphone">Shop phones</a></li><li><a href="#jphone">Accessories</a></li><li><a href="#jphone">Carrier offers</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">More</h2><ul><li><a href="#jphone">Trade in</a></li><li><a href="#jphone">Support</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-watch">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore all Pear Watch</h2><ul><li><a href="#watch">Pear Watch Series</a></li><li><a href="#watch">Pear Watch Ultra</a></li><li><a href="#watch">Pear Watch SE</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#watch">Shop watches</a></li><li><a href="#watch">Bands</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-vision">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore Vision</h2><ul><li><a href="#vision">Pear Vision Pro</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#vision">Shop headset</a></li><li><a href="#vision">Accessories</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-pearpods">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore all PearPods</h2><ul><li><a href="#pearpods">PearPods Pro</a></li><li><a href="#pearpods">PearPods Max</a></li><li><a href="#pearpods">Speakers</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#pearpods">Shop audio</a></li><li><a href="#pearpods">Accessories</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-home">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore TV & Home</h2><ul><li><a href="#home">Pear TV 4K</a></li><li><a href="#home">HomePear mini</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="#home">Shop home</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-accessories">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Shop accessories</h2><ul><li><a href="#accessories">All accessories</a></li><li><a href="#accessories">Cases</a></li><li><a href="#accessories">Chargers</a></li><li><a href="#accessories">Watch bands</a></li></ul></div>
+          </div>
+          <div class="kit-nav__panel" id="fly-support">
+            <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore support</h2><ul><li><a href="#support">Help</a></li><li><a href="#support">Shipping & pickup</a></li><li><a href="#support">Find a store</a></li></ul></div>
+            <div class="kit-nav__group"><h2 class="kit-nav__title">More</h2><ul><li><a href="#support">Site map</a></li></ul></div>
+          </div>
+        <div class="kit-nav__panel kit-nav__panel--wide" id="fly-search">
+          <label class="kit-nav__field"><svg viewBox="0 13 15 18" aria-hidden="true"><circle cx="6.5" cy="21" r="5.3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10.4 25l4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><input type="search" placeholder="Search the store" aria-label="Search the store"></label>
+          <div class="kit-nav__group"><h2 class="kit-nav__title">Quick links</h2>
+            <ul class="kit-nav__quick"><li><a href="#"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Find a store</a></li><li><a href="#"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Accessories</a></li><li><a href="#"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Phones</a></li><li><a href="#"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Gift cards</a></li><li><a href="#"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Trade in</a></li></ul></div>
+        </div>
+        <div class="kit-nav__panel kit-nav__panel--wide" id="fly-bag">
+          <div class="kit-nav__group">
+            <p class="kit-nav__lead">Your bag is empty.</p>
+            <p class="kit-nav__note">Sign in to see if you have any saved items.</p>
+            <h2 class="kit-nav__title">My profile</h2>
+            <ul><li><a href="#">Bag</a></li><li><a href="#">Orders</a></li><li><a href="#">Saves</a></li><li><a href="#">Account</a></li><li><a href="#">Sign in</a></li></ul>
+          </div>
+        </div>
+        <!-- No #fly-menu here: nav.js builds the mobile list from the bar links. -->
+      </div>
+    </div>
+  </header>
+
+  <main class="kit-container" style="padding-block: 96px; min-height: 120vh">
+    <h1 class="kit-hero">Global navigation</h1>
+    <p class="kit-intro kit-muted" style="margin-top: 16px">Hover a menu item or tab to it to open a flyout. Search and Bag open on click. Under 834 px the bar turns into a hamburger with a full-screen list. Escape closes.</p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--kit-space-5); margin-top: var(--kit-space-9)"><figure style="background: var(--kit-surface); border-radius: var(--kit-radius-lg); padding: var(--kit-space-7)"><img src="../../assets/img/products/phone.svg" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain"></figure><figure style="background: var(--kit-surface); border-radius: var(--kit-radius-lg); padding: var(--kit-space-7)"><img src="../../assets/img/products/tablet.svg" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain"></figure><figure style="background: var(--kit-surface); border-radius: var(--kit-radius-lg); padding: var(--kit-space-7)"><img src="../../assets/img/products/laptop.svg" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain"></figure><figure style="background: var(--kit-surface); border-radius: var(--kit-radius-lg); padding: var(--kit-space-7)"><img src="../../assets/img/products/watch.svg" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain"></figure><figure style="background: var(--kit-surface); border-radius: var(--kit-radius-lg); padding: var(--kit-space-7)"><img src="../../assets/img/products/earbuds.svg" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain"></figure><figure style="background: var(--kit-surface); border-radius: var(--kit-radius-lg); padding: var(--kit-space-7)"><img src="../../assets/img/products/speaker.svg" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain"></figure></div>
+  </main>
+
+  <script src="../js/kit.js" defer></script>
+</body>
+</html>

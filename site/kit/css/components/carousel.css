@@ -1,0 +1,83 @@
+/* Autoplay carousel with a timed dotnav: one slide at a time, dots under it, the current dot stretches into a
+   progress dash that fills while the slide is shown, then the next slide comes in. Controls are added by
+   js/parts/carousel.js (data-kit-carousel).
+   <div class="kit-carousel" data-kit-carousel>
+     <div class="kit-carousel__viewport"><div class="kit-carousel__track">
+       <div class="kit-carousel__slide">…</div>…</div></div>
+   </div>
+   Added by the script: .kit-carousel__controls > .kit-carousel__bubble > .kit-carousel__dots (buttons) + .kit-carousel__play.
+   States on the root: .is-paused (user pressed pause, or reduced motion), .is-held (pointer or focus inside, or off screen).
+   Knobs: --autoplay-duration (time per slide), --carousel-radius, --carousel-gap (slide to controls),
+   --carousel-slide-dur / --carousel-slide-ease (slide travel), --carousel-dot, --carousel-dash. */
+@layer kit.components {
+  .kit-carousel {
+    --autoplay-duration: 6.25s;      /* measured: fill time of the progress dash */
+    --carousel-slide-dur: .8s;       /* measured: slide travel */
+    --carousel-slide-ease: cubic-bezier(.4, 0, .25, 1);
+    --carousel-radius: var(--kit-radius-lg);
+    --carousel-gap: 28px;            /* measured: slides to controls */
+    --carousel-dot: 8px; --carousel-dash: 48px;
+    --carousel-bubble: 56px;
+    --carousel-dots-in: 740ms; --carousel-dot-step: 40ms; --carousel-play-in: 940ms; --carousel-play-dur: 200ms;  /* measured: entrance sequence */
+    --carousel-ink: var(--kit-ink-42);
+    --carousel-ink-hover: var(--kit-ink-54);
+    position: relative;
+  }
+  .kit-carousel__viewport { overflow: hidden; border-radius: var(--carousel-radius); }
+  .kit-carousel__track { display: flex; translate: var(--slide-x, 0%) 0; transition: translate var(--carousel-slide-dur) var(--carousel-slide-ease); }
+  .kit-carousel__slide { flex: none; width: 100%; min-width: 0; }
+
+  .kit-carousel__controls { display: flex; justify-content: center; align-items: center; gap: var(--kit-space-3); margin-top: var(--carousel-gap); }
+  .kit-carousel__bubble {
+    display: flex; align-items: center; justify-content: center; height: var(--carousel-bubble); min-width: var(--carousel-bubble);
+    padding: 0 var(--kit-space-6); border-radius: var(--carousel-bubble); background: var(--kit-glass);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    clip-path: inset(0 calc(50% - var(--carousel-bubble) / 2) round var(--carousel-bubble));
+    scale: .6; opacity: 0;
+  }
+  .kit-carousel__controls.is-in .kit-carousel__bubble {
+    animation: kit-carousel-bubble-in var(--kit-dur) var(--kit-ease) forwards, kit-carousel-bubble-open var(--kit-dur-slow) var(--carousel-slide-ease) var(--kit-dur) forwards;
+  }
+  @keyframes kit-carousel-bubble-in { to { scale: 1; opacity: 1; } }
+  @keyframes kit-carousel-bubble-open { to { clip-path: inset(0 0 round var(--carousel-bubble)); } }
+
+  .kit-carousel__dots { display: flex; align-items: center; gap: var(--kit-space-4); }
+  .kit-carousel__dots button {
+    position: relative; width: var(--carousel-dot); height: var(--carousel-dot); border-radius: var(--kit-space-3); overflow: hidden;
+    background: var(--carousel-ink); opacity: 0; scale: 0;
+    transition: width var(--kit-dur) var(--carousel-slide-ease), background-color var(--kit-dur) linear;
+  }
+  .kit-carousel__dots button:hover:not([aria-current="true"]) { background: var(--carousel-ink-hover); }
+  .kit-carousel__controls.is-in .kit-carousel__dots button { animation: kit-carousel-dot-in var(--kit-dur-fast) ease-in calc(var(--carousel-dots-in) + var(--i) * var(--carousel-dot-step)) forwards; }
+  @keyframes kit-carousel-dot-in { to { opacity: 1; scale: 1; } }
+  .kit-carousel__dots button[aria-current="true"] { width: var(--carousel-dash); cursor: default; }
+  .kit-carousel__dots button::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--kit-text); }
+  .kit-carousel__dots button[aria-current="true"]::after { animation: kit-carousel-fill var(--autoplay-duration) linear forwards; }
+  @keyframes kit-carousel-fill { from { width: var(--carousel-dot); } to { width: 100%; } }
+
+  .kit-carousel__play {
+    display: grid; place-items: center; width: var(--carousel-bubble); height: var(--carousel-bubble); border-radius: 50%;
+    background: var(--kit-glass); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); color: var(--kit-text);
+    scale: 0; transition: background-color var(--kit-dur) linear, scale var(--kit-dur-fast);
+  }
+  .kit-carousel__controls.is-in .kit-carousel__play { animation: kit-carousel-play-in var(--carousel-play-dur) var(--kit-ease) var(--carousel-play-in) forwards; }
+  @keyframes kit-carousel-play-in { to { scale: 1; } }
+  .kit-carousel__play:hover { background: var(--kit-white-90); }
+  .kit-carousel__play:active { scale: .95; }
+  .kit-carousel__play svg { width: 18px; height: 18px; }
+  .kit-carousel__play .i-play, .kit-carousel.is-paused .kit-carousel__play .i-pause { display: none; }
+  .kit-carousel.is-paused .kit-carousel__play .i-play { display: block; }
+
+  /* Pointer or focus inside, or off screen: the dash freezes where it is. */
+  .kit-carousel:is(.is-paused, .is-held) .kit-carousel__dots button[aria-current="true"]::after { animation-play-state: paused; }
+  /* The first fill waits for the entrance of the controls. */
+  .kit-carousel__controls:not(.is-in) .kit-carousel__dots button::after { animation-play-state: paused; }
+  .kit-carousel__controls.is-in .kit-carousel__dots button[aria-current="true"]::after { animation-delay: 1s; }
+  .kit-carousel__controls.is-in.is-running .kit-carousel__dots button[aria-current="true"]::after { animation-delay: 0s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kit-carousel__track { transition: none; }
+    .kit-carousel__bubble, .kit-carousel__dots button, .kit-carousel__play { opacity: 1; scale: 1; clip-path: none; animation: none; }
+    .kit-carousel__dots button[aria-current="true"]::after { animation: none; width: 100%; }
+  }
+}

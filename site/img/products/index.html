@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visuels produits</title>
+<style>
+:root {
+  --page: #f5f5f7;
+  --surface: #ffffff;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --line: #e8e8ed;
+  --radius: 18px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #000000;
+    --surface: #1d1d1f;
+    --text: #f5f5f7;
+    --text-2: #86868b;
+    --line: #2c2c2e;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #000000;
+  --surface: #1d1d1f;
+  --text: #f5f5f7;
+  --text-2: #86868b;
+  --line: #2c2c2e;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding: 32px 16px 64px;
+}
+main { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.003em; margin: 0 0 8px; }
+h2 { font-size: 21px; font-weight: 600; margin: 40px 0 16px; color: var(--text-2); }
+p.lead { color: var(--text-2); margin: 0 0 24px; font-size: 15px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.card .stage {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card img, .card .stage svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+.card .name {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.card .swatch {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+@media (max-width: 480px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Visuels produits</h1>
+  <p class="lead">Vingt SVG dessinés pour la boutique de démonstration. Fond transparent, couleur principale pilotée par <code>--product-color</code>.</p>
+
+  <h2>Couleur par variable CSS (phone.svg en ligne)</h2>
+  <section class="grid" aria-label="Variantes de couleur">
+    <div class="card" style="--product-color: #c9c9ce">
+      <div class="stage"><svg role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500">
+<defs>
+<filter id="inl1-phone-blur" x="-50%" y="-300%" width="200%" height="700%"><feGaussianBlur stdDeviation="8"/></filter>
+<linearGradient id="inl1-phone-body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient>
+<linearGradient id="inl1-phone-wall" x1="0" y1="0" x2=".4" y2="1"><stop offset="0" stop-color="#9ec3ff"/><stop offset=".5" stop-color="#b9a6ff"/><stop offset="1" stop-color="#5a68d4"/></linearGradient>
+<linearGradient id="inl1-phone-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<radialGradient id="inl1-phone-lens" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#5b5b66"/><stop offset=".35" stop-color="#1a1a22"/><stop offset="1" stop-color="#050508"/></radialGradient>
+</defs>
+<ellipse cx="200" cy="462" rx="150" ry="14" fill="#000" fill-opacity=".2" filter="url(#inl1-phone-blur)"/>
+<rect x="36" y="46" width="184" height="390" rx="44" fill="#1d1d1f"/>
+<rect x="44" y="54" width="168" height="374" rx="37" fill="url(#inl1-phone-wall)"/>
+<rect x="44" y="54" width="168" height="374" rx="37" fill="url(#inl1-phone-glass)"/>
+<rect x="80" y="66" width="46" height="14" rx="7" fill="#000"/>
+<rect x="160" y="80" width="200" height="396" rx="44" fill="#000" fill-opacity=".22"/>
+<rect x="150" y="70" width="200" height="396" rx="44" style="fill:var(--product-color, #c9c9ce)"/>
+<rect x="150" y="70" width="200" height="396" rx="44" fill="url(#inl1-phone-body)"/>
+<rect x="152" y="72" width="196" height="392" rx="42" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.5"/>
+<rect x="166" y="88" width="104" height="104" rx="28" fill="#000" fill-opacity=".14" stroke="#fff" stroke-opacity=".3"/>
+<circle cx="192" cy="114" r="18" fill="#0b0b0e"/>
+<circle cx="192" cy="114" r="14" fill="url(#inl1-phone-lens)"/>
+<circle cx="188" cy="110" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="244" cy="114" r="18" fill="#0b0b0e"/>
+<circle cx="244" cy="114" r="14" fill="url(#inl1-phone-lens)"/>
+<circle cx="240" cy="110" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="192" cy="166" r="18" fill="#0b0b0e"/>
+<circle cx="192" cy="166" r="14" fill="url(#inl1-phone-lens)"/>
+<circle cx="188" cy="162" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="244" cy="166" r="7" fill="#f6efd9" fill-opacity=".85"/>
+</svg></div>
+      <div class="swatch"><span>--product-color: #c9c9ce</span></div>
+    </div>
+    <div class="card" style="--product-color: #3a4a6b">
+      <div class="stage"><svg role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500">
+<defs>
+<filter id="inl2-phone-blur" x="-50%" y="-300%" width="200%" height="700%"><feGaussianBlur stdDeviation="8"/></filter>
+<linearGradient id="inl2-phone-body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient>
+<linearGradient id="inl2-phone-wall" x1="0" y1="0" x2=".4" y2="1"><stop offset="0" stop-color="#9ec3ff"/><stop offset=".5" stop-color="#b9a6ff"/><stop offset="1" stop-color="#5a68d4"/></linearGradient>
+<linearGradient id="inl2-phone-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<radialGradient id="inl2-phone-lens" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#5b5b66"/><stop offset=".35" stop-color="#1a1a22"/><stop offset="1" stop-color="#050508"/></radialGradient>
+</defs>
+<ellipse cx="200" cy="462" rx="150" ry="14" fill="#000" fill-opacity=".2" filter="url(#inl2-phone-blur)"/>
+<rect x="36" y="46" width="184" height="390" rx="44" fill="#1d1d1f"/>
+<rect x="44" y="54" width="168" height="374" rx="37" fill="url(#inl2-phone-wall)"/>
+<rect x="44" y="54" width="168" height="374" rx="37" fill="url(#inl2-phone-glass)"/>
+<rect x="80" y="66" width="46" height="14" rx="7" fill="#000"/>
+<rect x="160" y="80" width="200" height="396" rx="44" fill="#000" fill-opacity=".22"/>
+<rect x="150" y="70" width="200" height="396" rx="44" style="fill:var(--product-color, #c9c9ce)"/>
+<rect x="150" y="70" width="200" height="396" rx="44" fill="url(#inl2-phone-body)"/>
+<rect x="152" y="72" width="196" height="392" rx="42" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.5"/>
+<rect x="166" y="88" width="104" height="104" rx="28" fill="#000" fill-opacity=".14" stroke="#fff" stroke-opacity=".3"/>
+<circle cx="192" cy="114" r="18" fill="#0b0b0e"/>
+<circle cx="192" cy="114" r="14" fill="url(#inl2-phone-lens)"/>
+<circle cx="188" cy="110" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="244" cy="114" r="18" fill="#0b0b0e"/>
+<circle cx="244" cy="114" r="14" fill="url(#inl2-phone-lens)"/>
+<circle cx="240" cy="110" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="192" cy="166" r="18" fill="#0b0b0e"/>
+<circle cx="192" cy="166" r="14" fill="url(#inl2-phone-lens)"/>
+<circle cx="188" cy="162" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="244" cy="166" r="7" fill="#f6efd9" fill-opacity=".85"/>
+</svg></div>
+      <div class="swatch"><span>--product-color: #3a4a6b</span></div>
+    </div>
+    <div class="card" style="--product-color: #e8d9c2">
+      <div class="stage"><svg role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500">
+<defs>
+<filter id="inl3-phone-blur" x="-50%" y="-300%" width="200%" height="700%"><feGaussianBlur stdDeviation="8"/></filter>
+<linearGradient id="inl3-phone-body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient>
+<linearGradient id="inl3-phone-wall" x1="0" y1="0" x2=".4" y2="1"><stop offset="0" stop-color="#9ec3ff"/><stop offset=".5" stop-color="#b9a6ff"/><stop offset="1" stop-color="#5a68d4"/></linearGradient>
+<linearGradient id="inl3-phone-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<radialGradient id="inl3-phone-lens" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#5b5b66"/><stop offset=".35" stop-color="#1a1a22"/><stop offset="1" stop-color="#050508"/></radialGradient>
+</defs>
+<ellipse cx="200" cy="462" rx="150" ry="14" fill="#000" fill-opacity=".2" filter="url(#inl3-phone-blur)"/>
+<rect x="36" y="46" width="184" height="390" rx="44" fill="#1d1d1f"/>
+<rect x="44" y="54" width="168" height="374" rx="37" fill="url(#inl3-phone-wall)"/>
+<rect x="44" y="54" width="168" height="374" rx="37" fill="url(#inl3-phone-glass)"/>
+<rect x="80" y="66" width="46" height="14" rx="7" fill="#000"/>
+<rect x="160" y="80" width="200" height="396" rx="44" fill="#000" fill-opacity=".22"/>
+<rect x="150" y="70" width="200" height="396" rx="44" style="fill:var(--product-color, #c9c9ce)"/>
+<rect x="150" y="70" width="200" height="396" rx="44" fill="url(#inl3-phone-body)"/>
+<rect x="152" y="72" width="196" height="392" rx="42" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.5"/>
+<rect x="166" y="88" width="104" height="104" rx="28" fill="#000" fill-opacity=".14" stroke="#fff" stroke-opacity=".3"/>
+<circle cx="192" cy="114" r="18" fill="#0b0b0e"/>
+<circle cx="192" cy="114" r="14" fill="url(#inl3-phone-lens)"/>
+<circle cx="188" cy="110" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="244" cy="114" r="18" fill="#0b0b0e"/>
+<circle cx="244" cy="114" r="14" fill="url(#inl3-phone-lens)"/>
+<circle cx="240" cy="110" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="192" cy="166" r="18" fill="#0b0b0e"/>
+<circle cx="192" cy="166" r="14" fill="url(#inl3-phone-lens)"/>
+<circle cx="188" cy="162" r="3" fill="#fff" fill-opacity=".35"/>
+<circle cx="244" cy="166" r="7" fill="#f6efd9" fill-opacity=".85"/>
+</svg></div>
+      <div class="swatch"><span>--product-color: #e8d9c2</span></div>
+    </div>
+  </section>
+
+  <h2>Les 20 visuels (en img, couleur par défaut)</h2>
+  <section class="grid" aria-label="Tous les visuels">
+    <div class="card"><div class="stage"><img src="phone.svg" alt=""></div><div class="name">phone.svg</div></div>
+    <div class="card"><div class="stage"><img src="phone-slim.svg" alt=""></div><div class="name">phone-slim.svg</div></div>
+    <div class="card"><div class="stage"><img src="phone-fold.svg" alt=""></div><div class="name">phone-fold.svg</div></div>
+    <div class="card"><div class="stage"><img src="laptop.svg" alt=""></div><div class="name">laptop.svg</div></div>
+    <div class="card"><div class="stage"><img src="desktop.svg" alt=""></div><div class="name">desktop.svg</div></div>
+    <div class="card"><div class="stage"><img src="mini.svg" alt=""></div><div class="name">mini.svg</div></div>
+    <div class="card"><div class="stage"><img src="tablet.svg" alt=""></div><div class="name">tablet.svg</div></div>
+    <div class="card"><div class="stage"><img src="watch.svg" alt=""></div><div class="name">watch.svg</div></div>
+    <div class="card"><div class="stage"><img src="watch-rugged.svg" alt=""></div><div class="name">watch-rugged.svg</div></div>
+    <div class="card"><div class="stage"><img src="headset.svg" alt=""></div><div class="name">headset.svg</div></div>
+    <div class="card"><div class="stage"><img src="earbuds.svg" alt=""></div><div class="name">earbuds.svg</div></div>
+    <div class="card"><div class="stage"><img src="headphones.svg" alt=""></div><div class="name">headphones.svg</div></div>
+    <div class="card"><div class="stage"><img src="speaker.svg" alt=""></div><div class="name">speaker.svg</div></div>
+    <div class="card"><div class="stage"><img src="display.svg" alt=""></div><div class="name">display.svg</div></div>
+    <div class="card"><div class="stage"><img src="tvbox.svg" alt=""></div><div class="name">tvbox.svg</div></div>
+    <div class="card"><div class="stage"><img src="tag.svg" alt=""></div><div class="name">tag.svg</div></div>
+    <div class="card"><div class="stage"><img src="case.svg" alt=""></div><div class="name">case.svg</div></div>
+    <div class="card"><div class="stage"><img src="charger.svg" alt=""></div><div class="name">charger.svg</div></div>
+    <div class="card"><div class="stage"><img src="band.svg" alt=""></div><div class="name">band.svg</div></div>
+    <div class="card"><div class="stage"><img src="keyboard.svg" alt=""></div><div class="name">keyboard.svg</div></div>
+  </section>
+</main>
+</body>
+</html>

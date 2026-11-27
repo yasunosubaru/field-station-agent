@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" role="img" aria-label="Charger image (20w usb-c power adapter)">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="14.2" y="117.7" width="271.7" height="64.6" rx="20.9" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="19" fill="#1d1d1f"><tspan x="150" y="145.3"><tspan font-weight="600">Charger</tspan> image</tspan><tspan x="150" y="168.1" font-size="16.1" fill="#6e6e73">(20w usb-c power adapter)</tspan></text></g>
+  <g class="short"><rect x="17.3" y="103.8" width="265.4" height="92.4" rx="46.2" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="42" fill="#1d1d1f"><tspan x="150" y="164.7"><tspan font-weight="600">Charger</tspan></tspan></text></g>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 400" role="img" aria-label="Display image (studio display on a vesa mount adapter)">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="20.3" y="165.2" width="439.5" height="69.7" rx="22.6" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="20.5" fill="#1d1d1f"><tspan x="240" y="194.9"><tspan font-weight="600">Display</tspan> image</tspan><tspan x="240" y="219.5" font-size="17.4" fill="#6e6e73">(studio display on a vesa mount adapter)</tspan></text></g>
+  <g class="short"><rect x="63.1" y="138.4" width="353.9" height="123.2" rx="61.6" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="56" fill="#1d1d1f"><tspan x="240" y="219.6"><tspan font-weight="600">Display</tspan></tspan></text></g>
+</svg>

@@ -1,0 +1,198 @@
+/* Global navigation: translucent bar, hover/focus flyouts with a page curtain, search and bag panels (same frame),
+   full-screen mobile menu. The author writes the menu in HTML; nav.js (data-kit-nav) only adds behaviour.
+   <header class="kit-nav" data-kit-nav>                       (add kit-nav--sticky to keep it on screen)
+     <div class="kit-nav__curtain"></div>
+     <div class="kit-nav__frame">
+       <nav class="kit-nav__bar" aria-label="Global">
+         <a class="kit-nav__logo" href="/" aria-label="Home"><svg>…</svg></a>
+         <ul class="kit-nav__list">
+           <li><a class="kit-nav__link" href="…" aria-controls="fly-phone">jPhone</a></li>   (aria-controls = a flyout)
+           <li><a class="kit-nav__link" href="…">Support</a></li>                            (no flyout: plain link)
+         </ul>
+         <div class="kit-nav__tools">
+           <button class="kit-nav__tool" aria-label="Search" aria-controls="fly-search"><svg>…</svg></button>
+           <button class="kit-nav__tool" aria-label="Bag" aria-controls="fly-bag"><svg>…</svg><span class="kit-nav__badge"></span></button>
+         </div>
+         <button class="kit-nav__burger" aria-label="Menu" aria-controls="fly-menu"><svg>…</svg></button>
+       </nav>
+       <div class="kit-nav__flyout">
+         <div class="kit-nav__panel" id="fly-phone">
+           <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">Explore</h2><ul><li><a href="…">jPhone 18 Pro</a></li></ul></div>
+           <div class="kit-nav__group"><h2 class="kit-nav__title">Shop</h2><ul><li><a href="…">Shop phones</a></li></ul></div>
+         </div>
+         <div class="kit-nav__panel kit-nav__panel--wide" id="fly-search"><label class="kit-nav__field">…<input type="search"></label>
+           <div class="kit-nav__group"><h2 class="kit-nav__title">Quick links</h2><ul class="kit-nav__quick"><li><a href="…">…</a></li></ul></div></div>
+         <div class="kit-nav__panel kit-nav__panel--wide" id="fly-bag"> … <p class="kit-nav__lead">, <p class="kit-nav__note"> … </div>
+         <div class="kit-nav__panel" id="fly-menu"></div>        (optional: nav.js builds the mobile list from the bar links)
+       </div>
+     </div>
+   </header>
+   Knobs on .kit-nav: --nav-h (bar height), --nav-h-compact (bar height on mobile), --nav-max (content width),
+   --nav-panel (open background), --nav-link, --nav-link-hover, --nav-ink, --nav-curtain, --nav-fly-dur (height
+   animation), --nav-z. The menu switches to the hamburger under 833 px (the reference store's breakpoint).
+   Measured delays (80, 120, 160 ms) and the 240 ms slide between flyouts are written as such: no token covers them. */
+@layer kit.components {
+  .kit-nav {
+    --nav-h: 44px;                 /* measured: bar height on desktop */
+    --nav-h-compact: 48px;         /* measured: bar height under 834 px */
+    --nav-max: 1024px;             /* measured: width of the bar and flyout content */
+    --nav-bar: var(--nav-h);       /* the height in use; the compact rule below swaps it */
+    --nav-panel: var(--kit-surface-2);
+    --nav-link: var(--kit-ink-80);
+    --nav-link-hover: var(--kit-black);
+    --nav-ink: var(--kit-text);    /* flyout link colour */
+    --nav-curtain: var(--kit-curtain);
+    --nav-fly-dur: var(--kit-dur-menu);
+    --nav-z: 9999;
+    --nav-hit-x: 11px; --nav-hit-y: 7px; --nav-lead-y: 11px; --nav-hit-pull: 6px;    /* measured: padding of a flyout link's hit area */
+    position: relative; z-index: var(--nav-z); height: var(--nav-bar); min-width: 320px;
+    font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note);
+  }
+  .kit-nav--sticky { position: sticky; top: 0; }
+
+  /* ---------- Frame and bar ---------- */
+  .kit-nav__frame {
+    position: absolute; inset: 0 0 auto; z-index: 1; height: var(--nav-bar);
+    background: var(--kit-glass);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    transition: background-color var(--kit-dur) var(--kit-ease) var(--kit-delay-1);
+  }
+  .kit-nav.is-open .kit-nav__frame { background: var(--nav-panel); transition-delay: 0s; }
+  .kit-nav__bar {
+    position: relative; z-index: 2; display: flex; align-items: center; height: var(--nav-bar);
+    width: min(var(--nav-max), 100%); margin-inline: auto; padding-inline: calc(var(--kit-gutter) - var(--kit-space-2));
+  }
+  .kit-nav__list { display: flex; flex: 1; justify-content: space-between; align-items: center; height: 100%; }
+  .kit-nav__list li { display: flex; }
+  .kit-nav__link, .kit-nav__logo, .kit-nav__tool {
+    display: flex; align-items: center; justify-content: center; height: var(--nav-bar); padding: 0 var(--kit-space-2);
+    color: var(--nav-link); font-size: var(--kit-fs-note); line-height: 1; letter-spacing: var(--kit-tr-note); text-decoration: none; white-space: nowrap;
+    transition: color var(--kit-dur) var(--kit-ease), opacity var(--kit-dur) var(--kit-ease);
+  }
+  .kit-nav__link:hover, .kit-nav__tool:hover, .kit-nav__logo:hover, .kit-nav__link[aria-expanded="true"], .kit-nav__tool[aria-expanded="true"] {
+    color: var(--nav-link-hover); text-decoration: none;
+  }
+  .kit-nav.is-open .kit-nav__link:not([aria-expanded="true"]) { color: var(--nav-link); }
+  .kit-nav :where(.kit-nav__link, .kit-nav__logo, .kit-nav__tool, .kit-nav__burger):focus-visible { box-shadow: inset var(--kit-focus); border-radius: var(--kit-radius-sm); }
+  .kit-nav__logo { width: 30px; flex: none; }
+  .kit-nav__logo svg { width: 14px; height: 20px; }
+  .kit-nav__tools { display: flex; flex: none; }
+  .kit-nav__tool { position: relative; }
+  .kit-nav__tool svg { width: 15px; height: 44px; }
+  .kit-nav__badge {
+    position: absolute; right: 2px; bottom: 11px; min-width: 1.3em; height: 1.3em; padding: 0 .3em;
+    border-radius: 1em; background: var(--kit-text); color: var(--kit-on-dark); font-size: 10px; line-height: 1.3em; text-align: center;
+    transform: scale(0); transition: transform var(--kit-dur) cubic-bezier(.25, .1, .3, 1), opacity var(--kit-dur);
+  }
+  .kit-nav__badge.has-count { transform: scale(1); }
+  .kit-nav.is-open .kit-nav__badge { opacity: 0; }
+  .kit-nav__burger { display: none; }
+
+  /* ---------- Flyout frame ---------- */
+  .kit-nav__flyout {
+    position: absolute; inset: 0 0 auto; z-index: 1; height: var(--nav-bar); overflow: hidden; pointer-events: none;
+    visibility: hidden; background: var(--nav-panel);
+    transition: height var(--nav-fly-dur) var(--kit-ease) var(--kit-delay-2), visibility 0s linear calc(var(--nav-fly-dur) + var(--kit-delay-2));
+  }
+  .kit-nav.is-open .kit-nav__flyout {
+    height: var(--flyout-h, var(--nav-bar)); pointer-events: auto; visibility: visible;
+    transition: height var(--nav-fly-dur) var(--kit-ease), visibility 0s;
+  }   /* --flyout-h: set by nav.js from the open panel */
+  .kit-nav__panel {
+    display: none; width: min(var(--nav-max), 100%); margin: var(--nav-bar) auto 0;
+    padding: var(--kit-space-8) var(--kit-gutter) 84px;
+  }
+  .kit-nav__panel.is-current { display: flex; }
+  .kit-nav__group { flex: 0 1 auto; max-width: 25%; min-width: 0; padding: 0 44px 52px 0; }
+  .kit-nav__group:last-child { padding-bottom: 92px; }
+  .kit-nav__group--lead { max-width: 50%; padding-right: 88px; }
+  .kit-nav__title { margin-bottom: 14px; color: var(--kit-text-2); font-size: var(--kit-fs-note); font-weight: 400; line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note); }
+  .kit-nav__group--lead .kit-nav__title { display: none; }
+  .kit-nav__flyout li { display: block; }
+  .kit-nav__flyout a {
+    display: inline-block; margin: 0 calc(-1 * var(--nav-hit-x)) calc(-1 * var(--nav-hit-pull)); padding: var(--nav-hit-y) var(--nav-hit-x);
+    color: var(--nav-ink); font-size: var(--kit-fs-note); font-weight: 600; line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note);
+  }
+  .kit-nav__group--lead a {
+    padding-block: var(--nav-lead-y); margin-bottom: -10px;
+    font-size: var(--kit-fs-step); line-height: var(--kit-lh-step); letter-spacing: var(--kit-tr-step); font-family: var(--kit-font-display);
+  }
+  .kit-nav__flyout a:hover { color: var(--nav-link-hover); text-decoration: none; }
+
+  /* Staggered entrance: nav.js sets --d (delay in) and --out (duration out) on each of these. */
+  :where(.kit-nav__title, .kit-nav__group li, .kit-nav__lead, .kit-nav__note) {
+    opacity: 0; transform: translateY(-4px);
+    transition: opacity var(--out, var(--kit-dur-quick)) var(--kit-ease), transform var(--out, var(--kit-dur-quick)) var(--kit-ease);
+  }
+  .kit-nav.is-open :where(.kit-nav__title, .kit-nav__group li, .kit-nav__lead, .kit-nav__note) {
+    opacity: 1; transform: none;
+    transition: opacity var(--kit-dur) var(--kit-ease) var(--d, 0s), transform var(--kit-dur) var(--kit-ease) var(--d, 0s);
+  }
+  .kit-nav.is-switching :where(.kit-nav__title, .kit-nav__group li, .kit-nav__lead, .kit-nav__note) {
+    animation: kit-nav-slide var(--kit-dur-mid) var(--kit-ease) var(--kit-delay-3) both; transition: none; opacity: 1; transform: none;
+  }
+  @keyframes kit-nav-slide { from { opacity: 0; transform: translateX(var(--kit-space-2)); } to { opacity: 1; transform: none; } }
+
+  /* ---------- Curtain ---------- */
+  .kit-nav__curtain {
+    position: fixed; inset: 0; z-index: 0; visibility: hidden; opacity: 0; background: var(--nav-curtain);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    transition: opacity var(--kit-dur) var(--kit-ease), visibility var(--kit-dur) step-end;
+  }
+  .kit-nav.has-curtain .kit-nav__curtain { visibility: visible; opacity: 1; transition: opacity var(--kit-dur) var(--kit-ease) var(--kit-delay-1), visibility 0s step-start; }
+
+  /* ---------- Search and bag panels ---------- */
+  .kit-nav__panel--wide { flex-direction: column; }
+  .kit-nav__panel--wide .kit-nav__group { flex: none; max-width: none; padding: 0; }
+  .kit-nav__field {
+    display: flex; align-items: center; gap: 10px; margin: 0 0 var(--kit-space-7) -2px;
+    font: 600 var(--kit-fs-step) / var(--kit-lh-step) var(--kit-font-display); letter-spacing: var(--kit-tr-step);
+  }
+  .kit-nav__field svg { flex: none; width: 30px; height: 30px; color: var(--kit-text-2); }
+  .kit-nav__field input {
+    flex: 1; min-width: 0; height: 56px; border: 0; background: none; outline: none; color: var(--nav-ink);
+    font: inherit; letter-spacing: inherit;
+  }
+  .kit-nav__field:focus-within { box-shadow: none; }
+  .kit-nav__field input::placeholder { color: var(--kit-text-2); }
+  .kit-nav__quick a { display: flex; align-items: center; gap: var(--kit-space-2); border-radius: 6px; padding: var(--kit-space-1) var(--kit-space-2); margin: 0 calc(-1 * var(--kit-space-2)); }
+  .kit-nav__quick a:hover { background: var(--kit-page); }
+  .kit-nav__quick svg { width: 10px; height: 10px; color: var(--kit-text-2); }
+  .kit-nav__lead { margin-bottom: var(--kit-space-4); color: var(--nav-ink); font: 600 var(--kit-fs-step) / var(--kit-lh-step) var(--kit-font-display); letter-spacing: var(--kit-tr-step); }
+  .kit-nav__note { margin-bottom: var(--kit-space-7); color: var(--kit-text-2); font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); }
+
+  /* ---------- Mobile: hamburger and full-screen menu ---------- */
+  @media (max-width: 833px) {
+    .kit-nav { --nav-bar: var(--nav-h-compact); }
+    .kit-nav__bar { padding-inline: var(--kit-gutter) 0; }
+    .kit-nav__logo { margin-right: auto; }
+    .kit-nav__list { display: none; }
+    .kit-nav__tools { margin-left: auto; }
+    .kit-nav__tool { width: 48px; padding: 0; transition: opacity var(--kit-dur) var(--kit-ease) var(--kit-delay-1); }
+    .kit-nav.is-menu .kit-nav__tool { opacity: 0; pointer-events: none; }
+    .kit-nav__burger { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; opacity: .8; transition: opacity var(--kit-dur); }
+    .kit-nav__burger:hover { opacity: 1; }
+    .kit-nav__burger line { stroke: var(--kit-black); stroke-width: 1.2; stroke-linecap: round; transition: transform var(--kit-dur) cubic-bezier(.42, 0, .58, 1); transform-origin: 9px 9px; }
+    .kit-nav.is-menu .kit-nav__burger .kit-nav__bread-top { transform: translateY(4px) rotate(45deg); }
+    .kit-nav.is-menu .kit-nav__burger .kit-nav__bread-bottom { transform: translateY(-3px) rotate(-45deg); }
+    .kit-nav__panel { flex-direction: column; padding: 18px 48px 60px; }
+    .kit-nav__group, .kit-nav__group--lead { flex: none; max-width: none; padding: 0 0 var(--kit-space-7); }
+    .kit-nav__group:last-child { padding-bottom: var(--kit-space-7); }
+    .kit-nav.is-menu .kit-nav__flyout { height: 100dvh; overflow-y: auto; }
+    .kit-nav__title { font-size: var(--kit-fs-body); }
+    .kit-nav__flyout a { font-size: var(--kit-fs-body); line-height: var(--kit-lh-body); letter-spacing: var(--kit-tr-body); }
+    .kit-nav__group--lead a, .kit-nav__menu-list a {
+      font-size: var(--kit-fs-section); line-height: var(--kit-lh-section); letter-spacing: var(--kit-tr-section); font-family: var(--kit-font-display);
+    }
+    .kit-nav__menu-list a { display: block; margin: 0; padding-block: 7.5px; }
+    .kit-nav__field { margin-bottom: var(--kit-space-5); }
+  }
+  /* The stagger also covers the mobile list. */
+  :where(.kit-nav__menu-list li) { opacity: 0; transform: translateY(-4px); transition: opacity var(--out, var(--kit-dur-quick)) var(--kit-ease), transform var(--out, var(--kit-dur-quick)) var(--kit-ease); }
+  .kit-nav.is-open :where(.kit-nav__menu-list li) { opacity: 1; transform: none; transition: opacity var(--kit-dur) var(--kit-ease) var(--d, 0s), transform var(--kit-dur) var(--kit-ease) var(--d, 0s); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kit-nav__flyout, .kit-nav__frame, .kit-nav__curtain, .kit-nav__badge { transition-duration: 0s; transition-delay: 0s; }
+    .kit-nav :where(.kit-nav__title, .kit-nav__group li, .kit-nav__lead, .kit-nav__note, .kit-nav__menu-list li) { transition: none; animation: none; opacity: 1; transform: none; }
+  }
+}

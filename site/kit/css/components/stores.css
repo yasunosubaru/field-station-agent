@@ -1,0 +1,48 @@
+/* Store finder: a search field over a shelf of store cards with a small map. kit.js (data-kit-stores) filters
+   the cards as you type, on the text of each card plus its data-search words.
+   <section class="kit-stores" data-kit-stores>
+     <div class="kit-stores__search kit-container">
+       <h1 class="kit-stores__label">Find a store</h1>
+       <label class="kit-field"><svg …search icon…></svg><input type="search" placeholder="Search by city or store name"></label>
+     </div>
+     <h2 class="kit-stores__heading">Stores near you</h2>
+     <div class="kit-shelf" data-kit-shelf><div class="kit-shelf__track">
+       <article class="kit-store" data-search="zip 10001">
+         <div class="kit-store__map"><svg …or an <img>…></svg></div>
+         <div class="kit-store__body"><h3 class="kit-store__name">Harbor Square</h3>
+           <p class="kit-store__address">12 Market Street<br>Riverton</p><p class="kit-store__hours">Opens at 10:00 a.m.</p></div>
+       </article>
+     </div></div>
+     <p class="kit-stores__none" hidden>No store matches your search.</p>
+   </section>
+   knobs: --store-w (304px)  --store-map-h (168px) */
+@layer kit.components {
+  .kit-field { position: relative; display: block; }
+  .kit-field > svg { position: absolute; left: 18px; top: 50%; translate: 0 -50%; width: 20px; height: 20px; color: var(--kit-text-2); pointer-events: none; }
+  .kit-field input {
+    width: 100%; height: 56px; padding: 0 var(--kit-space-5) 0 52px;
+    border: 1px solid var(--kit-text-3); border-radius: var(--kit-radius-md); background: var(--kit-surface);
+    font: inherit; font-size: var(--kit-fs-body); letter-spacing: var(--kit-tr-body); color: var(--kit-text);
+  }
+  .kit-field input::placeholder { color: var(--kit-text-2); }
+  .kit-field input:focus { outline: none; border-color: var(--kit-action); box-shadow: var(--kit-focus); }
+
+  .kit-stores__search { display: flex; flex-wrap: wrap; align-items: center; gap: var(--kit-space-4) var(--kit-space-8); padding-top: 70px; }
+  .kit-stores__label { font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); white-space: nowrap; }
+  .kit-stores__search .kit-field { flex: 1 1 320px; max-width: 432px; }
+  .kit-stores__heading { font: 600 clamp(28px, 3.6vw + 1.6px, 40px) / 1.1 var(--kit-font-display); text-align: center; margin: 44px 0 var(--kit-space-4); }
+  .kit-stores__none { text-align: center; color: var(--kit-text-2); font-size: var(--kit-fs-body); padding-block: var(--kit-space-9); }
+
+  .kit-store {
+    --store-w: 304px; --store-map-h: 168px;
+    flex: none; width: var(--store-w); display: flex; flex-direction: column; overflow: hidden;
+    background: var(--kit-surface); border-radius: var(--kit-radius-lg); color: var(--kit-text);
+  }
+  .kit-store[hidden] { display: none; }
+  .kit-store__map { height: var(--store-map-h); background: var(--kit-line-soft); }
+  .kit-store__map > * { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .kit-store__body { padding: var(--kit-space-4) 30px 26px; }
+  .kit-store__name { font: 600 19px/1.316 var(--kit-font); letter-spacing: var(--kit-tr-card); }
+  .kit-store__address { font-size: var(--kit-fs-body); line-height: var(--kit-lh-body); letter-spacing: var(--kit-tr-body); color: var(--kit-text-2); padding-top: var(--kit-space-2); }
+  .kit-store__hours { font-size: var(--kit-fs-small); letter-spacing: var(--kit-tr-small); color: var(--kit-text-2); padding-top: 28px; }
+}

@@ -1,0 +1,80 @@
+/* Store kit — design tokens.
+   Values come from the measured clone (DESIGN.md). Every component reads these; nothing else holds a raw value.
+   Fluid sizes interpolate between the compact layout (≤ 734 px) and the full layout (≥ 1068 px),
+   the two breakpoints of the reference store. */
+@layer kit.tokens {
+  :root {
+    /* ---------- Colour ---------- */
+    --kit-page: #f5f5f7;
+    --kit-surface: #ffffff;
+    --kit-surface-2: #fafafc;          /* open nav panel */
+    --kit-surface-dark: #1d1d1f;
+    --kit-line: #d2d2d7;
+    --kit-line-soft: #e8e8ed;
+    --kit-text: #1d1d1f;
+    --kit-text-2: #6e6e73;
+    --kit-text-3: #86868b;
+    --kit-on-dark: #ffffff;
+    --kit-black: #000000;
+    --kit-dark-hover: #272729; --kit-dark-active: #18181a; --kit-light-active: #ededf2;
+    --kit-eyebrow: #424245;
+    --kit-line-hover: #8f8f94;
+    --kit-frost: rgba(255, 255, 255, .8);      /* option cards over a tinted page */
+    --kit-ink-08: rgba(0, 0, 0, .08); --kit-ink-10: rgba(0, 0, 0, .1); --kit-ink-12: rgba(0, 0, 0, .12); --kit-ink-16: rgba(0, 0, 0, .16);
+    --kit-ink-24: rgba(0, 0, 0, .24); --kit-ink-42: rgba(0, 0, 0, .42); --kit-ink-48: rgba(0, 0, 0, .48); --kit-ink-54: rgba(0, 0, 0, .54); --kit-ink-72: rgba(0, 0, 0, .72); --kit-ink-80: rgba(0, 0, 0, .8); --kit-ink-88: rgba(0, 0, 0, .88);
+    --kit-scrim: rgba(0, 0, 0, .48);
+    --kit-curtain: rgba(232, 232, 237, .4);     /* blurred page behind an open nav menu */
+    --kit-close: #e8e8ed; --kit-close-hover: #ececf0; --kit-close-active: #dfdfe4;   /* round close buttons */
+    --kit-action: #0071e3;
+    --kit-action-hover: #0077ed;
+    --kit-action-active: #006edb;
+    --kit-link: #0066cc;
+    --kit-link-on-dark: #2997ff;
+    --kit-accent: #b64400;          /* "New" eyebrows */
+    --kit-accent-on-dark: #ff791b;
+    --kit-control: rgba(210, 210, 215, .64);   /* round arrows and dot pills */
+    --kit-control-hover: rgba(223, 223, 227, .7);
+    --kit-control-icon: rgba(0, 0, 0, .56);
+    --kit-glass: rgba(250, 250, 252, .8);      /* sticky bars */
+    --kit-white-90: rgba(255, 255, 255, .9);
+    --kit-shadow: 2px 4px 12px rgba(0, 0, 0, .08);
+    --kit-shadow-hover: 2px 4px 16px rgba(0, 0, 0, .16);
+    --kit-focus: 0 0 0 4px rgba(0, 125, 250, .6);
+
+    /* ---------- Type ---------- */
+    --kit-font: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --kit-font-display: var(--kit-font);
+    /* size / line height / tracking per role; display sizes are fluid */
+    --kit-fs-display: clamp(48px, 9.58vw - 22.3px, 80px);   --kit-lh-display: 1.05;   --kit-tr-display: -.015em;
+    --kit-fs-hero: clamp(32px, 4.79vw - 3.16px, 48px);      --kit-lh-hero: 1.0835;    --kit-tr-hero: -.003em;
+    --kit-fs-section: clamp(24px, 1.2vw + 15.2px, 28px);    --kit-lh-section: 1.1429; --kit-tr-section: .007em;
+    --kit-fs-step: clamp(21px, .9vw + 14.4px, 24px);        --kit-lh-step: 1.1667;    --kit-tr-step: .009em;
+    --kit-fs-card: clamp(19px, .6vw + 14.6px, 21px);        --kit-lh-card: 1.1905;    --kit-tr-card: .011em;
+    --kit-fs-body: 17px;  --kit-lh-body: 1.4706;  --kit-tr-body: -.022em;
+    --kit-fs-small: 14px; --kit-lh-small: 1.4286; --kit-tr-small: -.016em;
+    --kit-fs-note: 12px;  --kit-lh-note: 1.3334;  --kit-tr-note: -.01em;
+
+    /* ---------- Space (scale found in the clone: 4 → 96) ---------- */
+    --kit-space-1: 4px;  --kit-space-2: 8px;  --kit-space-3: 12px; --kit-space-4: 16px;
+    --kit-space-5: 20px; --kit-space-6: 24px; --kit-space-7: 32px; --kit-space-8: 40px;
+    --kit-space-9: 48px; --kit-space-10: 64px; --kit-space-11: 80px; --kit-space-12: 96px;
+    --kit-section-gap: clamp(var(--kit-space-9), 7vw, var(--kit-space-12));  /* between page sections */
+
+    /* ---------- Layout ---------- */
+    --kit-container: 980px;
+    --kit-gutter: clamp(16px, 2.2vw, 22px);
+    /* Left edge of full-bleed rows (shelves, page header), as measured: the gutter up to 1024 px, then fluid
+       to 140 px at 1440 px, then centred on a 1440 px frame. */
+    --kit-edge: max(clamp(var(--kit-gutter), 28.37vw - 268.5px, 140px), (100vw - 1440px) / 2 + 140px);
+
+    /* ---------- Shape ---------- */
+    --kit-radius-xs: 5px; --kit-radius-sm: 8px; --kit-radius-md: 12px;
+    --kit-radius-lg: 18px; --kit-radius-xl: 28px; --kit-radius-2xl: 48px; --kit-radius-pill: 980px;
+
+    /* ---------- Motion ---------- */
+    --kit-ease: cubic-bezier(.4, 0, .6, 1);
+    --kit-ease-out: cubic-bezier(0, 0, .5, 1);
+    --kit-dur-fast: 100ms; --kit-dur-quick: 200ms; --kit-dur-mid: 240ms; --kit-dur-menu: 250ms; --kit-dur: 300ms; --kit-dur-slow: 500ms;
+    --kit-delay-1: 80ms; --kit-delay-2: 120ms; --kit-delay-3: 160ms;   /* measured nav menu sequence */
+  }
+}

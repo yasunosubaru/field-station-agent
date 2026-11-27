@@ -1,0 +1,16 @@
+/* Gallery: one slide at a time, arrows and dots added by kit.js.
+   <div class="kit-gallery" data-kit-gallery><div class="kit-gallery__track">
+     <div class="kit-gallery__slide"><img …></div>…</div></div>
+   Knobs: --gallery-ratio (default 4 / 5), --gallery-bg. data-kit-gallery="compact" puts the dots in a pill. */
+@layer kit.components {
+  .kit-gallery { position: relative; overflow: hidden; aspect-ratio: var(--gallery-ratio, 4 / 5); border-radius: var(--kit-radius-lg); background: var(--gallery-bg, var(--kit-page)); }
+  .kit-gallery__track { display: flex; height: 100%; translate: var(--slide-x, 0%) 0; transition: translate var(--kit-dur-slow) ease; }
+  .kit-gallery__slide { flex: none; width: 100%; height: 100%; display: grid; place-items: center; padding-block: var(--kit-space-8); }
+  .kit-gallery__slide > :is(img, svg, video) { max-height: 82%; max-width: 70%; width: auto; }
+  .kit-gallery .kit-arrow:disabled { opacity: .36; transform: none; }
+
+  .kit-dots { position: absolute; left: 50%; bottom: 30px; translate: -50% 0; display: flex; gap: var(--kit-space-3); padding: var(--kit-space-3) var(--kit-space-4); }
+  .kit-dots button { width: 8px; height: 8px; border-radius: 50%; background: var(--kit-ink-24); transition: background-color var(--kit-dur); }
+  .kit-dots button[aria-current="true"] { background: var(--kit-text); }
+  .kit-dots--pill { border-radius: var(--kit-radius-pill); background: var(--kit-control); -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); }
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" role="img" aria-label="Watch image">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="88.7" y="221.4" width="222.6" height="57.2" rx="28.6" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="26" fill="#1d1d1f"><tspan x="200" y="259.1"><tspan font-weight="600">Watch</tspan> image</tspan></text></g>
+  <g class="short"><rect x="18" y="173" width="364" height="154" rx="77" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="70" fill="#1d1d1f"><tspan x="200" y="274.5"><tspan font-weight="600">Watch</tspan></tspan></text></g>
+</svg>

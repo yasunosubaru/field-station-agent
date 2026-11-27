@@ -1,0 +1,23 @@
+/* Category navigation: a row of picture links at the top of a store page. It sits in a shelf, so it scrolls
+   and gets the shelf arrows.
+   <section class="kit-shelf kit-catnav" data-kit-shelf aria-label="Shop by category"><div class="kit-shelf__track">
+     <a class="kit-catnav__item" href="…"><span class="kit-catnav__img"><img src="…" alt=""></span><span class="kit-catnav__label">Phones</span></a>
+   </div></section>
+   knobs: --catnav-w (136px, 96px when the row is under 1024 px)  --catnav-img (78px / 60px) */
+@layer kit.components {
+  .kit-catnav { padding-bottom: var(--kit-space-10); }
+  .kit-catnav .kit-shelf__track { gap: 10px; padding-top: 0; padding-bottom: 38px; }
+  .kit-catnav__item {
+    --catnav-w: 136px; --catnav-img: 78px;
+    width: var(--catnav-w); display: flex; flex-direction: column; align-items: center;
+    padding: 18px var(--kit-space-2) var(--kit-space-4); border-radius: var(--kit-radius-lg); color: var(--kit-text); text-decoration: none;
+  }
+  .kit-catnav__item:hover { text-decoration: none; }
+  .kit-catnav__img { height: var(--catnav-img); display: flex; align-items: center; margin-bottom: var(--kit-space-4); }
+  .kit-catnav__img > * { height: var(--catnav-img); width: auto; max-width: none; }
+  .kit-catnav__label { font: 600 var(--kit-fs-small) / var(--kit-lh-small) var(--kit-font); letter-spacing: var(--kit-tr-small); white-space: nowrap; }
+  @container shelf (max-width: 1023px) {
+    .kit-catnav__item { --catnav-w: 96px; --catnav-img: 60px; padding: var(--kit-space-4) var(--kit-space-1); }
+    .kit-catnav__img { margin-bottom: var(--kit-space-3); }
+  }
+}

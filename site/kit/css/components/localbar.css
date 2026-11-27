@@ -1,0 +1,26 @@
+/* Local bar: sticky bar under the global nav for a product family (title left, links and one action right).
+   <nav class="kit-localbar" data-kit-sticky><div class="kit-localbar__inner">
+     <p class="kit-localbar__title">jPhone</p>
+     <div class="kit-localbar__links"><a href="…">Overview</a><a class="kit-localbar__action" href="…">Buy</a></div>
+   </div></nav>
+   kit.js adds .is-stuck once the bar sticks, which shows the bottom rule.
+   Knobs: --localbar-top (offset when a global nav stays above), --localbar-bg. */
+@layer kit.components {
+  .kit-localbar {
+    position: sticky; top: var(--localbar-top, 0px); z-index: 900; height: 52px;
+    background: var(--localbar-bg, var(--kit-glass)); border-bottom: 1px solid transparent; transition: border-color var(--kit-dur-slow);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  }
+  .kit-localbar.is-stuck { border-color: var(--kit-line); }
+  .kit-localbar__inner { display: flex; align-items: center; justify-content: space-between; gap: var(--kit-space-5); height: 100%;
+    width: min(var(--kit-container), 100% - 2 * var(--kit-gutter)); margin-inline: auto; }
+  .kit-localbar__title { font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); white-space: nowrap; }
+  .kit-localbar__links { display: flex; align-items: center; gap: 22px; overflow-x: auto; scrollbar-width: none;
+    font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note); }
+  .kit-localbar__links a { color: var(--kit-text); white-space: nowrap; }
+  .kit-localbar__links a:hover { color: var(--kit-text-2); text-decoration: none; }
+  .kit-localbar__links a[aria-current] { box-shadow: inset 0 -1px 0 currentColor; }
+  .kit-localbar__links .kit-localbar__action { padding: var(--kit-space-1) var(--kit-space-3); border-radius: var(--kit-radius-pill);
+    background: var(--kit-action); color: var(--kit-on-dark); }
+  .kit-localbar__links .kit-localbar__action:hover { background: var(--kit-action-hover); color: var(--kit-on-dark); }
+}

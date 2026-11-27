@@ -1,0 +1,52 @@
+/* Cards: content card (text over or above a picture) and product card (picture, swatches, price, button).
+   Size through custom properties, so a card fits any slot:
+     --card-w (default 400px, 309px in compact rows)  --card-h (500px / 450px)  --card-pad (28px)
+     --card-media-h (tallest picture, 300px)
+   <a class="kit-card" href="…"><div class="kit-card__body">…</div><div class="kit-card__media"><img …></div></a>
+   modifiers: --dark, --black, --short, --cover (picture fills the card, text on top),
+              --icon (a 36 px glyph above the text: <svg class="kit-card__icon">, tinted with `color`) */
+@layer kit.components {
+  .kit-card {
+    --card-w: 400px; --card-h: 500px; --card-pad: 28px; --card-media-h: 300px;
+    position: relative; display: flex; flex-direction: column; overflow: hidden; flex: none;
+    width: var(--card-w); height: var(--card-h); border-radius: var(--kit-radius-lg);
+    background: var(--kit-surface); color: var(--kit-text); box-shadow: var(--kit-shadow); text-decoration: none;
+    transition: transform var(--kit-dur) var(--kit-ease-out), box-shadow var(--kit-dur) var(--kit-ease-out);
+  }
+  .kit-card:hover { text-decoration: none; }
+  @media (hover: hover) {
+    .kit-card:is(:hover, :focus-within) { transform: scale(1.01); box-shadow: var(--kit-shadow-hover); }
+  }
+  .kit-card--short { --card-h: 240px; }
+  .kit-card--dark { background: var(--kit-surface-dark); color: var(--kit-on-dark); }
+  .kit-card--black { background: var(--kit-black); color: var(--kit-on-dark); }
+
+  .kit-card__body { position: relative; z-index: 1; padding: var(--card-pad); }
+  .kit-card__body > * + * { margin-top: 10px; }
+  .kit-card__title { font: 600 var(--kit-fs-section) / var(--kit-lh-section) var(--kit-font-display); letter-spacing: var(--kit-tr-section); }
+  .kit-card__text { font-size: var(--kit-fs-small); line-height: 1.2858; letter-spacing: var(--kit-tr-small); }
+  .kit-card__media { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-end; }
+  .kit-card__media > :is(img, svg, video) { height: 100%; max-height: var(--card-media-h); width: auto; object-fit: contain; }
+  .kit-card--icon .kit-card__body { padding-top: calc(var(--card-pad) + 42px); }
+  .kit-card__icon { position: absolute; top: 22px; left: var(--card-pad); width: 36px; height: 36px; }
+  .kit-card--cover .kit-card__media { position: absolute; inset: 0; }
+  .kit-card--cover .kit-card__media > * { width: 100%; height: 100%; max-height: none; object-fit: cover; }
+
+  /* Whole-card link: put it on the title; it covers the card while inner buttons stay clickable. */
+  .kit-card__link { color: inherit; }
+  button.kit-card__link { padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; }
+  .kit-card__link::after { content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit; }
+  .kit-card :is(.kit-btn, button) { position: relative; z-index: 1; }
+
+  /* Product card */
+  .kit-product { --card-w: 313px; padding: var(--card-pad); justify-content: space-between; }
+  .kit-product__name { font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); padding-bottom: 9px; }
+  .kit-product .kit-card__media { align-items: center; overflow: hidden; }
+  .kit-product__swatches { display: flex; justify-content: center; gap: 6px; padding-top: var(--kit-space-6); }
+  .kit-product__swatches i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px var(--kit-ink-10); }
+  .kit-product__info { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--kit-space-3); min-height: 80px; padding-top: 10px; }
+  .kit-product__swatches + .kit-product__name { padding-top: var(--kit-space-4); }
+  /* Without a button the price follows the name directly. */
+  .kit-product__info:not(:has(.kit-btn)) { min-height: 0; padding-top: 0; }
+  .kit-product__price { font-size: var(--kit-fs-small); line-height: 1.2858; letter-spacing: var(--kit-tr-small); }
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 500" role="img" aria-label="Laptop image (pearbook pro, front view)">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="20.6" y="199.5" width="438.8" height="101" rx="32.7" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="29.7" fill="#1d1d1f"><tspan x="240" y="242.6"><tspan font-weight="600">Laptop</tspan> image</tspan><tspan x="240" y="278.2" font-size="25.2" fill="#6e6e73">(pearbook pro, front view)</tspan></text></g>
+  <g class="short"><rect x="38.4" y="173" width="403.2" height="154" rx="77" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="70" fill="#1d1d1f"><tspan x="240" y="274.5"><tspan font-weight="600">Laptop</tspan></tspan></text></g>
+</svg>

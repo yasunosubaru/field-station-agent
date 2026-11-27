@@ -1,0 +1,29 @@
+/* Promo ribbon: one line of news under the global nav. Several messages rotate with arrows (kit.js).
+   <div class="kit-ribbon" data-kit-ribbon><div class="kit-ribbon__inner">
+     <p class="kit-ribbon__msg">Message one. <a class="kit-link-more" href="…">Learn more</a></p>
+     <p class="kit-ribbon__msg">Message two.</p>
+   </div></div>
+   kit.js marks the first message current and adds the arrows when there is more than one.
+   knobs: --ribbon-bg (surface)  --ribbon-fg (text)  --ribbon-arrow-delay (2.8s, as measured) */
+@layer kit.components {
+  .kit-ribbon {
+    --ribbon-bg: var(--kit-surface); --ribbon-fg: var(--kit-text); --ribbon-arrow-delay: 2.8s;
+    background: var(--ribbon-bg); color: var(--ribbon-fg); text-align: center;
+    font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small);
+  }
+  .kit-ribbon--action { --ribbon-bg: var(--kit-action); --ribbon-fg: var(--kit-on-dark); }
+  .kit-ribbon--action a { color: inherit; text-decoration: underline; }
+  .kit-ribbon__inner { position: relative; max-width: var(--kit-container); margin-inline: auto; padding: var(--kit-space-4) 44px; }
+  .kit-ribbon__msg { max-width: 816px; margin-inline: auto; animation: kit-ribbon-in var(--kit-dur-slow) ease; }
+  .kit-ribbon[data-kit-ready] .kit-ribbon__msg:not(.is-current) { display: none; }
+  .kit-ribbon__arrow {
+    position: absolute; top: 50%; translate: 0 -50%; width: 36px; height: 36px; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: none; color: var(--kit-text-3); cursor: pointer;
+    opacity: 0; animation: kit-ribbon-in 1s ease var(--ribbon-arrow-delay) forwards;
+  }
+  .kit-ribbon--action .kit-ribbon__arrow { color: inherit; }
+  .kit-ribbon__arrow svg { width: 10px; height: 16px; }
+  .kit-ribbon__arrow--prev { left: 0; }
+  .kit-ribbon__arrow--next { right: 0; }
+  @keyframes kit-ribbon-in { from { opacity: 0; } to { opacity: 1; } }
+}

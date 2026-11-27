@@ -1,0 +1,33 @@
+/* Store kit — base: a light reset scoped to the kit, type roles and layout helpers. */
+@layer kit.base {
+  .kit, .kit *, .kit *::before, .kit *::after { box-sizing: border-box; }
+  body.kit { margin: 0; }
+  .kit { font: var(--kit-fs-body) / var(--kit-lh-body) var(--kit-font); letter-spacing: var(--kit-tr-body);
+    color: var(--kit-text); background: var(--kit-page); -webkit-font-smoothing: antialiased; }
+  .kit :where(h1, h2, h3, h4, p, ul, ol, figure) { margin: 0; }
+  .kit :where(ul, ol) { padding: 0; list-style: none; }
+  .kit :where(img, svg, video) { display: block; max-width: 100%; }
+  .kit :where(button) { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .kit :where(a) { color: var(--kit-link); text-decoration: none; }
+  .kit :where(a:hover) { text-decoration: underline; }
+  .kit :where(:focus-visible) { outline: none; box-shadow: var(--kit-focus); }
+
+  /* Type roles: one class per role of the scale. */
+  .kit-display { font: 600 var(--kit-fs-display) / var(--kit-lh-display) var(--kit-font-display); letter-spacing: var(--kit-tr-display); }
+  .kit-hero    { font: 600 var(--kit-fs-hero) / var(--kit-lh-hero) var(--kit-font-display); letter-spacing: var(--kit-tr-hero); }
+  .kit-section { font: 600 var(--kit-fs-section) / var(--kit-lh-section) var(--kit-font-display); letter-spacing: var(--kit-tr-section); }
+  .kit-card-title { font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); }
+  .kit-intro   { font: 400 var(--kit-fs-card) / 1.381 var(--kit-font-display); letter-spacing: var(--kit-tr-card); }
+  .kit-small   { font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); }
+  .kit-note    { font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note); }
+  .kit-muted   { color: var(--kit-text-2); }
+
+  /* Layout */
+  .kit-container { width: min(var(--kit-container), 100% - 2 * var(--kit-gutter)); margin-inline: auto; }
+  .kit-section-gap { padding-block: var(--kit-section-gap); }
+  .kit-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kit *, .kit *::before, .kit *::after { transition-duration: 0ms; animation-duration: 0ms; scroll-behavior: auto; }
+  }
+}
