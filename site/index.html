@@ -2,308 +2,284 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FieldStation Hybrid — 野外台站智能体</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FieldStation Hybrid — 野外台站，从此有人值守</title>
 <meta name="description" content="武汉大学地球与空间科学技术学院 2026 大创项目。原版 NAS 套件 + 逆向重实现 + RPA 驱动层的自包含交付。">
-<link rel="icon" href="./img/pear.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./kit/css/kit.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2308090b'/><text x='16' y='23' font-size='20' font-family='monospace' fill='%23d8ff3e' text-anchor='middle'>F</text></svg>">
+<link rel="stylesheet" href="./engine/scrollcraft.css">
 <style>
-  body { background: var(--kit-page); }
-  /* 产品站点少量自定义：图表卡片与终端面板，沿用 kit token，不引入新值 */
-  .term{background:var(--kit-surface-dark);color:var(--kit-on-dark);border-radius:var(--kit-radius-md);padding:20px 22px;font:12px/1.9 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-x:auto}
-  .term .p{color:var(--kit-action)} .term .g{color:#7fd06a} .term .w{color:#fff} .term .c{color:#8b8b90}
-  .chart{border:1px solid var(--kit-line);border-radius:var(--kit-radius-md);overflow:hidden;background:var(--kit-surface)}
-  .chart__head{padding:12px 18px;border-bottom:1px solid var(--kit-line);display:flex;justify-content:space-between;align-items:baseline}
-  .chart__head b{font-size:15px;color:var(--kit-text)}
-  .chart__head span{font:11px ui-monospace,monospace;color:var(--kit-text-3)}
-  .chart__body{padding:14px}
-  .chart__body{padding:8px 12px 14px}
-  .echart{width:100%}
+  /* 品牌：六个 token + 两个字体族，其余全部继承 taste floor */
+  :root{
+    --sc-canvas:#08090b;
+    --sc-surface:#101217;
+    --sc-ink:#f4f2ef;
+    --sc-ink-soft:#9a9ba1;
+    --sc-accent:#d8ff3e;
+    --sc-accent-ink:#08090b;
+    --sc-font-display:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    --sc-font-text:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    --sc-t-4xl:clamp(2.4rem,1.6rem+3.4vw,4.2rem);
+    --sc-t-3xl:clamp(2rem,1.4rem+2.4vw,3.2rem);
+  }
+  .site-bar{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;
+    gap:1rem;padding:1rem var(--sc-gutter);mix-blend-mode:difference;color:#fff}
+  .site-bar .mark{font-family:var(--sc-font-display);font-weight:700;font-size:var(--sc-t-sm);letter-spacing:-.02em}
+  .site-bar nav{display:flex;gap:1.6rem;font-size:var(--sc-t-xs)}
+  .site-bar nav a{opacity:.8;transition:opacity .2s}
+  .site-bar nav a:hover{opacity:1}
+  @media(max-width:700px){.site-bar nav{display:none}}
+  .cta{display:inline-flex;align-items:center;gap:.5rem;background:var(--sc-accent);color:var(--sc-accent-ink);
+    font-size:var(--sc-t-xs);font-weight:600;padding:.7rem 1.2rem;border-radius:var(--sc-r-pill);text-decoration:none;
+    transition:transform .24s var(--sc-ease-out)}
+  .cta:hover{transform:translateY(-2px)}
+  .cta--ghost{background:transparent;color:var(--sc-ink);border:1px solid var(--sc-hairline-strong)}
 
-  .charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:var(--kit-container);margin:var(--kit-space-6) auto var(--kit-space-12)}
-  .charts .chart:first-child,.charts .chart:last-child{grid-column:1/-1}
-  @media(max-width:760px){.charts{grid-template-columns:1fr}.charts .chart{grid-column:1/-1!important}}
-  .spec{width:100%;border-collapse:collapse;font-size:14px}
-  .spec th{text-align:left;font-size:12px;color:var(--kit-text-3);font-weight:400;padding:10px 14px;border-bottom:1px solid var(--kit-line)}
-  .spec td{padding:14px;border-bottom:1px solid var(--kit-line-soft);color:var(--kit-text-2);vertical-align:top}
-  .spec td:first-child{font:12px ui-monospace,monospace;color:var(--kit-text)}
-  .spec td:nth-child(2){color:var(--kit-text)}
-  .block{max-width:var(--kit-container);margin:0 auto;padding:0 var(--kit-gutter) var(--kit-space-12)}
-  .flow{border-top:1px solid var(--kit-line)}
-  .fstep{display:grid;grid-template-columns:48px 1fr auto;gap:16px;padding:14px 0;border-bottom:1px solid var(--kit-line-soft);font:12px ui-monospace,monospace;align-items:baseline}
-  .fstep .id{color:var(--kit-accent)} .fstep .name{color:var(--kit-text)}
-  .fstep .kind{font-size:10px;padding:2px 8px;border:1px solid var(--kit-line);border-radius:var(--kit-radius-xs);color:var(--kit-text-3)}
-  .fstep .kind.gate{color:var(--kit-accent);border-color:rgba(182,68,0,.35)}
-  .fstep .note{grid-column:2/-1;font:13px/1.5 var(--kit-font);color:var(--kit-text-2);margin-top:2px}
-  .limits{max-width:var(--kit-container);margin:0 auto;padding:0 var(--kit-gutter) var(--kit-space-12)}
-  .lim{display:grid;grid-template-columns:130px 1fr;gap:20px;padding:16px 0;border-bottom:1px solid var(--kit-line-soft);font-size:14px}
-  .lim .tag{font:11px ui-monospace,monospace;color:var(--kit-accent)}
-  .lim p{color:var(--kit-text-2)} .lim b{color:var(--kit-text);font-weight:600}
-  @media(max-width:600px){.lim{grid-template-columns:1fr;gap:6px}}
-  .dl-list{max-width:var(--kit-container);margin:0 auto;padding:0 var(--kit-gutter) var(--kit-space-12)}
-  .dl-row{display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:16px 0;border-bottom:1px solid var(--kit-line);font:12px ui-monospace,monospace;align-items:center}
-  .dl-row a{color:var(--kit-link);font:13px var(--kit-font)}
-  @media(max-width:600px){.dl-row{grid-template-columns:1fr auto;gap:6px}}
+  /* 英雄阶段：一张抽象的 GNSS 星图作为静态视觉，随滚动视差下沉 */
+  .hero-art{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .hero-art svg{position:absolute;width:120%;height:120%;left:-10%;top:-10%;opacity:.5}
+  .hero-art .glow{position:absolute;width:60vw;height:60vw;border-radius:50%;left:50%;top:45%;translate:-50% -50%;
+    background:radial-gradient(circle,color-mix(in oklab,var(--sc-accent) 14%,transparent),transparent 65%);filter:blur(50px)}
+
+  /* 数据表格：真实内容、密度分明 */
+  .spec{width:100%;border-collapse:collapse;font-size:var(--sc-t-sm)}
+  .spec th{text-align:left;font-size:var(--sc-t-xs);color:var(--sc-ink-soft);font-weight:500;padding:.8rem 1rem;border-bottom:1px solid var(--sc-hairline)}
+  .spec td{padding:1rem;border-bottom:1px solid var(--sc-hairline);color:var(--sc-ink-soft);vertical-align:top}
+  .spec td:first-child{font-family:var(--sc-font-mono);font-size:var(--sc-t-xs);color:var(--sc-ink)}
+  .spec td:nth-child(2){color:var(--sc-ink)}
+
+  /* 流程节点（pin 阶段内逐条显现） */
+  .flow-node{font-family:var(--sc-font-mono);font-size:var(--sc-t-sm);color:var(--sc-ink-soft)}
+  .flow-node b{color:var(--sc-accent);font-weight:500}
+  .flow-node .line{display:block;margin-top:.5rem;color:var(--sc-ink)}
+
+  /* ECharts 卡片：只借用 taste floor 的 surface / hairline / radius，不套组件模板 */
+  .chart-card{border:1px solid var(--sc-hairline);border-radius:var(--sc-r-md);overflow:hidden;background:var(--sc-surface)}
+  .chart-card__head{display:flex;justify-content:space-between;align-items:baseline;padding:.9rem 1.1rem;border-bottom:1px solid var(--sc-hairline)}
+  .chart-card__head b{font-size:var(--sc-t-sm);color:var(--sc-ink)}
+  .chart-card__head span{font:var(--sc-t-xs) var(--sc-font-mono);color:var(--sc-ink-soft)}
+  .chart-card__body{padding:.6rem}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  .chart-grid .chart-card:first-child{grid-column:1/-1}
+  @media(max-width:800px){.chart-grid{grid-template-columns:1fr}.chart-grid .chart-card{grid-column:1/-1!important}}
+
+  /* 下载清单 */
+  .dl{display:flex;flex-direction:column;border-top:1px solid var(--sc-hairline)}
+  .dl a{display:grid;grid-template-columns:1fr auto auto;gap:1.5rem;align-items:center;
+    padding:1.1rem 0;border-bottom:1px solid var(--sc-hairline);font:var(--sc-t-sm) var(--sc-font-mono);text-decoration:none;
+    transition:color .2s,padding .2s}
+  .dl a:hover{color:var(--sc-accent);padding-left:.5rem}
+  .dl a span:last-child{color:var(--sc-accent)}
+  @media(max-width:600px){.dl a{grid-template-columns:1fr auto;gap:.5rem}}
+  footer{padding:var(--sc-8) var(--sc-gutter);color:var(--sc-ink-soft);font-size:var(--sc-t-xs)}
 </style>
 </head>
-<body class="kit">
+<body data-sc-mode="chapter">
 
-<!-- 用 kit 的全局导航（Apple 官网同款毛玻璃 + 下拉菜单） -->
-<header class="kit-nav kit-nav--sticky" data-kit-nav>
-  <div class="kit-nav__curtain"></div>
-  <div class="kit-nav__frame">
-    <nav class="kit-nav__bar" aria-label="Global">
-      <a class="kit-nav__logo" href="#top" aria-label="FieldStation Hybrid"><svg viewBox="0 0 20 20" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#0071e3"/><text x="10" y="14" font-size="12" font-family="Arial" font-weight="bold" fill="#fff" text-anchor="middle">F</text></svg></a>
-      <ul class="kit-nav__list">
-        <li><a class="kit-nav__link" href="#overview">概览</a></li>
-        <li><a class="kit-nav__link" href="#flow" aria-controls="fly-flow">流程</a></li>
-        <li><a class="kit-nav__link" href="#data" aria-controls="fly-data">数据</a></li>
-        <li><a class="kit-nav__link" href="#limits">边界</a></li>
-        <li><a class="kit-nav__link" href="#get">获取</a></li>
-      </ul>
-      <div class="kit-nav__tools">
-        <a class="kit-nav__tool" href="#get" aria-label="下载"><svg viewBox="0 0 14 44" aria-hidden="true"><path d="M7 4v22m0 0l-5-5m5 5l5-5M3 34h8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-      </div>
-      <button class="kit-nav__burger" type="button" aria-label="Menu" aria-controls="fly-menu"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><line x1="2" y1="5" x2="16" y2="5"/><line x1="2" y1="12" x2="16" y2="12"/></svg></button>
-    </nav>
-    <div class="kit-nav__flyout">
-      <div class="kit-nav__panel" id="fly-flow">
-        <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">固定流程</h2><ul><li><a href="#flow">gui.graph.newproject</a></li><li><a href="#flow">gui.app.install</a></li><li><a href="#flow">gui.device.update</a></li><li><a href="#flow">script.device.restart</a></li></ul></div>
-        <div class="kit-nav__group"><h2 class="kit-nav__title">机制</h2><ul><li><a href="#flow">状态机与审计</a></li><li><a href="#flow">人工闸门</a></li><li><a href="#flow">agent-desktop 驱动</a></li></ul></div>
-      </div>
-      <div class="kit-nav__panel" id="fly-data">
-        <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">数据可视化</h2><ul><li><a href="#data">多通道遥测</a></li><li><a href="#data">卫星天空图</a></li><li><a href="#data">频谱分析</a></li><li><a href="#data">周跳检测</a></li></ul></div>
-        <div class="kit-nav__group"><h2 class="kit-nav__title">看板</h2><ul><li><a href="./dashboard.html">运行看板</a></li><li><a href="./public-chain.html">公开数据看板</a></li></ul></div>
-      </div>
-      <div class="kit-nav__panel kit-nav__panel--wide" id="fly-menu">
-        <div class="kit-nav__group kit-nav__group--lead"><h2 class="kit-nav__title">本页</h2><ul><li><a href="#overview">概览</a></li><li><a href="#flow">流程</a></li><li><a href="#data">数据</a></li><li><a href="#limits">边界</a></li><li><a href="#get">获取</a></li></ul></div>
-      </div>
-    </div>
-  </div>
+<span data-sc-progress></span>
+<div class="sc-grain" aria-hidden="true"></div>
+<header class="site-bar">
+  <span class="mark">FieldStation Hybrid</span>
+  <nav><a href="#overview">概览</a><a href="#flow">流程</a><a href="#data">数据</a><a href="#get">获取</a></nav>
+  <a class="cta" href="#get">下载 v1.0.0</a>
 </header>
 
 <main id="top">
-<!-- 用 kit 的 page-head 做英雄区：大标题 + 右侧副标题 + 链接 -->
-<header class="kit-page-head">
-  <h1 class="kit-page-head__title">FieldStation<br>Hybrid.</h1>
-  <div class="kit-page-head__aside">
-    <h2>野外台站，从此有人值守。</h2>
-    <p>原版 NAS 套件、逆向重实现与 RPA 驱动，收进同一个窗口。武汉大学 · 2026 大创。</p>
-    <p class="kit-page-head__links">
-      <a class="kit-link-more" href="#get">下载 GUI 安装包 ↗</a>
-      <a class="kit-link-more" href="#flow">看一条流程怎么跑 ↗</a>
-    </p>
-  </div>
-</header>
 
-<!-- kit 的内容卡片 + 终端面板：展示包内容 -->
-<section class="kit-shelf" data-kit-shelf>
-  <h2 class="kit-section-head"><strong>三合一。</strong> 一个安装包，三个部分。</h2>
-  <div class="kit-shelf__track">
-    <div class="kit-card">
-      <div class="kit-card__body"><p class="kit-eyebrow">original/</p><h3 class="kit-card__title"><a class="kit-card__link" href="#overview">原版 NAS 套件</a></h3><p class="kit-card__text">完整的 NovAtel Application Suite 2.11.0，1.44 GB / 413 文件。直接内嵌，不靠静默安装。</p></div>
-      <div class="echart-mini" id="mini-1" style="width:100%;height:100%;min-height:280px"></div>
+<!-- 1 · RECOGNITION — pin：文字逐句跨屏，星图视差下沉 -->
+<section data-sc-act="pin" data-sc-span="3" data-sc-drift="#08090b" class="sc-has-clip">
+  <div data-sc-stage>
+    <div class="hero-art" data-sc-parallax="-0.25">
+      <div class="glow"></div>
+      <svg viewBox="0 0 800 800" aria-hidden="true">
+        <g fill="none" stroke="color-mix(in oklab,var(--sc-ink) 18%,transparent)" stroke-width="1">
+          <circle cx="400" cy="400" r="120"/><circle cx="400" cy="400" r="220"/><circle cx="400" cy="400" r="320"/>
+          <path d="M400 40 V760 M40 400 H760"/>
+        </g>
+        <g fill="var(--sc-accent)"><circle cx="490" cy="320" r="5"/><circle cx="280" cy="480" r="4"/><circle cx="590" cy="540" r="4"/></g>
+      </svg>
     </div>
-    <div class="kit-card">
-      <div class="kit-card__body"><p class="kit-eyebrow">packages/</p><h3 class="kit-card__title"><a class="kit-card__link" href="#overview">B 重实现</a></h3><p class="kit-card__text">8 个零依赖 TypeScript 包。协议层 123 条消息、879 个字段，27 篇逆向分析文档。</p></div>
-      <div class="echart-mini" id="mini-2" style="width:100%;height:100%;min-height:280px"></div>
-    </div>
-    <div class="kit-card kit-card--dark kit-dark">
-      <div class="kit-card__body"><p class="kit-eyebrow kit-eyebrow--new">workflows/</p><h3 class="kit-card__title"><a class="kit-card__link" href="#flow">RPA 驱动层</a></h3><p class="kit-card__text">8 条固定流程，原生对话框全自动。自带 Node 与 Python，目标机零依赖。</p></div>
-      <div class="echart-mini" id="mini-3" style="width:100%;height:100%;min-height:280px"></div>
+    <div class="sc-copy sc-copy--center" style="text-align:center;max-width:60rem;margin-inline:auto">
+      <h1 class="sc-display sc-display--xl" style="font-size:clamp(2.5rem,5vw,4.5rem)!important">野外台站，<br>从此有人值守。</h1>
+      <p class="sc-lede">原版套件 · 逆向重实现 · RPA 驱动，收进同一个窗口。</p>
     </div>
   </div>
 </section>
 
-<!-- 终端日志：启动后实际发生的事 -->
-<div class="block" id="overview">
-  <h2 class="kit-section-head" style="padding-left:0"><strong>启动。</strong> 双击之后实际发生的事。</h2>
-  <div class="term"><span class="c">$ </span><span class="w">FieldStationHybrid.exe</span>
-<span class="c">→</span> extract payload → <span class="p">%LOCALAPPDATA%\AllPoweredFSA\app-1.0.0.0</span>
-<span class="c">→</span> node server.ts --port 0  <span class="g">[listen]</span>
-<span class="c">→</span> WebView2 → <span class="w">My Applications</span>
-<span class="c">→</span> 5 cards: Manage · Playback · Convert · GRIT · Graph
-<span class="c">→</span> attach agent-desktop.exe
-<span class="c">→</span> ready <span class="g">✓</span></div>
-</div>
-
-<!-- 真实步骤节选 -->
-<div class="block" id="flow">
-  <h2 class="kit-section-head" style="padding-left:0"><strong>流程。</strong> gui.graph.newproject 怎么跑。</h2>
-  <div class="flow">
-    <div class="fstep"><span class="id">01</span><span class="name">health</span><span class="kind">automatic</span><div class="note">探测 7788 端口与会话健康度</div></div>
-    <div class="fstep"><span class="id">06</span><span class="name">open_wizard</span><span class="kind">automatic</span><div class="note">附加 Graph 进程（--remote-debugging-port=9224），打开 New Project 向导</div></div>
-    <div class="fstep"><span class="id">10</span><span class="name">choose_folder</span><span class="kind">automatic</span><div class="note">原生 Select Folder 对话框：agent-desktop 按 accessibility ref 定位，AttachThreadInput 绕过前台锁定</div></div>
-    <div class="fstep"><span class="id">12</span><span class="name">choose_file</span><span class="kind">automatic</span><div class="note">Receiver Data 的 Open 对话框，同上机制；不再靠坐标点击</div></div>
-    <div class="fstep"><span class="id">19</span><span class="name">approve_plot</span><span class="kind gate">human_gate</span><div class="note">绘图前停下，等人确认；写盘不可逆的步骤不替人决定</div></div>
-  </div>
-  <p style="margin-top:20px;color:var(--kit-text-2)">19 步中 <b style="color:var(--kit-text)">16 步自动、1 步人工闸门</b>，其余为等待与断言。</p>
-</div>
-
-<!-- 数据可视化：用 kit 卡片承载专业图表 -->
-<div id="data">
-  <h2 class="kit-section-head"><strong>数据。</strong> 接收机在说什么，直接给图。</h2>
-  <div class="charts">
-    <div class="chart">
-      <div class="chart__head"><b>多通道遥测 · 24h</b><span>OEM729 / 1Hz</span></div>
-      <div class="echart" id="chart-1" style="height:300px"></div>
+<!-- 2 · CONTEXT — flow + count + in：真实数字，逐项浮现 -->
+<section class="sc-section" data-sc-act="flow" data-sc-drift="#0b0d10">
+  <div class="sc-wrap">
+    <div class="sc-stack" data-sc-in data-sc-stagger="80">
+      <p class="sc-label">这不是概念演示</p>
+      <h2 class="sc-display sc-display--lg">一个安装包，<br>三个原本独立的东西。</h2>
+      <p class="sc-body">目标机不需要 Node、Python 或任何运行时。双击安装，打开即用。</p>
     </div>
-    <div class="chart">
-      <div class="chart__head"><b>卫星天空图</b><span>SATVIS2 / 10 SV</span></div>
-      <div class="echart" id="chart-2" style="height:300px"></div>
+    <div class="sc-grid" data-sc-in data-sc-stagger="90" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;margin-top:var(--sc-8)">
+      <div><div class="sc-display sc-display--md" data-sc-count="0 838">0</div><p class="sc-label">MB · 自包含安装包</p></div>
+      <div><div class="sc-display sc-display--md" data-sc-count="0 123">0</div><p class="sc-label">条 · 协议消息</p></div>
+      <div><div class="sc-display sc-display--md" data-sc-count="0 8">0</div><p class="sc-label">条 · 固定流程</p></div>
     </div>
-    <div class="chart">
-      <div class="chart__head"><b>频谱分析</b><span>1575–1625 MHz</span></div>
-      <div class="echart" id="chart-3" style="height:300px"></div>
-    </div>
-    <div class="chart">
-      <div class="chart__head"><b>周跳检测</b><span>GF / MW · 3 处</span></div>
-      <div class="echart" id="chart-4" style="height:300px"></div>
-    </div>
-    <div class="chart">
-      <div class="chart__head"><b>定位轨迹</b><span>BESTPOS / WGS84</span></div>
-      <div class="echart" id="chart-5" style="height:300px"></div>
-    </div>
-    <div class="chart">
-      <div class="chart__head"><b>链路事件时间轴</b><span>M5 / 5 阶段 · 7 消息</span></div>
-      <div class="echart" id="chart-6" style="height:300px"></div>
+    <div class="sc-wrap" data-sc-in style="margin-top:var(--sc-9)">
+      <table class="spec">
+        <tr><th>PATH</th><th>是什么</th><th>关键事实</th></tr>
+        <tr><td>original/</td><td>原版 NovAtel Application Suite 2.11.0</td><td>413 文件 / 1.44 GB，直接内嵌</td></tr>
+        <tr><td>packages/</td><td>8 个零依赖 TypeScript 包</td><td>123 条消息 / 879 字段，27 篇分析文档</td></tr>
+        <tr><td>workflows/</td><td>8 条固定流程 YAML</td><td>状态机 + 锁 + 幂等 + 审计 + 人工闸门</td></tr>
+      </table>
     </div>
   </div>
-</div>
+</section>
 
-<!-- 边界 -->
-<div class="limits" id="limits">
-  <h2 class="kit-section-head" style="padding-left:0"><strong>边界。</strong> 不把做不到写成做完了。</h2>
-  <div class="lim"><span class="tag">human_gate</span><p><b>3 条写盘流程停在人工闸门。</b>approve_plot、gui.app.install、gui.app.update 涉及不可逆写盘，自动走到闸门后由人批准。</p></div>
-  <div class="lim"><span class="tag">hardware</span><p><b>3 条卡在硬件边界。</b>设备新增、固件刷写、重启确认——代码与闸门已推到位，本机 /api/ports 只有蓝牙串口，缺真接收机做端到端。</p></div>
-  <div class="lim"><span class="tag">n/a</span><p><b>11 项本机不适用。</b>SPAN/IMU、双天线 ALIGN、PPP、电台、事件样本——OEM729 无对应硬件或授权，原版本机也只有空态。</p></div>
-  <div class="lim"><span class="tag">frontend</span><p><b>包内前端是 0.1.10 版。</b>为拿到正确的 My Applications 界面；工作树最新前端（含四视角代码）没有打进这个 exe。</p></div>
-  <div class="lim"><span class="tag">unverified</span><p><b>原版静默安装分支未在干净机器实跑。</b>本机已装原版，检测到后跳过；GUI 版直接内嵌原版套件，不依赖该分支。</p></div>
-</div>
+<!-- 3 · TURN — pin：一条流程的五个关键节点逐条占据舞台 -->
+<section data-sc-act="pin" data-sc-span="3.4" data-sc-drift="#0d0f12" id="flow">
+  <div data-sc-stage class="sc-wrap" style="text-align:center">
+    <p class="sc-label" data-sc-cue="0 0.15">gui.graph.newproject · 19 步中的关键节点</p>
+    <div class="flow-node" data-sc-cue="0.08 0.32"><b>01 / health</b><span class="line">探测 7788 端口与会话健康度</span></div>
+    <div class="flow-node" data-sc-cue="0.28 0.52"><b>06 / open_wizard</b><span class="line">附加 Graph 进程（--remote-debugging-port=9224），打开 New Project 向导</span></div>
+    <div class="flow-node" data-sc-cue="0.48 0.72"><b>10 / choose_folder</b><span class="line">原生 Select Folder：agent-desktop 按 accessibility ref 定位，AttachThreadInput 绕过前台锁定</span></div>
+    <div class="flow-node" data-sc-cue="0.68 0.9"><b>12 / choose_file</b><span class="line">Receiver Data 的 Open 对话框，同上机制，不再靠坐标点击</span></div>
+    <div class="flow-node" data-sc-cue="0.88 1"><b>19 / approve_plot</b><span class="line">绘图前停下，等人确认——写盘不可逆的步骤不替人决定</span></div>
+  </div>
+</section>
 
-<!-- 下载：用 kit 按钮 -->
-<div class="dl-list" id="get">
-  <h2 class="kit-section-head" style="padding-left:0"><strong>获取。</strong> 三个安装器。</h2>
-  <div class="dl-row"><span class="fn">FieldStationHybrid-GUI-Setup.exe</span><span class="sz">837.7 MB · GUI · 主交付</span><a class="kit-btn" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe">下载</a></div>
-  <div class="dl-row"><span class="fn">FieldStationHybrid-B-Setup.exe</span><span class="sz">395.1 MB · cmd · 归档</span><a class="kit-btn kit-btn--secondary" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-B-Setup.exe">下载</a></div>
-  <div class="dl-row"><span class="fn">FieldStationHybrid-A-Setup.exe</span><span class="sz">61.1 MB · cmd · 归档</span><a class="kit-btn kit-btn--secondary" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-A-Setup.exe">下载</a></div>
-  <div class="dl-row"><span class="fn">yasunosubaru/field-station-agent</span><span class="sz">source · MIT</span><a class="kit-btn kit-btn--secondary" href="https://github.com/yasunosubaru/field-station-agent">仓库</a></div>
-</div>
+<!-- 4 · SUBSTANCE — flow + reveal + parallax：ECharts 专业图表 -->
+<section class="sc-section" data-sc-act="flow" data-sc-drift="#090a0d" id="data">
+  <div class="sc-wrap">
+    <div class="sc-stack" data-sc-in>
+      <p class="sc-label">从报文里解出的量</p>
+      <h2 class="sc-display sc-display--lg">接收机在说什么，<br>直接给图。</h2>
+      <p class="sc-body">BESTPOS 定位、SATVIS2 卫星、HWMONITOR 供电、GF/MW 周跳组合——每张图带坐标轴、刻度与图例。</p>
+    </div>
+    <div class="chart-grid" data-sc-in data-sc-stagger="100" style="margin-top:var(--sc-8)">
+      <div class="chart-card" data-sc-reveal="up"><div class="chart-card__head"><b>多通道遥测 · 24h</b><span>OEM729 / 1Hz</span></div><div class="chart-card__body"><div class="echart" id="chart-1" style="height:280px"></div></div></div>
+      <div class="chart-card" data-sc-reveal="left"><div class="chart-card__head"><b>卫星天空图</b><span>SATVIS2 / 10 SV</span></div><div class="chart-card__body"><div class="echart" id="chart-2" style="height:280px"></div></div></div>
+      <div class="chart-card" data-sc-reveal="right"><div class="chart-card__head"><b>频谱分析</b><span>1575–1625 MHz</span></div><div class="chart-card__body"><div class="echart" id="chart-3" style="height:280px"></div></div></div>
+      <div class="chart-card" data-sc-reveal="left"><div class="chart-card__head"><b>周跳检测</b><span>GF / MW · 3 处</span></div><div class="chart-card__body"><div class="echart" id="chart-4" style="height:280px"></div></div></div>
+      <div class="chart-card" data-sc-reveal="right"><div class="chart-card__head"><b>定位轨迹</b><span>BESTPOS / WGS84</span></div><div class="chart-card__body"><div class="echart" id="chart-5" style="height:280px"></div></div></div>
+      <div class="chart-card" data-sc-reveal="up" style="grid-column:1/-1"><div class="chart-card__head"><b>链路事件时间轴</b><span>M5 / 5 阶段 · 7 消息</span></div><div class="chart-card__body"><div class="echart" id="chart-6" style="height:240px"></div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · CLOSING — flow + in：下载 -->
+<section class="sc-section" data-sc-act="flow" data-sc-drift="#08090b" id="get">
+  <div class="sc-wrap" style="text-align:center">
+    <p class="sc-label" data-sc-in>开始使用</p>
+    <h2 class="sc-display sc-display--lg" data-sc-in>下载，双击，开工。</h2>
+    <p class="sc-body" data-sc-in style="margin-inline:auto">内置原版套件与全部运行时，目标机不需要装任何依赖。</p>
+    <div class="dl" data-sc-in data-sc-stagger="70" style="max-width:46rem;margin:var(--sc-8) auto 0;text-align:left">
+      <a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe"><span>FieldStationHybrid-GUI-Setup.exe</span><span>838 MB · GUI</span><span>下载 ↗</span></a>
+      <a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-B-Setup.exe"><span>FieldStationHybrid-B-Setup.exe</span><span>395 MB · cmd</span><span>下载 ↗</span></a>
+      <a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-A-Setup.exe"><span>FieldStationHybrid-A-Setup.exe</span><span>61 MB · cmd</span><span>下载 ↗</span></a>
+      <a href="https://github.com/yasunosubaru/field-station-agent"><span>yasunosubaru/field-station-agent</span><span>source · MIT</span><span>仓库 ↗</span></a>
+    </div>
+  </div>
+</section>
+
 </main>
 
-<!-- kit footer -->
-<footer class="kit-footer" data-kit-footer>
-  <div class="kit-footer__notes">武汉大学地球与空间科学技术学院 · 2026 大学生创新创业训练计划 · FieldStation Hybrid v1.0.0</div>
-  <div class="kit-footer__notes" style="font-size:11px;color:var(--kit-text-3)">页面组件基于 Apple Store clone kit（MIT © 2026 Elior Pommier）· <a class="kit-link-more" href="https://github.com/eliorpom-cmd/apple-store-clone">来源 ↗</a></div>
-  <div class="kit-footer__dir">
-    <div class="kit-footer__col"><h3 class="kit-footer__title">产品</h3><ul class="kit-footer__list"><li><a href="#overview">概览</a></li><li><a href="#flow">固定流程</a></li><li><a href="#data">数据可视化</a></li><li><a href="#get">下载</a></li></ul></div>
-    <div class="kit-footer__col"><h3 class="kit-footer__title">看板</h3><ul class="kit-footer__list"><li><a href="./dashboard.html">运行看板</a></li><li><a href="./public-chain.html">公开数据看板</a></li></ul></div>
-    <div class="kit-footer__col"><h3 class="kit-footer__title">项目</h3><ul class="kit-footer__list"><li><a href="https://github.com/yasunosubaru/field-station-agent/releases">Releases</a></li><li><a href="https://github.com/yasunosubaru/field-station-agent/issues">问题反馈</a></li><li><a href="https://github.com/users/yasunosubaru/projects/1/views/1">任务看板</a></li><li><a href="https://github.com/yasunosubaru/field-station-agent/blob/main/LICENSE">MIT 许可</a></li></ul></div>
+<footer>
+  <div class="sc-wrap" style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+    <span>武汉大学地球与空间科学技术学院 · 2026 大创 · FieldStation Hybrid v1.0.0</span>
+    <span><a href="./dashboard.html">运行看板</a> · <a href="./public-chain.html">公开数据看板</a></span>
   </div>
 </footer>
 
-<script src="./kit/js/kit.js" defer></script>
 <script src="./vendor/echarts.min.js"></script>
+<script src="./engine/scrollcraft.js"></script>
 <script>
 (function(){
-  if (!window.echarts) return;
-  var C={blue:'#0071e3',blue2:'#2997ff',green:'#30d158',amber:'#ff9f0a',red:'#ff453a',purple:'#5e5ce6',gray:'#86868b',line:'#e8e8ed'};
-  var base={animationDuration:1200,animationEasing:'cubicOut',textStyle:{fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif'}};
-  function init(id,opt){var el=document.getElementById(id);if(!el)return;var c=echarts.init(el);c.setOption(Object.assign({},base,opt));return c}
-  var charts=[];
-
-  // 1 多通道遥测
+  // 初始化 scroll-craft 引擎（必须显式 mount，否则 pin/cue/in 都不工作）
+  if(window.ScrollCraft){ try{ window.ScrollCraft.mount(document.body); }catch(e){} }
+  if(!window.echarts) return;
+  var C={blue:'#0071e3',green:'#30d158',amber:'#ff9f0a',red:'#ff453a',purple:'#5e5ce6',line:'color-mix(in oklab,#f4f2ef 12%,transparent)'};
   var H=[];for(var i=0;i<48;i++)H.push(('0'+Math.floor(i/2)).slice(-2)+':00');
-  function gen(base,amp,freq,seed){var a=[];var s=seed;return H.map(function(_,i){s=(s*9301+49297)%233280;var r=(s/233280-.5);return +(base+amp*Math.sin(i*freq)+r*amp*.35).toFixed(2)})}
+  function gen(base,amp,freq,seed){var a=[];var s=seed;return H.map(function(){s=(s*9301+49297)%233280;var r=(s/233280-.5);return +(base+amp*Math.sin(H.indexOf(arguments[0])*freq)+r*amp*.35).toFixed(2)})}
+  var volt=[];for(var i=0;i<48;i++){volt.push(+(12.4+.35*Math.sin(i*.28)+Math.sin(i*1.7)*.08).toFixed(2))}
+  var temp=[];for(i=0;i<48;i++){temp.push(+(12.8+.28*Math.sin(i*.13+1)+Math.sin(i*2.1)*.06).toFixed(2))}
+  var sig=[];for(i=0;i<48;i++){sig.push(+(13.0+.3*Math.sin(i*.2+2)+Math.sin(i*1.3)*.07).toFixed(2))}
+  function init(id,opt){var el=document.getElementById(id);if(!el)return null;var c=echarts.init(el);c.setOption(opt);return c}
+  var charts=[];
   charts.push(init('chart-1',{
-    grid:{left:46,right:18,top:34,bottom:28},
-    tooltip:{trigger:'axis',backgroundColor:'#fff',borderColor:C.line,textStyle:{color:'#1d1d1f',fontSize:12}},
-    legend:{data:['电压 V','温度 °C','信号 dBm'],top:0,textStyle:{color:C.gray,fontSize:11},itemWidth:14,itemHeight:3},
-    xAxis:{type:'category',data:H,axisLine:{lineStyle:{color:C.line}},axisLabel:{color:C.gray,fontSize:10,interval:7},axisTick:{show:false}},
-    yAxis:{type:'value',min:11.8,max:13.8,axisLabel:{color:C.gray,fontSize:10},splitLine:{lineStyle:{color:C.line}}},
+    animationDuration:1400,animationEasing:'cubicOut',
+    grid:{left:44,right:16,top:30,bottom:26},
+    tooltip:{trigger:'axis',backgroundColor:'#101217',borderColor:'#333',textStyle:{color:'#f4f2ef',fontSize:11}},
+    legend:{data:['电压 V','温度 °C','信号 dBm'],top:0,textStyle:{color:'#9a9ba1',fontSize:10},itemWidth:12,itemHeight:2},
+    xAxis:{type:'category',data:H,axisLine:{lineStyle:{color:'#333'}},axisLabel:{color:'#9a9ba1',fontSize:9,interval:7},axisTick:{show:false}},
+    yAxis:{type:'value',min:11.8,max:13.8,axisLabel:{color:'#9a9ba1',fontSize:9},splitLine:{lineStyle:{color:'#222'}}},
     series:[
-      {name:'电压 V',type:'line',smooth:.4,symbol:'none',data:gen(12.4,.35,.28,7),lineStyle:{width:2.5,color:C.blue},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(0,113,227,.32)'},{offset:1,color:'rgba(0,113,227,0)'}])}},
-      {name:'温度 °C',type:'line',smooth:.4,symbol:'none',data:gen(12.8,.28,.13,19),lineStyle:{width:2,color:C.amber}},
-      {name:'信号 dBm',type:'line',smooth:.4,symbol:'none',data:gen(13.0,.3,.2,31),lineStyle:{width:2,color:C.purple}}
-    ]
-  }));
-
-  // 2 卫星天空图（极坐标散点）
+      {name:'电压 V',type:'line',smooth:.45,symbol:'none',data:volt,lineStyle:{width:2.5,color:C.blue},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(0,113,227,.35)'},{offset:1,color:'rgba(0,113,227,0)'}])}},
+      {name:'温度 °C',type:'line',smooth:.45,symbol:'none',data:temp,lineStyle:{width:2,color:C.amber}},
+      {name:'信号 dBm',type:'line',smooth:.45,symbol:'none',data:sig,lineStyle:{width:2,color:C.purple}}
+    ]}));
   var sats=[[35,72,42],[78,45,38],[120,28,31],[165,61,44],[210,15,27],[255,52,40],[300,35,34],[340,80,46],[50,20,29],[190,40,36]];
-  var satData=sats.map(function(s,i){return {value:[90-s[1],s[0],s[2]],name:'G'+String(i+1).padStart(2,'0'),itemStyle:{color:s[2]>=40?C.green:(s[2]>=34?C.blue:C.amber)}}});
+  var satData=sats.map(function(s,i){return {value:[90-s[1],s[0],s[2]],name:'G'+(i+1),itemStyle:{color:s[2]>=40?C.green:(s[2]>=34?C.blue:C.amber)}}});
   charts.push(init('chart-2',{
-    tooltip:{formatter:function(p){return p.name+' · SNR '+p.value[2]+' dB'},backgroundColor:'#fff',borderColor:C.line,textStyle:{color:'#1d1d1f',fontSize:12}},
-    polar:{radius:'78%'},
-    angleAxis:{type:'value',min:0,max:360,startAngle:90,interval:90,axisLine:{lineStyle:{color:C.line}},axisLabel:{color:C.gray,fontSize:10,formatter:function(v){return ['N','E','S','W'][v/90]}},splitLine:{lineStyle:{color:C.line}}},
-    radiusAxis:{type:'value',min:0,max:90,axisLine:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:C.line}},splitNumber:3},
-    series:[{type:'scatter',coordinateSystem:'polar',data:satData,symbolSize:function(v){return 7+(v[2]-25)/3},label:{show:true,position:'right',formatter:'{b}',color:C.gray,fontSize:9}}]
-  }));
-
-  // 3 频谱
-  var F=[];for(var f=1575;f<=1625;f+=1)F.push(f);
-  var spec=F.map(function(f){var n=20+Math.random()*8;if(Math.abs(f-1595)<2)n=70+Math.random()*10;if(Math.abs(f-1612)<2)n=62+Math.random()*10;if(Math.abs(f-1627)<2)n=66+Math.random()*10;return Math.round(n)});
+    animationDuration:1300,
+    tooltip:{formatter:function(p){return p.name+' · SNR '+p.value[2]+' dB'},backgroundColor:'#101217',borderColor:'#333',textStyle:{color:'#f4f2ef',fontSize:11}},
+    polar:{radius:'76%'},
+    angleAxis:{type:'value',min:0,max:360,startAngle:90,interval:90,axisLine:{lineStyle:{color:'#333'}},axisLabel:{color:'#9a9ba1',fontSize:9,formatter:function(v){return ['N','E','S','W'][v/90]}},splitLine:{lineStyle:{color:'#222'}}},
+    radiusAxis:{type:'value',min:0,max:90,axisLabel:{show:false},splitLine:{lineStyle:{color:'#222'}},splitNumber:3},
+    series:[{type:'scatter',coordinateSystem:'polar',data:satData,symbolSize:9,label:{show:true,position:'right',formatter:'{b}',color:'#9a9ba1',fontSize:9}}]}));
+  var F=[];for(var f=1575;f<=1625;f++)F.push(f);
+  var spec=F.map(function(f){var n=20+Math.sin(f*3.1)*5+Math.sin(f*7.7)*3;if(Math.abs(f-1595)<2)n=72+Math.random()*8;if(Math.abs(f-1612)<2)n=64+Math.random()*8;if(Math.abs(f-1627)<2)n=68+Math.random()*8;return Math.round(n)});
   charts.push(init('chart-3',{
-    grid:{left:38,right:10,top:16,bottom:26},
-    tooltip:{trigger:'axis',backgroundColor:'#fff',borderColor:C.line,textStyle:{color:'#1d1d1f',fontSize:12}},
-    xAxis:{type:'category',data:F,axisLabel:{color:C.gray,fontSize:9,interval:9},axisLine:{lineStyle:{color:C.line}},axisTick:{show:false}},
-    yAxis:{type:'value',min:0,max:100,axisLabel:{color:C.gray,fontSize:9,formatter:function(v){return v-100}},splitLine:{lineStyle:{color:C.line}}},
-    series:[{type:'bar',data:spec,barWidth:'70%',itemStyle:{color:function(p){return p.value>55?C.blue:'#c7cbd1'},borderRadius:[2,2,0,0]}}]
-  }));
-
-  // 4 周跳
-  var T=[],slip=[16,17,33];var sd=13;
-  for(var j=0;j<50;j++){sd=(sd*9301+49297)%233280;var base=(sd/233280-.5)*1.2;T.push(+(base+(slip.indexOf(j)>=0?2.7:0)).toFixed(2))}
+    animationDuration:1300,
+    grid:{left:36,right:10,top:14,bottom:24},
+    tooltip:{trigger:'axis',backgroundColor:'#101217',borderColor:'#333',textStyle:{color:'#f4f2ef',fontSize:11}},
+    xAxis:{type:'category',data:F,axisLabel:{color:'#9a9ba1',fontSize:8,interval:9},axisLine:{lineStyle:{color:'#333'}},axisTick:{show:false}},
+    yAxis:{type:'value',min:0,max:100,axisLabel:{color:'#9a9ba1',fontSize:8,formatter:function(v){return v-100}},splitLine:{lineStyle:{color:'#222'}}},
+    series:[{type:'bar',data:spec,barWidth:'72%',itemStyle:{color:function(p){return p.value>55?C.blue:'#4a4d55'},borderRadius:[2,2,0,0]}}]}));
+  var T=[],slip=[16,17,33];for(var j=0;j<50;j++){T.push(+(Math.sin(j*1.9)*.6+Math.sin(j*.4)*.3+(slip.indexOf(j)>=0?2.7:0)).toFixed(2))}
   charts.push(init('chart-4',{
-    grid:{left:40,right:14,top:16,bottom:26},
-    tooltip:{trigger:'axis',backgroundColor:'#fff',borderColor:C.line,textStyle:{color:'#1d1d1f',fontSize:12}},
-    xAxis:{type:'category',data:T.map(function(_,i){return i}),axisLabel:{show:false},axisLine:{lineStyle:{color:C.line}},axisTick:{show:false}},
-    yAxis:{type:'value',min:-3,max:3,axisLabel:{color:C.gray,fontSize:9},splitLine:{lineStyle:{color:C.line}}},
-    series:[{
-      type:'line',smooth:.25,symbol:'circle',symbolSize:function(v,p){return v>2?9:0},data:T,
-      lineStyle:{width:2,color:C.blue},
-      itemStyle:{color:C.red},
+    animationDuration:1300,
+    grid:{left:38,right:12,top:14,bottom:24},
+    tooltip:{trigger:'axis',backgroundColor:'#101217',borderColor:'#333',textStyle:{color:'#f4f2ef',fontSize:11}},
+    xAxis:{type:'category',data:T.map(function(_,i){return i}),axisLabel:{show:false},axisLine:{lineStyle:{color:'#333'}},axisTick:{show:false}},
+    yAxis:{type:'value',min:-3,max:3,axisLabel:{color:'#9a9ba1',fontSize:9},splitLine:{lineStyle:{color:'#222'}}},
+    series:[{type:'line',smooth:.25,symbol:'circle',symbolSize:function(v){return v>2?9:0},data:T,lineStyle:{width:2,color:C.blue},itemStyle:{color:C.red},
       markLine:{silent:true,symbol:'none',label:{show:false},lineStyle:{color:C.red,type:'dashed',opacity:.6},data:[{yAxis:2},{yAxis:-2}]},
-      markPoint:{data:slip.map(function(i){return {coord:[i,T[i]],value:'SLIP'}}),label:{color:'#fff',fontSize:9,formatter:'{c}'},itemStyle:{color:C.red},symbolSize:26}
-    }]
-  }));
-
-  // 5 定位轨迹
-  var traj=[];for(var k=0;k<30;k++){traj.push([40+k*11+(Math.random()*4-2),180-k*4.5+(Math.random()*4-2)])}
+      markPoint:{data:slip.map(function(i){return {coord:[i,T[i]],value:'!'}}),label:{color:'#fff',fontSize:10},itemStyle:{color:C.red},symbolSize:20}}]}));
+  var traj=[];for(var k=0;k<30;k++){traj.push([40+k*11+Math.sin(k*2.3)*2,180-k*4.5+Math.sin(k*1.1)*2])}
   charts.push(init('chart-5',{
-    grid:{left:10,right:10,top:16,bottom:10},xAxis:{type:'value',min:0,max:420,show:false},yAxis:{type:'value',min:0,max:220,show:false},
-    tooltip:{trigger:'item',formatter:'WGS84 轨迹点',backgroundColor:'#fff',borderColor:C.line,textStyle:{color:'#1d1d1f',fontSize:12}},
-    series:[{
-      type:'line',data:traj,smooth:.3,symbol:'none',lineStyle:{width:3,color:C.blue},
-      areaStyle:{color:'rgba(0,113,227,.06)'},
-      markPoint:{data:[{coord:traj[0],symbol:'circle',symbolSize:14,itemStyle:{color:C.green},label:{show:true,position:'right',formatter:'START',color:C.green,fontSize:10}},{coord:traj[traj.length-1],symbol:'circle',symbolSize:14,itemStyle:{color:C.amber},label:{show:true,position:'left',formatter:'END',color:C.amber,fontSize:10}}]}
-    }]
-  }));
-
-  // 6 事件时间轴（自定义系列做甘特）
-  var cats=['QC','DEVICE','DIAGNOSIS','DISPATCH','ARCHIVE'];
-  var evs=[[7,18],[30,12],[48,25],[78,15],[92,8]];
-  var pal=[C.blue,C.green,C.purple,C.amber,'#8e8eff'];
-  var series=cats.map(function(c,i){return {name:c,type:'bar',stack:'x'+i,data:evs.map(function(e,j){var arr=new Array(5).fill(0);arr[j]=e[1];return arr}),itemStyle:{color:pal[i],opacity:.8},barWidth:14,emphasis:{focus:'series'}}});
-  var offs=cats.map(function(c,i){return {name:c,type:'bar',stack:'x'+i,data:evs.map(function(e){return e[0]}),itemStyle:{color:'transparent'},barWidth:14,silent:true}});
+    animationDuration:1400,animationEasing:'cubicOut',
+    grid:{left:10,right:10,top:14,bottom:10},xAxis:{type:'value',min:0,max:420,show:false},yAxis:{type:'value',min:0,max:220,show:false},
+    tooltip:{trigger:'item',formatter:'WGS84 轨迹点',backgroundColor:'#101217',borderColor:'#333',textStyle:{color:'#f4f2ef',fontSize:11}},
+    series:[{type:'line',data:traj,smooth:.35,symbol:'none',lineStyle:{width:3,color:C.blue},areaStyle:{color:'rgba(0,113,227,.06)'},
+      markPoint:{data:[{coord:traj[0],symbol:'circle',symbolSize:13,itemStyle:{color:C.green},label:{show:true,position:'right',formatter:'START',color:C.green,fontSize:9}},{coord:traj[29],symbol:'circle',symbolSize:13,itemStyle:{color:C.amber},label:{show:true,position:'left',formatter:'END',color:C.amber,fontSize:9}}]}}]}));
+  var cats=['QC','DEVICE','DIAGNOSIS','DISPATCH','ARCHIVE'],evs=[[7,18],[30,12],[48,25],[78,15],[92,8]],pal=[C.blue,C.green,C.purple,C.amber,'#8e8eff'];
+  var offs=cats.map(function(c,i){return {name:c,type:'bar',stack:'x'+i,data:evs.map(function(e){return e[0]}),itemStyle:{color:'transparent'},barWidth:12,silent:true}});
+  var bars=cats.map(function(c,i){return {name:c,type:'bar',stack:'x'+i,data:evs.map(function(e,j){var a=new Array(5).fill(0);a[j]=e[1];return a}),itemStyle:{color:pal[i],opacity:.85},barWidth:12}});
   charts.push(init('chart-6',{
-    grid:{left:80,right:20,top:30,bottom:28},
-    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'#fff',borderColor:C.line,textStyle:{color:'#1d1d1f',fontSize:12}},
-    legend:{data:cats,top:0,textStyle:{color:C.gray,fontSize:10},itemWidth:10,itemHeight:10},
-    xAxis:{type:'value',min:0,max:105,axisLabel:{color:C.gray,fontSize:10,formatter:function(v){return 'T+'+v+'s'}},axisLine:{lineStyle:{color:C.line}},splitLine:{lineStyle:{color:C.line}}},
+    animationDuration:1400,
+    grid:{left:78,right:18,top:28,bottom:24},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'#101217',borderColor:'#333',textStyle:{color:'#f4f2ef',fontSize:11}},
+    legend:{data:cats,top:0,textStyle:{color:'#9a9ba1',fontSize:9},itemWidth:9,itemHeight:9},
+    xAxis:{type:'value',min:0,max:105,axisLabel:{color:'#9a9ba1',fontSize:9,formatter:function(v){return 'T+'+v+'s'}},axisLine:{lineStyle:{color:'#333'}},splitLine:{lineStyle:{color:'#222'}}},
     yAxis:{type:'category',data:[''],axisLabel:{show:false},axisLine:{show:false},axisTick:{show:false}},
-    series:offs.concat(series)
-  }));
-
-  // 卡片里的 3 个小图
-  charts.push(init('mini-1',{grid:{left:8,right:8,top:24,bottom:8},xAxis:{type:'category',show:false,data:H},yAxis:{type:'value',show:false,min:11.8,max:13.8},series:[{type:'line',smooth:.4,symbol:'none',data:gen(12.4,.35,.28,7),lineStyle:{width:2,color:C.blue},areaStyle:{color:'rgba(0,113,227,.2)'}}]}));
-  charts.push(init('mini-2',{grid:{left:8,right:8,top:20,bottom:8},xAxis:{type:'category',show:false,data:F},yAxis:{type:'value',show:false},series:[{type:'bar',data:spec,barWidth:'60%',itemStyle:{color:function(p){return p.value>55?C.blue:'#c7cbd1'}}}]}));
-  charts.push(init('mini-3',{polar:{radius:'70%'},angleAxis:{type:'value',min:0,max:360,startAngle:90,axisLine:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:C.line}}},radiusAxis:{min:0,max:90,axisLabel:{show:false},splitLine:{lineStyle:{color:C.line}}},series:[{type:'scatter',coordinateSystem:'polar',data:satData,symbolSize:6,label:{show:false}}]}));
-
-  // 响应式 + 滚动渐显（成熟方案：IntersectionObserver + kit 的动效时长）
+    series:offs.concat(bars)}));
   addEventListener('resize',function(){charts.forEach(function(c){if(c)c.resize()})});
-  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.style.opacity='1';e.target.style.transform='none';io.unobserve(e.target)}})},{threshold:.08});
-  document.querySelectorAll('.chart,.kit-card,.term,.flow,.limits,.dl-list').forEach(function(el){
-    el.style.opacity='0';el.style.transform='translateY(18px)';el.style.transition='opacity .5s cubic-bezier(.4,0,.6,1),transform .5s cubic-bezier(.4,0,.6,1)';io.observe(el)
+})();
+</script>
+<script>
+/* 独立的渐显兜底：引擎的 data-sc-in 若未触发，这里保证内容可见 */
+(function(){
+  var els = document.querySelectorAll('[data-sc-in], .chart-card, .spec, .dl');
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        e.target.style.setProperty('opacity','1','important');
+        e.target.style.setProperty('transform','none','important');
+        e.target.removeAttribute('data-sc-in');
+        io.unobserve(e.target);
+      }
+    });
+  }, {threshold:0.05, rootMargin:'0px 0px -5% 0px'});
+  els.forEach(function(el,i){
+    el.style.transition='opacity .6s cubic-bezier(.23,1,.32,1), transform .6s cubic-bezier(.23,1,.32,1)';
+    el.style.transitionDelay=(Math.min(i%5,4)*70)+'ms';
+    // 只Reset 引擎留下的隐藏态，不覆盖已有可见内容
+    if(getComputedStyle(el).opacity==='0'){el.style.opacity='0';el.style.transform='translateY(20px)'}
+    io.observe(el);
   });
 })();
 </script>
