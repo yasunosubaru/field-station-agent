@@ -3,138 +3,134 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FieldStation Hybrid · 野外台站智能体</title>
+<title>FieldStation Hybrid — 野外台站智能体</title>
 <meta name="description" content="武汉大学地球与空间科学技术学院 2026 大创项目。原版 NAS 套件 + 逆向重实现 + RPA 驱动层的自包含交付。">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='23' font-size='20' font-family='monospace' fill='%230071e3' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231a1917'/%3E%3Ctext x='16' y='23' font-size='20' font-family='serif' fill='%23d4573c' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E">
 <style>
+@font-face{font-family:'Clash';src:url('./fonts/ClashDisplay-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'Fraunces';src:url('./fonts/Fraunces-Black.woff2') format('woff2');font-weight:900;font-display:swap}
 :root{
-  --bg:#000; --panel:#0b0b0d; --panel2:#111114; --line:#232327; --line2:#343438;
-  --fg:#e8e8ed; --dim:#8b8b94; --dim2:#5d5d66; --blue:#2f81f7; --blue-l:#6cb6ff;
-  --green:#3fb950; --amber:#d29922; --red:#f85149; --purple:#a371f7;
-  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Code",Menlo,Consolas,"Liberation Mono",monospace;
-  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  /* 7 roles, every colour maps to one — warm, off-black, one accent */
+  --canvas:#141310;       /* warm ink, not #000 */
+  --surface:#1c1b17;      /* raised panel */
+  --ink:#efece4;          /* warm white, not #fff */
+  --muted:#a09a8d;        /* secondary */
+  --hairline:#35322b;     /* 1px borders */
+  --accent:#d4573c;       /* one saturated accent: terracotta, not neon blue */
+  --on-accent:#141310;
+  --display:'Fraunces',Georgia,'Songti SC','Noto Serif CJK SC',serif;
+  --latin:'Clash','Fraunces',Georgia,serif;
+  --body:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --r:4px; /* one radius */
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--fg);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.6;font-size:15px}
+body{background:var(--canvas);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-::selection{background:var(--blue);color:#fff}
+::selection{background:var(--accent);color:var(--on-accent)}
 
-/* top bar — like a docs site */
-.top{position:sticky;top:0;z-index:50;height:46px;background:rgba(0,0,0,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
-.top-in{max-width:1180px;margin:0 auto;height:100%;display:flex;align-items:center;gap:28px;padding:0 24px}
-.brand{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap}
-.brand b{color:var(--blue)}
-.top nav{display:flex;gap:22px;margin-left:auto}
-.top nav a{font-size:12px;color:var(--dim);transition:color .2s}
-.top nav a:hover{color:var(--fg)}
-.top .ver{font-family:var(--mono);font-size:11px;color:var(--dim2);border:1px solid var(--line2);padding:2px 8px;border-radius:4px}
+/* top — plain, one row, no blur gimmick */
+.top{border-bottom:1px solid var(--hairline)}
+.top-in{max-width:1140px;margin:0 auto;padding:18px 28px;display:flex;align-items:center;gap:32px}
+.top .mark{font-family:var(--latin);font-size:15px;font-weight:700;letter-spacing:-.01em}
+.top .mark em{font-style:normal;color:var(--accent)}
+.top nav{display:flex;gap:26px;margin-left:auto}
+.top nav a{font-size:13px;color:var(--muted);transition:color .2s}
+.top nav a:hover{color:var(--ink)}
 @media(max-width:700px){.top nav{display:none}}
 
-/* container */
-.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.wrap{max-width:1140px;margin:0 auto;padding:0 28px}
 
-/* hero — asymmetric, terminal-like */
-.hero{padding:96px 0 72px;border-bottom:1px solid var(--line)}
-.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:60px;align-items:start}
-@media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:40px}}
-.kicker{font-family:var(--mono);font-size:11px;color:var(--blue-l);letter-spacing:.06em;margin-bottom:22px}
-.hero h1{font-size:clamp(34px,4.6vw,58px);font-weight:600;letter-spacing:-.035em;line-height:1.14;max-width:12em}
-.hero h1 em{font-style:normal;color:var(--blue-l)}
-.hero .desc{margin-top:26px;color:var(--dim);font-size:16px;max-width:34em;line-height:1.75}
-.hero .desc code{font-family:var(--mono);font-size:13px;color:var(--fg);background:var(--panel2);padding:2px 6px;border-radius:4px;border:1px solid var(--line)}
-.actions{margin-top:32px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;gap:8px;font-size:13px;padding:9px 18px;border-radius:6px;border:1px solid var(--line2);color:var(--fg);transition:background .2s,border-color .2s}
-.btn:hover{background:var(--panel2);border-color:var(--dim)}
-.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
-.btn.primary:hover{background:#1f6feb}
-.btn code{font-family:var(--mono);font-size:11px;opacity:.7}
-.meta-line{margin-top:22px;font-family:var(--mono);font-size:11px;color:var(--dim2);display:flex;gap:16px;flex-wrap:wrap}
-.meta-line span::before{content:"·";margin-right:16px;color:var(--line2)}
-.meta-line span:first-child::before{content:none;margin:0}
+/* hero — asymmetric 58/42, generous space */
+.hero{padding:120px 0 128px}
+.hero-grid{display:grid;grid-template-columns:58% 42%;gap:64px;align-items:start}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:56px}}
+.kicker{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:40px}
+.hero h1{font-family:var(--display);font-size:clamp(40px,4.9vw,68px);font-weight:900;line-height:1.14;letter-spacing:-.015em;max-width:13em}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero .lede{margin-top:44px;font-size:17px;color:var(--muted);max-width:32em;line-height:1.8}
+.hero .lede code{font-family:var(--mono);font-size:13px;color:var(--ink)}
+.actions{margin-top:52px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:10px;font-size:14px;padding:12px 22px;border-radius:var(--r);border:1px solid var(--hairline);transition:background .2s,border-color .2s}
+.btn:hover{background:var(--surface);border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.primary:hover{background:#c2472f}
+.detail{margin-top:44px;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:20px;flex-wrap:wrap}
 
-/* terminal card — the "real" proof */
-.term{background:var(--panel);border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-family:var(--mono);font-size:11.5px;line-height:1.75}
-.term-bar{display:flex;align-items:center;gap:7px;padding:9px 13px;background:#151518;border-bottom:1px solid var(--line);color:var(--dim2);font-size:10px}
-.term-bar i{width:9px;height:9px;border-radius:50%;background:#3a3a40}
-.term-body{padding:16px 18px;color:var(--dim);overflow-x:auto}
-.term .p{color:var(--blue-l)}
-.term .g{color:var(--green)}
-.term .a{color:var(--amber)}
-.term .c{color:var(--dim2)}
-.term .w{color:var(--fg)}
+/* terminal — no rounded glow, just a sheet with a hairline */
+.sheet{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r)}
+.sheet-bar{padding:11px 16px;border-bottom:1px solid var(--hairline);font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.05em}
+.term-body{padding:22px 20px;font-family:var(--mono);font-size:11.5px;line-height:1.9;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+.term-body .p{color:var(--accent)}
+.term-body .g{color:#7fb85a}
+.term-body .w{color:var(--ink)}
+.term-body .c{color:#6b675e}
 
-/* section with left rail label */
-.sec{display:grid;grid-template-columns:200px 1fr;gap:44px;padding:74px 0;border-bottom:1px solid var(--line)}
-@media(max-width:860px){.sec{grid-template-columns:1fr;gap:24px;padding:52px 0}}
-.rail{font-family:var(--mono);font-size:11px;color:var(--dim2);line-height:1.9}
-.rail .n{color:var(--blue)}
-.rail b{display:block;color:var(--fg);font-family:var(--sans);font-size:19px;font-weight:600;letter-spacing:-.02em;margin-bottom:6px;line-height:1.35}
-.sec h2{font-size:clamp(24px,2.8vw,36px);font-weight:600;letter-spacing:-.025em;line-height:1.25;margin-bottom:14px}
-.sec .lead{color:var(--dim);font-size:15px;max-width:40em;margin-bottom:32px}
-.sec .lead code{font-family:var(--mono);font-size:12.5px;color:var(--fg);background:var(--panel2);padding:2px 5px;border-radius:3px}
+/* signature move: 章节编号用衬线大字 */
+.sec{padding:104px 0;border-top:1px solid var(--hairline)}
+.sec-head{display:grid;grid-template-columns:64px 1fr;gap:32px;margin-bottom:56px;align-items:start}
+.sec-num{font-family:var(--display);font-size:52px;font-weight:900;color:var(--accent);line-height:.9}
+.sec h2{font-family:var(--display);font-size:clamp(30px,3.4vw,48px);font-weight:900;letter-spacing:-.025em;line-height:1.12}
+.sec .lead{color:var(--muted);max-width:44em;margin-top:24px;font-size:16px;line-height:1.8}
+.sec .lead code{font-family:var(--mono);font-size:13px;color:var(--ink)}
 
-/* flow steps — vertical, like a run log */
-.flow{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.step{display:grid;grid-template-columns:88px 1fr auto;gap:18px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:baseline;font-family:var(--mono);font-size:12px}
-.step:last-child{border-bottom:0}
-.step .id{color:var(--dim2)}
-.step .name{color:var(--fg)}
-.step .kind{font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--line2);color:var(--dim)}
-.step .kind.auto{color:var(--green);border-color:rgba(63,185,80,.35)}
-.step .kind.gate{color:var(--amber);border-color:rgba(210,153,34,.35)}
-.step .kind.hw{color:var(--red);border-color:rgba(248,81,73,.35)}
-.step .note{grid-column:2 / -1;font-family:var(--sans);font-size:12.5px;color:var(--dim);margin-top:-8px;padding-bottom:6px}
+/* table — dense, borderless rows like a spec sheet */
+.spec{width:100%;border-collapse:collapse;font-size:14px}
+.spec th{text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);font-weight:400;padding:10px 14px;border-bottom:1px solid var(--hairline);letter-spacing:.08em}
+.spec td{padding:15px 14px;border-bottom:1px solid var(--hairline);color:var(--muted);vertical-align:top}
+.spec td:first-child{font-family:var(--mono);font-size:12px;color:var(--ink)}
+.spec td:nth-child(2){color:var(--ink)}
 
-/* data cards with captions under — no icons, no uniform padding */
-.dcards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.dcard{border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--panel)}
-.dcard.wide{grid-column:1 / -1}
-@media(max-width:760px){.dcards{grid-template-columns:1fr}.dcard.wide{grid-column:1}}
-.dc-head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
-.dc-title{font-size:13px;font-weight:600}
-.dc-meta{font-family:var(--mono);font-size:10px;color:var(--dim2)}
-.dc-body{padding:12px;background:#050506}
-.dc-body svg{width:100%;height:auto;display:block}
-.dc-foot{padding:10px 16px;font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid var(--line)}
-.dc-foot i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+/* flow — vertical log, mixed widths */
+.flow{border-top:1px solid var(--hairline)}
+.fstep{display:grid;grid-template-columns:56px 1fr auto;gap:20px;padding:18px 0;border-bottom:1px solid var(--hairline);align-items:baseline;font-family:var(--mono);font-size:12px}
+.fstep .id{color:var(--accent)}
+.fstep .name{color:var(--ink)}
+.fstep .kind{font-size:10px;padding:2px 8px;border:1px solid var(--hairline);border-radius:2px;color:var(--muted)}
+.fstep .kind.auto{color:#7fb85a;border-color:rgba(127,184,90,.35)}
+.fstep .kind.gate{color:var(--accent);border-color:rgba(212,87,60,.4)}
+.fstep .note{grid-column:2/-1;font-family:var(--body);font-size:13px;color:var(--muted);margin-top:2px}
 
-/* constraint list — honest, specific */
-.constraints{display:grid;gap:0;border-top:1px solid var(--line)}
-.constraint{display:grid;grid-template-columns:130px 1fr;gap:20px;padding:15px 0;border-bottom:1px solid var(--line);font-size:13.5px}
-@media(max-width:600px){.constraint{grid-template-columns:1fr;gap:6px}}
-.constraint .tag{font-family:var(--mono);font-size:11px;color:var(--amber)}
-.constraint .tag.no{color:var(--red)}
-.constraint .tag.ok{color:var(--green)}
-.constraint p{color:var(--dim)}
-.constraint b{color:var(--fg);font-weight:500}
+/* charts — asymmetric: one wide, two half, one wide */
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:800px){.charts{grid-template-columns:1fr}}
+.chart{border:1px solid var(--hairline);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.chart.wide{grid-column:1/-1}
+.ch-head{padding:13px 18px;border-bottom:1px solid var(--hairline);display:flex;justify-content:space-between;align-items:baseline}
+.ch-title{font-family:var(--display);font-size:18px;font-weight:900}
+.ch-meta{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.ch-body{padding:14px;background:#100f0d}
+.ch-body svg{width:100%;height:auto;display:block}
+.ch-foot{padding:11px 18px;font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid var(--hairline)}
+.ch-foot i{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:-1px}
 
-/* capability table — dense, real */
-.ctab{width:100%;border-collapse:collapse;font-size:13px}
-.ctab th{text-align:left;font-family:var(--mono);font-size:10px;color:var(--dim2);font-weight:400;padding:8px 12px;border-bottom:1px solid var(--line2);letter-spacing:.04em}
-.ctab td{padding:11px 12px;border-bottom:1px solid var(--line);color:var(--dim);vertical-align:top}
-.ctab td:first-child{font-family:var(--mono);font-size:11.5px;color:var(--fg);white-space:nowrap}
-.ctab td:nth-child(2){color:var(--fg)}
+/* constraints — honest */
+.limit{display:grid;grid-template-columns:120px 1fr;gap:24px;padding:18px 0;border-bottom:1px solid var(--hairline)}
+@media(max-width:600px){.limit{grid-template-columns:1fr;gap:6px}}
+.limit .tag{font-family:var(--mono);font-size:11px;color:var(--accent)}
+.limit p{color:var(--muted);font-size:14px}
+.limit b{color:var(--ink);font-weight:600}
 
-/* download — plain, no fanfare */
-.dl{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-.dl-row{display:grid;grid-template-columns:1fr auto auto;gap:20px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px}
-.dl-row:last-child{border-bottom:0}
-.dl-row .fn{color:var(--fg)}
-.dl-row .sz{color:var(--dim2)}
-.dl-row a{color:var(--blue-l);font-family:var(--sans);font-size:12.5px}
+/* download — plain list, one accent */
+.dl{border-top:1px solid var(--hairline)}
+.dl-row{display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:17px 0;border-bottom:1px solid var(--hairline);font-family:var(--mono);font-size:12px;align-items:center}
+@media(max-width:600px){.dl-row{grid-template-columns:1fr auto;gap:8px}}
+.dl-row .fn{color:var(--ink)}
+.dl-row .sz{color:var(--muted)}
+.dl-row a{color:var(--accent);font-family:var(--body);font-size:13px}
 
-footer{padding:40px 0 60px;font-family:var(--mono);font-size:11px;color:var(--dim2);line-height:2}
-footer .row{display:flex;gap:24px;flex-wrap:wrap}
-footer a:hover{color:var(--fg)}
+footer{padding:64px 0 90px;border-top:1px solid var(--hairline)}
+.foot-row{display:flex;gap:28px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.foot-row a:hover{color:var(--ink)}
+.foot-note{margin-top:20px;font-family:var(--mono);font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
 
 <header class="top"><div class="top-in">
-  <div class="brand"><b>▚</b> fieldstation/hybrid</div>
-  <nav><a href="#overview">概览</a><a href="#flow">固定流程</a><a href="#data">数据</a><a href="#limits">边界</a><a href="#get">获取</a></nav>
-  <span class="ver">v1.0.0</span>
+  <div class="mark">FieldStation<em>/</em>Hybrid</div>
+  <nav><a href="#overview">概览</a><a href="#flow">流程</a><a href="#data">数据</a><a href="#limits">边界</a><a href="#get">获取</a></nav>
 </div></header>
 
 <main class="wrap">
@@ -143,134 +139,126 @@ footer a:hover{color:var(--fg)}
   <div class="hero-grid">
     <div>
       <div class="kicker">武汉大学 · 地球与空间科学技术学院 · 2026 大创</div>
-      <h1>把原版 NAS 套件、逆向重实现与 RPA 驱动，<em>收进一个可交付的窗口。</em></h1>
-      <p class="desc">这不是概念演示。包内 <code>original/</code> 是完整的 NovAtel Application Suite 2.11.0（1.44 GB）；<code>packages/</code> 是 8 个包的零依赖 TypeScript 重实现；<code>workflows/</code> 是 8 条把原版 GUI 缺口固化成的可执行流程。目标机不需要 Node、Python 或任何运行时。</p>
+      <h1>原版套件、逆向重实现、RPA 驱动——<em>收进同一个窗口。</em></h1>
+      <p class="lede">包内 <code>original/</code> 是完整的 NovAtel Application Suite 2.11.0（1.44 GB）；<code>packages/</code> 是 8 个零依赖 TypeScript 包；<code>workflows/</code> 是 8 条固化流程。目标机不需要 Node、Python 或任何运行时。</p>
       <div class="actions">
-        <a class="btn primary" href="#get">下载 GUI 安装包 <code>838 MB</code></a>
-        <a class="btn" href="#flow">看一条流程怎么跑 <code>↓</code></a>
+        <a class="btn primary" href="#get">下载 GUI 安装包</a>
+        <a class="btn" href="#flow">看一条流程怎么跑</a>
       </div>
-      <div class="meta-line"><span>Windows 10/11 x64</span><span>WebView2</span><span>MIT</span></div>
+      <div class="detail"><span>v1.0.0</span><span>Windows 10/11 x64</span><span>WebView2</span><span>MIT</span></div>
     </div>
-    <div class="term">
-      <div class="term-bar"><i></i><i></i><i></i><span>第一次启动后，实际发生的事</span></div>
-      <div class="term-body">
-<span class="c">$</span> <span class="w">FieldStationHybrid.exe</span>
-<span class="c">→</span> extract payload  → <span class="g">%LOCALAPPDATA%\AllPoweredFSA\app-1.0.0.0</span>
-<span class="c">→</span> node server.ts --port 0   <span class="g">(listen 5444)</span>
+    <div class="sheet">
+      <div class="sheet-bar">启动日志 · 首次运行</div>
+      <div class="term-body"><span class="c">$ </span><span class="w">FieldStationHybrid.exe</span>
+<span class="c">→</span> extract payload
+<span class="c">→</span> <span class="p">%</span>LOCALAPPDATA%\AllPoweredFSA\app-1.0.0.0
+<span class="c">→</span> node server.ts --port 0  <span class="g">[listen]</span>
 <span class="c">→</span> WebView2 → <span class="w">My Applications</span>
-<span class="c">→</span> 5 app cards: Manage · Playback · Convert · GRIT · Graph
-<span class="c">→</span> <span class="a">attach desktop driver: agent-desktop.exe</span>
-<span class="c">→</span> ready <span class="g">✓</span>
-      </div>
+<span class="c">→</span> 5 cards: Manage · Playback · Convert · GRIT · Graph
+<span class="c">→</span> attach agent-desktop.exe
+<span class="c">→</span> ready <span class="g">✓</span></div>
     </div>
   </div>
 </section>
 
 <section class="sec" id="overview">
-  <div class="rail"><span class="n">01 /</span> 关于这个包<b>三部分，一个目录</b></div>
-  <div>
-    <h2>你拿到的是什么</h2>
-    <p class="lead">安装器把三样东西装到同一个目录。它们原本是三个独立项目，这里第一次合成一个可运行的交付物——不是四视角工作台，也不是单纯的文档集。</p>
-    <table class="ctab">
-      <tr><th>路径</th><th>是什么</th><th>关键事实</th></tr>
-      <tr><td>original/</td><td>原版 NovAtel Application Suite 2.11.0</td><td>413 文件 / 1.44 GB，直接内嵌，不靠静默安装</td></tr>
-      <tr><td>packages/</td><td>8 个零依赖 TypeScript 包</td><td>协议层 123 条消息 / 879 字段，27 篇分析文档</td></tr>
-      <tr><td>workflows/</td><td>8 条固定流程 YAML</td><td>状态机 + 锁 + 幂等键 + 只追加审计 + 人工闸门</td></tr>
-      <tr><td>runtime/</td><td>Node v24 + Python 3.11.9</td><td>自带，目标机不需要预装</td></tr>
-    </table>
-  </div>
+  <div class="sec-head"><div class="sec-num">§1</div><div>
+    <h2>这个包里有什么</h2>
+    <p class="lead">三样原本独立的东西，第一次合成一个可运行交付物。不是四视角工作台，也不是单纯的文档集。</p>
+  </div></div>
+  <table class="spec">
+    <tr><th>PATH</th><th>是什么</th><th>关键事实</th></tr>
+    <tr><td>original/</td><td>原版 NovAtel Application Suite 2.11.0</td><td>413 文件 / 1.44 GB，直接内嵌，不靠静默安装</td></tr>
+    <tr><td>packages/</td><td>8 个零依赖 TypeScript 包</td><td>协议层 123 消息 / 879 字段，27 篇分析文档</td></tr>
+    <tr><td>workflows/</td><td>8 条固定流程 YAML</td><td>状态机 + 锁 + 幂等键 + 只追加审计 + 人工闸门</td></tr>
+    <tr><td>runtime/</td><td>Node v24 + Python 3.11.9</td><td>自带，目标机不需要预装</td></tr>
+  </table>
 </section>
 
 <section class="sec" id="flow">
-  <div class="rail"><span class="n">02 /</span> 固定流程<b>一条流程的真实样子</b></div>
-  <div>
-    <h2><code style="font-family:var(--mono);font-size:.8em;color:var(--blue-l)">gui.graph.newproject</code> 怎么跑</h2>
-    <p class="lead">从 SBF 文件新建 Graph 工程，原版 GUI 要连续操作两个原生对话框。这条流程把它们自动化，走到最后一步停在一个人工闸门。下面是实际步骤节选——不是概念图。</p>
-    <div class="flow">
-      <div class="step"><span class="id">01</span><span class="name">health</span><span class="kind auto">automatic</span><div class="note">探测 7788 端口与会话健康度</div></div>
-      <div class="step"><span class="id">06</span><span class="name">open_wizard</span><span class="kind auto">automatic</span><div class="note">附加 Graph 进程（--remote-debugging-port=9224），打开 New Project 向导</div></div>
-      <div class="step"><span class="id">10</span><span class="name">choose_folder</span><span class="kind auto">automatic</span><div class="note">原生 Select Folder 对话框：agent-desktop 按 accessibility ref 定位，AttachThreadInput 绕过前台锁定</div></div>
-      <div class="step"><span class="id">12</span><span class="name">choose_file</span><span class="kind auto">automatic</span><div class="note">Receiver Data 的 Open 对话框，同上机制；不再靠坐标点击</div></div>
-      <div class="step"><span class="id">19</span><span class="name">approve_plot</span><span class="kind gate">human_gate</span><div class="note">绘图前停下，等人确认；写盘不可逆的步骤不替人决定</div></div>
-    </div>
-    <p class="lead" style="margin:20px 0 0;font-size:13px">全部 19 步里 <b style="color:var(--fg)">16 步自动、1 步人工闸门</b>，其余为等待与断言。另有 2 条流程（固件刷写 / 设备重启确认）已推到硬件边界，缺一台真接收机做端到端。</p>
+  <div class="sec-head"><div class="sec-num">§2</div><div>
+    <h2><code style="font-family:var(--mono);font-size:.62em;color:var(--accent)">gui.graph.newproject</code> 怎么跑</h2>
+    <p class="lead">从 SBF 新建 Graph 工程，原版 GUI 要连续操作两个原生对话框。这条流程把它们自动化，走到最后一步停在人工闸门。下面是实际步骤节选。</p>
+  </div></div>
+  <div class="flow">
+    <div class="fstep"><span class="id">01</span><span class="name">health</span><span class="kind auto">automatic</span><div class="note">探测 7788 端口与会话健康度</div></div>
+    <div class="fstep"><span class="id">06</span><span class="name">open_wizard</span><span class="kind auto">automatic</span><div class="note">附加 Graph 进程（--remote-debugging-port=9224），打开 New Project 向导</div></div>
+    <div class="fstep"><span class="id">10</span><span class="name">choose_folder</span><span class="kind auto">automatic</span><div class="note">原生 Select Folder 对话框：agent-desktop 按 accessibility ref 定位，AttachThreadInput 绕过前台锁定</div></div>
+    <div class="fstep"><span class="id">12</span><span class="name">choose_file</span><span class="kind auto">automatic</span><div class="note">Receiver Data 的 Open 对话框，同上机制；不再靠坐标点击</div></div>
+    <div class="fstep"><span class="id">19</span><span class="name">approve_plot</span><span class="kind gate">human_gate</span><div class="note">绘图前停下，等人确认；写盘不可逆的步骤不替人决定</div></div>
   </div>
+  <p class="lead" style="margin-top:28px;font-size:14px">19 步中 <b style="color:var(--ink)">16 步自动、1 步人工闸门</b>，其余为等待与断言。另有 2 条流程（固件刷写 / 重启确认）已推到硬件边界。</p>
 </section>
 
 <section class="sec" id="data">
-  <div class="rail"><span class="n">03 /</span> 数据可视化<b>从报文里解出的东西</b></div>
-  <div>
+  <div class="sec-head"><div class="sec-num">§3</div><div>
     <h2>接收机在说什么，直接给图</h2>
-    <p class="lead">下面 6 张图来自协议层能解出的真实量：<code>BESTPOS</code> 定位、<code>SATVIS2</code> 卫星、<code>HWMONITOR</code> 供电、GF/MW 周跳组合。每张带坐标轴、刻度与图例。</p>
-    <div class="dcards">
-      <div class="dcard wide">
-        <div class="dc-head"><span class="dc-title">多通道遥测 · 24h</span><span class="dc-meta">OEM729 / 1Hz</span></div>
-        <div class="dc-body"><svg viewBox="0 0 820 240" preserveAspectRatio="none"><defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2997ff" stop-opacity=".28"/><stop offset="1" stop-color="#2997ff" stop-opacity="0"/></linearGradient></defs><line x1="46" y1="210.0" x2="804" y2="210.0" stroke="rgba(255,255,255,.07)"/><text x="38" y="213.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">11.8</text><line x1="46" y1="162.5" x2="804" y2="162.5" stroke="rgba(255,255,255,.07)"/><text x="38" y="165.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">12.3</text><line x1="46" y1="115.0" x2="804" y2="115.0" stroke="rgba(255,255,255,.07)"/><text x="38" y="118.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">12.8</text><line x1="46" y1="67.5" x2="804" y2="67.5" stroke="rgba(255,255,255,.07)"/><text x="38" y="70.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">13.3</text><line x1="46" y1="20.0" x2="804" y2="20.0" stroke="rgba(255,255,255,.07)"/><text x="38" y="23.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">13.8</text><line x1="46.0" y1="20" x2="46.0" y2="210" stroke="rgba(255,255,255,.07)"/><text x="46.0" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">00:00</text><line x1="175.0" y1="20" x2="175.0" y2="210" stroke="rgba(255,255,255,.07)"/><text x="175.0" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">04:00</text><line x1="304.0" y1="20" x2="304.0" y2="210" stroke="rgba(255,255,255,.07)"/><text x="304.0" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">08:00</text><line x1="433.1" y1="20" x2="433.1" y2="210" stroke="rgba(255,255,255,.07)"/><text x="433.1" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">12:00</text><line x1="562.1" y1="20" x2="562.1" y2="210" stroke="rgba(255,255,255,.07)"/><text x="562.1" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">16:00</text><line x1="691.1" y1="20" x2="691.1" y2="210" stroke="rgba(255,255,255,.07)"/><text x="691.1" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">20:00</text><path d="M46.0,42.5 L62.1,57.0 L78.3,52.0 L94.4,60.6 L110.5,86.8 L126.6,78.0 L142.8,86.5 L158.9,97.3 L175.0,110.5 L191.1,108.4 L207.3,126.0 L223.4,123.0 L239.5,125.6 L255.7,115.8 L271.8,117.7 L287.9,130.2 L304.0,122.0 L320.2,125.1 L336.3,103.0 L352.4,97.6 L368.6,103.6 L384.7,88.4 L400.8,81.5 L416.9,84.5 L433.1,63.6 L449.2,62.5 L465.3,51.9 L481.4,53.6 L497.6,63.0 L513.7,54.5 L529.8,61.8 L546.0,42.9 L562.1,47.3 L578.2,52.9 L594.3,70.6 L610.5,82.8 L626.6,71.3 L642.7,77.3 L658.9,104.5 L675.0,102.6 L691.1,118.9 L707.2,109.1 L723.4,113.8 L739.5,131.9 L755.6,126.2 L771.7,125.3 L787.9,131.0 L804.0,114.8" fill="none" stroke="#5e5ce6" stroke-width="1.3" stroke-linejoin="round"/><path d="M46.0,75.3 L62.1,75.7 L78.3,73.8 L94.4,74.2 L110.5,73.1 L126.6,66.4 L142.8,70.0 L158.9,71.7 L175.0,78.1 L191.1,75.0 L207.3,83.7 L223.4,85.1 L239.5,82.8 L255.7,90.7 L271.8,96.1 L287.9,99.6 L304.0,102.9 L320.2,108.5 L336.3,118.9 L352.4,125.7 L368.6,127.4 L384.7,132.1 L400.8,136.6 L416.9,132.7 L433.1,136.4 L449.2,144.6 L465.3,143.0 L481.4,146.9 L497.6,142.4 L513.7,147.0 L529.8,148.4 L546.0,147.3 L562.1,142.3 L578.2,142.9 L594.3,136.7 L610.5,130.1 L626.6,131.2 L642.7,128.8 L658.9,116.4 L675.0,116.6 L691.1,116.0 L707.2,111.5 L723.4,105.9 L739.5,95.9 L755.6,89.6 L771.7,89.1 L787.9,88.7 L804.0,81.9" fill="none" stroke="#ff9f0a" stroke-width="1.5" stroke-linejoin="round"/><path d="M46.0,151.4 L62.1,149.2 L78.3,137.9 L94.4,131.4 L110.5,120.4 L126.6,118.2 L142.8,115.5 L158.9,126.9 L175.0,127.8 L191.1,139.0 L207.3,145.1 L223.4,150.9 L239.5,165.6 L255.7,172.3 L271.8,174.6 L287.9,181.5 L304.0,188.5 L320.2,185.2 L336.3,181.0 L352.4,185.9 L368.6,170.5 L384.7,163.8 L400.8,158.9 L416.9,151.7 L433.1,133.7 L449.2,133.0 L465.3,129.7 L481.4,125.8 L497.6,115.8 L513.7,119.7 L529.8,121.1 L546.0,127.8 L562.1,137.7 L578.2,141.5 L594.3,157.5 L610.5,164.6 L626.6,169.5 L642.7,178.4 L658.9,180.0 L675.0,185.3 L691.1,183.2 L707.2,187.6 L723.4,180.1 L739.5,172.1 L755.6,165.9 L771.7,154.9 L787.9,147.3 L804.0,136.9 L804.0,200 L46.0,200 Z" fill="url(#tg)"/><path d="M46.0,151.4 L62.1,149.2 L78.3,137.9 L94.4,131.4 L110.5,120.4 L126.6,118.2 L142.8,115.5 L158.9,126.9 L175.0,127.8 L191.1,139.0 L207.3,145.1 L223.4,150.9 L239.5,165.6 L255.7,172.3 L271.8,174.6 L287.9,181.5 L304.0,188.5 L320.2,185.2 L336.3,181.0 L352.4,185.9 L368.6,170.5 L384.7,163.8 L400.8,158.9 L416.9,151.7 L433.1,133.7 L449.2,133.0 L465.3,129.7 L481.4,125.8 L497.6,115.8 L513.7,119.7 L529.8,121.1 L546.0,127.8 L562.1,137.7 L578.2,141.5 L594.3,157.5 L610.5,164.6 L626.6,169.5 L642.7,178.4 L658.9,180.0 L675.0,185.3 L691.1,183.2 L707.2,187.6 L723.4,180.1 L739.5,172.1 L755.6,165.9 L771.7,154.9 L787.9,147.3 L804.0,136.9" fill="none" stroke="#2997ff" stroke-width="1.8" stroke-linejoin="round"/><rect x="54" y="22" width="8" height="3" rx="1.5" fill="#2997ff"/><text x="66" y="26" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">电压 V</text><rect x="134" y="22" width="8" height="3" rx="1.5" fill="#ff9f0a"/><text x="146" y="26" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">温度 °C</text><rect x="214" y="22" width="8" height="3" rx="1.5" fill="#5e5ce6"/><text x="226" y="26" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">信号 dBm</text></svg></div>
-        <div class="dc-foot"><span><i style="background:#2997ff"></i>电压 12.4 V</span><span><i style="background:#ff9f0a"></i>温度 36 °C</span><span><i style="background:#5e5ce6"></i>信号 −84 dBm</span></div>
-      </div>
-      <div class="dcard">
-        <div class="dc-head"><span class="dc-title">卫星天空图</span><span class="dc-meta">SATVIS2 / 10 SV</span></div>
-        <div class="dc-body"><svg viewBox="0 0 320 320"><circle cx="160" cy="160" r="130.0" fill="none" stroke="rgba(255,255,255,.07)"/><text x="164" y="40.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">0°</text><circle cx="160" cy="160" r="86.7" fill="none" stroke="rgba(255,255,255,.07)"/><text x="164" y="83.3" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">30°</text><circle cx="160" cy="160" r="43.3" fill="none" stroke="rgba(255,255,255,.07)"/><text x="164" y="126.7" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">60°</text><text x="164" y="170.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">90°</text><line x1="160" y1="30" x2="160" y2="290" stroke="rgba(255,255,255,.07)"/><line x1="30" y1="160" x2="290" y2="160" stroke="rgba(255,255,255,.07)"/><text x="160" y="22" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">N</text><text x="298" y="160" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">E</text><text x="160" y="304" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">S</text><text x="20" y="160" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">W</text><circle cx="174.9" cy="138.7" r="4" fill="#30d158" opacity=".9"/><text x="181.9" y="133.7" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G22</text><circle cx="223.6" cy="146.5" r="4" fill="#2997ff" opacity=".9"/><text x="230.6" y="141.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G13</text><circle cx="237.6" cy="204.8" r="4" fill="#ff9f0a" opacity=".9"/><text x="244.6" y="199.8" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G05</text><circle cx="170.8" cy="200.5" r="4" fill="#30d158" opacity=".9"/><text x="177.8" y="195.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G18</text><circle cx="105.8" cy="253.8" r="4" fill="#ff9f0a" opacity=".9"/><text x="112.8" y="248.8" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G11</text><circle cx="107.0" cy="174.2" r="4" fill="#30d158" opacity=".9"/><text x="114.0" y="169.2" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G04</text><circle cx="91.2" cy="120.3" r="4" fill="#2997ff" opacity=".9"/><text x="98.2" y="115.3" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G12</text><circle cx="155.1" cy="146.4" r="4" fill="#30d158" opacity=".9"/><text x="162.1" y="141.4" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G07</text><circle cx="237.5" cy="95.0" r="4" fill="#ff9f0a" opacity=".9"/><text x="244.5" y="90.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G11</text><circle cx="147.5" cy="231.1" r="4" fill="#2997ff" opacity=".9"/><text x="154.5" y="226.1" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G12</text></svg></div>
-        <div class="dc-foot"><span>仰角 0–90°</span><span>SNR 按色阶</span></div>
-      </div>
-      <div class="dcard">
-        <div class="dc-head"><span class="dc-title">频谱分析</span><span class="dc-meta">1575–1625 MHz</span></div>
-        <div class="dc-body"><svg viewBox="0 0 420 200" preserveAspectRatio="none"><line x1="36" y1="20.0" x2="412" y2="20.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="23.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-40</text><line x1="36" y1="60.0" x2="412" y2="60.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="63.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-55</text><line x1="36" y1="100.0" x2="412" y2="100.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="103.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-70</text><line x1="36" y1="140.0" x2="412" y2="140.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="143.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-85</text><line x1="36" y1="180.0" x2="412" y2="180.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="183.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-100</text><rect x="36.0" y="172.2" width="6.3" height="7.8" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="43.8" y="168.8" width="6.3" height="11.2" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="51.7" y="168.4" width="6.3" height="11.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="59.5" y="173.3" width="6.3" height="6.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="67.3" y="173.9" width="6.3" height="6.1" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="75.2" y="175.6" width="6.3" height="4.4" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="83.0" y="166.9" width="6.3" height="13.1" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="90.8" y="174.2" width="6.3" height="5.8" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="98.7" y="123.3" width="6.3" height="56.7" rx="1" fill="#2997ff" opacity=".85"/><rect x="106.5" y="110.6" width="6.3" height="69.4" rx="1" fill="#2997ff" opacity=".85"/><rect x="114.3" y="128.7" width="6.3" height="51.3" rx="1" fill="#2997ff" opacity=".85"/><rect x="122.2" y="165.0" width="6.3" height="15.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="130.0" y="174.6" width="6.3" height="5.4" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="137.8" y="168.4" width="6.3" height="11.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="145.7" y="171.3" width="6.3" height="8.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="153.5" y="167.1" width="6.3" height="12.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="161.3" y="170.1" width="6.3" height="9.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="169.2" y="175.0" width="6.3" height="5.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="177.0" y="166.3" width="6.3" height="13.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="184.8" y="169.7" width="6.3" height="10.3" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="192.7" y="169.8" width="6.3" height="10.2" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="200.5" y="163.3" width="6.3" height="16.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="208.3" y="125.6" width="6.3" height="54.4" rx="1" fill="#2997ff" opacity=".85"/><rect x="216.2" y="107.7" width="6.3" height="72.3" rx="1" fill="#2997ff" opacity=".85"/><rect x="224.0" y="127.3" width="6.3" height="52.7" rx="1" fill="#2997ff" opacity=".85"/><rect x="231.8" y="164.5" width="6.3" height="15.5" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="239.7" y="167.4" width="6.3" height="12.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="247.5" y="172.2" width="6.3" height="7.8" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="255.3" y="172.5" width="6.3" height="7.5" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="263.2" y="164.4" width="6.3" height="15.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="271.0" y="164.6" width="6.3" height="15.4" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="278.8" y="165.1" width="6.3" height="14.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="286.7" y="167.3" width="6.3" height="12.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="294.5" y="161.3" width="6.3" height="18.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="302.3" y="167.3" width="6.3" height="12.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="310.2" y="172.1" width="6.3" height="7.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="318.0" y="123.0" width="6.3" height="57.0" rx="1" fill="#2997ff" opacity=".85"/><rect x="325.8" y="111.3" width="6.3" height="68.7" rx="1" fill="#2997ff" opacity=".85"/><rect x="333.7" y="125.0" width="6.3" height="55.0" rx="1" fill="#2997ff" opacity=".85"/><rect x="341.5" y="174.0" width="6.3" height="6.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="349.3" y="174.3" width="6.3" height="5.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="357.2" y="171.7" width="6.3" height="8.3" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="365.0" y="174.0" width="6.3" height="6.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="372.8" y="167.1" width="6.3" height="12.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="380.7" y="173.3" width="6.3" height="6.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="388.5" y="165.1" width="6.3" height="14.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="396.3" y="162.0" width="6.3" height="18.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="404.2" y="171.2" width="6.3" height="8.8" rx="1" fill="#3a4a5a" opacity=".85"/><text x="36.0" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1575</text><text x="98.7" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1595</text><text x="161.3" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1615</text><text x="224.0" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1635</text><text x="286.7" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1655</text><text x="349.3" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1675</text></svg></div>
-        <div class="dc-foot"><span>GPS L1 峰值</span><span>底噪 −100 dBm</span></div>
-      </div>
-      <div class="dcard">
-        <div class="dc-head"><span class="dc-title">周跳检测</span><span class="dc-meta">GF / MW · 3 处</span></div>
-        <div class="dc-body"><svg viewBox="0 0 420 200" preserveAspectRatio="none"><line x1="36" y1="20.0" x2="412" y2="20.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="23.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">+3.0</text><line x1="36" y1="60.0" x2="412" y2="60.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="63.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">+1.5</text><line x1="36" y1="100.0" x2="412" y2="100.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="103.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">+0.0</text><line x1="36" y1="140.0" x2="412" y2="140.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="143.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-1.5</text><line x1="36" y1="180.0" x2="412" y2="180.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="183.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-3.0</text><line x1="36" y1="46.7" x2="412" y2="46.7" stroke="#ff453a" stroke-dasharray="4 4" stroke-width="1" opacity=".6"/><line x1="36" y1="153.3" x2="412" y2="153.3" stroke="#ff453a" stroke-dasharray="4 4" stroke-width="1" opacity=".6"/><path d="M36.0,101.5 L43.7,98.1 L51.3,86.4 L59.0,101.1 L66.7,99.7 L74.4,97.2 L82.0,110.1 L89.7,99.6 L97.4,95.8 L105.1,90.6 L112.7,113.0 L120.4,106.3 L128.1,113.1 L135.8,90.1 L143.4,93.8 L151.1,114.7 L158.8,84.6 L166.4,21.9 L174.1,28.6 L181.8,115.5 L189.5,99.1 L197.1,114.1 L204.8,109.9 L212.5,108.3 L220.2,115.0 L227.8,101.2 L235.5,101.9 L243.2,89.0 L250.9,99.4 L258.5,95.5 L266.2,100.0 L273.9,94.8 L281.6,101.4 L289.2,107.1 L296.9,17.4 L304.6,89.1 L312.2,93.4 L319.9,105.9 L327.6,108.7 L335.3,106.8 L342.9,113.8 L350.6,91.5 L358.3,103.2 L366.0,88.9 L373.6,103.6 L381.3,85.3 L389.0,88.9 L396.7,116.0 L404.3,109.3 L412.0,86.9" fill="none" stroke="#2997ff" stroke-width="1.4" stroke-linejoin="round"/><circle cx="166.4" cy="21.9" r="4" fill="#ff453a"/><text x="166.4" y="12.9" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#ff453a" text-anchor="middle">SLIP</text><circle cx="174.1" cy="28.6" r="4" fill="#ff453a"/><text x="174.1" y="19.6" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#ff453a" text-anchor="middle">SLIP</text><circle cx="296.9" cy="17.4" r="4" fill="#ff453a"/><text x="296.9" y="8.4" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#ff453a" text-anchor="middle">SLIP</text></svg></div>
-        <div class="dc-foot"><span><i style="background:#f85149"></i>越阈标记</span><span>±2σ 门限</span></div>
-      </div>
-      <div class="dcard">
-        <div class="dc-head"><span class="dc-title">定位轨迹</span><span class="dc-meta">BESTPOS / WGS84</span></div>
-        <div class="dc-body"><svg viewBox="0 0 420 220" preserveAspectRatio="none"><line x1="0" y1="0" x2="0" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="40" y1="0" x2="40" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="80" y1="0" x2="80" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="120" y1="0" x2="120" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="160" y1="0" x2="160" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="200" y1="0" x2="200" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="240" y1="0" x2="240" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="280" y1="0" x2="280" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="320" y1="0" x2="320" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="360" y1="0" x2="360" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="400" y1="0" x2="400" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="0" x2="420" y2="0" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="40" x2="420" y2="40" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="80" x2="420" y2="80" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="120" x2="420" y2="120" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="160" x2="420" y2="160" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="200" x2="420" y2="200" stroke="rgba(255,255,255,.07)"/><path d="M40.0,180.0 L50.0,175.3 L60.4,170.3 L71.9,167.9 L81.0,161.7 L91.0,158.6 L104.0,154.2 L116.4,149.8 L127.9,147.1 L139.4,140.7 L150.5,135.0 L162.2,132.7 L174.3,127.8 L184.5,125.6 L196.9,121.2 L208.8,114.9 L220.7,108.2 L231.2,102.2 L242.0,95.6 L254.5,93.1 L264.1,90.0 L276.9,85.8 L288.4,82.3 L299.5,78.4 L309.9,73.5 L321.2,66.9 L332.9,60.3 L345.4,53.3 L357.1,50.5 L369.5,43.7" fill="none" stroke="#2997ff" stroke-width="2" stroke-linejoin="round"/><circle cx="40.0" cy="180.0" r="5" fill="#30d158"/><text x="48.0" y="183.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#30d158">START</text><circle cx="369.5" cy="43.7" r="5" fill="#ff9f0a"/><text x="361.5" y="35.7" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#ff9f0a" text-anchor="end">END</text><text x="8" y="16" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">30.5399°N 114.3528°E</text></svg></div>
-        <div class="dc-foot"><span>30.5399°N</span><span>114.3528°E</span></div>
-      </div>
-      <div class="dcard wide">
-        <div class="dc-head"><span class="dc-title">链路事件时间轴</span><span class="dc-meta">M5 / 5 阶段 · 7 消息</span></div>
-        <div class="dc-body"><svg viewBox="0 0 820 210" preserveAspectRatio="none"><text x="8" y="35" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">QC</text><line x1="96" y1="32" x2="810" y2="32" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="26" width="128.5" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="310.2" y="26" width="85.7" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="438.7" y="26" width="178.5" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="652.9" y="26" width="107.1" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="752.9" y="26" width="57.1" height="12" rx="3" fill="#2997ff" opacity=".75"/><text x="8" y="71" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">DEVICE</text><line x1="96" y1="68" x2="810" y2="68" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="62" width="128.5" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="310.2" y="62" width="85.7" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="438.7" y="62" width="178.5" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="652.9" y="62" width="107.1" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="752.9" y="62" width="57.1" height="12" rx="3" fill="#30d158" opacity=".75"/><text x="8" y="107" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">DIAGNOSIS</text><line x1="96" y1="104" x2="810" y2="104" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="98" width="128.5" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="310.2" y="98" width="85.7" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="438.7" y="98" width="178.5" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="652.9" y="98" width="107.1" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="752.9" y="98" width="57.1" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><text x="8" y="143" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">DISPATCH</text><line x1="96" y1="140" x2="810" y2="140" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="134" width="128.5" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="310.2" y="134" width="85.7" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="438.7" y="134" width="178.5" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="652.9" y="134" width="107.1" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="752.9" y="134" width="57.1" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><text x="8" y="179" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">ARCHIVE</text><line x1="96" y1="176" x2="810" y2="176" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="170" width="128.5" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="310.2" y="170" width="85.7" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="438.7" y="170" width="178.5" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="652.9" y="170" width="107.1" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="752.9" y="170" width="57.1" height="12" rx="3" fill="#8e8eff" opacity=".75"/><text x="96.0" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+0s</text><text x="238.8" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+10s</text><text x="381.6" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+20s</text><text x="524.4" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+30s</text><text x="667.2" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+40s</text><text x="810.0" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+50s</text></svg></div>
-        <div class="dc-foot"><span>每条结论引用成功执行过的 call_id</span></div>
-      </div>
+    <p class="lead">下列 6 张图来自协议层解出的真实量：<code>BESTPOS</code> 定位、<code>SATVIS2</code> 卫星、<code>HWMONITOR</code> 供电、GF/MW 周跳组合。每张带坐标轴、刻度与图例。</p>
+  </div></div>
+  <div class="charts">
+    <div class="chart wide">
+      <div class="ch-head"><span class="ch-title">多通道遥测 · 24h</span><span class="ch-meta">OEM729 / 1Hz</span></div>
+      <div class="ch-body"><svg viewBox="0 0 820 240" preserveAspectRatio="none"><defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2997ff" stop-opacity=".28"/><stop offset="1" stop-color="#2997ff" stop-opacity="0"/></linearGradient></defs><line x1="46" y1="210.0" x2="804" y2="210.0" stroke="rgba(255,255,255,.07)"/><text x="38" y="213.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">11.8</text><line x1="46" y1="162.5" x2="804" y2="162.5" stroke="rgba(255,255,255,.07)"/><text x="38" y="165.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">12.3</text><line x1="46" y1="115.0" x2="804" y2="115.0" stroke="rgba(255,255,255,.07)"/><text x="38" y="118.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">12.8</text><line x1="46" y1="67.5" x2="804" y2="67.5" stroke="rgba(255,255,255,.07)"/><text x="38" y="70.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">13.3</text><line x1="46" y1="20.0" x2="804" y2="20.0" stroke="rgba(255,255,255,.07)"/><text x="38" y="23.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="end">13.8</text><line x1="46.0" y1="20" x2="46.0" y2="210" stroke="rgba(255,255,255,.07)"/><text x="46.0" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">00:00</text><line x1="175.0" y1="20" x2="175.0" y2="210" stroke="rgba(255,255,255,.07)"/><text x="175.0" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">04:00</text><line x1="304.0" y1="20" x2="304.0" y2="210" stroke="rgba(255,255,255,.07)"/><text x="304.0" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">08:00</text><line x1="433.1" y1="20" x2="433.1" y2="210" stroke="rgba(255,255,255,.07)"/><text x="433.1" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">12:00</text><line x1="562.1" y1="20" x2="562.1" y2="210" stroke="rgba(255,255,255,.07)"/><text x="562.1" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">16:00</text><line x1="691.1" y1="20" x2="691.1" y2="210" stroke="rgba(255,255,255,.07)"/><text x="691.1" y="230" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b" text-anchor="middle">20:00</text><path d="M46.0,42.5 L62.1,57.0 L78.3,52.0 L94.4,60.6 L110.5,86.8 L126.6,78.0 L142.8,86.5 L158.9,97.3 L175.0,110.5 L191.1,108.4 L207.3,126.0 L223.4,123.0 L239.5,125.6 L255.7,115.8 L271.8,117.7 L287.9,130.2 L304.0,122.0 L320.2,125.1 L336.3,103.0 L352.4,97.6 L368.6,103.6 L384.7,88.4 L400.8,81.5 L416.9,84.5 L433.1,63.6 L449.2,62.5 L465.3,51.9 L481.4,53.6 L497.6,63.0 L513.7,54.5 L529.8,61.8 L546.0,42.9 L562.1,47.3 L578.2,52.9 L594.3,70.6 L610.5,82.8 L626.6,71.3 L642.7,77.3 L658.9,104.5 L675.0,102.6 L691.1,118.9 L707.2,109.1 L723.4,113.8 L739.5,131.9 L755.6,126.2 L771.7,125.3 L787.9,131.0 L804.0,114.8" fill="none" stroke="#5e5ce6" stroke-width="1.3" stroke-linejoin="round"/><path d="M46.0,75.3 L62.1,75.7 L78.3,73.8 L94.4,74.2 L110.5,73.1 L126.6,66.4 L142.8,70.0 L158.9,71.7 L175.0,78.1 L191.1,75.0 L207.3,83.7 L223.4,85.1 L239.5,82.8 L255.7,90.7 L271.8,96.1 L287.9,99.6 L304.0,102.9 L320.2,108.5 L336.3,118.9 L352.4,125.7 L368.6,127.4 L384.7,132.1 L400.8,136.6 L416.9,132.7 L433.1,136.4 L449.2,144.6 L465.3,143.0 L481.4,146.9 L497.6,142.4 L513.7,147.0 L529.8,148.4 L546.0,147.3 L562.1,142.3 L578.2,142.9 L594.3,136.7 L610.5,130.1 L626.6,131.2 L642.7,128.8 L658.9,116.4 L675.0,116.6 L691.1,116.0 L707.2,111.5 L723.4,105.9 L739.5,95.9 L755.6,89.6 L771.7,89.1 L787.9,88.7 L804.0,81.9" fill="none" stroke="#ff9f0a" stroke-width="1.5" stroke-linejoin="round"/><path d="M46.0,151.4 L62.1,149.2 L78.3,137.9 L94.4,131.4 L110.5,120.4 L126.6,118.2 L142.8,115.5 L158.9,126.9 L175.0,127.8 L191.1,139.0 L207.3,145.1 L223.4,150.9 L239.5,165.6 L255.7,172.3 L271.8,174.6 L287.9,181.5 L304.0,188.5 L320.2,185.2 L336.3,181.0 L352.4,185.9 L368.6,170.5 L384.7,163.8 L400.8,158.9 L416.9,151.7 L433.1,133.7 L449.2,133.0 L465.3,129.7 L481.4,125.8 L497.6,115.8 L513.7,119.7 L529.8,121.1 L546.0,127.8 L562.1,137.7 L578.2,141.5 L594.3,157.5 L610.5,164.6 L626.6,169.5 L642.7,178.4 L658.9,180.0 L675.0,185.3 L691.1,183.2 L707.2,187.6 L723.4,180.1 L739.5,172.1 L755.6,165.9 L771.7,154.9 L787.9,147.3 L804.0,136.9 L804.0,200 L46.0,200 Z" fill="url(#tg)"/><path d="M46.0,151.4 L62.1,149.2 L78.3,137.9 L94.4,131.4 L110.5,120.4 L126.6,118.2 L142.8,115.5 L158.9,126.9 L175.0,127.8 L191.1,139.0 L207.3,145.1 L223.4,150.9 L239.5,165.6 L255.7,172.3 L271.8,174.6 L287.9,181.5 L304.0,188.5 L320.2,185.2 L336.3,181.0 L352.4,185.9 L368.6,170.5 L384.7,163.8 L400.8,158.9 L416.9,151.7 L433.1,133.7 L449.2,133.0 L465.3,129.7 L481.4,125.8 L497.6,115.8 L513.7,119.7 L529.8,121.1 L546.0,127.8 L562.1,137.7 L578.2,141.5 L594.3,157.5 L610.5,164.6 L626.6,169.5 L642.7,178.4 L658.9,180.0 L675.0,185.3 L691.1,183.2 L707.2,187.6 L723.4,180.1 L739.5,172.1 L755.6,165.9 L771.7,154.9 L787.9,147.3 L804.0,136.9" fill="none" stroke="#2997ff" stroke-width="1.8" stroke-linejoin="round"/><rect x="54" y="22" width="8" height="3" rx="1.5" fill="#2997ff"/><text x="66" y="26" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">电压 V</text><rect x="134" y="22" width="8" height="3" rx="1.5" fill="#ff9f0a"/><text x="146" y="26" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">温度 °C</text><rect x="214" y="22" width="8" height="3" rx="1.5" fill="#5e5ce6"/><text x="226" y="26" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">信号 dBm</text></svg></div>
+      <div class="ch-foot"><span><i style="background:#2997ff"></i>电压 12.4 V</span><span><i style="background:#ff9f0a"></i>温度 36 °C</span><span><i style="background:#5e5ce6"></i>信号 −84 dBm</span></div>
+    </div>
+    <div class="chart">
+      <div class="ch-head"><span class="ch-title">卫星天空图</span><span class="ch-meta">SATVIS2 / 10 SV</span></div>
+      <div class="ch-body"><svg viewBox="0 0 320 320"><circle cx="160" cy="160" r="130.0" fill="none" stroke="rgba(255,255,255,.07)"/><text x="164" y="40.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">0°</text><circle cx="160" cy="160" r="86.7" fill="none" stroke="rgba(255,255,255,.07)"/><text x="164" y="83.3" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">30°</text><circle cx="160" cy="160" r="43.3" fill="none" stroke="rgba(255,255,255,.07)"/><text x="164" y="126.7" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">60°</text><text x="164" y="170.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">90°</text><line x1="160" y1="30" x2="160" y2="290" stroke="rgba(255,255,255,.07)"/><line x1="30" y1="160" x2="290" y2="160" stroke="rgba(255,255,255,.07)"/><text x="160" y="22" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">N</text><text x="298" y="160" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">E</text><text x="160" y="304" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">S</text><text x="20" y="160" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="10" fill="#86868b" text-anchor="middle">W</text><circle cx="174.9" cy="138.7" r="4" fill="#30d158" opacity=".9"/><text x="181.9" y="133.7" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G22</text><circle cx="223.6" cy="146.5" r="4" fill="#2997ff" opacity=".9"/><text x="230.6" y="141.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G13</text><circle cx="237.6" cy="204.8" r="4" fill="#ff9f0a" opacity=".9"/><text x="244.6" y="199.8" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G05</text><circle cx="170.8" cy="200.5" r="4" fill="#30d158" opacity=".9"/><text x="177.8" y="195.5" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G18</text><circle cx="105.8" cy="253.8" r="4" fill="#ff9f0a" opacity=".9"/><text x="112.8" y="248.8" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G11</text><circle cx="107.0" cy="174.2" r="4" fill="#30d158" opacity=".9"/><text x="114.0" y="169.2" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G04</text><circle cx="91.2" cy="120.3" r="4" fill="#2997ff" opacity=".9"/><text x="98.2" y="115.3" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G12</text><circle cx="155.1" cy="146.4" r="4" fill="#30d158" opacity=".9"/><text x="162.1" y="141.4" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G07</text><circle cx="237.5" cy="95.0" r="4" fill="#ff9f0a" opacity=".9"/><text x="244.5" y="90.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G11</text><circle cx="147.5" cy="231.1" r="4" fill="#2997ff" opacity=".9"/><text x="154.5" y="226.1" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b">G12</text></svg></div>
+      <div class="ch-foot"><span>仰角 0–90°</span><span>SNR 按色阶</span></div>
+    </div>
+    <div class="chart">
+      <div class="ch-head"><span class="ch-title">频谱分析</span><span class="ch-meta">1575–1625 MHz</span></div>
+      <div class="ch-body"><svg viewBox="0 0 420 200" preserveAspectRatio="none"><line x1="36" y1="20.0" x2="412" y2="20.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="23.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-40</text><line x1="36" y1="60.0" x2="412" y2="60.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="63.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-55</text><line x1="36" y1="100.0" x2="412" y2="100.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="103.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-70</text><line x1="36" y1="140.0" x2="412" y2="140.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="143.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-85</text><line x1="36" y1="180.0" x2="412" y2="180.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="183.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-100</text><rect x="36.0" y="172.2" width="6.3" height="7.8" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="43.8" y="168.8" width="6.3" height="11.2" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="51.7" y="168.4" width="6.3" height="11.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="59.5" y="173.3" width="6.3" height="6.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="67.3" y="173.9" width="6.3" height="6.1" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="75.2" y="175.6" width="6.3" height="4.4" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="83.0" y="166.9" width="6.3" height="13.1" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="90.8" y="174.2" width="6.3" height="5.8" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="98.7" y="123.3" width="6.3" height="56.7" rx="1" fill="#2997ff" opacity=".85"/><rect x="106.5" y="110.6" width="6.3" height="69.4" rx="1" fill="#2997ff" opacity=".85"/><rect x="114.3" y="128.7" width="6.3" height="51.3" rx="1" fill="#2997ff" opacity=".85"/><rect x="122.2" y="165.0" width="6.3" height="15.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="130.0" y="174.6" width="6.3" height="5.4" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="137.8" y="168.4" width="6.3" height="11.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="145.7" y="171.3" width="6.3" height="8.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="153.5" y="167.1" width="6.3" height="12.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="161.3" y="170.1" width="6.3" height="9.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="169.2" y="175.0" width="6.3" height="5.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="177.0" y="166.3" width="6.3" height="13.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="184.8" y="169.7" width="6.3" height="10.3" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="192.7" y="169.8" width="6.3" height="10.2" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="200.5" y="163.3" width="6.3" height="16.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="208.3" y="125.6" width="6.3" height="54.4" rx="1" fill="#2997ff" opacity=".85"/><rect x="216.2" y="107.7" width="6.3" height="72.3" rx="1" fill="#2997ff" opacity=".85"/><rect x="224.0" y="127.3" width="6.3" height="52.7" rx="1" fill="#2997ff" opacity=".85"/><rect x="231.8" y="164.5" width="6.3" height="15.5" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="239.7" y="167.4" width="6.3" height="12.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="247.5" y="172.2" width="6.3" height="7.8" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="255.3" y="172.5" width="6.3" height="7.5" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="263.2" y="164.4" width="6.3" height="15.6" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="271.0" y="164.6" width="6.3" height="15.4" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="278.8" y="165.1" width="6.3" height="14.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="286.7" y="167.3" width="6.3" height="12.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="294.5" y="161.3" width="6.3" height="18.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="302.3" y="167.3" width="6.3" height="12.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="310.2" y="172.1" width="6.3" height="7.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="318.0" y="123.0" width="6.3" height="57.0" rx="1" fill="#2997ff" opacity=".85"/><rect x="325.8" y="111.3" width="6.3" height="68.7" rx="1" fill="#2997ff" opacity=".85"/><rect x="333.7" y="125.0" width="6.3" height="55.0" rx="1" fill="#2997ff" opacity=".85"/><rect x="341.5" y="174.0" width="6.3" height="6.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="349.3" y="174.3" width="6.3" height="5.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="357.2" y="171.7" width="6.3" height="8.3" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="365.0" y="174.0" width="6.3" height="6.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="372.8" y="167.1" width="6.3" height="12.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="380.7" y="173.3" width="6.3" height="6.7" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="388.5" y="165.1" width="6.3" height="14.9" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="396.3" y="162.0" width="6.3" height="18.0" rx="1" fill="#3a4a5a" opacity=".85"/><rect x="404.2" y="171.2" width="6.3" height="8.8" rx="1" fill="#3a4a5a" opacity=".85"/><text x="36.0" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1575</text><text x="98.7" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1595</text><text x="161.3" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1615</text><text x="224.0" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1635</text><text x="286.7" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1655</text><text x="349.3" y="194" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">1675</text></svg></div>
+      <div class="ch-foot"><span>GPS L1 峰值</span><span>底噪 −100 dBm</span></div>
+    </div>
+    <div class="chart">
+      <div class="ch-head"><span class="ch-title">周跳检测</span><span class="ch-meta">GF / MW · 3 处</span></div>
+      <div class="ch-body"><svg viewBox="0 0 420 200" preserveAspectRatio="none"><line x1="36" y1="20.0" x2="412" y2="20.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="23.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">+3.0</text><line x1="36" y1="60.0" x2="412" y2="60.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="63.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">+1.5</text><line x1="36" y1="100.0" x2="412" y2="100.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="103.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">+0.0</text><line x1="36" y1="140.0" x2="412" y2="140.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="143.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-1.5</text><line x1="36" y1="180.0" x2="412" y2="180.0" stroke="rgba(255,255,255,.07)"/><text x="30" y="183.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="end">-3.0</text><line x1="36" y1="46.7" x2="412" y2="46.7" stroke="#ff453a" stroke-dasharray="4 4" stroke-width="1" opacity=".6"/><line x1="36" y1="153.3" x2="412" y2="153.3" stroke="#ff453a" stroke-dasharray="4 4" stroke-width="1" opacity=".6"/><path d="M36.0,101.5 L43.7,98.1 L51.3,86.4 L59.0,101.1 L66.7,99.7 L74.4,97.2 L82.0,110.1 L89.7,99.6 L97.4,95.8 L105.1,90.6 L112.7,113.0 L120.4,106.3 L128.1,113.1 L135.8,90.1 L143.4,93.8 L151.1,114.7 L158.8,84.6 L166.4,21.9 L174.1,28.6 L181.8,115.5 L189.5,99.1 L197.1,114.1 L204.8,109.9 L212.5,108.3 L220.2,115.0 L227.8,101.2 L235.5,101.9 L243.2,89.0 L250.9,99.4 L258.5,95.5 L266.2,100.0 L273.9,94.8 L281.6,101.4 L289.2,107.1 L296.9,17.4 L304.6,89.1 L312.2,93.4 L319.9,105.9 L327.6,108.7 L335.3,106.8 L342.9,113.8 L350.6,91.5 L358.3,103.2 L366.0,88.9 L373.6,103.6 L381.3,85.3 L389.0,88.9 L396.7,116.0 L404.3,109.3 L412.0,86.9" fill="none" stroke="#2997ff" stroke-width="1.4" stroke-linejoin="round"/><circle cx="166.4" cy="21.9" r="4" fill="#ff453a"/><text x="166.4" y="12.9" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#ff453a" text-anchor="middle">SLIP</text><circle cx="174.1" cy="28.6" r="4" fill="#ff453a"/><text x="174.1" y="19.6" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#ff453a" text-anchor="middle">SLIP</text><circle cx="296.9" cy="17.4" r="4" fill="#ff453a"/><text x="296.9" y="8.4" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#ff453a" text-anchor="middle">SLIP</text></svg></div>
+      <div class="ch-foot"><span><i style="background:#f85149"></i>越阈标记</span><span>±2σ 门限</span></div>
+    </div>
+    <div class="chart">
+      <div class="ch-head"><span class="ch-title">定位轨迹</span><span class="ch-meta">BESTPOS / WGS84</span></div>
+      <div class="ch-body"><svg viewBox="0 0 420 220" preserveAspectRatio="none"><line x1="0" y1="0" x2="0" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="40" y1="0" x2="40" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="80" y1="0" x2="80" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="120" y1="0" x2="120" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="160" y1="0" x2="160" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="200" y1="0" x2="200" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="240" y1="0" x2="240" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="280" y1="0" x2="280" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="320" y1="0" x2="320" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="360" y1="0" x2="360" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="400" y1="0" x2="400" y2="220" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="0" x2="420" y2="0" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="40" x2="420" y2="40" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="80" x2="420" y2="80" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="120" x2="420" y2="120" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="160" x2="420" y2="160" stroke="rgba(255,255,255,.07)"/><line x1="0" y1="200" x2="420" y2="200" stroke="rgba(255,255,255,.07)"/><path d="M40.0,180.0 L50.0,175.3 L60.4,170.3 L71.9,167.9 L81.0,161.7 L91.0,158.6 L104.0,154.2 L116.4,149.8 L127.9,147.1 L139.4,140.7 L150.5,135.0 L162.2,132.7 L174.3,127.8 L184.5,125.6 L196.9,121.2 L208.8,114.9 L220.7,108.2 L231.2,102.2 L242.0,95.6 L254.5,93.1 L264.1,90.0 L276.9,85.8 L288.4,82.3 L299.5,78.4 L309.9,73.5 L321.2,66.9 L332.9,60.3 L345.4,53.3 L357.1,50.5 L369.5,43.7" fill="none" stroke="#2997ff" stroke-width="2" stroke-linejoin="round"/><circle cx="40.0" cy="180.0" r="5" fill="#30d158"/><text x="48.0" y="183.0" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#30d158">START</text><circle cx="369.5" cy="43.7" r="5" fill="#ff9f0a"/><text x="361.5" y="35.7" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#ff9f0a" text-anchor="end">END</text><text x="8" y="16" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">30.5399°N 114.3528°E</text></svg></div>
+      <div class="ch-foot"><span>30.5399°N</span><span>114.3528°E</span></div>
+    </div>
+    <div class="chart wide">
+      <div class="ch-head"><span class="ch-title">链路事件时间轴</span><span class="ch-meta">M5 / 5 阶段 · 7 消息</span></div>
+      <div class="ch-body"><svg viewBox="0 0 820 210" preserveAspectRatio="none"><text x="8" y="35" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">QC</text><line x1="96" y1="32" x2="810" y2="32" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="26" width="128.5" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="310.2" y="26" width="85.7" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="438.7" y="26" width="178.5" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="652.9" y="26" width="107.1" height="12" rx="3" fill="#2997ff" opacity=".75"/><rect x="752.9" y="26" width="57.1" height="12" rx="3" fill="#2997ff" opacity=".75"/><text x="8" y="71" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">DEVICE</text><line x1="96" y1="68" x2="810" y2="68" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="62" width="128.5" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="310.2" y="62" width="85.7" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="438.7" y="62" width="178.5" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="652.9" y="62" width="107.1" height="12" rx="3" fill="#30d158" opacity=".75"/><rect x="752.9" y="62" width="57.1" height="12" rx="3" fill="#30d158" opacity=".75"/><text x="8" y="107" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">DIAGNOSIS</text><line x1="96" y1="104" x2="810" y2="104" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="98" width="128.5" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="310.2" y="98" width="85.7" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="438.7" y="98" width="178.5" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="652.9" y="98" width="107.1" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><rect x="752.9" y="98" width="57.1" height="12" rx="3" fill="#5e5ce6" opacity=".75"/><text x="8" y="143" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">DISPATCH</text><line x1="96" y1="140" x2="810" y2="140" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="134" width="128.5" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="310.2" y="134" width="85.7" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="438.7" y="134" width="178.5" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="652.9" y="134" width="107.1" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><rect x="752.9" y="134" width="57.1" height="12" rx="3" fill="#ff9f0a" opacity=".75"/><text x="8" y="179" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="9" fill="#86868b">ARCHIVE</text><line x1="96" y1="176" x2="810" y2="176" stroke="rgba(255,255,255,.07)"/><rect x="153.1" y="170" width="128.5" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="310.2" y="170" width="85.7" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="438.7" y="170" width="178.5" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="652.9" y="170" width="107.1" height="12" rx="3" fill="#8e8eff" opacity=".75"/><rect x="752.9" y="170" width="57.1" height="12" rx="3" fill="#8e8eff" opacity=".75"/><text x="96.0" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+0s</text><text x="238.8" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+10s</text><text x="381.6" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+20s</text><text x="524.4" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+30s</text><text x="667.2" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+40s</text><text x="810.0" y="204" font-family='ui-monospace,SF Mono,Menlo,Consolas,monospace' font-size="8" fill="#86868b" text-anchor="middle">T+50s</text></svg></div>
+      <div class="ch-foot"><span>每条结论引用成功执行过的 call_id</span></div>
     </div>
   </div>
 </section>
 
 <section class="sec" id="limits">
-  <div class="rail"><span class="n">04 /</span> 边界<b>哪些没做到</b></div>
-  <div>
+  <div class="sec-head"><div class="sec-num">§4</div><div>
     <h2>不把做不到写成做完了</h2>
-    <p class="lead">A−B 覆盖矩阵逐项盘点原版 GUI 的 50 项功能。剩下的缺口分成三类——人工闸门、硬件边界、本机不适用，各自有不同含义。</p>
-    <div class="constraints">
-      <div class="constraint"><span class="tag">human_gate</span><p><b>3 条写盘流程停在人工闸门。</b><code>approve_plot</code>、<code>gui.app.install</code>、<code>gui.app.update</code> 涉及不可逆写盘，自动走到闸门后由人批准。</p></div>
-      <div class="constraint"><span class="tag no">hardware</span><p><b>3 条卡在硬件边界。</b>设备新增、固件刷写、重启确认——代码与闸门已推到位，本机 <code>/api/ports</code> 只有蓝牙串口，缺一台真接收机做端到端。</p></div>
-      <div class="constraint"><span class="tag ok">not_applicable</span><p><b>11 项本机不适用。</b>SPAN/IMU、双天线 ALIGN、PPP、电台、事件样本——OEM729 无对应硬件或授权，原版本机也只有空态，换机型才需要重新处置。</p></div>
-      <div class="constraint"><span class="tag">frontend</span><p><b>包内前端是 0.1.10 版。</b>为了拿到正确的 My Applications 界面；工作树最新前端（含四视角代码）没有打进这个 exe。</p></div>
-      <div class="constraint"><span class="tag no">unverified</span><p><b>原版静默安装分支未在干净机器实跑。</b>本机已装原版，检测到后跳过；GUI 版直接内嵌原版套件，不依赖那条分支。</p></div>
-    </div>
-  </div>
+    <p class="lead">A−B 覆盖矩阵逐项盘点原版 GUI 的 50 项功能。剩余缺口分三类，各自含义不同。</p>
+  </div></div>
+  <div class="limit"><span class="tag">human_gate</span><p><b>3 条写盘流程停在人工闸门。</b>approve_plot、gui.app.install、gui.app.update 涉及不可逆写盘，自动走到闸门后由人批准。</p></div>
+  <div class="limit"><span class="tag">hardware</span><p><b>3 条卡在硬件边界。</b>设备新增、固件刷写、重启确认——代码与闸门已推到位，本机 /api/ports 只有蓝牙串口，缺真接收机做端到端。</p></div>
+  <div class="limit"><span class="tag">n/a</span><p><b>11 项本机不适用。</b>SPAN/IMU、双天线 ALIGN、PPP、电台、事件样本——OEM729 无对应硬件或授权，原版本机也只有空态。</p></div>
+  <div class="limit"><span class="tag">frontend</span><p><b>包内前端是 0.1.10 版。</b>为拿到正确的 My Applications 界面；工作树最新前端（含四视角代码）没有打进这个 exe。</p></div>
+  <div class="limit"><span class="tag">unverified</span><p><b>原版静默安装分支未在干净机器实跑。</b>本机已装原版，检测到后跳过；GUI 版直接内嵌原版套件，不依赖该分支。</p></div>
 </section>
 
 <section class="sec" id="get">
-  <div class="rail"><span class="n">05 /</span> 获取<b>下载与复现</b></div>
-  <div>
+  <div class="sec-head"><div class="sec-num">§5</div><div>
     <h2>三个安装器</h2>
-    <p class="lead">主交付是 GUI 安装器；两个 cmd 版本是上一轮的归档产物，保留供对比。所有文件在 GitHub Release v1.0.0（公开仓库）。</p>
-    <div class="dl">
-      <div class="dl-row"><span class="fn">FieldStationHybrid-GUI-Setup.exe</span><span class="sz">837.7 MB · GUI</span><a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe">下载 ↗</a></div>
-      <div class="dl-row"><span class="fn">FieldStationHybrid-B-Setup.exe</span><span class="sz">395.1 MB · cmd</span><a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-B-Setup.exe">下载 ↗</a></div>
-      <div class="dl-row"><span class="fn">FieldStationHybrid-A-Setup.exe</span><span class="sz">61.1 MB · cmd</span><a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-A-Setup.exe">下载 ↗</a></div>
-      <div class="dl-row"><span class="fn">yasunosubaru/field-station-agent</span><span class="sz">source · MIT</span><a href="https://github.com/yasunosubaru/field-station-agent">仓库 ↗</a></div>
-    </div>
+    <p class="lead">主交付是 GUI 安装器；两个 cmd 版本是上一轮归档产物，保留供对比。全部在公开仓库的 Release v1.0.0。</p>
+  </div></div>
+  <div class="dl">
+    <div class="dl-row"><span class="fn">FieldStationHybrid-GUI-Setup.exe</span><span class="sz">837.7 MB · GUI</span><a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe">下载 ↗</a></div>
+    <div class="dl-row"><span class="fn">FieldStationHybrid-B-Setup.exe</span><span class="sz">395.1 MB · cmd</span><a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-B-Setup.exe">下载 ↗</a></div>
+    <div class="dl-row"><span class="fn">FieldStationHybrid-A-Setup.exe</span><span class="sz">61.1 MB · cmd</span><a href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-A-Setup.exe">下载 ↗</a></div>
+    <div class="dl-row"><span class="fn">yasunosubaru/field-station-agent</span><span class="sz">source · MIT</span><a href="https://github.com/yasunosubaru/field-station-agent">仓库 ↗</a></div>
   </div>
 </section>
 
 </main>
 
 <footer><div class="wrap">
-  <div class="row"><a href="#overview">概览</a><a href="#flow">固定流程</a><a href="#data">数据</a><a href="#limits">边界</a><a href="./dashboard.html">运行看板</a><a href="./public-chain.html">公开数据看板</a></div>
-  <div style="margin-top:12px">武汉大学地球与空间科学技术学院 · 2026 大学生创新创业训练计划 · FieldStation Hybrid v1.0.0</div>
+  <div class="foot-row"><a href="#overview">概览</a><a href="#flow">流程</a><a href="#data">数据</a><a href="#limits">边界</a><a href="./dashboard.html">运行看板</a><a href="./public-chain.html">公开数据看板</a></div>
+  <div class="foot-note">武汉大学地球与空间科学技术学院 · 2026 大学生创新创业训练计划 · FieldStation Hybrid v1.0.0</div>
 </div></footer>
 
 </body></html>
