@@ -10,14 +10,14 @@
 <style>
 :root{
   --black:#000; --white:#fff; --gray:#86868b; --gray2:#6e6e73; --gray3:#a1a1a6;
-  --blue:#0071e3; --blue-l:#2997ff; --line:#d2d2d7; --dark-line:#424245;
-  --bg-soft:#f5f5f7; --dark:#0b0b0d;
+  --blue:#0071e3; --blue-l:#2997ff; --line:#2a2a2e; --dark-line:#38383d;
+  --bg-soft:#161618; --dark:#0b0b0d;
   --ease:cubic-bezier(.28,.11,.32,1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.47;color:#1d1d1f;background:#fff;overflow-x:hidden}
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.47;color:#f5f5f7;background:#000;overflow-x:hidden}
 ::selection{background:#0071e3;color:#fff}
 a{text-decoration:none;color:inherit}
 
@@ -36,8 +36,8 @@ a{text-decoration:none;color:inherit}
 /* ===== type ===== */
 .hero-title{font-size:clamp(48px,7.5vw,96px);font-weight:700;letter-spacing:-.055em;line-height:1.03}
 .section-title{font-size:clamp(40px,5.5vw,72px);font-weight:700;letter-spacing:-.045em;line-height:1.07}
-.section-sub{font-size:clamp(18px,2vw,24px);font-weight:400;color:var(--gray);letter-spacing:-.01em;line-height:1.45}
-.eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+.section-sub{font-size:clamp(18px,2vw,24px);font-weight:400;color:var(--gray3);letter-spacing:-.01em;line-height:1.45}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--blue-l)}
 .cap{font-size:clamp(14px,1.3vw,17px);color:var(--gray);line-height:1.6}
 
 /* ===== hero ===== */
@@ -60,7 +60,7 @@ a{text-decoration:none;color:inherit}
 .btn-blue:hover{background:var(--blue-l);transform:scale(1.03)}
 .btn-outline{border:1px solid rgba(255,255,255,.4);color:#fff}
 .btn-outline:hover{background:rgba(255,255,255,.1);transform:scale(1.03)}
-.hero-note{margin-top:30px;font-size:12px;color:#6e6e73;animation:fade-up 1s .9s both var(--ease)}
+.hero-note{margin-top:30px;font-size:12px;color:#86868b;animation:fade-up 1s .9s both var(--ease)}
 @keyframes rise{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:none}}
 @keyframes fade-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 
@@ -108,26 +108,26 @@ a{text-decoration:none;color:inherit}
 .feat .section-title{margin-bottom:18px}
 .feat .section-sub{margin:0 auto;max-width:36em}
 .feat-visual{margin:64px auto 0;max-width:900px}
-.light{background:#fff;color:#1d1d1f}
-.soft{background:var(--bg-soft);color:#1d1d1f}
+.light{background:#000;color:#f5f5f7}
+.soft{background:#0f0f11;color:#f5f5f7}
 .darksec{background:#000;color:#fff}
 .darksec .section-sub{color:var(--gray3)}
 .darksec .eyebrow{color:var(--blue-l)}
 
 /* abstract visual blocks */
 .abs{height:420px;border-radius:22px;position:relative;overflow:hidden;background:#000}
-.abs-light{background:#f0f0f2}
+.abs-light{background:#161618}
 .abs canvas,.abs svg{width:100%;height:100%;display:block}
 
 /* three pillars */
 .pillars{padding:0 22px 150px}
 .pillars-in{max-width:1024px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-.pillar{background:#fff;border-radius:20px;padding:36px 30px;text-align:left;border:1px solid var(--line);transition:transform .5s var(--ease),box-shadow .5s var(--ease)}
-.pillar:hover{transform:translateY(-6px);box-shadow:0 20px 50px rgba(0,0,0,.08)}
-.pillar .ic{width:44px;height:44px;border-radius:12px;background:var(--bg-soft);display:grid;place-items:center;margin-bottom:24px}
+.pillar{background:#141416;border-radius:20px;padding:36px 30px;text-align:left;border:1px solid var(--line);transition:transform .5s var(--ease),box-shadow .5s var(--ease),background .5s var(--ease)}
+.pillar:hover{transform:translateY(-6px);background:#1c1c1f;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.pillar .ic{width:44px;height:44px;border-radius:12px;background:#222226;display:grid;place-items:center;margin-bottom:24px}
 .pillar .ic svg{width:24px;height:24px;stroke:var(--blue);fill:none;stroke-width:1.7}
-.pillar h3{font-size:22px;font-weight:650;letter-spacing:-.03em;margin-bottom:10px}
-.pillar p{font-size:15px;color:var(--gray2);line-height:1.6}
+.pillar h3{font-size:22px;font-weight:650;letter-spacing:-.03em;margin-bottom:10px;color:#f5f5f7}
+.pillar p{font-size:15px;color:var(--gray);line-height:1.6}
 
 /* ===== scroll narrative ===== */
 .story{height:340vh;background:#000;position:relative}
@@ -144,7 +144,7 @@ a{text-decoration:none;color:inherit}
 .sdots i.on{background:var(--blue-l);width:36px}
 
 /* ===== download ===== */
-.download{padding:150px 22px;text-align:center;background:#fff}
+.download{padding:150px 22px;text-align:center;background:#000}
 .download .section-title{margin-bottom:16px}
 .download .section-sub{margin:0 auto 50px}
 .dl-box{max-width:640px;margin:0 auto}
@@ -155,13 +155,13 @@ a{text-decoration:none;color:inherit}
 .dl-secondary a:hover{text-decoration:underline}
 
 /* ===== footer ===== */
-footer{background:var(--bg-soft);color:var(--gray2);padding:50px 22px 40px;font-size:12px;line-height:1.7}
+footer{background:#0a0a0c;color:var(--gray);padding:50px 22px 40px;font-size:12px;line-height:1.7}
 .foot-in{max-width:1024px;margin:0 auto}
 .foot-in p{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:22px}
 .foot-links{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
-.foot-links h5{color:#1d1d1f;font-size:12px;margin-bottom:12px}
-.foot-links a{display:block;color:var(--gray2);margin-bottom:10px;transition:color .2s}
-.foot-links a:hover{color:#1d1d1f}
+.foot-links h5{color:#f5f5f7;font-size:12px;margin-bottom:12px}
+.foot-links a{display:block;color:var(--gray);margin-bottom:10px;transition:color .2s}
+.foot-links a:hover{color:#fff}
 @media(max-width:700px){.foot-links{grid-template-columns:repeat(2,1fr);gap:28px}}
 
 /* ===== reveal ===== */
@@ -351,7 +351,7 @@ footer{background:var(--bg-soft);color:var(--gray2);padding:50px 22px 40px;font-
       <div><h5>项目</h5><a href="https://github.com/yasunosubaru/field-station-agent/releases">Releases</a><a href="https://github.com/yasunosubaru/field-station-agent/issues">问题反馈</a><a href="https://github.com/users/yasunosubaru/projects/1/views/1">任务看板</a></div>
       <div><h5>许可</h5><a href="https://github.com/yasunosubaru/field-station-agent/blob/main/LICENSE">MIT 许可</a></div>
     </div>
-    <div style="margin-top:32px;color:#a1a1a6">© 2026 野外台站智能体项目组 · 本站部署于 Cloudflare Pages</div>
+    <div style="margin-top:32px;color:#86868b">© 2026 野外台站智能体项目组 · 本站部署于 Cloudflare Pages</div>
   </div>
 </footer>
 
