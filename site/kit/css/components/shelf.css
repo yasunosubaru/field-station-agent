@@ -1,0 +1,35 @@
+/* Shelf: a heading and a horizontal row of cards that snaps card by card, with arrows (kit.js) on pointer devices.
+   <section class="kit-shelf" data-kit-shelf>
+     <h2 class="kit-section-head">…</h2>
+     <div class="kit-shelf__track">…cards…</div>
+   </section>
+   The first card aligns with --kit-edge; the row is cut by the right edge of the screen, as on the reference.
+   Under 1024 px of shelf width the cards switch to their compact size. */
+@layer kit.components {
+  .kit-shelf { container: shelf / inline-size; position: relative; padding-bottom: 46px; }
+  .kit-shelf__track {
+    display: flex; gap: var(--kit-space-5); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    scroll-snap-type: x mandatory; scroll-padding-inline: var(--kit-edge); scroll-behavior: smooth;
+    padding: var(--kit-space-4) var(--kit-edge) 23px;
+  }
+  .kit-shelf__track::-webkit-scrollbar { display: none; }
+  .kit-shelf__track > * { flex: none; scroll-snap-align: start; }
+  @container shelf (max-width: 1023px) {
+    .kit-shelf__track .kit-card { --card-w: 309px; --card-h: 450px; }
+    .kit-shelf__track .kit-card--short { --card-h: 215px; }
+  }
+
+  /* Round arrow, shared with the gallery. */
+  .kit-arrow {
+    position: absolute; top: 50%; translate: 0 -50%; z-index: 2; width: 56px; height: 56px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--kit-control); color: var(--kit-control-icon);
+    -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px);
+    transition: opacity .7s cubic-bezier(.15, 0, .2, 1), transform var(--kit-dur-slow) ease-in, background-color var(--kit-dur-fast) linear;
+  }
+  .kit-arrow svg { width: 12px; height: 20px; }
+  .kit-arrow:hover { background: var(--kit-control-hover); }
+  .kit-arrow:disabled { opacity: 0; transform: scale(.8); pointer-events: none; }
+  .kit-arrow--prev { left: 18px; }
+  .kit-arrow--next { right: 18px; }
+  @media (hover: none) { .kit-shelf > .kit-arrow { display: none; } }
+}

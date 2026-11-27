@@ -1,0 +1,33 @@
+/* Tabs: a tab list that switches panels (arrow keys, Home and End move between tabs).
+   <div class="kit-tabs kit-tabs--line" role="tablist" aria-label="Accessories" data-kit-tabs>
+     <button class="kit-tab" role="tab" id="t1" aria-controls="p1" aria-selected="true">All</button>
+     <button class="kit-tab" role="tab" id="t2" aria-controls="p2" aria-selected="false">Cases</button>
+   </div>
+   <div class="kit-tab-panel" id="p1" role="tabpanel" aria-labelledby="t1">…</div>
+   <div class="kit-tab-panel" id="p2" role="tabpanel" aria-labelledby="t2" hidden>…</div>
+   Variants: (none) plain text, --line underlines the selected tab, --pill outlined pills with a black selection,
+   --segmented one white capsule with a black selection.
+   Knobs: --tab-pad (tab padding), --tab-gap (space between tabs), --tab-select (selected fill, pill and segmented). */
+@layer kit.components {
+  .kit-tabs { --tab-pad: 8px 18px; --tab-gap: 0px; --tab-select: var(--kit-black);   /* clone: .tab padding */
+    display: flex; gap: var(--tab-gap); overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
+  .kit-tabs::-webkit-scrollbar { display: none; }
+  .kit-tab { padding: var(--tab-pad); border-radius: var(--kit-radius-pill); color: var(--kit-text-2); white-space: nowrap;
+    transition: color var(--kit-dur-fast) ease-in-out, background-color var(--kit-dur); }
+  .kit-tab:hover, .kit-tab[aria-selected="true"] { color: var(--kit-text); }
+
+  .kit-tabs--line .kit-tab[aria-selected="true"] { box-shadow: inset 0 -1px 0 var(--kit-text); border-radius: 0; font-weight: 600; }
+
+  .kit-tabs--pill { --tab-gap: var(--kit-space-2); }
+  .kit-tabs--pill .kit-tab { border: 1px solid var(--kit-line); color: var(--kit-text); }
+  .kit-tabs--pill .kit-tab[aria-selected="true"] { background: var(--tab-select); border-color: var(--tab-select); color: var(--kit-on-dark); }
+
+  .kit-tabs--segmented { --tab-pad: 20px 32px; display: inline-flex; max-width: 100%; background: var(--kit-surface); border-radius: var(--kit-radius-2xl); }
+  .kit-tabs--segmented .kit-tab { border-radius: var(--kit-radius-2xl); color: var(--kit-black);
+    font: 600 var(--kit-fs-step) / var(--kit-lh-step) var(--kit-font-display); letter-spacing: var(--kit-tr-step); }
+  .kit-tabs--segmented .kit-tab[aria-selected="true"] { background: var(--tab-select); color: var(--kit-on-dark); }
+
+  .kit-tab-panel { animation: kit-tab-fade var(--kit-dur) ease; }
+  .kit-tab-panel[hidden] { display: none; }
+  @keyframes kit-tab-fade { from { opacity: 0; } to { opacity: 1; } }
+}

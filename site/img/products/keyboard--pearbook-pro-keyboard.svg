@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-label="Keyboard image (pearbook pro keyboard)">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="109.8" y="116.8" width="260.3" height="66.3" rx="21.5" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="19.5" fill="#1d1d1f"><tspan x="240" y="145.1"><tspan font-weight="600">Keyboard</tspan> image</tspan><tspan x="240" y="168.5" font-size="16.6" fill="#6e6e73">(pearbook pro keyboard)</tspan></text></g>
+  <g class="short"><rect x="95.5" y="103.8" width="289" height="92.4" rx="46.2" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="42" fill="#1d1d1f"><tspan x="240" y="164.7"><tspan font-weight="600">Keyboard</tspan></tspan></text></g>
+</svg>

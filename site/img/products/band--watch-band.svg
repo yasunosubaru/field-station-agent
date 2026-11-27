@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 500" role="img" aria-label="Band image (watch band)">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="70.9" y="216.8" width="158.2" height="66.3" rx="21.5" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="19.5" fill="#1d1d1f"><tspan x="150" y="245.1"><tspan font-weight="600">Band</tspan> image</tspan><tspan x="150" y="268.5" font-size="16.6" fill="#6e6e73">(watch band)</tspan></text></g>
+  <g class="short"><rect x="13.1" y="185.1" width="273.8" height="129.8" rx="64.9" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="59" fill="#1d1d1f"><tspan x="150" y="270.6"><tspan font-weight="600">Band</tspan></tspan></text></g>
+</svg>

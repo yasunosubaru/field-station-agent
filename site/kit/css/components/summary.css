@@ -1,0 +1,27 @@
+/* Summary (end of a configurator) and accordion.
+   <section class="kit-summary"><div><h2 class="kit-summary__title">Your new jPhone 18 Pro.</h2></div>
+     <div><p class="kit-summary__price">$999.00</p><p class="kit-summary__fine">or $41.62/mo. for 24 mo.</p>
+       <a class="kit-btn kit-btn--block">Add to Bag</a></div></section>
+   <div class="kit-accordion" data-kit-accordion><div class="kit-accordion__item">
+     <button class="kit-accordion__button" aria-expanded="false">Question</button>
+     <div class="kit-accordion__panel"><div>Answer</div></div></div></div> */
+@layer kit.components {
+  .kit-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: var(--kit-space-8);
+    align-items: start; padding-block: var(--kit-space-10); border-top: 1px solid var(--kit-line); }
+  .kit-summary__title { font: 600 var(--kit-fs-hero) / var(--kit-lh-hero) var(--kit-font-display); letter-spacing: var(--kit-tr-hero); }
+  .kit-summary__price { font: 600 var(--kit-fs-section) / var(--kit-lh-section) var(--kit-font-display); letter-spacing: var(--kit-tr-section); }
+  .kit-summary__fine { margin-top: 6px; color: var(--kit-text-2); font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); }
+  .kit-summary .kit-btn--block { margin-top: var(--kit-space-9); }
+
+  .kit-accordion__item { border-bottom: 1px solid var(--kit-line); }
+  .kit-accordion__button { display: flex; justify-content: space-between; align-items: center; gap: var(--kit-space-4); width: 100%;
+    padding-block: var(--kit-space-6); text-align: left; font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); }
+  .kit-accordion__button::after { content: ""; flex: none; width: 9px; height: 9px; margin-right: var(--kit-space-1);
+    border: solid currentColor; border-width: 0 1.5px 1.5px 0; rotate: 45deg; transition: rotate var(--kit-dur) var(--kit-ease); }
+  .kit-accordion__button[aria-expanded="true"]::after { rotate: -135deg; }
+  /* Height animates through grid rows: no JS measuring. */
+  .kit-accordion__panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--kit-dur) var(--kit-ease); }
+  .kit-accordion__button[aria-expanded="true"] + .kit-accordion__panel { grid-template-rows: 1fr; }
+  .kit-accordion__panel > * { overflow: hidden; }
+  .kit-accordion__panel > * > :last-child { padding-bottom: var(--kit-space-6); }
+}

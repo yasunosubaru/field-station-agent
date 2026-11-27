@@ -1,0 +1,52 @@
+/* Configurator pieces: step heading, option cards (radio), colour swatches, help card.
+   <fieldset class="kit-step"><legend class="kit-step__title"><strong>Model.</strong> Which is best for you?</legend>
+     <div class="kit-options">
+       <label class="kit-option"><input type="radio" name="model">
+         <span class="kit-option__label"><span><span class="kit-option__name">jPhone 18 Pro</span>
+           <span class="kit-option__sub">6.3-inch display</span></span><span class="kit-option__price">From $999</span></span></label>
+     </div></fieldset>
+   <div class="kit-swatches" data-kit-swatches><label class="kit-swatch" style="--c:#2b3140">
+     <input type="radio" name="color" value="Ink"><span></span></label>…</div><p class="kit-swatches__label"></p>
+   Options lay out in as many columns as fit (--options-min sets the narrowest column). */
+@layer kit.components {
+  .kit-step { margin: 0 0 max(var(--kit-space-11) * .75, 50vh - 360px); padding: 0; border: 0; min-width: 0; transition: opacity var(--kit-dur); }
+  .kit-step.is-locked { opacity: .32; pointer-events: none; }
+  .kit-step__title { padding: 0; margin-bottom: 13px; color: var(--kit-text-3);
+    font: 600 var(--kit-fs-step) / var(--kit-lh-step) var(--kit-font-display); letter-spacing: var(--kit-tr-step); }
+  .kit-step__title strong { color: var(--kit-text); font-weight: inherit; }
+
+  .kit-options { --options-min: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--options-min), 100%), 1fr)); gap: 14px; margin-top: var(--kit-space-2); }
+  .kit-options--2 { --options-min: 40%; }
+  .kit-options--3 { --options-min: 28%; }
+  .kit-option { position: relative; display: block; }
+  .kit-option input { position: absolute; opacity: 0; pointer-events: none; }
+  .kit-option__label {
+    --option-border: 1px; --option-pad: 15px;
+    display: flex; justify-content: space-between; align-items: center; gap: var(--kit-space-3); min-height: 83px;
+    padding: calc(var(--option-pad) + 1px - var(--option-border)); border: var(--option-border) solid var(--kit-text-3);
+    border-radius: var(--kit-radius-md); background: var(--kit-frost); cursor: pointer;
+    font-size: var(--kit-fs-body); line-height: 1.2353; letter-spacing: var(--kit-tr-body); transition: border-color var(--kit-dur-fast);
+  }
+  .kit-option__label:hover { border-color: var(--kit-line-hover); }
+  .kit-option input:checked + .kit-option__label { --option-border: 2px; border-color: var(--kit-action); }
+  .kit-option input:focus-visible + .kit-option__label { outline: 2px solid var(--kit-action); outline-offset: 3px; }
+  .kit-option input:disabled + .kit-option__label { opacity: .42; cursor: default; }
+  .kit-option__name { font-weight: 600; }
+  .kit-option__sub { display: block; margin-top: var(--kit-space-1); color: var(--kit-text-2);
+    font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note); }
+  .kit-option__price { flex: none; max-width: 45%; text-align: right; font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); }
+
+  .kit-swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--kit-space-2); }
+  .kit-swatch { position: relative; }
+  .kit-swatch input { position: absolute; opacity: 0; }
+  .kit-swatch span { display: block; width: 36px; height: 36px; padding: var(--kit-space-1); border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+  .kit-swatch span::before { content: ""; display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--c);
+    box-shadow: inset 0 0 0 1px var(--kit-ink-12), inset 0 -4px 6px var(--kit-ink-08); }
+  .kit-swatch input:checked + span { border-color: var(--kit-action); }
+  .kit-swatch input:focus-visible + span { outline: 2px solid var(--kit-action); outline-offset: 1px; }
+  .kit-swatches__label { min-height: 20px; font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); }
+
+  .kit-help { display: flex; align-items: center; justify-content: space-between; gap: var(--kit-space-3); margin-top: 14px; padding: var(--kit-space-4);
+    border-radius: var(--kit-radius-md); background: var(--kit-page); font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); }
+  .kit-help strong { display: block; margin-bottom: 2px; font-size: var(--kit-fs-small); line-height: 1.2858; }
+}

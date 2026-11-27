@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-label="Keyboard image">
+  <style>.short { display: none; } @media (max-width: 130px) { .full { display: none; } .short { display: inline; } }</style>
+  <g class="full"><rect x="140.2" y="128.6" width="199.7" height="42.9" rx="21.4" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="19.5" fill="#1d1d1f"><tspan x="240" y="156.8"><tspan font-weight="600">Keyboard</tspan> image</tspan></text></g>
+  <g class="short"><rect x="95.5" y="103.8" width="289" height="92.4" rx="46.2" fill="#e8e8ed"/>
+  <text text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="42" fill="#1d1d1f"><tspan x="240" y="164.7"><tspan font-weight="600">Keyboard</tspan></tspan></text></g>
+</svg>

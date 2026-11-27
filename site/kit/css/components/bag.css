@@ -1,0 +1,48 @@
+/* Bag page: an empty state, item lines and a summary with the total. kit.js (data-kit-bag) handles quantity,
+   remove, totals and the switch to the empty state.
+   <section class="kit-bag" data-kit-bag data-currency="USD">
+     <div class="kit-bag__empty"><h1 class="kit-bag__title">Your bag is empty.</h1><p class="kit-bag__text">…</p>
+       <div class="kit-bag__actions"><a class="kit-btn kit-btn--large" href="…">Keep shopping</a></div></div>
+     <div class="kit-bag__full"><h1 class="kit-bag__title">Your bag</h1>
+       <div class="kit-bag__line" data-price="999">
+         <div class="kit-bag__img"><img src="…" alt=""></div>
+         <div class="kit-bag__info"><h2 class="kit-bag__name">jPhone 18 Pro</h2>
+           <label class="kit-bag__qty">Quantity <select data-kit-bag-qty><option>1</option>…</select></label>
+           <button class="kit-bag__remove" type="button" data-kit-bag-remove>Remove</button></div>
+         <p class="kit-bag__price" data-kit-bag-line></p>
+       </div>
+       <div class="kit-bag__summary">
+         <div class="kit-bag__row"><span>Subtotal</span><span data-kit-bag-subtotal></span></div>
+         <div class="kit-bag__row kit-bag__row--total"><span>Total</span><span data-kit-bag-total></span></div>
+         <a class="kit-btn kit-btn--block" href="…">Check Out</a>
+       </div></div>
+   </section>
+   The empty or full part shows from the number of lines (kit.js sets data-state="empty|full"). */
+@layer kit.components {
+  .kit-bag { padding-top: var(--kit-space-11); }
+  .kit-bag:not([data-state="empty"]) .kit-bag__empty, .kit-bag[data-state="empty"] .kit-bag__full { display: none; }
+  .kit-bag__title { font: 600 clamp(28px, 3.6vw + 1.6px, 40px) / 1.1 var(--kit-font-display); padding-bottom: 2px; }
+  .kit-bag__text { font-size: var(--kit-fs-body); line-height: var(--kit-lh-body); letter-spacing: var(--kit-tr-body); }
+  .kit-bag__actions { display: flex; flex-wrap: wrap; gap: var(--kit-space-4); padding-top: 46px; }
+
+  .kit-bag__line { display: flex; gap: var(--kit-space-7); align-items: flex-start; padding-block: var(--kit-space-9); border-bottom: 1px solid var(--kit-line); }
+  .kit-bag__img { width: 120px; height: 120px; flex: none; display: grid; place-items: center; }
+  .kit-bag__img img { width: 100%; height: 100%; object-fit: contain; }
+  .kit-bag__info { flex: 1; min-width: 0; }
+  .kit-bag__name { font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); }
+  .kit-bag__qty { display: block; padding: var(--kit-space-1) 0 10px; font-size: var(--kit-fs-small); letter-spacing: var(--kit-tr-small); color: var(--kit-text-2); }
+  .kit-bag__qty select { margin-left: var(--kit-space-1); border: 0; background: none; font: inherit; color: var(--kit-link); cursor: pointer; }
+  .kit-bag__remove { padding: 0; border: 0; background: none; font-size: var(--kit-fs-small); letter-spacing: var(--kit-tr-small); color: var(--kit-link); cursor: pointer; }
+  .kit-bag__remove:hover { text-decoration: underline; }
+  .kit-bag__price { font-size: var(--kit-fs-body); letter-spacing: var(--kit-tr-body); text-align: right; white-space: nowrap; }
+
+  .kit-bag__summary { width: 360px; max-width: 100%; margin-left: auto; padding-top: var(--kit-space-7); }
+  .kit-bag__row { display: flex; justify-content: space-between; gap: var(--kit-space-4); padding-block: 6px; font-size: var(--kit-fs-body); letter-spacing: var(--kit-tr-body); }
+  .kit-bag__row--total { font-weight: 600; margin-top: 10px; padding-top: var(--kit-space-4); border-top: 1px solid var(--kit-line); }
+  .kit-bag__summary .kit-btn { margin-top: var(--kit-space-7); }
+
+  @media (max-width: 734px) {
+    .kit-bag__line { gap: var(--kit-space-4); }
+    .kit-bag__img { width: 80px; height: 80px; }
+  }
+}

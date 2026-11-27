@@ -1,0 +1,90 @@
+/* Model comparator: 2 or 3 models side by side, a header per model (picture, swatches, name, price, button), then
+   one row per feature (icon, big value, small lines). Dense by default; --roomy gives the airy iPad layout.
+   <section class="kit-compare [kit-compare--roomy]" style="--cols: 3" aria-labelledby="t">
+     <header class="kit-compare__head"><h2 id="t">Compare models</h2><a class="kit-link-more">…</a></header>
+     <div class="kit-compare__scroll" role="region" tabindex="0" aria-label="Model comparison">
+       <div class="kit-compare__grid">
+         <div class="kit-compare__row kit-compare__row--head">
+           <div class="kit-compare__cell kit-compare__model">
+             <img class="kit-compare__img" src alt=""> <div class="kit-compare__swatches"><i style="--c:#…"></i>…</div>
+             <p class="kit-compare__badge">New</p> <h3 class="kit-compare__name">…</h3> <p class="kit-compare__sub">…</p>
+             <p class="kit-compare__price">…</p> <a class="kit-btn">Buy</a></div>…</div>
+         <div class="kit-compare__row"><div class="kit-compare__cell kit-compare__feature">
+           <svg class="kit-compare__icon">…</svg> <p class="kit-compare__value">6.3"</p> <p>Super display</p></div>…</div>
+       </div></div>
+   </section>
+   --cols is the number of models. Wide: the columns are centred. Under 700 px of component width the columns narrow, then
+   the grid scrolls sideways (snap, keyboard-focusable) instead of squeezing.
+   Knobs: --compare-col (column width), --compare-gap, --compare-img-h, --compare-title-fs. */
+@layer kit.components {
+  .kit-compare {
+    container: compare / inline-size;
+    --compare-col: 200px;                 /* measured: column width */
+    --compare-gap: 60px;                  /* measured: gap between columns */
+    --compare-img-h: 256px;               /* measured: model picture height */
+    --compare-title-fs: clamp(28px, 2.5vw + 10px, 40px);   /* measured: 40 px title on desktop */
+    --compare-row-gap: var(--kit-space-6);
+    --compare-value-fs: var(--kit-fs-section); --compare-value-lh: var(--kit-lh-section);
+    --compare-line-fs: var(--kit-fs-note); --compare-line-lh: var(--kit-lh-note); --compare-line-tr: var(--kit-tr-note);
+    --compare-icon: 56px;                 /* measured: feature icon */
+    --compare-icon-gap: var(--kit-space-8);
+    padding-block: 70px 30px;             /* measured: 70 px above the head, 30 below */
+    color: var(--kit-text);
+  }
+  .kit-compare__head { padding: 0 var(--kit-gutter) var(--kit-space-10); text-align: center; }
+  .kit-compare__head h2 { font: 600 var(--compare-title-fs) / 1.1 var(--kit-font-display); letter-spacing: .005em; }
+  .kit-compare__head .kit-link-more { display: inline-block; margin-top: var(--kit-space-3); }
+
+  /* The scroller keeps the grid centred while it fits and scrolls from its start once it does not. */
+  .kit-compare__scroll {
+    display: flex; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
+    padding-inline: var(--kit-gutter); scroll-padding-inline: var(--kit-gutter);
+  }
+  .kit-compare__scroll::-webkit-scrollbar { display: none; }
+  .kit-compare__grid { margin-inline: auto; width: max-content; padding-inline: var(--kit-space-1); text-align: center; }
+  .kit-compare__row {
+    display: grid; grid-template-columns: repeat(var(--cols, 3), var(--compare-col)); column-gap: var(--compare-gap);
+  }
+  .kit-compare__cell { display: flex; flex-direction: column; align-items: center; min-width: 0; scroll-snap-align: center; }
+
+  /* Model header */
+  .kit-compare__img { width: var(--compare-col); height: var(--compare-img-h); object-fit: contain; }
+  .kit-compare__swatches { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: var(--kit-space-4) 0 var(--kit-space-5); }
+  .kit-compare__swatches i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px var(--kit-ink-10); }
+  .kit-compare__badge { min-height: calc(var(--kit-lh-note) * 1em); font: 600 var(--kit-fs-note) / var(--kit-lh-note) var(--kit-font); color: var(--kit-accent); }
+  .kit-compare__name { margin-top: 6px; font: 600 var(--kit-fs-step) / var(--kit-lh-step) var(--kit-font-display); letter-spacing: var(--kit-tr-step); }
+  .kit-compare__name a { color: inherit; }
+  .kit-compare__sub { width: calc(var(--compare-col) - var(--kit-space-2)); margin-top: var(--kit-space-3); font-size: var(--kit-fs-body); line-height: 1.2353; letter-spacing: var(--kit-tr-body); }
+  .kit-compare__price { margin-top: var(--kit-space-2); font-size: var(--kit-fs-small); line-height: 1.2858; letter-spacing: var(--kit-tr-small); }
+  .kit-compare__model .kit-btn { margin-top: var(--kit-space-4); }
+  .kit-compare__row--head .kit-compare__cell { padding-bottom: var(--kit-space-6); }
+
+  /* Feature rows */
+  .kit-compare__icon { width: var(--compare-icon); height: var(--compare-icon); margin-top: var(--compare-icon-gap); object-fit: contain; fill: currentColor; }
+  .kit-compare__feature { padding-bottom: var(--kit-space-1); }
+  .kit-compare__value { margin-top: 2px; font: 600 var(--compare-value-fs) / var(--compare-value-lh) var(--kit-font-display); letter-spacing: var(--kit-tr-section); }
+  .kit-compare__feature p:not(.kit-compare__value) { margin-top: 2px; font-size: var(--compare-line-fs); line-height: var(--compare-line-lh); letter-spacing: var(--compare-line-tr); }
+  .kit-compare__none { color: var(--kit-text-2); }
+  .kit-compare__end .kit-compare__cell::after { content: ""; width: var(--compare-col); margin-top: var(--kit-space-9); border-top: 1px solid var(--kit-line); }
+
+  /* Roomy variant (measured on the iPad comparator): bigger subtitle and lines, more air around the icons. */
+  .kit-compare--roomy {
+    --compare-value-fs: var(--kit-fs-step); --compare-value-lh: var(--kit-lh-step);
+    --compare-line-fs: var(--kit-fs-small); --compare-line-lh: 1.4286; --compare-line-tr: var(--kit-tr-small);
+    --compare-icon-gap: 44px;
+  }
+  .kit-compare--roomy .kit-compare__swatches { padding-block: var(--kit-space-6); }
+  .kit-compare--roomy .kit-compare__sub { line-height: 1.4706; }
+  .kit-compare--roomy .kit-compare__price { margin-block: var(--kit-space-7) var(--kit-space-3); }
+  .kit-compare--roomy .kit-compare__feature p:not(.kit-compare__value) { margin-top: var(--kit-space-3); }
+  .kit-compare--roomy .kit-compare__icon + p { margin-top: 0; }
+
+  /* Narrow slots: smaller columns, then sideways scroll. */
+  @container compare (max-width: 1023px) {
+    .kit-compare__scroll { --compare-gap: 40px; }
+  }
+  @container compare (max-width: 699px) {
+    .kit-compare__scroll { --compare-col: 172px; --compare-gap: 24px; --compare-img-h: 220px; --compare-icon: 44px; --compare-icon-gap: var(--kit-space-6); }
+    .kit-compare__head { padding-bottom: var(--kit-space-8); }
+  }
+}

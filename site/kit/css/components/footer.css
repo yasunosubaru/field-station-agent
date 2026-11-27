@@ -1,0 +1,83 @@
+/* Footer: footnotes, breadcrumbs with logo, directory columns, "More ways to shop" line and legal row.
+   <footer class="kit-footer" data-kit-footer><div class="kit-footer__inner">
+     <div class="kit-footer__notes"><p>1. Footnote…</p></div>                         (optional)
+     <nav class="kit-footer__crumbs" aria-label="Breadcrumbs"><a href="/" aria-label="Home"><svg>…logo…</svg></a>
+       <svg class="kit-footer__sep">…</svg><span>jPhone 18 Pro</span></nav>
+     <nav class="kit-footer__dir" aria-label="Directory">
+       <div class="kit-footer__col">
+         <div class="kit-footer__section">
+           <button class="kit-footer__title" type="button" aria-expanded="false">Shop and Learn <svg>…chevron…</svg></button>
+           <ul class="kit-footer__list"><li><a href="…">Store</a></li>…</ul>
+         </div>
+       </div>
+     </nav>
+     <p class="kit-footer__shop">More ways to shop: <a href="…">Find a store</a> …</p>
+     <div class="kit-footer__legal"><span class="kit-footer__copy">Copyright …</span>
+       <ul><li><a href="…">Privacy Policy</a></li>…</ul><span class="kit-footer__locale">United States</span></div>
+   </div></footer>
+   Under --foot-collapse of footer width (734 px) the sections become accordions (footer.js sets aria-expanded and
+   removes it again on wide footers, where the lists are always shown).
+   Knobs: --foot-text, --foot-title, --foot-link, --foot-line, --foot-dim (separators), --foot-collapse (documentation
+   only: container queries cannot read a variable, so change the two @container widths below to move it). */
+@layer kit.components {
+  .kit-footer {
+    container: foot / inline-size;
+    --foot-text: var(--kit-control-icon);   /* clone: --control-icon */
+    --foot-title: var(--kit-ink-88);
+    --foot-link: var(--kit-ink-72);
+    --foot-line: var(--kit-ink-16);
+    --foot-dim: var(--kit-ink-48);  /* breadcrumb separator, legal dividers */
+    background: var(--kit-page); color: var(--foot-text);
+    font-size: var(--kit-fs-note); line-height: var(--kit-lh-note); letter-spacing: var(--kit-tr-note);
+  }
+  .kit-footer__inner { width: min(var(--kit-container), 100%); margin-inline: auto; padding: 0 var(--kit-gutter) var(--kit-space-5); }
+  .kit-footer a { color: var(--foot-link); }
+  .kit-footer a:hover { text-decoration: underline; }
+
+  .kit-footer__notes { padding: 17px 0 11px; border-bottom: 1px solid var(--foot-line); }
+  .kit-footer__notes p + p { margin-top: .8em; }
+
+  .kit-footer__crumbs { display: flex; align-items: center; gap: 10px; padding: 17px 0; }
+  .kit-footer__crumbs svg { width: 14px; height: 14px; color: var(--foot-title); }
+  .kit-footer__crumbs .kit-footer__sep { width: 6px; height: 10px; color: var(--foot-dim); }
+
+  .kit-footer__dir { display: flex; padding-bottom: 28px; }
+  .kit-footer__col { flex: 1 1 20%; }
+  .kit-footer__section + .kit-footer__section { margin-top: var(--kit-space-6); }
+  .kit-footer__title { display: block; width: 100%; margin: 0 var(--kit-space-5) .8em 0; text-align: left;
+    color: var(--foot-title); font-weight: 600; cursor: default; }
+  .kit-footer__title svg { display: none; }
+  .kit-footer__list li { margin: 0 var(--kit-space-5) .8em 0; }
+  .kit-footer__list li:last-child { margin-bottom: 0; }
+
+  .kit-footer__shop { padding-bottom: 19px; margin-bottom: var(--kit-space-4); border-bottom: 1px solid var(--foot-line); }
+  .kit-footer__shop a { color: var(--kit-link); text-decoration: underline; }
+
+  .kit-footer__legal { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
+  .kit-footer__copy { margin-right: 30px; }
+  .kit-footer__legal ul { display: flex; flex-wrap: wrap; }
+  .kit-footer__legal li + li { border-left: 1px solid var(--foot-dim); margin-left: 6px; padding-left: 6px; }
+  .kit-footer__locale { margin-left: auto; }
+
+  @container foot (max-width: 1023px) {
+    .kit-footer__copy { width: 100%; margin: 0 0 var(--kit-space-1); }
+  }
+
+  /* Compact footer: the directory becomes an accordion. */
+  @container foot (max-width: 734px) {
+    .kit-footer__dir { flex-direction: column; padding-bottom: var(--kit-space-3); }
+    .kit-footer__section + .kit-footer__section { margin-top: 0; }
+    .kit-footer__section { border-bottom: 1px solid var(--foot-line); }
+    .kit-footer__title { display: flex; justify-content: space-between; align-items: center; margin: 0;
+      padding: 10px 0; font-weight: 400; cursor: pointer; }
+    .kit-footer__title svg { display: block; width: 11px; height: 11px; transition: transform var(--kit-dur) ease; }
+    .kit-footer__title[aria-expanded="true"] svg { transform: rotate(180deg); }
+    .kit-footer__list { display: none; padding: 0 14px 10px; }
+    .kit-footer__title[aria-expanded="true"] + .kit-footer__list { display: block; animation: kit-footer-open var(--kit-dur) ease; }
+    .kit-footer__list li { margin: 0; padding: 6px 0; }
+    .kit-footer__shop { border: 0; margin-bottom: var(--kit-space-2); padding-bottom: var(--kit-space-2); }
+    .kit-footer__legal ul { width: 100%; margin-top: var(--kit-space-2); }
+    .kit-footer__locale { margin: var(--kit-space-2) 0 0; width: 100%; }
+  }
+  @keyframes kit-footer-open { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+}

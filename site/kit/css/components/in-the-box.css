@@ -1,0 +1,38 @@
+/* What's in the box: a centred title, then the items sharing the row on a grey tile, each with its label.
+   <section class="kit-box" aria-labelledby="box-title">
+     <h2 class="kit-box__title" id="box-title">What's in the box</h2>
+     <p class="kit-box__sub">Optional line under the title.</p>
+     <div class="kit-box__items">
+       <figure class="kit-box__item"><div class="kit-box__visual"><img src alt=""></div>
+         <figcaption class="kit-box__label">PearPods Pro</figcaption></figure>…
+     </div>
+     <div class="kit-box__note"><h3>Heading</h3><p>Fine print</p></div>
+   </section>
+   Items grow to share the row and wrap when a row would hold fewer than --box-item-min each (2 per row on a phone).
+   Knobs: --box-item-min, --box-visual-h (fluid with the width of the component), --box-bg, --box-title-fs. */
+@layer kit.components {
+  .kit-box {
+    container: box / inline-size;
+    --box-item-min: 160px;
+    --box-visual-h: clamp(180px, 34.6cqi, 339px);   /* measured: 339 px tile on a 980 px column */
+    --box-bg: var(--kit-page);
+    --box-title-fs: clamp(28px, 2.5vw + 10px, 40px);   /* measured: 40/44 title on desktop */
+    width: min(var(--kit-container), 100% - 2 * var(--kit-gutter)); margin-inline: auto; padding-bottom: var(--kit-space-9);
+  }
+  .kit-box__title { padding: var(--kit-space-10) 0 var(--kit-space-8); font: 600 var(--box-title-fs) / 1.1 var(--kit-font-display); text-align: center; }
+  .kit-box__title:has(+ .kit-box__sub) { padding-bottom: var(--kit-space-3); }
+  .kit-box__sub { padding-bottom: var(--kit-space-8); text-align: center; font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); color: var(--kit-text-2); }
+
+  .kit-box__items { display: flex; flex-wrap: wrap; justify-content: space-around; }
+  .kit-box__item { flex: 1 1 var(--box-item-min); min-width: 0; }
+  .kit-box__visual { display: flex; justify-content: center; align-items: center; height: var(--box-visual-h); padding: var(--kit-space-5); background: var(--box-bg); }
+  .kit-box__visual :is(img, svg) { max-height: 100%; width: auto; max-width: 100%; object-fit: contain; }
+  .kit-box__label { padding: var(--kit-space-5) var(--kit-space-4) var(--kit-space-9); text-align: center; font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); }
+  .kit-box__note { padding-top: var(--kit-space-9); text-align: center; font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); }
+  .kit-box__note h3 { font: inherit; font-weight: 600; }
+  .kit-box__note p { margin-top: var(--kit-space-5); }
+
+  @container box (max-width: 559px) {
+    .kit-box__label { padding-bottom: var(--kit-space-7); }
+  }
+}

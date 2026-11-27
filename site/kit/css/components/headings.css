@@ -1,0 +1,30 @@
+/* Page header and two-tone section heading.
+   <header class="kit-page-head"><h1 class="kit-page-head__title">Store</h1>
+     <div class="kit-page-head__aside"><h2>…</h2><p class="kit-page-head__links"><a>…</a></p></div></header>
+   <h2 class="kit-section-head"><strong>The latest.</strong> Take a look at what's new.</h2> */
+@layer kit.components {
+  .kit-page-head {
+    container: page-head / inline-size;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--kit-space-2) var(--kit-space-8);
+    padding: var(--kit-space-11) var(--kit-edge) var(--kit-space-10);
+  }
+  .kit-page-head__title { font: 600 var(--kit-fs-display) / var(--kit-lh-display) var(--kit-font-display); letter-spacing: var(--kit-tr-display); }
+  .kit-page-head__aside { max-width: 20rem; }
+  .kit-page-head__aside h2 { font: 600 var(--kit-fs-section) / var(--kit-lh-section) var(--kit-font-display); letter-spacing: var(--kit-tr-section); }
+  .kit-page-head__links { display: flex; flex-direction: column; gap: var(--kit-space-1); padding-top: var(--kit-space-2);
+    font-size: var(--kit-fs-small); line-height: var(--kit-lh-small); letter-spacing: var(--kit-tr-small); }
+  /* The aside is right-aligned only when it sits next to the title. */
+  @container page-head (min-width: 760px) { .kit-page-head__aside { text-align: right; } }
+  /* Under 1024 px the header stacks, tighter, with a card-size subtitle (as measured). */
+  @media (max-width: 1023px) { .kit-page-head { flex-direction: column; padding-block: 56px var(--kit-space-7); } }
+  @container page-head (max-width: 1023px) {
+    .kit-page-head__aside h2 { font: 600 var(--kit-fs-card) / var(--kit-lh-card) var(--kit-font-display); letter-spacing: var(--kit-tr-card); }
+  }
+
+  .kit-section-head {
+    padding: 0 var(--kit-edge) var(--kit-space-2); max-width: calc(var(--kit-container) + 2 * var(--kit-edge));
+    font: 600 var(--kit-fs-section) / var(--kit-lh-section) var(--kit-font-display); letter-spacing: var(--kit-tr-section);
+    color: var(--kit-text-2);
+  }
+  .kit-section-head strong { color: var(--kit-text); font-weight: inherit; }
+}

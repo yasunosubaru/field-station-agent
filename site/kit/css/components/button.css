@@ -1,0 +1,40 @@
+/* Button and text links.
+   <a class="kit-btn">Buy</a>  ·  modifiers: --large, --block, --secondary, --dark, --light
+   <a class="kit-link-more">Learn more</a>  ·  <a class="kit-link-more kit-link-more--external">…</a> */
+@layer kit.components {
+  .kit-btn {
+    --btn-bg: var(--kit-action); --btn-bg-hover: var(--kit-action-hover); --btn-bg-active: var(--kit-action-active);
+    --btn-fg: var(--kit-on-dark); --btn-fg-hover: var(--btn-fg); --btn-border: transparent;
+    --btn-pad-y: var(--kit-space-2); --btn-pad-x: 15px; --btn-fs: var(--kit-fs-small); --btn-lh: 1.2858; --btn-radius: var(--kit-radius-pill);
+
+    display: inline-block; padding: var(--btn-pad-y) var(--btn-pad-x); border: 1px solid var(--btn-border); border-radius: var(--btn-radius);
+    background: var(--btn-bg); color: var(--btn-fg); text-align: center; white-space: nowrap; cursor: pointer;
+    font: 400 var(--btn-fs) / var(--btn-lh) var(--kit-font); letter-spacing: var(--kit-tr-small);
+    transition: background-color var(--kit-dur-fast) linear, color var(--kit-dur-fast) linear, border-color var(--kit-dur-fast) linear;
+  }
+  .kit-btn:hover { background: var(--btn-bg-hover); color: var(--btn-fg-hover); text-decoration: none; }
+  .kit-btn:active { background: var(--btn-bg-active); }
+  .kit-btn:is(:disabled, [aria-disabled="true"]) { opacity: .42; pointer-events: none; }
+
+  .kit-btn--large { --btn-pad-y: 11px; --btn-pad-x: 21px; --btn-fs: var(--kit-fs-body); --btn-lh: 1.1765; letter-spacing: var(--kit-tr-body); }
+  .kit-btn--block { --btn-pad-y: 14px; --btn-pad-x: var(--kit-space-5); --btn-fs: var(--kit-fs-body); --btn-lh: 1.1765; --btn-radius: var(--kit-radius-md);
+    display: block; width: 100%; letter-spacing: var(--kit-tr-body); }
+  .kit-btn--secondary { --btn-bg: transparent; --btn-fg: var(--kit-link); --btn-fg-hover: var(--kit-on-dark); --btn-border: var(--kit-link); }
+  .kit-btn--dark { --btn-bg: var(--kit-surface-dark); --btn-bg-hover: var(--kit-dark-hover); --btn-bg-active: var(--kit-dark-active); }
+  .kit-btn--outline { --btn-bg: transparent; --btn-bg-hover: var(--kit-dark-hover); --btn-bg-active: var(--kit-dark-active);
+    --btn-fg: var(--kit-text); --btn-fg-hover: var(--kit-on-dark); --btn-border: var(--kit-text); }
+  .kit-btn--light { --btn-bg: var(--kit-page); --btn-bg-hover: var(--kit-surface); --btn-bg-active: var(--kit-light-active); --btn-fg: var(--kit-text); }
+
+  /* A wrapping row of buttons (quick links, actions). */
+  .kit-btn-row { display: flex; flex-wrap: wrap; gap: var(--kit-space-2); }
+
+  .kit-link-more { color: var(--kit-link); white-space: nowrap; }
+  .kit-link-more::after { content: " ›"; }
+  .kit-link-more--external::after { content: " ↗"; font-size: .85em; }
+  :where(.kit-dark) .kit-link-more { color: var(--kit-link-on-dark); }
+
+  .kit-eyebrow { font: 600 var(--kit-fs-note) / var(--kit-lh-note) var(--kit-font); letter-spacing: var(--kit-tr-note); color: var(--kit-eyebrow); }
+  .kit-eyebrow--new { color: var(--kit-accent); }
+  :where(.kit-dark) .kit-eyebrow { color: var(--kit-page); }
+  :where(.kit-dark) .kit-eyebrow--new { color: var(--kit-accent-on-dark); }
+}

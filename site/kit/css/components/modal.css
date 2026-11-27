@@ -1,0 +1,59 @@
+/* Modal: a native <dialog> opened with showModal(): scrim, rounded panel, round close button.
+   <button data-kit-modal-open="terms">Read the terms</button>
+   <dialog class="kit-modal" id="terms" aria-labelledby="terms-title"><div class="kit-modal__panel">
+     <form method="dialog"><button class="kit-modal__close" aria-label="Close"><span><svg>…cross…</svg></span></button></form>
+     <div class="kit-modal__content"><h2 class="kit-modal__title" id="terms-title">…</h2><p>…</p></div>
+     <div class="kit-modal__foot">…</div>                                                          (optional)
+   </div></dialog>
+   The browser provides focus trap, Escape, inert page and focus return; modal.js adds opening from
+   data-kit-modal-open and closing on a click outside the panel. The page behind does not scroll.
+   Add kit-modal--wide for the large panel. Under 735 px the panel becomes a sheet that fills the screen.
+   Knobs: --modal-w (panel width), --modal-pad (content padding), --modal-scrim, --modal-close-bg. */
+@layer kit.components {
+  .kit-modal {
+    --modal-w: 816px;                          /* clone: .modal-panel */
+    --modal-pad: 76px;                         /* clone: .modal-content */
+    --modal-scrim: var(--kit-scrim);
+    --modal-close-bg: var(--kit-close);
+    --modal-close-hover: var(--kit-close-hover);
+    --modal-close-active: var(--kit-close-active);
+    --modal-close-icon-hover: var(--kit-ink-72);
+    width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0;
+    padding: 54px 0; background: transparent; color: var(--kit-text);
+    overflow: auto; overscroll-behavior: contain; justify-content: center; align-items: flex-start;
+  }
+  .kit-modal--wide { --modal-w: 1029px; }       /* clone: .modal-wide */
+  .kit-modal[open] { display: flex; animation: kit-modal-fade var(--kit-dur-fast) ease-in-out; }
+  .kit-modal::backdrop { background: var(--modal-scrim); animation: kit-modal-fade var(--kit-dur-fast) ease-in-out; }
+  :root:has(.kit-modal[open]) { overflow: hidden; }
+
+  .kit-modal__panel {
+    position: relative; display: flex; flex-direction: column; width: min(var(--modal-w), 100vw); margin: var(--kit-space-8) 0;
+    background: var(--kit-surface); border-radius: var(--kit-radius-lg);
+  }
+  .kit-modal__panel > form { display: contents; }
+  .kit-modal__close {
+    align-self: flex-end; position: sticky; top: var(--kit-space-5); z-index: 1;
+    width: 44px; height: 44px; margin: var(--kit-space-5) var(--kit-space-5) 0 0; display: grid; place-items: center;
+  }
+  .kit-modal__close span {
+    width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--modal-close-bg); color: var(--kit-text-2); transition: background-color var(--kit-dur-fast) linear, color var(--kit-dur-fast) linear;
+  }
+  .kit-modal__close:hover span { background: var(--modal-close-hover); color: var(--modal-close-icon-hover); }
+  .kit-modal__close:active span { background: var(--modal-close-active); }
+  .kit-modal__close svg { width: 20px; height: 20px; }
+  .kit-modal__content { padding: var(--modal-pad); margin-top: -64px; }   /* pulled under the close button */
+  .kit-modal__title { margin-bottom: var(--kit-space-6); font: 600 var(--kit-fs-hero) / var(--kit-lh-hero) var(--kit-font-display); letter-spacing: var(--kit-tr-hero); }
+  .kit-modal__content p + p { margin-top: 1em; }
+  .kit-modal__foot { background: var(--kit-page); border-radius: 0 0 var(--kit-radius-lg) var(--kit-radius-lg); padding: var(--kit-space-8) var(--modal-pad); }
+
+  @media (max-width: 734px) {
+    .kit-modal { padding: 0; }
+    .kit-modal__panel { width: 100%; min-height: calc(100dvh - var(--kit-space-5)); margin: var(--kit-space-5) 0 0;
+      border-radius: var(--kit-radius-lg) var(--kit-radius-lg) 0 0; }
+    .kit-modal__content { padding: var(--modal-pad) 6.25% 60px; }
+    .kit-modal__foot { padding-inline: 6.25%; }
+  }
+  @keyframes kit-modal-fade { from { opacity: 0; } to { opacity: 1; } }
+}

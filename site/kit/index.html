@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="../assets/img/pear.svg" type="image/svg+xml">
+  <title>Store kit — components</title>
+  <link rel="stylesheet" href="css/kit.css">
+  <style>
+    /* Page-only helpers for this showcase (not part of the kit). */
+    .demo-label { padding: var(--kit-space-10) var(--kit-edge) var(--kit-space-4); color: var(--kit-text-3);
+      font-size: var(--kit-fs-note); letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+    .demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--kit-space-4); }
+    .demo-config { display: grid; gap: var(--kit-space-8); }
+    @media (min-width: 900px) { .demo-config { grid-template-columns: 1.4fr 1fr; } .demo-config .kit-gallery { position: sticky; top: 72px; } }
+  </style>
+</head>
+<body class="kit">
+
+  <nav class="kit-localbar" data-kit-sticky>
+    <div class="kit-localbar__inner">
+      <p class="kit-localbar__title">Store kit</p>
+      <div class="kit-localbar__links"><a href="#cards" aria-current="true">Cards</a><a href="#configurator">Configurator</a><a href="#faq">FAQ</a><a href="#more">Examples</a><a class="kit-localbar__action" href="README.md">Docs</a></div>
+    </div>
+  </nav>
+
+  <header class="kit-page-head">
+    <h1 class="kit-page-head__title">Store</h1>
+    <div class="kit-page-head__aside">
+      <h2>The best way to buy the things you love.</h2>
+      <p class="kit-page-head__links"><a class="kit-link-more kit-link-more--external" href="#">Talk to a Specialist</a><a class="kit-link-more kit-link-more--external" href="#">Find a store</a></p>
+    </div>
+  </header>
+
+  <p class="demo-label" id="cards">Shelf with content cards</p>
+  <section class="kit-shelf" data-kit-shelf>
+    <h2 class="kit-section-head"><strong>The latest.</strong> Take a look at what's new.</h2>
+    <div class="kit-shelf__track">
+      <div class="kit-card">
+        <div class="kit-card__body"><p class="kit-eyebrow kit-eyebrow--new">New</p><h3 class="kit-card__title"><a class="kit-card__link" href="#">jPhone 18 Pro</a></h3><p class="kit-card__text">The most capable camera system yet.</p><p class="kit-card__text">From $999 or $41.62/mo. for 24 mo.</p></div>
+        <div class="kit-card__media"><img src="../assets/img/products/phone.svg" alt=""></div>
+      </div>
+      <div class="kit-card">
+        <div class="kit-card__body"><p class="kit-eyebrow kit-eyebrow--new">Pre-order now</p><h3 class="kit-card__title"><a class="kit-card__link" href="#">jPhone Duo</a></h3><p class="kit-card__text">Two screens. One phone that opens up.</p></div>
+        <div class="kit-card__media"><img src="../assets/img/products/phone-fold.svg" alt=""></div>
+      </div>
+      <div class="kit-card kit-card--dark kit-dark">
+        <div class="kit-card__body"><p class="kit-eyebrow kit-eyebrow--new">New</p><h3 class="kit-card__title"><a class="kit-card__link" href="#">Pear Watch Ultra</a></h3><p class="kit-card__text">Built for the outdoors, tuned for every day.</p></div>
+        <div class="kit-card__media"><img src="../assets/img/products/watch-rugged.svg" alt=""></div>
+      </div>
+      <div class="kit-card">
+        <div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="#">PearBook Air</a></h3><p class="kit-card__text">Thin, light and quick for everything.</p></div>
+        <div class="kit-card__media"><img src="../assets/img/products/laptop.svg" alt=""></div>
+      </div>
+      <div class="kit-card kit-card--short">
+        <div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="#">Trade in your old phone.</a></h3><p class="kit-card__text">Get credit toward a new one.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="demo-label">Shelf with product cards</p>
+  <section class="kit-shelf" data-kit-shelf>
+    <h2 class="kit-section-head"><strong>Accessories.</strong> Essentials that pair perfectly.</h2>
+    <div class="kit-shelf__track">
+      <article class="kit-card kit-product">
+        <p class="kit-eyebrow kit-eyebrow--new">New</p>
+        <div class="kit-card__media"><img src="../assets/img/products/band.svg" alt=""></div>
+        <div class="kit-product__swatches"><i style="--c:#2b3140"></i><i style="--c:#b6663e"></i><i style="--c:#7fa6d6"></i></div>
+        <h3 class="kit-product__name"><a class="kit-card__link" href="#">Sport Strap – Plum</a></h3>
+        <div class="kit-product__info"><p class="kit-product__price">$49.00</p><a class="kit-btn" href="#">Buy</a></div>
+      </article>
+      <article class="kit-card kit-product">
+        <div class="kit-card__media"><img src="../assets/img/products/case.svg" alt=""></div>
+        <h3 class="kit-product__name"><a class="kit-card__link" href="#">jPhone 18 Pro Case – Clay</a></h3>
+        <div class="kit-product__info"><p class="kit-product__price">$49.00</p></div>
+      </article>
+      <article class="kit-card kit-product">
+        <div class="kit-card__media"><img src="../assets/img/products/earbuds.svg" alt=""></div>
+        <h3 class="kit-product__name"><a class="kit-card__link" href="#">PearPods Pro</a></h3>
+        <div class="kit-product__info"><p class="kit-product__price">$249.00</p><a class="kit-btn" href="#">Buy</a></div>
+      </article>
+      <article class="kit-card kit-product">
+        <div class="kit-card__media"><img src="../assets/img/products/charger.svg" alt=""></div>
+        <h3 class="kit-product__name"><a class="kit-card__link" href="#">Charger 20 W</a></h3>
+        <div class="kit-product__info"><p class="kit-product__price">$19.00</p></div>
+      </article>
+      <article class="kit-card kit-product">
+        <div class="kit-card__media"><img src="../assets/img/products/tag.svg" alt=""></div>
+        <h3 class="kit-product__name"><a class="kit-card__link" href="#">PearTag 4-Pack</a></h3>
+        <div class="kit-product__info"><p class="kit-product__price">$99.00</p></div>
+      </article>
+    </div>
+  </section>
+
+  <p class="demo-label">Buttons and links</p>
+  <div class="kit-container demo-row">
+    <a class="kit-btn" href="#">Buy</a>
+    <a class="kit-btn kit-btn--large" href="#">Buy</a>
+    <a class="kit-btn kit-btn--secondary" href="#">Learn more</a>
+    <a class="kit-btn kit-btn--dark" href="#">Pre-order</a>
+    <a class="kit-btn kit-btn--light" href="#">Compare</a>
+    <a class="kit-link-more" href="#">Learn more</a>
+    <a class="kit-link-more kit-link-more--external" href="#">Find a store</a>
+  </div>
+
+  <p class="demo-label" id="configurator">Configurator</p>
+  <div class="kit-container demo-config">
+    <div class="kit-gallery" data-kit-gallery="compact">
+      <div class="kit-gallery__track">
+        <div class="kit-gallery__slide"><img src="../assets/img/products/phone.svg" alt="jPhone 18 Pro, front"></div>
+        <div class="kit-gallery__slide"><img src="../assets/img/products/phone-slim.svg" alt="jPhone 18 Pro, side"></div>
+        <div class="kit-gallery__slide"><img src="../assets/img/products/phone-fold.svg" alt="jPhone 18 Pro, back"></div>
+      </div>
+    </div>
+    <form>
+      <fieldset class="kit-step">
+        <legend class="kit-step__title"><strong>Model.</strong> Which is best for you?</legend>
+        <div class="kit-options">
+          <label class="kit-option"><input type="radio" name="model" checked><span class="kit-option__label"><span><span class="kit-option__name">jPhone 18 Pro</span><span class="kit-option__sub">6.3-inch display</span></span><span class="kit-option__price">From $999 or $41.62/mo.</span></span></label>
+          <label class="kit-option"><input type="radio" name="model"><span class="kit-option__label"><span><span class="kit-option__name">jPhone 18 Pro Max</span><span class="kit-option__sub">6.9-inch display</span></span><span class="kit-option__price">From $1199 or $49.95/mo.</span></span></label>
+        </div>
+        <div class="kit-help"><span><strong>Need help choosing a size?</strong>Compare display size and battery life.</span><a class="kit-link-more" href="#">Compare</a></div>
+      </fieldset>
+      <fieldset class="kit-step">
+        <legend class="kit-step__title"><strong>Finish.</strong> Pick your favourite.</legend>
+        <div class="kit-swatches" data-kit-swatches>
+          <label class="kit-swatch" style="--c:#2b3140"><input type="radio" name="color" value="Ink" checked><span></span></label>
+          <label class="kit-swatch" style="--c:#d8cfb8"><input type="radio" name="color" value="Sand"><span></span></label>
+          <label class="kit-swatch" style="--c:#7fa6d6"><input type="radio" name="color" value="Sky"><span></span></label>
+          <label class="kit-swatch" style="--c:#b6663e"><input type="radio" name="color" value="Clay"><span></span></label>
+        </div>
+        <p class="kit-swatches__label"></p>
+      </fieldset>
+      <fieldset class="kit-step">
+        <legend class="kit-step__title"><strong>Storage.</strong> How much space do you need?</legend>
+        <div class="kit-options kit-options--2">
+          <label class="kit-option"><input type="radio" name="storage" checked><span class="kit-option__label"><span class="kit-option__name">256GB</span><span class="kit-option__price">$999</span></span></label>
+          <label class="kit-option"><input type="radio" name="storage"><span class="kit-option__label"><span class="kit-option__name">512GB</span><span class="kit-option__price">$1199</span></span></label>
+          <label class="kit-option"><input type="radio" name="storage"><span class="kit-option__label"><span class="kit-option__name">1TB</span><span class="kit-option__price">$1399</span></span></label>
+          <label class="kit-option"><input type="radio" name="storage" disabled><span class="kit-option__label"><span class="kit-option__name">2TB</span><span class="kit-option__price">Unavailable</span></span></label>
+        </div>
+      </fieldset>
+    </form>
+  </div>
+
+  <div class="kit-container">
+    <section class="kit-summary">
+      <div><h2 class="kit-summary__title">Your new jPhone 18 Pro.</h2></div>
+      <div><p class="kit-summary__price">$999.00</p><p class="kit-summary__fine">or $41.62/mo. for 24 mo.</p><a class="kit-btn kit-btn--block" href="#">Add to Bag</a></div>
+    </section>
+  </div>
+
+  <p class="demo-label" id="faq">Accordion</p>
+  <div class="kit-container kit-accordion" data-kit-accordion>
+    <div class="kit-accordion__item"><button class="kit-accordion__button" aria-expanded="true">How does trade-in work?</button>
+      <div class="kit-accordion__panel"><div><p class="kit-muted">Answer a few questions about your device and get an estimate. The credit applies at checkout.</p></div></div></div>
+    <div class="kit-accordion__item"><button class="kit-accordion__button" aria-expanded="false">When will my order arrive?</button>
+      <div class="kit-accordion__panel"><div><p class="kit-muted">Delivery dates appear at checkout and in your order status.</p></div></div></div>
+  </div>
+  <p class="demo-label" id="more">More components</p>
+  <section class="kit-shelf" data-kit-shelf>
+    <h2 class="kit-section-head"><strong>Full examples.</strong> Each page shows one group of components.</h2>
+    <div class="kit-shelf__track">
+      <div class="kit-card kit-card--short"><div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="examples/nav.html">Global nav</a></h3><p class="kit-card__text">Flyout menus, search and bag panels, mobile menu.</p></div></div>
+      <div class="kit-card kit-card--short"><div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="examples/footer-modal-tabs.html">Footer, modal, tabs</a></h3><p class="kit-card__text">Collapsing footer directory, native dialog, keyboard tabs.</p></div></div>
+      <div class="kit-card kit-card--short"><div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="examples/carousel-compare-box.html">Carousel, compare, in the box</a></h3><p class="kit-card__text">Autoplay with timed dots, model comparator, box contents.</p></div></div>
+      <div class="kit-card kit-card--short"><div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="examples/store.html">Full store page</a></h3><p class="kit-card__text">The clone's store home rebuilt with the kit only: 99/100 against it.</p></div></div>
+      <div class="kit-card kit-card--short"><div class="kit-card__body"><h3 class="kit-card__title"><a class="kit-card__link" href="examples/ribbon-bag-stores.html">Ribbon, bag, store finder</a></h3><p class="kit-card__text">Rotating promo ribbon, bag with live totals, store search.</p></div></div>
+    </div>
+  </section>
+
+  <div class="kit-section-gap"></div>
+
+  <script src="js/kit.js"></script>
+</body>
+</html>
