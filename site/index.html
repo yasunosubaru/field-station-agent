@@ -32,16 +32,10 @@ body{forced-color-adjust:none;
 }
 ::selection{background:var(--accent);color:#fff}
 
-/* 环境光：液态玻璃的折射源（CSS 渐变，非自绘图） */
-.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.ambient .blob{position:absolute;border-radius:50%;filter:blur(100px);opacity:.4;will-change:transform}
-.b1{width:620px;height:620px;background:#c9e4ff;top:-160px;left:-140px;animation:drift1 24s var(--ease) infinite alternate}
-.b2{width:560px;height:560px;background:#e3d4ff;top:8%;right:-180px;animation:drift2 28s var(--ease) infinite alternate}
-.b3{width:640px;height:640px;background:#cdfaeb;bottom:-220px;left:12%;animation:drift3 30s var(--ease) infinite alternate}
-.b4{width:520px;height:520px;background:#ffe0ea;top:52%;left:38%;animation:drift2 26s var(--ease) infinite alternate-reverse}
-@keyframes drift1{to{transform:translate(90px,70px) scale(1.12)}}
-@keyframes drift2{to{transform:translate(-80px,90px) scale(1.1)}}
-@keyframes drift3{to{transform:translate(70px,-60px) scale(1.15)}}
+/* 静态背景图：森林照片重度模糊后提亮，作为液态玻璃的固定折射源
+   图片本地托管，不依赖外链；源图 Unsplash photo-1441974231531-c6227db76b6e */
+.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:url('./bg.webp?v=3');background-size:cover;background-position:center;background-attachment:fixed}
 body::after{content:"";position:fixed;inset:0;z-index:200;pointer-events:none;opacity:.045;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
@@ -112,7 +106,7 @@ h3{font-size:26px;font-weight:600;letter-spacing:-.025em;line-height:1.2}
 .card .num{font-size:52px;font-weight:700;letter-spacing:-.05em;color:var(--accent);line-height:1;margin-bottom:var(--s1)}
 .card .tag{font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.05em}
 .card h3{margin:10px 0 14px}
-.card .facts{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);line-height:1.9;letter-spacing:.01em}
+.card .facts{font-family:ui-monospace,monospace;font-size:12px;color:var(--ink);opacity:.78;line-height:1.9;letter-spacing:.01em}
 
 .statement{text-align:center;padding-bottom:var(--s2)}
 
@@ -182,7 +176,7 @@ footer a:hover{color:var(--accent)}
 </head>
 <body>
 
-<div class="ambient" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span></div>
+<div class="ambient" aria-hidden="true"></div>
 
 <nav class="nav liquid-glass" style="border-radius:0">
   <div class="lg-overlay-bg"></div>
