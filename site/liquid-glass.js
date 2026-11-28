@@ -87,7 +87,8 @@
     var box = glass.querySelector(".glass-box");
     var content = glass.querySelector(".lg-content");
     if (!box || !content) return;
-    var rect = content.getBoundingClientRect();
+    /* Measure the whole panel, not just the inner content: padding must refract too. */
+    var rect = glass.getBoundingClientRect();
     var w = Math.round(rect.width);
     var h = Math.round(rect.height);
     if (!w || !h) return;
