@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>FieldStation Hybrid — 野外台站智能体</title>
 <meta name="description" content="原版 NAS 套件、协议逆向成果与 RPA 驱动，装进同一个窗口。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230071e3'/><text x='16' y='23' font-size='20' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'>F</text></svg>">
@@ -21,8 +22,8 @@
   --ease:cubic-bezier(.4,0,.2,1); --dur:560ms;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{
+html{scroll-behavior:smooth;color-scheme:only light}
+body{forced-color-adjust:none;
   font-family:'Geist',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
   background:var(--canvas);color:var(--ink);
   font-size:17px;line-height:1.7;
