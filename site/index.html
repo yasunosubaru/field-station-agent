@@ -35,15 +35,17 @@ body{forced-color-adjust:none;
 /* 静态背景图：森林照片重度模糊后提亮，作为液态玻璃的固定折射源
    图片本地托管，不依赖外链；源图 Unsplash photo-1441974231531-c6227db76b6e */
 .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;
-  background-image:url('./bg.webp?v=3');background-size:cover;background-position:center;background-attachment:fixed}
+  background-image:url('./bg.webp?v=4');background-size:cover;background-position:center;background-attachment:fixed}
 body::after{content:"";position:fixed;inset:0;z-index:200;pointer-events:none;opacity:.045;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 /* 液态玻璃底座（来自 nikdelvin/liquid-glass 的真实折射滤镜） */
 .liquid-glass{position:relative;border-radius:inherit}
 .lg-overlay-bg{position:absolute;inset:0;z-index:1;border-radius:inherit;
-  background:rgba(255,255,255,.2);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.85),inset 0 1px 1px rgba(255,255,255,1),0 10px 32px rgba(24,36,64,.05)}
+  background:rgba(255,255,255,.14);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),inset 0 1px 2px rgba(255,255,255,1),inset 0 -1px 2px rgba(20,30,50,.08),0 10px 32px rgba(24,36,64,.06)}
+.lg-overlay-bg::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(155deg,rgba(255,255,255,.5) 0%,rgba(255,255,255,.08) 32%,transparent 60%)}
 .lg-content{position:relative;z-index:3}
 .lg-filter-layer{position:absolute;inset:0;z-index:2;border-radius:inherit;overflow:hidden;pointer-events:none}
 .glass-box{position:absolute;top:0;left:0;border-radius:inherit}
@@ -188,7 +190,7 @@ footer a:hover{color:var(--accent)}
       </div>
     </div>
   </div>
-  <div class="lg-filter-layer"><div class="glass-box" data-blur="3" data-cab="2" data-depth="9" data-strength="95" data-saturate="1.5" data-brightness="1.05"></div></div>
+  <div class="lg-filter-layer"><div class="glass-box" data-blur="0" data-cab="3" data-depth="10" data-strength="110" data-saturate="1.6" data-brightness="1.05"></div></div>
 </nav>
 
 <main id="top">
@@ -217,7 +219,7 @@ footer a:hover{color:var(--accent)}
 <span class="cm">→</span> 5 apps · 8 workflows · agent-desktop attached</pre>
         </div>
       </div>
-      <div class="lg-filter-layer"><div class="glass-box" data-blur="16" data-cab="8" data-depth="20" data-strength="140" data-saturate="1.9" data-brightness="1.09"></div></div>
+      <div class="lg-filter-layer"><div class="glass-box" data-blur="4" data-cab="10" data-depth="22" data-strength="170" data-saturate="1.9" data-brightness="1.08"></div></div>
     </div>
   </div>
 </section>
@@ -236,7 +238,7 @@ footer a:hover{color:var(--accent)}
           <h3>原版套件</h3>
           <div class="facts">NovAtel Application Suite 2.11.0<br>413 files · 1.44 GB</div>
         </div>
-        <div class="lg-filter-layer"><div class="glass-box" data-blur="12" data-cab="6" data-depth="17" data-strength="130" data-saturate="1.85" data-brightness="1.08"></div></div>
+        <div class="lg-filter-layer"><div class="glass-box" data-blur="3" data-cab="8" data-depth="18" data-strength="150" data-saturate="1.8" data-brightness="1.07"></div></div>
       </div>
     </div>
     <div class="card reveal">
@@ -247,7 +249,7 @@ footer a:hover{color:var(--accent)}
           <h3>协议重实现</h3>
           <div class="facts">8 packages · 123 messages<br>879 fields · 27 notes</div>
         </div>
-        <div class="lg-filter-layer"><div class="glass-box" data-blur="12" data-cab="6" data-depth="17" data-strength="130" data-saturate="1.85" data-brightness="1.08"></div></div>
+        <div class="lg-filter-layer"><div class="glass-box" data-blur="3" data-cab="8" data-depth="18" data-strength="150" data-saturate="1.8" data-brightness="1.07"></div></div>
       </div>
     </div>
     <div class="card reveal">
@@ -258,14 +260,14 @@ footer a:hover{color:var(--accent)}
           <h3>自动化驱动</h3>
           <div class="facts">8 workflows · Node 24<br>Python 3.11.9</div>
         </div>
-        <div class="lg-filter-layer"><div class="glass-box" data-blur="12" data-cab="6" data-depth="17" data-strength="130" data-saturate="1.85" data-brightness="1.08"></div></div>
+        <div class="lg-filter-layer"><div class="glass-box" data-blur="3" data-cab="8" data-depth="18" data-strength="150" data-saturate="1.8" data-brightness="1.07"></div></div>
       </div>
     </div>
   </div>
   <div class="stats">
-    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">838</div><div class="l">MB · 安装包</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="14" data-strength="110" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
-    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">123</div><div class="l">条 · 协议消息</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="14" data-strength="110" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
-    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">8</div><div class="l">条 · 自动化流程</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="14" data-strength="110" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">838</div><div class="l">MB · 安装包</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
+    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">123</div><div class="l">条 · 协议消息</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
+    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">8</div><div class="l">条 · 自动化流程</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
   </div>
 </section>
 
@@ -288,7 +290,7 @@ footer a:hover{color:var(--accent)}
               <div><b>2</b><span>步 · 等待与断言</span></div>
               <div><b>1</b><span>步 · 人工闸门</span></div>
             </div>
-            <div class="lg-filter-layer"><div class="glass-box" data-blur="8" data-cab="4" data-depth="12" data-strength="110" data-saturate="1.7" data-brightness="1.06"></div></div>
+            <div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="12" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div>
           </div>
         </div>
       </div>
@@ -300,27 +302,27 @@ footer a:hover{color:var(--accent)}
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">01</span><span class="step-name">health</span><span class="step-badge">自动</span></div>
           <div class="step-tags"><i>7788</i><i>session</i></div>
-        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">06</span><span class="step-name">open_wizard</span><span class="step-badge">自动</span></div>
           <div class="step-tags"><i>CDP 9224</i><i>New Project</i></div>
-        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">10</span><span class="step-name">choose_folder</span><span class="step-badge">自动</span></div>
           <div class="step-tags"><i>Select Folder</i><i>accessibility ref</i><i>AttachThreadInput</i></div>
-        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">12</span><span class="step-name">choose_file</span><span class="step-badge">自动</span></div>
           <div class="step-tags"><i>Open</i><i>Receiver Data</i></div>
-        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">19</span><span class="step-name">approve_plot</span><span class="step-badge gate">人工闸门</span></div>
           <div class="step-tags"><i>人工确认</i><i>写盘</i></div>
-        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+        </div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
       </div>
     </div>
   </div>
@@ -339,7 +341,7 @@ footer a:hover{color:var(--accent)}
       <tr><td>workflows/</td><td>8 条固定流程 YAML</td><td>状态机 · 锁 · 幂等 · 审计 · 人工闸门</td></tr>
       <tr><td>runtime/</td><td>Node v24 + Python 3.11.9</td><td>自带</td></tr>
     </table>
-  </div><div class="lg-filter-layer"><div class="glass-box" data-blur="12" data-cab="5" data-depth="15" data-strength="120" data-saturate="1.8" data-brightness="1.08"></div></div></div></div>
+  </div><div class="lg-filter-layer"><div class="glass-box" data-blur="3" data-cab="7" data-depth="16" data-strength="140" data-saturate="1.8" data-brightness="1.07"></div></div></div></div>
 </section>
 
 <section class="sec wrap" id="get">
@@ -348,10 +350,10 @@ footer a:hover{color:var(--accent)}
     <h2>下载，双击，开工。</h2>
   </div>
   <div class="dl-list">
-    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-GUI-Setup.exe</span><span class="sz">838 MB · GUI · 主交付</span><a class="btn btn-primary" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
-    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-B-Setup.exe</span><span class="sz">395 MB · cmd · 归档</span><a class="btn btn-ghost" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-B-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
-    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-A-Setup.exe</span><span class="sz">61 MB · cmd · 归档</span><a class="btn btn-ghost" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-A-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
-    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">yasunosubaru/field-station-agent</span><span class="sz">source · MIT</span><a class="btn btn-ghost" href="https://github.com/yasunosubaru/field-station-agent">仓库</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="9" data-cab="4" data-depth="13" data-strength="115" data-saturate="1.75" data-brightness="1.07"></div></div></div></div>
+    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-GUI-Setup.exe</span><span class="sz">838 MB · GUI · 主交付</span><a class="btn btn-primary" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
+    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-B-Setup.exe</span><span class="sz">395 MB · cmd · 归档</span><a class="btn btn-ghost" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-B-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
+    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-A-Setup.exe</span><span class="sz">61 MB · cmd · 归档</span><a class="btn btn-ghost" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-A-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
+    <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">yasunosubaru/field-station-agent</span><span class="sz">source · MIT</span><a class="btn btn-ghost" href="https://github.com/yasunosubaru/field-station-agent">仓库</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="2" data-cab="6" data-depth="14" data-strength="130" data-saturate="1.7" data-brightness="1.06"></div></div></div></div>
   </div>
 </section>
 </main>
@@ -363,7 +365,7 @@ footer a:hover{color:var(--accent)}
   </div>
 </footer>
 
-<script src="./liquid-glass.js"></script>
+<script src="./liquid-glass.js?v=2"></script>
 <script>
 (function () {
   var items = document.querySelectorAll('.reveal');
