@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FieldStation Hybrid — 野外台站智能体</title>
-<meta name="description" content="武汉大学地球与空间科学技术学院 2026 大创。原版 NAS 套件、协议逆向成果与 RPA 驱动，装进同一个窗口。">
+<meta name="description" content="原版 NAS 套件、协议逆向成果与 RPA 驱动，装进同一个窗口。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230071e3'/><text x='16' y='23' font-size='20' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'>F</text></svg>">
 <style>
 /* Geist — Apple/Linear 级字体，自托管，禁止系统默认 */
@@ -14,7 +14,7 @@
 @font-face{font-family:'Geist';src:url('./fonts/geist-2.woff2') format('woff2');font-weight:700;font-display:swap}
 
 :root{
-  --canvas:#fbfbfd; --ink:#1d1d1f; --muted:#6e6e73;
+  --canvas:#ffffff; --ink:#1d1d1f; --muted:#6e6e73;
   --hairline:rgba(0,0,0,.08); --accent:#0071e3; --white:#fff;
   --r-pill:980px; --r-card:28px;
   --s1:24px; --s2:48px; --s3:64px; --s4:96px;
@@ -33,11 +33,11 @@ body{
 
 /* 环境光：液态玻璃的折射源（CSS 渐变，非自绘图） */
 .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.ambient .blob{position:absolute;border-radius:50%;filter:blur(110px);opacity:.42;will-change:transform}
-.b1{width:620px;height:620px;background:#a8d2ff;top:-160px;left:-140px;animation:drift1 24s var(--ease) infinite alternate}
-.b2{width:560px;height:560px;background:#dcc9ff;top:8%;right:-180px;animation:drift2 28s var(--ease) infinite alternate}
-.b3{width:640px;height:640px;background:#b6efd9;bottom:-220px;left:12%;animation:drift3 30s var(--ease) infinite alternate}
-.b4{width:520px;height:520px;background:#ffd3e1;top:52%;left:38%;animation:drift2 26s var(--ease) infinite alternate-reverse}
+.ambient .blob{position:absolute;border-radius:50%;filter:blur(120px);opacity:.24;will-change:transform}
+.b1{width:620px;height:620px;background:#e3f0ff;top:-160px;left:-140px;animation:drift1 24s var(--ease) infinite alternate}
+.b2{width:560px;height:560px;background:#f1ebff;top:8%;right:-180px;animation:drift2 28s var(--ease) infinite alternate}
+.b3{width:640px;height:640px;background:#e8fbf3;bottom:-220px;left:12%;animation:drift3 30s var(--ease) infinite alternate}
+.b4{width:520px;height:520px;background:#fff0f5;top:52%;left:38%;animation:drift2 26s var(--ease) infinite alternate-reverse}
 @keyframes drift1{to{transform:translate(90px,70px) scale(1.12)}}
 @keyframes drift2{to{transform:translate(-80px,90px) scale(1.1)}}
 @keyframes drift3{to{transform:translate(70px,-60px) scale(1.15)}}
@@ -87,9 +87,6 @@ h3{font-size:26px;font-weight:600;letter-spacing:-.025em;line-height:1.2}
 
 /* Hero */
 .hero{text-align:center;padding:var(--s4) 0 0}
-.hero-badge{display:inline-flex;border-radius:var(--r-pill);margin-bottom:var(--s2)}
-.hero-badge .lg-overlay-bg{background:rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px rgba(255,255,255,.85),0 2px 8px rgba(0,0,0,.04)}
-.hero-badge .lg-content{font-size:12px;font-weight:500;color:var(--muted);padding:7px 18px}
 .hero-actions{margin-top:var(--s2);display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .hero-note{display:inline-flex;border-radius:var(--r-pill);margin-top:var(--s1)}
 .hero-note .lg-overlay-bg{background:rgba(255,255,255,.45);box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)}
@@ -201,11 +198,6 @@ footer a:hover{color:var(--accent)}
 
 <main id="top">
 <section class="hero wrap">
-  <div class="hero-badge liquid-glass" style="border-radius:980px">
-    <div class="lg-overlay-bg"></div>
-    <div class="lg-content">武汉大学 · 地球与空间科学技术学院 · 2026 大创</div>
-    <div class="lg-filter-layer"><div class="glass-box" data-blur="5" data-cab="2" data-depth="6" data-strength="70" data-saturate="1.6" data-brightness="1.06"></div></div>
-  </div>
   <h1>野外台站，<br><span class="grad">从此有人值守。</span></h1>
   <div class="hero-actions">
     <a class="btn btn-primary" href="#get">下载 v1.0.0</a>
@@ -371,7 +363,7 @@ footer a:hover{color:var(--accent)}
 
 <footer>
   <div class="wrap foot-in">
-    <span>武汉大学地球与空间科学技术学院 · 2026 大学生创新创业训练计划 · FieldStation Hybrid v1.0.0</span>
+    <span>FieldStation Hybrid v1.0.0</span>
     <span><a href="./dashboard.html">运行看板</a> · <a href="./public-chain.html">公开数据看板</a> · <a href="https://github.com/yasunosubaru/field-station-agent">GitHub</a></span>
   </div>
 </footer>
