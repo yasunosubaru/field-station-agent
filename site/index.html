@@ -15,7 +15,7 @@
 @font-face{font-family:'Geist';src:url('./fonts/geist-2.woff2') format('woff2');font-weight:700;font-display:swap}
 
 :root{
-  --canvas:#ffffff; --ink:#1d1d1f; --muted:#6e6e73;
+  --canvas:#f7f8fb; --ink:#1d1d1f; --muted:#6e6e73;
   --hairline:rgba(0,0,0,.08); --accent:#0071e3; --white:#fff;
   --r-pill:980px; --r-card:28px;
   --s1:24px; --s2:48px; --s3:64px; --s4:96px;
@@ -34,11 +34,11 @@ body{forced-color-adjust:none;
 
 /* 环境光：液态玻璃的折射源（CSS 渐变，非自绘图） */
 .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.ambient .blob{position:absolute;border-radius:50%;filter:blur(120px);opacity:.24;will-change:transform}
-.b1{width:620px;height:620px;background:#e3f0ff;top:-160px;left:-140px;animation:drift1 24s var(--ease) infinite alternate}
-.b2{width:560px;height:560px;background:#f1ebff;top:8%;right:-180px;animation:drift2 28s var(--ease) infinite alternate}
-.b3{width:640px;height:640px;background:#e8fbf3;bottom:-220px;left:12%;animation:drift3 30s var(--ease) infinite alternate}
-.b4{width:520px;height:520px;background:#fff0f5;top:52%;left:38%;animation:drift2 26s var(--ease) infinite alternate-reverse}
+.ambient .blob{position:absolute;border-radius:50%;filter:blur(100px);opacity:.4;will-change:transform}
+.b1{width:620px;height:620px;background:#c9e4ff;top:-160px;left:-140px;animation:drift1 24s var(--ease) infinite alternate}
+.b2{width:560px;height:560px;background:#e3d4ff;top:8%;right:-180px;animation:drift2 28s var(--ease) infinite alternate}
+.b3{width:640px;height:640px;background:#cdfaeb;bottom:-220px;left:12%;animation:drift3 30s var(--ease) infinite alternate}
+.b4{width:520px;height:520px;background:#ffe0ea;top:52%;left:38%;animation:drift2 26s var(--ease) infinite alternate-reverse}
 @keyframes drift1{to{transform:translate(90px,70px) scale(1.12)}}
 @keyframes drift2{to{transform:translate(-80px,90px) scale(1.1)}}
 @keyframes drift3{to{transform:translate(70px,-60px) scale(1.15)}}
@@ -48,8 +48,8 @@ body::after{content:"";position:fixed;inset:0;z-index:200;pointer-events:none;op
 /* 液态玻璃底座（来自 nikdelvin/liquid-glass 的真实折射滤镜） */
 .liquid-glass{position:relative;border-radius:inherit}
 .lg-overlay-bg{position:absolute;inset:0;z-index:1;border-radius:inherit;
-  background:rgba(255,255,255,.22);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.75),inset 0 1px 1px rgba(255,255,255,.95)}
+  background:rgba(255,255,255,.2);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.85),inset 0 1px 1px rgba(255,255,255,1),0 10px 32px rgba(24,36,64,.05)}
 .lg-content{position:relative;z-index:3}
 .lg-filter-layer{position:absolute;inset:0;z-index:2;border-radius:inherit;overflow:hidden;pointer-events:none}
 .glass-box{position:absolute;top:0;left:0;border-radius:inherit}
