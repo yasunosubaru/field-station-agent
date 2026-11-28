@@ -71,8 +71,6 @@ body::after{content:"";position:fixed;inset:0;z-index:200;pointer-events:none;op
 h1{font-size:clamp(52px,8.6vw,94px);font-weight:700;letter-spacing:-.055em;line-height:1.03}
 h2{font-size:clamp(38px,5.6vw,64px);font-weight:600;letter-spacing:-.045em;line-height:1.06}
 h3{font-size:26px;font-weight:600;letter-spacing:-.025em;line-height:1.2}
-.lede{font-size:clamp(19px,2.3vw,25px);color:var(--muted);line-height:1.45;font-weight:400;letter-spacing:-.01em}
-p{color:var(--muted)}
 .eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:var(--s1)}
 .grad{background:linear-gradient(120deg,#1d1d1f 25%,var(--accent) 95%);-webkit-background-clip:text;background-clip:text;color:transparent}
 
@@ -91,7 +89,6 @@ p{color:var(--muted)}
 .hero{text-align:center;padding:var(--s4) 0 0}
 .hero .badge{display:inline-block;font-size:12px;font-weight:500;color:var(--muted);border:1px solid var(--hairline);
   background:rgba(255,255,255,.5);border-radius:var(--r-pill);padding:7px 18px;margin-bottom:var(--s2);backdrop-filter:blur(10px)}
-.hero .lede{margin:var(--s1) auto 0;max-width:40em}
 .hero-actions{margin-top:var(--s2);display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .hero .note{margin-top:var(--s1);font-size:12px;color:var(--muted)}
 
@@ -113,11 +110,10 @@ p{color:var(--muted)}
 .card .liquid-glass{padding:32px 28px;height:100%;border-radius:var(--r-card)}
 .card .num{font-size:52px;font-weight:700;letter-spacing:-.05em;color:var(--accent);line-height:1;margin-bottom:var(--s1)}
 .card .tag{font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.05em}
-.card h3{margin:10px 0 12px}
-.card p{font-size:15px;line-height:1.7}
+.card h3{margin:10px 0 14px}
+.card .facts{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);line-height:1.9;letter-spacing:.01em}
 
 .statement{text-align:center;padding-bottom:var(--s2)}
-.statement .lede{margin:var(--s1) auto 0;max-width:36em}
 
 /* 数字 */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin-top:var(--s3)}
@@ -126,33 +122,29 @@ p{color:var(--muted)}
 .stat .n{font-size:clamp(46px,6vw,68px);font-weight:700;letter-spacing:-.045em;color:var(--accent);line-height:1}
 .stat .l{font-size:14px;color:var(--muted);margin-top:10px}
 
-/* 流程：左侧固定说明 + 右侧展开步骤卡 */
+/* 流程：左栏硬数据 + 右栏步骤索引 */
 .flow-grid{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:var(--s3);margin-top:var(--s2);align-items:start}
 @media(max-width:920px){.flow-grid{grid-template-columns:1fr;gap:var(--s2)}}
 .flow-aside{position:sticky;top:104px}
 @media(max-width:920px){.flow-aside{position:static}}
-.flow-aside h3{font-size:22px;letter-spacing:-.02em;margin-bottom:14px}
-.flow-aside .why{font-size:15px;line-height:1.75}
+.flow-key{font-family:ui-monospace,monospace;font-size:12px;color:var(--accent);letter-spacing:.03em;word-break:break-all}
 .flow-facts{margin-top:var(--s2);border-top:1px solid var(--hairline)}
 .flow-facts div{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:14px 0;border-bottom:1px solid var(--hairline)}
 .flow-facts b{font-size:28px;font-weight:700;letter-spacing:-.03em;color:var(--accent);line-height:1}
 .flow-facts span{font-size:14px;color:var(--muted)}
-.flow-quote{margin-top:var(--s2);font-size:17px;font-weight:600;letter-spacing:-.015em;color:var(--ink);line-height:1.5}
 
 .step-label{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-bottom:14px}
 .flow-list{display:grid;gap:14px}
-.step .liquid-glass{padding:26px 28px;border-radius:20px}
-.step-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.step-id{font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--accent);
-  border:1px solid rgba(0,113,227,.25);background:rgba(0,113,227,.06);border-radius:8px;padding:3px 9px}
-.step-name{font-family:ui-monospace,monospace;font-size:17px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.step .liquid-glass{padding:24px 28px;border-radius:20px}
+.step-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.step-id{font-family:ui-monospace,monospace;font-size:22px;font-weight:700;letter-spacing:-.04em;color:var(--accent);line-height:1}
+.step-name{font-family:ui-monospace,monospace;font-size:18px;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
 .step-badge{margin-left:auto;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);
   border:1px solid var(--hairline);border-radius:var(--r-pill);padding:4px 12px;white-space:nowrap}
 .step-badge.gate{color:var(--accent);border-color:rgba(0,113,227,.25);background:rgba(0,113,227,.06)}
-.step p{font-size:15px;line-height:1.72;margin-top:14px}
-.step-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.step-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
 .step-tags i{font-style:normal;font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);
-  border:1px solid var(--hairline);border-radius:6px;padding:3px 9px;background:rgba(255,255,255,.35)}
+  border:1px solid var(--hairline);border-radius:6px;padding:4px 10px;background:rgba(255,255,255,.35)}
 
 /* 规格表 */
 .spec-panel .liquid-glass{padding:12px 28px;border-radius:var(--r-card)}
@@ -206,12 +198,11 @@ footer a:hover{color:var(--accent)}
 <section class="hero wrap">
   <span class="badge">武汉大学 · 地球与空间科学技术学院 · 2026 大创</span>
   <h1>野外台站，<br><span class="grad">从此有人值守。</span></h1>
-  <p class="lede">原版 NAS 套件、协议逆向成果与 RPA 驱动，第一次装进同一个窗口。目标机不用预装任何运行时。</p>
   <div class="hero-actions">
     <a class="btn btn-primary" href="#get">下载 v1.0.0</a>
     <a class="btn btn-ghost" href="#overview">进一步了解</a>
   </div>
-  <p class="note">Windows 10/11 · WebView2 · MIT 开源</p>
+  <p class="note">Windows 10/11 · WebView2 · MIT</p>
 
   <div class="stage">
     <div class="liquid-glass" style="border-radius:30px">
@@ -235,7 +226,6 @@ footer a:hover{color:var(--accent)}
   <div class="statement reveal">
     <div class="eyebrow">一个安装包</div>
     <h2>三件原本独立的事，<br>第一次收进同一个窗口。</h2>
-    <p class="lede">不是文档集，也不是四视角工作台。双击安装，打开即用。</p>
   </div>
   <div class="cards" id="parts">
     <div class="card reveal">
@@ -244,7 +234,7 @@ footer a:hover{color:var(--accent)}
         <div class="lg-content">
           <div class="num">01</div><div class="tag">original/</div>
           <h3>原版套件</h3>
-          <p>NovAtel Application Suite 2.11.0 完整内嵌，413 个文件、1.44 GB。不静默安装，不改写系统。</p>
+          <div class="facts">NovAtel Application Suite 2.11.0<br>413 files · 1.44 GB</div>
         </div>
         <div class="lg-filter-layer"><div class="glass-box" data-blur="8" data-cab="3" data-depth="14" data-strength="100" data-saturate="1.7" data-brightness="1.06"></div></div>
       </div>
@@ -255,7 +245,7 @@ footer a:hover{color:var(--accent)}
         <div class="lg-content">
           <div class="num">02</div><div class="tag">packages/</div>
           <h3>协议重实现</h3>
-          <p>8 个零依赖 TypeScript 包，覆盖 123 条消息、879 个字段。27 篇逆向分析，把黑盒变成可读的接口。</p>
+          <div class="facts">8 packages · 123 messages<br>879 fields · 27 notes</div>
         </div>
         <div class="lg-filter-layer"><div class="glass-box" data-blur="8" data-cab="3" data-depth="14" data-strength="100" data-saturate="1.7" data-brightness="1.06"></div></div>
       </div>
@@ -266,14 +256,14 @@ footer a:hover{color:var(--accent)}
         <div class="lg-content">
           <div class="num">03</div><div class="tag">workflows/</div>
           <h3>自动化驱动</h3>
-          <p>8 条固定流程接管原生对话框。自带 Node 与 Python，换一台机器也不用先配环境。</p>
+          <div class="facts">8 workflows · Node 24<br>Python 3.11.9</div>
         </div>
         <div class="lg-filter-layer"><div class="glass-box" data-blur="8" data-cab="3" data-depth="14" data-strength="100" data-saturate="1.7" data-brightness="1.06"></div></div>
       </div>
     </div>
   </div>
   <div class="stats">
-    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">838</div><div class="l">MB · 完整安装包</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="12" data-strength="90" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
+    <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">838</div><div class="l">MB · 安装包</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="12" data-strength="90" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
     <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">123</div><div class="l">条 · 协议消息</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="12" data-strength="90" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
     <div class="reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content"><div class="stat"><div class="n">8</div><div class="l">条 · 自动化流程</div></div></div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="12" data-strength="90" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
   </div>
@@ -283,20 +273,18 @@ footer a:hover{color:var(--accent)}
   <div class="statement reveal">
     <div class="eyebrow">自动化流程</div>
     <h2>一条流程，<br>19 步走到人工闸门。</h2>
-    <p class="lede">以 gui.graph.newproject 为例：从 SBF 新建 Graph 工程，原版 GUI 要连续穿过两个原生对话框。我们把它拆成状态机，16 步自动执行，最后一步留给人。</p>
   </div>
 
   <div class="flow-grid">
     <aside class="flow-aside">
       <div class="reveal">
-        <h3>难点不在算法，<br>在对话框。</h3>
-        <p class="why">原生对话框没有 DOM，不能靠坐标点击。agent-desktop 按 accessibility ref 定位控件，AttachThreadInput 绕过前台锁定；每一步都带状态、锁与幂等校验。</p>
+        <div class="flow-key">gui.graph.newproject</div>
         <div class="flow-facts">
-          <div><b>19</b><span>步状态机</span></div>
-          <div><b>16</b><span>步自动执行</span></div>
-          <div><b>1</b><span>步人工闸门</span></div>
+          <div><b>19</b><span>步 · 状态机</span></div>
+          <div><b>16</b><span>步 · 自动</span></div>
+          <div><b>2</b><span>步 · 等待与断言</span></div>
+          <div><b>1</b><span>步 · 人工闸门</span></div>
         </div>
-        <p class="flow-quote">写盘不可逆的动作，不替人决定。</p>
       </div>
     </aside>
 
@@ -305,32 +293,27 @@ footer a:hover{color:var(--accent)}
       <div class="flow-list">
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">01</span><span class="step-name">health</span><span class="step-badge">自动</span></div>
-          <p>先确认目标机可用：探测 7788 端口，读取会话健康度。状态不对就停在这里，不带着错误往下走。</p>
-          <div class="step-tags"><i>端口探测</i><i>会话健康</i></div>
+          <div class="step-tags"><i>7788</i><i>session</i></div>
         </div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="10" data-strength="80" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">06</span><span class="step-name">open_wizard</span><span class="step-badge">自动</span></div>
-          <p>附加已经运行的 Graph 进程（--remote-debugging-port=9224），打开 New Project 向导。不是另起一个窗口，是接上原来的那个。</p>
-          <div class="step-tags"><i>CDP 附加</i><i>Graph 进程</i><i>New Project</i></div>
+          <div class="step-tags"><i>CDP 9224</i><i>New Project</i></div>
         </div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="10" data-strength="80" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">10</span><span class="step-name">choose_folder</span><span class="step-badge">自动</span></div>
-          <p>原生 Select Folder 对话框：agent-desktop 按 accessibility ref 定位控件，AttachThreadInput 绕过前台锁定，全程不依赖屏幕坐标。</p>
-          <div class="step-tags"><i>辅助功能树</i><i>前台锁</i><i>非坐标定位</i></div>
+          <div class="step-tags"><i>Select Folder</i><i>accessibility ref</i><i>AttachThreadInput</i></div>
         </div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="10" data-strength="80" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">12</span><span class="step-name">choose_file</span><span class="step-badge">自动</span></div>
-          <p>Receiver Data 的 Open 对话框，同一套机制。换对话框不换实现，坐标漂移不再是故障源。</p>
-          <div class="step-tags"><i>Open 对话框</i><i>同一机制</i></div>
+          <div class="step-tags"><i>Open</i><i>Receiver Data</i></div>
         </div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="10" data-strength="80" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
 
         <div class="step reveal"><div class="liquid-glass" style="border-radius:20px"><div class="lg-overlay-bg"></div><div class="lg-content">
           <div class="step-head"><span class="step-id">19</span><span class="step-name">approve_plot</span><span class="step-badge gate">人工闸门</span></div>
-          <p>绘图前停下，等人确认。所有写盘不可逆的动作都收在这道闸门之后，机器只做到这里。</p>
-          <div class="step-tags"><i>人工确认</i><i>不可逆写盘</i></div>
+          <div class="step-tags"><i>人工确认</i><i>写盘</i></div>
         </div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="10" data-strength="80" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
       </div>
     </div>
@@ -341,15 +324,14 @@ footer a:hover{color:var(--accent)}
   <div class="statement reveal">
     <div class="eyebrow">包里有什么</div>
     <h2>四个目录，<br>说清全部。</h2>
-    <p class="lede">从原版套件到自带运行时，一份安装包全部收齐。</p>
   </div>
   <div class="spec-panel reveal"><div class="liquid-glass" style="border-radius:28px"><div class="lg-overlay-bg"></div><div class="lg-content">
     <table class="spec">
       <tr><th>PATH</th><th>是什么</th><th>关键事实</th></tr>
-      <tr><td>original/</td><td>原版 NovAtel Application Suite 2.11.0</td><td>413 个文件 / 1.44 GB，完整内嵌</td></tr>
-      <tr><td>packages/</td><td>8 个零依赖 TypeScript 包</td><td>123 条消息 / 879 个字段，27 篇逆向分析</td></tr>
-      <tr><td>workflows/</td><td>8 条固定流程 YAML</td><td>状态机 + 锁 + 幂等 + 审计 + 人工闸门</td></tr>
-      <tr><td>runtime/</td><td>Node v24 + Python 3.11.9</td><td>自带，目标机无需预装</td></tr>
+      <tr><td>original/</td><td>NovAtel Application Suite 2.11.0</td><td>413 files · 1.44 GB</td></tr>
+      <tr><td>packages/</td><td>8 个零依赖 TypeScript 包</td><td>123 messages · 879 fields · 27 notes</td></tr>
+      <tr><td>workflows/</td><td>8 条固定流程 YAML</td><td>状态机 · 锁 · 幂等 · 审计 · 人工闸门</td></tr>
+      <tr><td>runtime/</td><td>Node v24 + Python 3.11.9</td><td>自带</td></tr>
     </table>
   </div><div class="lg-filter-layer"><div class="glass-box" data-blur="8" data-cab="2" data-depth="12" data-strength="90" data-saturate="1.6" data-brightness="1.06"></div></div></div></div>
 </section>
@@ -358,7 +340,6 @@ footer a:hover{color:var(--accent)}
   <div class="statement reveal">
     <div class="eyebrow">开始使用</div>
     <h2>下载，双击，开工。</h2>
-    <p class="lede">三个安装包都在公开仓库的 Release v1.0.0。GUI 版是主交付，另外两个是命令行归档。</p>
   </div>
   <div class="dl-list">
     <div class="dl reveal"><div class="liquid-glass" style="border-radius:18px"><div class="lg-overlay-bg"></div><div class="lg-content"><span class="fn">FieldStationHybrid-GUI-Setup.exe</span><span class="sz">838 MB · GUI · 主交付</span><a class="btn btn-primary" href="https://github.com/yasunosubaru/field-station-agent/releases/download/v1.0.0/FieldStationHybrid-GUI-Setup.exe">下载</a></div><div class="lg-filter-layer"><div class="glass-box" data-blur="6" data-cab="2" data-depth="10" data-strength="80" data-saturate="1.6" data-brightness="1.05"></div></div></div></div>
